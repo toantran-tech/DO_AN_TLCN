@@ -1,0 +1,17 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/WashGo.Application.Contracts/WashGo.Application.Contracts.csproj" />
+    <Project Path="src/WashGo.Application/WashGo.Application.csproj" />
+    <Project Path="src/WashGo.Domain.Shared/WashGo.Domain.Shared.csproj" />
+    <Project Path="src/WashGo.Domain/WashGo.Domain.csproj" />
+    <Project Path="src/WashGo.EntityFrameworkCore/WashGo.EntityFrameworkCore.csproj" />
+    <Project Path="src/WashGo.HttpApi/WashGo.HttpApi.csproj" />
+  </Folder>
+  <Folder Name="/src/Core/">
+    <Project Path="src/Core/WashGo.Core.Domain.Shared/WashGo.Core.Domain.Shared.csproj" />
+    <Project Path="src/Core/WashGo.Core.Domain/WashGo.Core.Domain.csproj" />
+    <Project Path="src/Core/WashGo.Core/WashGo.Core.csproj" />
+  </Folder>
+  <Project Path="WashGo.Background.Host/WashGo.Background.Host.csproj" />
+  <Project Path="WashGo.HttpApi.Host/WashGo.HttpApi.Host.csproj" />
+</Solution>

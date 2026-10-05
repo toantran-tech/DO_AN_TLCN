@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>WashGo.Domain</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Core\WashGo.Core\WashGo.Core.csproj" />
+    <ProjectReference Include="..\Core\WashGo.Core.Domain\WashGo.Core.Domain.csproj" />
+    <ProjectReference Include="..\WashGo.Domain.Shared\WashGo.Domain.Shared.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Volo.Abp.Ddd.Domain" Version="8.2.0" />
+  </ItemGroup>
+
+</Project>
