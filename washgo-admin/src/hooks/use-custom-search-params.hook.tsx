@@ -5,8 +5,14 @@ import { PageOptionsDto } from '../common/interfaces/api.interface';
 export const useCustomSearchParams = <T extends PageOptionsDto>(defaultParams: Partial<T>) => {
   const [searchParams, setSearchParams] = useSearchParams();
 
+  // Stabilize defaultParams across renders even if passed as object literal
+  const defaultParamsString = JSON.stringify(defaultParams);
+  const stableDefaultParams = useMemo(() => defaultParams, [defaultParamsString]);
+
+  const searchParamsString = searchParams.toString();
+
   const mergedParams = useMemo(() => {
-    const params: Record<string, any> = { ...defaultParams };
+    const params: Record<string, any> = { ...stableDefaultParams };
 
     searchParams.forEach((value, key) => {
       if (key === 'page' || key === 'take' || key === 'fromDate' || key === 'toDate') {
@@ -24,7 +30,7 @@ export const useCustomSearchParams = <T extends PageOptionsDto>(defaultParams: P
     });
 
     return params as T;
-  }, [searchParams, defaultParams]);
+  }, [searchParamsString, stableDefaultParams]);
 
   const setParams = useCallback(
     (newParams: Partial<T>) => {
@@ -41,20 +47,24 @@ export const useCustomSearchParams = <T extends PageOptionsDto>(defaultParams: P
         }
       });
 
-      setSearchParams(currentSearchParams, { replace: true });
+      if (currentSearchParams.toString() !== searchParams.toString()) {
+        setSearchParams(currentSearchParams, { replace: true });
+      }
     },
-    [mergedParams, setSearchParams]
+    [mergedParams, searchParams, setSearchParams]
   );
 
   const resetParams = useCallback(() => {
     const currentSearchParams = new URLSearchParams();
-    Object.entries(defaultParams).forEach(([key, val]) => {
+    Object.entries(stableDefaultParams).forEach(([key, val]) => {
       if (val !== undefined && val !== null && val !== '') {
         currentSearchParams.set(key, typeof val === 'object' ? JSON.stringify(val) : String(val));
       }
     });
-    setSearchParams(currentSearchParams, { replace: true });
-  }, [defaultParams, setSearchParams]);
+    if (currentSearchParams.toString() !== searchParams.toString()) {
+      setSearchParams(currentSearchParams, { replace: true });
+    }
+  }, [stableDefaultParams, searchParams, setSearchParams]);
 
   return { mergedParams, setParams, resetParams };
 };

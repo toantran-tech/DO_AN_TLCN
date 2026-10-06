@@ -17,6 +17,7 @@ using Volo.Abp.EntityFrameworkCore;
 using Volo.Abp.Modularity;
 using Volo.Abp.Swashbuckle;
 using Volo.Abp.Threading;
+using Microsoft.EntityFrameworkCore;
 using WashGo.Application;
 using WashGo.Core.Endpoint;
 using WashGo.EntityFrameworkCore;
@@ -153,18 +154,20 @@ namespace WashGo.HttpApi.Host
                 options.RoutePrefix = "swagger";
             });
 
-            // Seed data on startup
+            // Auto-migrate and seed data on startup
             using (var scope = context.ServiceProvider.CreateScope())
             {
                 try
                 {
+                    var dbContext = scope.ServiceProvider.GetRequiredService<WashGoDbContext>();
+                    dbContext.Database.Migrate();
+
                     var seeder = scope.ServiceProvider.GetRequiredService<IDataSeeder>();
                     AsyncHelper.RunSync(() => seeder.SeedAsync());
                 }
                 catch (Exception ex)
                 {
-                    // Log or handle seed error gracefully if DB not yet migrated or during EF migrations
-                    Console.WriteLine($"[DataSeeder] Seed warning: {ex.Message}");
+                    Console.WriteLine($"[Startup] Migration/Seed notice: {ex.Message}");
                 }
             }
 

@@ -255,6 +255,15 @@ dotnet ef database update --project src\WashGo.EntityFrameworkCore\WashGo.Entity
 
 # Build admin frontend
 npm run build
+
+# Chạy toàn bộ hệ thống bằng Docker Compose (PostgreSQL + Backend + Admin UI)
+docker compose up -d --build
+
+# Xem log các container
+docker compose logs -f
+
+# Dừng hệ thống
+docker compose down
 ```
 
 ### Quy ước thiết kế DB & Code

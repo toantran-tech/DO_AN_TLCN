@@ -1,0 +1,62 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: washgo_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-washgo_db}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-123456}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - washgo_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-washgo_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - washgo_network
+
+  washgo-be:
+    build:
+      context: ./washgo-be
+      dockerfile: Dockerfile
+    container_name: washgo_backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_HTTP_PORTS=8080
+      - ConnectionStrings__Default=Host=postgres;Port=5432;Database=${POSTGRES_DB:-washgo_db};Username=${POSTGRES_USER:-postgres};Password=${POSTGRES_PASSWORD:-123456};Include Error Detail=true;
+      - App__CorsOrigins=http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173,http://127.0.0.1:3000
+    ports:
+      - "${BE_PORT:-5000}:8080"
+    networks:
+      - washgo_network
+
+  washgo-admin:
+    build:
+      context: ./washgo-admin
+      dockerfile: Dockerfile
+      args:
+        - VITE_BE_URL=http://localhost:${BE_PORT:-5000}/
+    container_name: washgo_admin
+    restart: unless-stopped
+    depends_on:
+      - washgo-be
+    ports:
+      - "${ADMIN_PORT:-5173}:80"
+    networks:
+      - washgo_network
+
+networks:
+  washgo_network:
+    driver: bridge
+
+volumes:
+  washgo_postgres_data:
+    driver: local

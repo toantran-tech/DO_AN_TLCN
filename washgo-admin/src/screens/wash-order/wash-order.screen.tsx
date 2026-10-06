@@ -19,11 +19,13 @@ import { WashOrderFilterToolbar } from './parts/wash-order-filter-toolbar';
 import { WashOrderDetailDialog } from './parts/wash-order-detail-dialog';
 import { unwrapBaseResponse } from '../../common/utils/api-base-response.util';
 
+const DEFAULT_ORDER_PARAMS: Partial<WashOrderFilterParams> = {
+  page: 1,
+  take: 20,
+};
+
 export const WashOrderScreen: React.FC = () => {
-  const { mergedParams, setParams, resetParams } = useCustomSearchParams<WashOrderFilterParams>({
-    page: 1,
-    take: 20,
-  });
+  const { mergedParams, setParams, resetParams } = useCustomSearchParams<WashOrderFilterParams>(DEFAULT_ORDER_PARAMS);
 
   const [data, setData] = useState<{ list: WashOrderRow[]; total: number }>({ list: [], total: 0 });
   const [loading, setLoading] = useState(false);
@@ -32,14 +34,26 @@ export const WashOrderScreen: React.FC = () => {
   const [keywordInput, setKeywordInput] = useState(mergedParams.keyword || '');
 
   // Column filter state
+  const handleColumnFilterChange = useCallback(
+    (updated: any) => setParams({ columnFilters: updated, page: 1 }),
+    [setParams]
+  );
+
+  const initialColumnFilters = useMemo(
+    () => mergedParams.columnFilters || [],
+    [mergedParams.columnFilters]
+  );
+
   const { columnFilters, setColumnFilter } = useServerColumnFilters(
-    mergedParams.columnFilters || [],
-    (updated) => setParams({ columnFilters: updated, page: 1 })
+    initialColumnFilters,
+    handleColumnFilterChange
   );
 
   // Filter dropdown popover state
   const [filterAnchorEl, setFilterAnchorEl] = useState<HTMLElement | null>(null);
   const [activeFilterCol, setActiveFilterCol] = useState<string | null>(null);
+
+  const mergedParamsKey = useMemo(() => JSON.stringify(mergedParams), [mergedParams]);
 
   const fetchData = useCallback(async () => {
     try {
@@ -47,8 +61,8 @@ export const WashOrderScreen: React.FC = () => {
       const res = await filterWashOrders(mergedParams);
       const resList = unwrapBaseResponse<{ list: WashOrderRow[]; total: number }>(res);
       setData({
-        list: resList?.list || (Array.isArray(res) ? res : []),
-        total: resList?.total || (res as any)?.total || 0,
+        list: Array.isArray(resList) ? resList : resList?.list || (Array.isArray(res) ? res : (res as any)?.list || []),
+        total: (res as any)?.total ?? (resList as any)?.total ?? 0,
       });
     } catch {
       // Mock fallback data if backend is offline so screen is immediately testable & demonstrative
@@ -129,7 +143,7 @@ export const WashOrderScreen: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [mergedParams]);
+  }, [mergedParamsKey]);
 
   useEffect(() => {
     fetchData();
