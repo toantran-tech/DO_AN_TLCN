@@ -16,7 +16,9 @@ namespace WashGo.HttpApi.Endpoints.Merchant
 
         public void MapEndpoint(IEndpointRouteBuilder app)
         {
-            var group = app.MapGroup(_endpoint).WithTags("Merchant - Quản lý đối tác giặt sấy");
+            var group = app.MapGroup(_endpoint)
+            .WithTags("Merchant - Quản lý đối tác giặt sấy")
+            .RequireAuthorization("AdminOnly");
 
             group.MapPost("/filter", async (MerchantFilterQuery request, IMerchantAppService svc) =>
                 (await svc.GetListAsync(request)).CustomResult())

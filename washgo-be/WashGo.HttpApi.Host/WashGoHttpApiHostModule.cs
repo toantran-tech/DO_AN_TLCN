@@ -4,6 +4,7 @@ using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Cors;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -17,7 +18,6 @@ using Volo.Abp.EntityFrameworkCore;
 using Volo.Abp.Modularity;
 using Volo.Abp.Swashbuckle;
 using Volo.Abp.Threading;
-using Microsoft.EntityFrameworkCore;
 using WashGo.Application;
 using WashGo.Core.Endpoint;
 using WashGo.EntityFrameworkCore;
@@ -76,6 +76,8 @@ namespace WashGo.HttpApi.Host
                 options.AddPolicy("AdminOnly", policy => policy.RequireRole("Admin"));
                 options.AddPolicy("MerchantOrAdmin", policy => policy.RequireRole("Admin", "Merchant"));
                 options.AddPolicy("ShipperOrAdmin", policy => policy.RequireRole("Admin", "Shipper"));
+                options.AddPolicy("CustomerOnly", policy => policy.RequireRole("Customer"));
+                options.AddPolicy("OrderStatusUpdater", policy => policy.RequireRole("Admin", "Merchant", "Shipper"));
             });
 
             context.Services.AddCors(options =>

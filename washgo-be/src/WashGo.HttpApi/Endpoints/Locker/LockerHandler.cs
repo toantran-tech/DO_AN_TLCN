@@ -16,7 +16,9 @@ namespace WashGo.HttpApi.Endpoints.Locker
 
         public void MapEndpoint(IEndpointRouteBuilder app)
         {
-            var group = app.MapGroup(_endpoint).WithTags("Locker - Quản lý tủ thông minh");
+            var group = app.MapGroup(_endpoint)
+            .WithTags("Locker - Quản lý tủ thông minh")
+            .RequireAuthorization("MerchantOrAdmin");
 
             group.MapPost("/filter", async (LockerFilterQuery request, ILockerAppService svc) =>
                 (await svc.GetListAsync(request)).CustomResult())

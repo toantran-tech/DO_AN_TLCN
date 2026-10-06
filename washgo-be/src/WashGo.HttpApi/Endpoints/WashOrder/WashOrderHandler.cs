@@ -20,31 +20,37 @@ namespace WashGo.HttpApi.Endpoints.WashOrder
 
             group.MapPost("/filter", async (WashOrderFilterQuery request, IWashOrderAppService svc) =>
                 (await svc.GetListAsync(request)).CustomResult())
+                .RequireAuthorization()
                 .WithName("Lọc danh sách đơn WashGo")
                 .WithOpenApi();
 
             group.MapGet("/{id:guid}", async (Guid id, IWashOrderAppService svc) =>
                 (await svc.GetByIdAsync(id)).CustomResult())
+                .RequireAuthorization()
                 .WithName("Xem chi tiết đơn WashGo")
                 .WithOpenApi();
 
             group.MapPost("/", async (CreateWashOrderCommand command, IWashOrderAppService svc) =>
                 (await svc.CreateAsync(command)).CustomResult())
+                .RequireAuthorization("CustomerOnly")
                 .WithName("Tạo đơn hàng WashGo mới")
                 .WithOpenApi();
 
             group.MapPut("/status", async (UpdateWashOrderStatusCommand command, IWashOrderAppService svc) =>
                 (await svc.UpdateStatusAsync(command)).CustomResult())
+                .RequireAuthorization("OrderStatusUpdater")
                 .WithName("Cập nhật trạng thái đơn")
                 .WithOpenApi();
 
             group.MapPut("/assign-shipper", async (AssignShipperCommand command, IWashOrderAppService svc) =>
                 (await svc.AssignShipperAsync(command)).CustomResult())
+                .RequireAuthorization("AdminOnly")
                 .WithName("Phân công Shipper cho đơn")
                 .WithOpenApi();
 
             group.MapPost("/column-distinct-values", async (string field, WashOrderFilterQuery query, IWashOrderAppService svc) =>
                 (await svc.GetColumnDistinctValuesAsync(field, query)).CustomResult())
+                .RequireAuthorization()
                 .WithName("Lấy giá trị distinct cho bộ lọc cột đơn hàng")
                 .WithOpenApi();
         }
