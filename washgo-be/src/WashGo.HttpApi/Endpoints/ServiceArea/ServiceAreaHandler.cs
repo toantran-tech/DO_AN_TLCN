@@ -16,7 +16,9 @@ namespace WashGo.HttpApi.Endpoints.ServiceArea
 
         public void MapEndpoint(IEndpointRouteBuilder app)
         {
-            var group = app.MapGroup(_endpoint).WithTags("Service Area - Quản lý vùng phục vụ");
+            var group = app.MapGroup(_endpoint)
+            .WithTags("Service Area - Quản lý vùng phục vụ")
+            .RequireAuthorization("AdminOnly");
 
             group.MapPost("/filter", async (ServiceAreaFilterQuery request, IServiceAreaAppService svc) =>
                 (await svc.GetListAsync(request)).CustomResult())

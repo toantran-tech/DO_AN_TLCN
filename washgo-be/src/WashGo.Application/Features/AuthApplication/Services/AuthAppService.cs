@@ -58,18 +58,9 @@ namespace WashGo.Application.Features.AuthApplication.Services
             }
 
             bool isPasswordValid = false;
-            if (!string.IsNullOrEmpty(user.PasswordHash))
+            if (!string.IsNullOrWhiteSpace(user.PasswordHash))
             {
-                // Support both BCrypt and demo fallback hash during transition
-                if (user.PasswordHash.StartsWith("$2") || user.PasswordHash.StartsWith("$2a") || user.PasswordHash.StartsWith("$2b"))
-                {
-                    isPasswordValid = BCrypt.Net.BCrypt.Verify(command.Password, user.PasswordHash);
-                }
-                else
-                {
-                    isPasswordValid = user.PasswordHash == command.Password ||
-                                      (user.PasswordHash.Contains("DEMO") && command.Password.Contains("123"));
-                }
+                isPasswordValid = BCrypt.Net.BCrypt.Verify(command.Password, user.PasswordHash);
             }
 
             if (!isPasswordValid)
@@ -258,9 +249,6 @@ namespace WashGo.Application.Features.AuthApplication.Services
 
             await _otpRepo.InsertAsync(otp, autoSave: true);
 
-            // In real system, send email/SMS here. For development/testing:
-            Console.WriteLine($"[OTP Verification] Email: {email}, Code: {randomCode}, Purpose: {command.Purpose}");
-
             return Success(true, $"Mã OTP đã được gửi đến email {email} (hết hạn sau 5 phút).");
         }
 
@@ -283,7 +271,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
                 return BadRequest<bool>("Bạn đã nhập sai mã OTP quá số lần quy định.");
             }
 
-            bool isValid = BCrypt.Net.BCrypt.Verify(command.Code, validOtp.CodeHash) || command.Code == "123456";
+            bool isValid = BCrypt.Net.BCrypt.Verify(command.Code, validOtp.CodeHash);
             if (!isValid)
             {
                 validOtp.AttemptCount++;

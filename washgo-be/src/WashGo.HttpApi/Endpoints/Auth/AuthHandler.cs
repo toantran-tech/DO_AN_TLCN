@@ -35,6 +35,7 @@ namespace WashGo.HttpApi.Endpoints.Auth
 
             group.MapPost("/logout", async (LogoutCommand command, IAuthAppService svc) =>
                 (await svc.LogoutAsync(command)).CustomResult())
+                .RequireAuthorization()
                 .WithName("Đăng xuất hệ thống")
                 .WithOpenApi();
 

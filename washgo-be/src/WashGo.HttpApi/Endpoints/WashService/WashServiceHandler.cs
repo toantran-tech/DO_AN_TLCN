@@ -16,7 +16,9 @@ namespace WashGo.HttpApi.Endpoints.WashService
 
         public void MapEndpoint(IEndpointRouteBuilder app)
         {
-            var group = app.MapGroup(_endpoint).WithTags("Wash Service - Quản lý dịch vụ");
+            var group = app.MapGroup(_endpoint)
+            .WithTags("Wash Service - Quản lý dịch vụ")
+            .RequireAuthorization("MerchantOrAdmin");
 
             group.MapPost("/filter", async (WashServiceFilterQuery request, IWashServiceAppService svc) =>
                 (await svc.GetListAsync(request)).CustomResult())

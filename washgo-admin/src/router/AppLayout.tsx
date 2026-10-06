@@ -25,6 +25,7 @@ import LogoutIcon from '@mui/icons-material/Logout';
 import { RootState } from '../redux/store.redux';
 import { toggleSidebar, toggleThemeMode } from '../redux/system/system.slice';
 import { logout } from '../redux/account/account.slice';
+import { logoutApi } from '../apis/auth/auth.api';
 import { ROUTE_ITEMS } from './route.constant';
 
 const DRAWER_WIDTH = 250;
@@ -36,6 +37,20 @@ export const AppLayout: React.FC = () => {
 
   const { sidebarOpen, themeMode } = useSelector((state: RootState) => state.system);
   const { user } = useSelector((state: RootState) => state.account);
+  const { refreshToken } = useSelector((state: RootState) => state.account);
+
+  const handleLogout = async () => {
+    try {
+      if (refreshToken) {
+        await logoutApi({ refreshToken });
+      }
+    } catch {
+      // Always clear the local session even if the backend is unavailable.
+    } finally {
+      dispatch(logout());
+      navigate('/login', { replace: true });
+    }
+  };
 
   return (
     <Box sx={{ display: 'flex', minHeight: '100vh', backgroundColor: 'background.default' }}>
@@ -92,7 +107,7 @@ export const AppLayout: React.FC = () => {
                 </Typography>
               </Box>
               <Tooltip title="Đăng xuất">
-                <IconButton size="small" onClick={() => dispatch(logout())} sx={{ ml: 0.5 }}>
+                <IconButton size="small" onClick={handleLogout} sx={{ ml: 0.5 }}>
                   <LogoutIcon fontSize="small" />
                 </IconButton>
               </Tooltip>

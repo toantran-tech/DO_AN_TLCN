@@ -72,10 +72,10 @@ Cập nhật lần cuối: 05/10/2026
 - [x] **JWT Token Generator**: Cấp JWT Access Token chứa các claim: `sub`, `email`, `role`, `user_id`.
 - [x] **Refresh Token Rotation**: Cơ chế cấp mới Access Token qua Refresh Token và thu hồi (revoke) khi logout.
 - [x] **Xác thực OTP**: Quản lý mã OTP có hạn sử dụng, trạng thái đã dùng và đếm số lần nhập sai.
-- [x] **Cấu hình RBAC ban đầu**:
+- [x] **Cấu hình RBAC & bảo vệ endpoint**:
   - Cấu hình JWT Bearer Authentication middleware trong ASP.NET Core.
-  - Thiết lập các policy: `AdminOnly`, `MerchantOrAdmin`, `ShipperOrAdmin`.
-  - Hiện tại mới kích hoạt `.RequireAuthorization()` ở endpoint `/auth/me`; các endpoint CRUD nền tảng chưa gắn policy chi tiết để thuận tiện phát triển/test ban đầu.
+  - Thiết lập các policy: `AdminOnly`, `MerchantOrAdmin`, `ShipperOrAdmin`, `CustomerOnly`, `OrderStatusUpdater`.
+  - Gắn policy cho các endpoint ServiceArea, Merchant, Locker, WashService và WashOrder.
 - [x] **Endpoints Auth (`/auth/*`)**:
   - `POST /auth/login`: Đăng nhập cấp JWT Token và Refresh Token.
   - `POST /auth/refresh-token`: Làm mới token.
@@ -85,10 +85,12 @@ Cập nhật lần cuối: 05/10/2026
   - `POST /auth/verify-otp`: Kiểm tra mã OTP.
   - `POST /auth/reset-password`: Đặt lại mật khẩu mới.
   - `GET /auth/me`: Lấy thông tin tài khoản hiện tại (yêu cầu Bearer Token).
-- [!] **Lưu ý hiện trạng Auth/OTP**:
-  - Đã triển khai mức dev/test.
-  - Hiện tại còn log OTP ra console và chấp nhận fallback mã `123456` để kiểm thử thủ công dễ dàng.
-  - Chưa production-ready: cần bỏ fallback `123456`, bỏ log console, tích hợp SMS/Email provider thực tế trước khi phát hành.
+- [x] **Loại bỏ cơ chế Auth/OTP dev-only**:
+  - Đã loại bỏ password fallback trong Login.
+  - Đã loại bỏ OTP fallback `123456`.
+  - Đã loại bỏ log mã OTP ra console.
+  - OTP được hash bằng BCrypt trước khi lưu và kiểm tra thời hạn/số lần nhập sai.
+- [ ] **Tích hợp Email/SMS provider thực tế** để gửi OTP production.
 
 ---
 
@@ -117,7 +119,7 @@ Cập nhật lần cuối: 05/10/2026
 ### 5. Giao diện Quản trị Web (Admin UI - `washgo-admin`)
 - [x] **Màn hình Đăng nhập / Đăng xuất (Login/Logout)**:
   - Form đăng nhập kết nối trực tiếp API Backend (`/auth/login`).
-  - Đã có logoutApi, UI logout hiện xóa token local; cần nối gọi `/auth/logout` để revoke refresh token.
+  - Đã có logoutApi; UI logout gọi `/auth/logout` để revoke refresh token rồi xóa session local.
   - Lưu trữ Token và User Info vào Redux store + LocalStorage.
   - Tự động đính kèm `Bearer <token>` vào request header qua Axios Interceptor.
   - Điều hướng tự động (Auth Guard / Protected Routes).
@@ -139,18 +141,14 @@ Cập nhật lần cuối: 05/10/2026
 ## PHẦN II: CÁC NỘI DUNG CHƯA HOÀN THÀNH / KẾ HOẠCH TIẾP THEO (PENDING / ROADMAP)
 
 ### 1. Phân quyền Endpoint chặt chẽ (RBAC Enforce) & Chuẩn hóa Auth Production
-- [ ] Gắn Policy `.RequireAuthorization(...)` chi tiết cho từng nhóm endpoint backend:
-  - ServiceArea: `AdminOnly`
-  - Merchant: `AdminOnly` hoặc `MerchantOrAdmin`
-  - Locker: `MerchantOrAdmin`
-  - WashService: `MerchantOrAdmin`
-  - WashOrder: tạo đơn bởi `Customer`, đổi trạng thái bởi `MerchantOrAdmin` / `ShipperOrAdmin`.
-  - Thêm policy `CustomerOnly` nếu cần.
-- [ ] Chuẩn hóa Auth/OTP cho production:
-  - Bỏ mã OTP fallback `123456`.
-  - Bỏ log mã OTP ra console.
-  - Bỏ password fallback trong Login.
-  - Tích hợp dịch vụ SMS / Email thực tế (Twilio / Stringee / AWS SES).
+- [x] Gắn Policy `.RequireAuthorization(...)` chi tiết cho từng nhóm endpoint backend:
+  - ServiceArea: `AdminOnly`.
+  - Merchant: `AdminOnly`.
+  - Locker và WashService: `MerchantOrAdmin`.
+  - WashOrder: xem danh sách/chi tiết yêu cầu đăng nhập; tạo đơn bởi `Customer`; cập nhật trạng thái bởi `Admin`, `Merchant`, `Shipper`; phân công shipper bởi `Admin`.
+  - Đã thêm policy `CustomerOnly` và `OrderStatusUpdater`.
+- [x] Loại bỏ password fallback trong Login, OTP fallback `123456` và log OTP console.
+- [ ] Tích hợp dịch vụ SMS / Email thực tế (Twilio / Stringee / AWS SES).
 - [ ] Cấu hình chuẩn hóa global route prefix `/api/v1` cho toàn bộ endpoint nếu có nhu cầu đồng bộ versioning.
 
 ---
