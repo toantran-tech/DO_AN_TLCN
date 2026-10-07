@@ -21,6 +21,7 @@ namespace WashGo.Domain.Shared.Constants
         public const string MerchantServiceAreas = "merchant_service_areas";
         public const string MerchantImages = "merchant_images";
         public const string ServiceChangeRequests = "service_change_requests";
+        public const string PaymentTransactions = "payment_transactions";
     }
     public static class WashGoPermissions
     {

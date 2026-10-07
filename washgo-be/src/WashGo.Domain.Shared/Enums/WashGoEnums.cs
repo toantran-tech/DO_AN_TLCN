@@ -22,6 +22,7 @@ namespace WashGo.Domain.Shared.Enums
     public enum LockerBoxSize { Small = 1, Standard = 2, Large = 3 }
     public enum PaymentStatus { Unpaid = 1, Paid = 2, Refunded = 3 }
     public enum PaymentMethod { Cash = 1, VnPay = 2, Momo = 3, ZaloPay = 4 }
+    public enum PaymentTransactionStatus { Pending = 1, Succeeded = 2, Failed = 3, Refunded = 4 }
     public enum WashServiceType { StandardWash = 1, DryClean = 2, IronOnly = 3, BlanketWash = 4, ShoeCare = 5 }
     public enum AuthProvider { Local = 1, Google = 2 }
     public enum OtpPurpose { Register = 1, ForgotPassword = 2, ChangeEmail = 3 }

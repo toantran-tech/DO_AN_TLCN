@@ -154,9 +154,15 @@ Cập nhật lần cuối: 05/10/2026
 ---
 
 ### 2. Cổng thanh toán trực tuyến (Online Payment Gateway)
-- [ ] Tích hợp cổng thanh toán trực tuyến (VNPay / MoMo / ZaloPay):
+- [x] Payment sandbox foundation:
+  - `POST /payment/create-url`: tạo payment URL giả lập cho đơn hàng và phương thức online.
+  - `POST /payment/callback`: callback sandbox chuyển đơn sang `PAID`, dùng chung business rule/order timeline.
+  - Từ chối tạo URL cho phương thức tiền mặt và xử lý callback idempotent khi đơn đã `PAID`.
+  - Lưu lịch sử giao dịch vào bảng `payment_transactions`, unique transaction reference và trạng thái `Pending/Succeeded/Failed/Refunded`.
+- [ ] Tích hợp cổng thanh toán thật (VNPay / MoMo / ZaloPay):
   - API tạo URL thanh toán cho đơn hàng (`POST /payment/create-url`).
   - Xử lý Webhook / IPN callback từ phía cổng thanh toán để tự động cập nhật trạng thái đơn sang `PAID`.
+  - Bổ sung chữ ký/hash verification và lưu transaction/payment reference bền vững trước khi production.
 - [ ] Xử lý hoàn tiền (`Refund`, `RefundRequest`):
   - Hoàn tiền khi đơn hàng gặp sự cố, hủy đơn trước khi giặt.
   - Phê duyệt yêu cầu hoàn tiền từ Admin.
