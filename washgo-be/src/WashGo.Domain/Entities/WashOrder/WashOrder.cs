@@ -75,6 +75,9 @@ namespace WashGo.Domain.Entities.WashOrder
         public DateTime? DepositDeadline { get; set; }
         public DateTime? ReturnDeadline { get; set; }
         public DateTime? PickupDeadline { get; set; }
+        public DateTime? MovedToStorageAt { get; set; }
+        public string? StorageLocation { get; set; }
+        public string? StorageReference { get; set; }
         public DateTime? PaymentDeadline { get; set; }
         public decimal OverdueFeeTotal { get; set; }
         public decimal StorageFeeTotal { get; set; }

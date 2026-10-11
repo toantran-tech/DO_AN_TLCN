@@ -30,6 +30,12 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Results
         public string PickupPinCode { get; set; } = string.Empty;
         public string QrCodeString { get; set; } = string.Empty;
         public long ExpectedDeliveryTime { get; set; }
+        public DateTime? PickupDeadline { get; set; }
+        public decimal OverdueFeeTotal { get; set; }
+        public decimal StorageFeeTotal { get; set; }
+        public DateTime? MovedToStorageAt { get; set; }
+        public string? StorageLocation { get; set; }
+        public string? StorageReference { get; set; }
         public long CreatedOn { get; set; }
     }
 

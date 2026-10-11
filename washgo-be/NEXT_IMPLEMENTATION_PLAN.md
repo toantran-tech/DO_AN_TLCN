@@ -154,15 +154,33 @@ Cập nhật lần cuối: 05/10/2026
 ---
 
 ### 2. Cổng thanh toán trực tuyến (Online Payment Gateway)
-- [ ] Tích hợp cổng thanh toán trực tuyến (VNPay / MoMo / ZaloPay):
-  - API tạo URL thanh toán cho đơn hàng (`POST /payment/create-url`).
-  - Xử lý Webhook / IPN callback từ phía cổng thanh toán để tự động cập nhật trạng thái đơn sang `PAID`.
-- [ ] Xử lý hoàn tiền (`Refund`, `RefundRequest`):
-  - Hoàn tiền khi đơn hàng gặp sự cố, hủy đơn trước khi giặt.
-  - Phê duyệt yêu cầu hoàn tiền từ Admin.
-- [ ] Tính và thu phí lưu kho quá hạn (`OverdueFee`):
-  - Tính phí phát sinh khi khách hàng để đồ trong tủ quá thời gian quy định (sau X giờ tính thêm Y VNĐ/giờ).
-  - Yêu cầu thanh toán phí phạt trước khi mở tủ nhận đồ.
+- [x] Payment sandbox foundation:
+  - `POST /payment/create-url`: tạo payment URL cho VNPay sandbox hoặc URL giả lập theo cấu hình.
+  - `POST /payment/callback`: callback sandbox yêu cầu Admin, chuyển đơn sang `PAID` qua business rule/order timeline.
+  - Từ chối tạo URL cho phương thức tiền mặt và xử lý callback idempotent khi đơn đã `PAID`.
+  - Lưu lịch sử giao dịch vào bảng `payment_transactions`, unique transaction reference và trạng thái `Pending/Succeeded/Failed/Refunded`.
+- [ ] Tích hợp cổng thanh toán thật (VNPay):
+  - [x] Tạo URL VNPay 2.1.0, ký HMAC-SHA512 và lấy cấu hình qua `Payment:VnPay`.
+  - [x] `GET /payment/vnpay-ipn`: xác minh chữ ký, merchant, số tiền và trạng thái trước khi cập nhật đơn.
+  - [ ] Cấu hình credential merchant, IPN HTTPS public URL tại VNPay Portal và kiểm thử end-to-end trên VNPay Sandbox.
+  - [ ] Chưa bật provider `VnPay` trên môi trường nhóm đến khi cấu hình secrets/IPN URL an toàn.
+- [x] Nền tảng yêu cầu hoàn tiền (`RefundRequest`):
+  - `POST /payment/refund-requests` để Customer gửi yêu cầu cho đơn đã thanh toán; chỉ chủ đơn được tạo/xem yêu cầu của mình qua `GET /payment/refund-requests/mine`.
+  - Admin dùng `GET /payment/refund-requests` để xem danh sách và `POST /payment/refund-requests/{id}/review` để duyệt/từ chối.
+  - Hoàn tiền hiện là thủ công ngoài hệ thống; sau khi thực hiện, Admin gọi `POST /payment/refund-requests/{id}/confirm-refunded` kèm mã tham chiếu.
+  - Khi xác nhận, cập nhật yêu cầu, giao dịch gốc và PaymentStatus của đơn thành `Refunded`.
+  - Migration `AddRefundRequests` đã áp dụng vào database local.
+- [ ] Tích hợp hoàn tiền tự động qua cổng VNPay/MoMo/ZaloPay (hiện chưa gọi API chuyển tiền thực tế).
+- [x] Nền tảng phí lưu kho quá hạn (`OverdueFee`):
+  - Mốc bắt đầu là khi đơn chuyển sang `ReadyToReturn` (đồ đã được đưa vào locker trả); hiện giả định 24 giờ đầu miễn phí.
+  - Sau hạn miễn phí, mỗi 24 giờ bắt đầu tính tròn thành một ngày: ngày quá hạn 1/2/3 lần lượt 10.000/20.000/50.000đ; từ ngày thứ 4 là 100.000đ/ngày. Cách làm tròn này cần được xác nhận theo quy định nghiệp vụ cuối cùng.
+  - Customer dùng `POST /payment/overdue-fee/create-url` để tạo giao dịch VNPay cho phí còn thiếu; IPN/callback phân biệt giao dịch phí lưu kho với tiền giặt, không đổi trạng thái thanh toán tiền giặt.
+  - Chặn chuyển đơn sang `Returned` (khách đã lấy đồ theo flow status hiện tại) nếu chưa trả đủ phí đã phát sinh.
+  - Migration `AddOverdueStorageFeePayments` đã áp dụng vào database local để phân biệt giao dịch tiền giặt và giao dịch phí lưu kho.
+  - Sau hơn 72 giờ quá hạn, `POST /wash-order/move-to-storage` dành cho Shipper/Admin ghi nhận vị trí và mã lưu kho, cập nhật trạng thái `MovedToStorage`, thêm timeline và giải phóng ô locker.
+  - Admin có form ghi nhận thao tác này trên màn hình chi tiết đơn. Người vận hành vẫn phải di chuyển đồ thực tế trước khi bấm xác nhận; hệ thống chưa kết nối thiết bị/kho tự động.
+  - Đơn `MovedToStorage` vẫn có thể thanh toán phần phí phát sinh; khách chỉ chuyển sang `Returned` sau khi phí đã trả đủ.
+  - Migration `AddOverdueStorageTransfer` đã áp dụng vào database local.
 
 ---
 

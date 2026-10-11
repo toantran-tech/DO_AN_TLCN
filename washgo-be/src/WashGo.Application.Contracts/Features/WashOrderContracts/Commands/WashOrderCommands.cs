@@ -43,4 +43,12 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Commands
         public Guid ShipperId { get; set; }
         public string ShipperName { get; set; } = string.Empty;
     }
+
+    public class MoveOrderToStorageCommand
+    {
+        public Guid OrderId { get; set; }
+        public string StorageLocation { get; set; } = string.Empty;
+        public string StorageReference { get; set; } = string.Empty;
+        public string? Note { get; set; }
+    }
 }

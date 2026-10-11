@@ -19,10 +19,11 @@ import {
   CircularProgress,
   Stack,
   Alert,
+  TextField,
 } from '@mui/material';
 import QrCode2Icon from '@mui/icons-material/QrCode2';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
-import { getWashOrderDetail, updateWashOrderStatus } from '../../../apis/wash-order/wash-order.api';
+import { getWashOrderDetail, moveWashOrderToStorage, updateWashOrderStatus } from '../../../apis/wash-order/wash-order.api';
 import { WashOrderDetail } from '../../../apis/wash-order/wash-order.interface';
 import {
   WashOrderStatus,
@@ -47,6 +48,10 @@ export const WashOrderDetailDialog: React.FC<WashOrderDetailDialogProps> = ({
   const [detail, setDetail] = useState<WashOrderDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
+  const [storageLocation, setStorageLocation] = useState('');
+  const [storageReference, setStorageReference] = useState('');
+  const [storageError, setStorageError] = useState('');
+  const [statusError, setStatusError] = useState('');
 
   useEffect(() => {
     if (open && orderId) {
@@ -67,6 +72,7 @@ export const WashOrderDetailDialog: React.FC<WashOrderDetailDialogProps> = ({
     if (!detail) return;
     try {
       setActionLoading(true);
+      setStatusError('');
       const nextStatusMap: Partial<Record<WashOrderStatus, WashOrderStatus>> = {
         [WashOrderStatus.Pending]: WashOrderStatus.Deposited,
         [WashOrderStatus.Deposited]: WashOrderStatus.Collected,
@@ -78,6 +84,7 @@ export const WashOrderDetailDialog: React.FC<WashOrderDetailDialogProps> = ({
         [WashOrderStatus.AwaitingPayment]: WashOrderStatus.Paid,
         [WashOrderStatus.Paid]: WashOrderStatus.ReadyToReturn,
         [WashOrderStatus.ReadyToReturn]: WashOrderStatus.Returned,
+        [WashOrderStatus.MovedToStorage]: WashOrderStatus.Returned,
         [WashOrderStatus.Returned]: WashOrderStatus.Completed,
       };
 
@@ -94,6 +101,28 @@ export const WashOrderDetailDialog: React.FC<WashOrderDetailDialogProps> = ({
       const res = await getWashOrderDetail(detail.id);
       setDetail(unwrapBaseResponse<WashOrderDetail>(res));
       if (onStatusUpdated) onStatusUpdated();
+    } catch {
+      setStatusError('Không thể chuyển trạng thái. Kiểm tra phí còn nợ hoặc yêu cầu nghiệp vụ của đơn.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleMoveToStorage = async () => {
+    if (!detail || !storageLocation.trim() || !storageReference.trim()) return;
+    try {
+      setActionLoading(true);
+      setStorageError('');
+      await moveWashOrderToStorage({
+        orderId: detail.id,
+        storageLocation: storageLocation.trim(),
+        storageReference: storageReference.trim(),
+      });
+      const res = await getWashOrderDetail(detail.id);
+      setDetail(unwrapBaseResponse<WashOrderDetail>(res));
+      if (onStatusUpdated) onStatusUpdated();
+    } catch {
+      setStorageError('Không ghi nhận được việc chuyển kho. Kiểm tra trạng thái đơn và quyền Shipper/Admin.');
     } finally {
       setActionLoading(false);
     }
@@ -101,6 +130,8 @@ export const WashOrderDetailDialog: React.FC<WashOrderDetailDialogProps> = ({
 
   const statusInfo = detail ? WashOrderStatusLabels[detail.status] : null;
   const payInfo = detail ? PaymentStatusLabels[detail.paymentStatus] : null;
+  const canMoveToStorage = !!detail && detail.status === WashOrderStatus.ReadyToReturn &&
+    !!detail.pickupDeadline && Date.now() - new Date(detail.pickupDeadline).getTime() > 72 * 60 * 60 * 1000;
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
@@ -173,6 +204,44 @@ export const WashOrderDetailDialog: React.FC<WashOrderDetailDialogProps> = ({
                 </Paper>
               </Grid>
             </Grid>
+
+            {detail.status === WashOrderStatus.MovedToStorage && (
+              <Alert severity="warning">
+                Đồ đã chuyển sang kho {detail.storageLocation || '—'} · Mã lưu kho: {detail.storageReference || '—'}
+                {detail.movedToStorageAt && ` · ${new Date(detail.movedToStorageAt).toLocaleString('vi-VN')}`}
+              </Alert>
+            )}
+
+            {detail.status === WashOrderStatus.MovedToStorage &&
+              (detail.overdueFeeTotal ?? 0) > (detail.storageFeeTotal ?? 0) && (
+                <Alert severity="info">
+                  Còn phí lưu kho cần thanh toán trước khi hoàn tất nhận đồ: {new Intl.NumberFormat('vi-VN', {
+                    style: 'currency', currency: 'VND',
+                  }).format((detail.overdueFeeTotal ?? 0) - (detail.storageFeeTotal ?? 0))}
+                </Alert>
+              )}
+
+            {canMoveToStorage && (
+              <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
+                  Đã quá 72 giờ quá hạn — ghi nhận chuyển đồ sang kho
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+                  Shipper/Admin thực hiện chuyển đồ thực tế trước, sau đó nhập vị trí và mã lưu kho để giải phóng ô locker.
+                </Typography>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+                  <TextField size="small" fullWidth label="Vị trí kho" value={storageLocation}
+                    onChange={(event) => setStorageLocation(event.target.value)} />
+                  <TextField size="small" fullWidth label="Mã biên nhận / mã lưu kho" value={storageReference}
+                    onChange={(event) => setStorageReference(event.target.value)} />
+                </Stack>
+                {storageError && <Alert severity="error" sx={{ mt: 1.5 }}>{storageError}</Alert>}
+                <Button sx={{ mt: 1.5 }} variant="contained" color="warning" disabled={actionLoading || !storageLocation.trim() || !storageReference.trim()}
+                  onClick={handleMoveToStorage}>
+                  Ghi nhận đã chuyển vào kho
+                </Button>
+              </Paper>
+            )}
 
             {/* QR Code preview */}
             <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2, display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -270,7 +339,8 @@ export const WashOrderDetailDialog: React.FC<WashOrderDetailDialogProps> = ({
       </DialogContent>
 
       <DialogActions sx={{ p: 2 }}>
-        {detail && detail.status !== WashOrderStatus.Completed && detail.status !== WashOrderStatus.Cancelled && (
+        {statusError && <Alert severity="error" sx={{ mr: 'auto' }}>{statusError}</Alert>}
+        {detail && detail.status !== WashOrderStatus.Completed && detail.status !== WashOrderStatus.Cancelled && !canMoveToStorage && (
           <Button
             variant="contained"
             color="success"

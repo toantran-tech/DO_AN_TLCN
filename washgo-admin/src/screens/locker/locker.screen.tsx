@@ -9,13 +9,17 @@ import {
   Button,
   Stack,
   Divider,
+  TextField,
+  InputAdornment,
+  Paper,
 } from '@mui/material';
 import MeetingRoomIcon from '@mui/icons-material/MeetingRoom';
 import AddIcon from '@mui/icons-material/Add';
+import SearchIcon from '@mui/icons-material/Search';
 import { TableLayered } from '../../components/table/table-layerd.component';
 import { filterLockers } from '../../apis/locker/locker.api';
 import { LockerItem, LockerBoxItem } from '../../apis/locker/locker.interface';
-import { LockerBoxStatus, LockerBoxStatusLabels } from '../../apis/locker/locker.enum';
+import { LockerBoxStatus, LockerBoxStatusLabels, LockerStatus } from '../../apis/locker/locker.enum';
 import { createLockerColumns } from './locker.constant';
 import { unwrapBaseResponse } from '../../common/utils/api-base-response.util';
 
@@ -24,6 +28,7 @@ export const LockerScreen: React.FC = () => {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [selectedLocker, setSelectedLocker] = useState<LockerItem | null>(null);
+  const [keyword, setKeyword] = useState('');
 
   const mockLockers: LockerItem[] = [
     {
@@ -101,13 +106,21 @@ export const LockerScreen: React.FC = () => {
   }, []);
 
   const columns = useMemo(() => createLockerColumns((row) => setSelectedLocker(row)), []);
+  const totalBoxes = lockers.reduce((sum, locker) => sum + (locker.totalBoxes || locker.boxes?.length || 0), 0);
+  const availableBoxes = lockers.reduce((sum, locker) => sum + (locker.emptyBoxesCount || 0), 0);
+  const activeLockers = lockers.filter((locker) => locker.status === LockerStatus.Active).length;
+  const visibleLockers = useMemo(() => {
+    const query = keyword.trim().toLowerCase();
+    if (!query) return lockers;
+    return lockers.filter((locker) => [locker.code, locker.name, locker.address, locker.district, locker.city].some((value) => value?.toLowerCase().includes(query)));
+  }, [keyword, lockers]);
 
   return (
-    <Box sx={{ p: { xs: 2, md: 3 } }}>
-      <Box sx={{ mb: 2.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+    <Box sx={{ p: { xs: 1.5, sm: 2.5, lg: 3 }, maxWidth: 1500, mx: 'auto' }}>
+      <Box sx={{ mb: 2.25, display: 'flex', justifyContent: 'space-between', alignItems: { xs: 'flex-start', sm: 'center' }, flexDirection: { xs: 'column', sm: 'row' }, gap: 1.5 }}>
         <Box>
           <Typography variant="h5" sx={{ fontWeight: 800, letterSpacing: -0.5 }}>
-            Quản Lý Tủ Đồ Thông Minh (Locker)
+            Quản lý Locker
           </Typography>
           <Typography variant="body2" color="text.secondary">
             Giám sát danh sách trạm tủ và trạng thái từng ô tủ gửi/nhận thời gian thực
@@ -118,21 +131,46 @@ export const LockerScreen: React.FC = () => {
         </Button>
       </Box>
 
-      <Grid container spacing={3}>
+      <Grid container spacing={1.5} sx={{ mb: 2.5 }}>
+        {[
+          { title: 'Tổng trạm locker', value: total, icon: '▦', tint: '#eef4ff', color: '#2563eb' },
+          { title: 'Đang hoạt động', value: activeLockers, icon: '●', tint: '#eaf8ef', color: '#16a34a' },
+          { title: 'Đang bảo trì', value: lockers.filter((locker) => locker.status === LockerStatus.Maintenance).length, icon: '⚒', tint: '#fff4e8', color: '#f97316' },
+          { title: 'Tổng ô còn trống', value: availableBoxes || Math.max(0, totalBoxes - lockers.reduce((sum, locker) => sum + (locker.boxes?.filter((box) => box.status !== LockerBoxStatus.Available).length || 0), 0)), icon: '▣', tint: '#f5efff', color: '#8b5cf6' },
+        ].map((stat) => (
+          <Grid item xs={6} md={3} key={stat.title}>
+            <Card variant="outlined" sx={{ borderColor: 'divider' }}>
+              <CardContent sx={{ py: '14px !important', display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                <Box sx={{ width: 38, height: 38, borderRadius: 2, bgcolor: stat.tint, color: stat.color, display: 'grid', placeItems: 'center', fontWeight: 800 }}>{stat.icon}</Box>
+                <Box><Typography variant="caption" color="text.secondary">{stat.title}</Typography><Typography variant="h6" fontWeight={800}>{stat.value}</Typography></Box>
+              </CardContent>
+            </Card>
+          </Grid>
+        ))}
+      </Grid>
+
+      <Grid container spacing={2}>
         {/* Left: Locker Table */}
-        <Grid item xs={12} lg={7}>
-          <TableLayered
-            rows={lockers}
-            columns={columns}
-            loading={loading}
-            total={total}
-            page={1}
-            take={20}
-          />
+        <Grid item xs={12}>
+          <Paper variant="outlined" sx={{ p: { xs: 1.25, sm: 2 }, borderRadius: 2, borderColor: '#e7ebf0' }}>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mb: 1.5 }}>
+              <TextField size="small" value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="Tìm kiếm tên locker, địa chỉ..." sx={{ flex: 1, maxWidth: { sm: 420 } }} InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }} />
+              <Button variant="outlined" color="inherit">Tất cả khu vực</Button>
+              <Button variant="outlined" color="inherit">Tất cả trạng thái</Button>
+            </Stack>
+            <TableLayered
+              rows={visibleLockers}
+              columns={columns}
+              loading={loading}
+              total={visibleLockers.length}
+              page={1}
+              take={20}
+            />
+          </Paper>
         </Grid>
 
         {/* Right: Visual Box Layout of Selected Locker */}
-        <Grid item xs={12} lg={5}>
+        <Grid item xs={12}>
           <Card elevation={0} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2.5, p: 2 }}>
             <CardContent sx={{ p: 1 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>

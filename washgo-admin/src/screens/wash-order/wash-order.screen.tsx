@@ -1,6 +1,10 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
-import { Box, Typography, Button, Stack, Alert } from '@mui/material';
+import { Box, Typography, Button, Stack, Card, CardContent, Grid, Paper } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
+import ReceiptLongOutlinedIcon from '@mui/icons-material/ReceiptLongOutlined';
+import PendingActionsOutlinedIcon from '@mui/icons-material/PendingActionsOutlined';
+import LocalShippingOutlinedIcon from '@mui/icons-material/LocalShippingOutlined';
+import TaskAltOutlinedIcon from '@mui/icons-material/TaskAltOutlined';
 import { useCustomSearchParams } from '../../hooks/use-custom-search-params.hook';
 import { useServerColumnFilters } from '../../hooks/use-server-column-filters';
 import { TableLayered } from '../../components/table/table-layerd.component';
@@ -18,6 +22,7 @@ import { WASH_ORDER_COLUMN_FILTER_MAP } from './wash-order-column-filters.config
 import { WashOrderFilterToolbar } from './parts/wash-order-filter-toolbar';
 import { WashOrderDetailDialog } from './parts/wash-order-detail-dialog';
 import { unwrapBaseResponse } from '../../common/utils/api-base-response.util';
+import { WashOrderStatus } from '../../apis/wash-order/wash-order.enum';
 
 const DEFAULT_ORDER_PARAMS: Partial<WashOrderFilterParams> = {
   page: 1,
@@ -155,6 +160,12 @@ export const WashOrderScreen: React.FC = () => {
   };
 
   const columns = useMemo(() => createWashOrderColumns(handleViewDetail), []);
+  const orderStats = useMemo(() => [
+    { label: 'Tổng đơn hàng', value: data.total || data.list.length, note: 'Tất cả đơn trong hệ thống', icon: <ReceiptLongOutlinedIcon />, color: '#ff7043', bg: '#fff1eb' },
+    { label: 'Chờ xử lý', value: data.list.filter((order) => [WashOrderStatus.Pending, WashOrderStatus.Deposited].includes(order.status)).length, note: 'Cần tiếp nhận và điều phối', icon: <PendingActionsOutlinedIcon />, color: '#f59e0b', bg: '#fff7e6' },
+    { label: 'Đang vận hành', value: data.list.filter((order) => ![WashOrderStatus.Pending, WashOrderStatus.Deposited, WashOrderStatus.Completed, WashOrderStatus.Cancelled].includes(order.status)).length, note: 'Đang lấy, giặt hoặc giao trả', icon: <LocalShippingOutlinedIcon />, color: '#2563eb', bg: '#edf4ff' },
+    { label: 'Đã hoàn tất', value: data.list.filter((order) => order.status === WashOrderStatus.Completed).length, note: 'Hoàn thành quy trình', icon: <TaskAltOutlinedIcon />, color: '#16a34a', bg: '#eaf8ef' },
+  ], [data]);
 
   const handleFilterClick = (colId: string, event: React.MouseEvent<HTMLElement>) => {
     setActiveFilterCol(colId);
@@ -181,15 +192,15 @@ export const WashOrderScreen: React.FC = () => {
   }, [columnFilters]);
 
   return (
-    <Box sx={{ p: { xs: 2, md: 3 } }}>
+    <Box sx={{ p: { xs: 1.5, sm: 2.5, lg: 3 }, maxWidth: 1500, mx: 'auto' }}>
       {/* Header */}
-      <Box sx={{ mb: 2.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <Box sx={{ mb: 2.25, display: 'flex', justifyContent: 'space-between', alignItems: { xs: 'flex-start', sm: 'center' }, gap: 1.5, flexDirection: { xs: 'column', sm: 'row' } }}>
         <Box>
           <Typography variant="h5" sx={{ fontWeight: 800, letterSpacing: -0.5 }}>
-            Quản Lý Đơn Hàng WashGo
+            Quản lý đơn hàng
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Tra cứu, cập nhật tiến độ giặt sấy và điều phối shipper giao nhận tủ đồ thông minh
+            Theo dõi, điều phối và cập nhật toàn bộ đơn hàng WashGo.
           </Typography>
         </Box>
         <Stack direction="row" spacing={1}>
@@ -199,24 +210,43 @@ export const WashOrderScreen: React.FC = () => {
         </Stack>
       </Box>
 
-      {/* Filter toolbar */}
-      <WashOrderFilterToolbar
-        keyword={keywordInput}
-        onKeywordChange={(val) => {
-          setKeywordInput(val);
-          setParams({ keyword: val, page: 1 });
-        }}
-        status={mergedParams.status}
-        onStatusChange={(status) => setParams({ status, page: 1 })}
-        onRefresh={fetchData}
-        onReset={() => {
-          setKeywordInput('');
-          resetParams();
-        }}
-      />
+      <Grid container spacing={1.5} sx={{ mb: 2.25 }}>
+        {orderStats.map((stat) => (
+          <Grid item xs={6} lg={3} key={stat.label}>
+            <Card variant="outlined" sx={{ height: '100%', borderColor: '#e7ebf0', boxShadow: '0 2px 6px rgba(15,23,42,.025)' }}>
+              <CardContent sx={{ p: { xs: 1.5, sm: 2 }, '&:last-child': { pb: { xs: 1.5, sm: 2 } } }}>
+                <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1}>
+                  <Box>
+                    <Typography variant="caption" color="text.secondary">{stat.label}</Typography>
+                    <Typography variant="h5" fontWeight={800} sx={{ mt: .25 }}>{stat.value}</Typography>
+                    <Typography variant="caption" color="text.secondary">{stat.note}</Typography>
+                  </Box>
+                  <Box sx={{ width: 40, height: 40, borderRadius: 2, bgcolor: stat.bg, color: stat.color, display: 'grid', placeItems: 'center', flexShrink: 0, '& svg': { fontSize: 21 } }}>{stat.icon}</Box>
+                </Stack>
+              </CardContent>
+            </Card>
+          </Grid>
+        ))}
+      </Grid>
+
+      <Paper variant="outlined" sx={{ p: { xs: 1.25, sm: 2 }, borderRadius: 2, borderColor: '#e7ebf0' }}>
+        <WashOrderFilterToolbar
+          keyword={keywordInput}
+          onKeywordChange={(val) => {
+            setKeywordInput(val);
+            setParams({ keyword: val, page: 1 });
+          }}
+          status={mergedParams.status}
+          onStatusChange={(status) => setParams({ status, page: 1 })}
+          onRefresh={fetchData}
+          onReset={() => {
+            setKeywordInput('');
+            resetParams();
+          }}
+        />
 
       {/* Main Table */}
-      <TableLayered
+        <TableLayered
         rows={data.list}
         columns={columns}
         loading={loading}
@@ -243,7 +273,8 @@ export const WashOrderScreen: React.FC = () => {
             </Typography>
           </Box>
         )}
-      />
+        />
+      </Paper>
 
       {/* Column Filter Dropdown */}
       <ColumnFilterDropdown
