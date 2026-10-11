@@ -1021,6 +1021,12 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("character varying(120)")
                         .HasColumnName("provider_transaction_id");
 
+                    b.Property<int>("Purpose")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(1)
+                        .HasColumnName("purpose");
+
                     b.Property<NpgsqlTsVector>("SearchVector")
                         .HasColumnType("tsvector")
                         .HasColumnName("search_vector");
@@ -1043,6 +1049,108 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .IsUnique();
 
                     b.ToTable("payment_transactions", "washgo");
+                });
+
+            modelBuilder.Entity("WashGo.Domain.Entities.Payment.RefundRequest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("amount");
+
+                    b.Property<string>("Created")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("created");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("text")
+                        .HasColumnName("created_by");
+
+                    b.Property<long>("CreatedOn")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_on");
+
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("customer_id");
+
+                    b.Property<string>("DeletedBy")
+                        .HasColumnType("text")
+                        .HasColumnName("deleted_by");
+
+                    b.Property<long?>("DeletedOn")
+                        .HasColumnType("bigint")
+                        .HasColumnName("deleted_on");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
+
+                    b.Property<string>("Modified")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("modified");
+
+                    b.Property<string>("ModifiedBy")
+                        .HasColumnType("text")
+                        .HasColumnName("modified_by");
+
+                    b.Property<long>("ModifiedOn")
+                        .HasColumnType("bigint")
+                        .HasColumnName("modified_on");
+
+                    b.Property<Guid>("OrderId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("order_id");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("reason");
+
+                    b.Property<string>("RefundReference")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("refund_reference");
+
+                    b.Property<DateTime?>("RefundedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("refunded_at");
+
+                    b.Property<string>("ReviewNote")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("review_note");
+
+                    b.Property<DateTime?>("ReviewedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("reviewed_at");
+
+                    b.Property<Guid?>("ReviewedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("reviewed_by");
+
+                    b.Property<NpgsqlTsVector>("SearchVector")
+                        .HasColumnType("tsvector")
+                        .HasColumnName("search_vector");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer")
+                        .HasColumnName("status");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CustomerId");
+
+                    b.HasIndex("OrderId");
+
+                    b.HasIndex("Status");
+
+                    b.ToTable("refund_requests", "washgo");
                 });
 
             modelBuilder.Entity("WashGo.Domain.Entities.WashOrder.WashOrder", b =>
@@ -1212,6 +1320,10 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnName("modified_on")
                         .HasDefaultValueSql("EXTRACT(EPOCH FROM now())::bigint");
 
+                    b.Property<DateTime?>("MovedToStorageAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("moved_to_storage_at");
+
                     b.Property<string>("OrderCode")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -1291,6 +1403,16 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)")
                         .HasColumnName("storage_fee_total");
+
+                    b.Property<string>("StorageLocation")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("storage_location");
+
+                    b.Property<string>("StorageReference")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("storage_reference");
 
                     b.Property<decimal>("TotalAmount")
                         .HasPrecision(18, 2)
@@ -1782,6 +1904,17 @@ namespace WashGo.EntityFrameworkCore.Migrations
                 });
 
             modelBuilder.Entity("WashGo.Domain.Entities.Payment.PaymentTransaction", b =>
+                {
+                    b.HasOne("WashGo.Domain.Entities.WashOrder.WashOrder", "Order")
+                        .WithMany()
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Order");
+                });
+
+            modelBuilder.Entity("WashGo.Domain.Entities.Payment.RefundRequest", b =>
                 {
                     b.HasOne("WashGo.Domain.Entities.WashOrder.WashOrder", "Order")
                         .WithMany()

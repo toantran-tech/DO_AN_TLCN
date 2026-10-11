@@ -22,6 +22,14 @@ export const updateWashOrderStatus = async (body: {
   return await axiosRequest.put('wash-order/status', body);
 };
 
+export const moveWashOrderToStorage = async (body: {
+  orderId: string;
+  storageLocation: string;
+  storageReference: string;
+}): Promise<BaseResponse<WashOrderDetail>> => {
+  return await axiosRequest.post('wash-order/move-to-storage', body);
+};
+
 export const assignShipperToOrder = async (body: {
   orderId: string;
   shipperId: string;

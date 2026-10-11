@@ -45,6 +45,12 @@ export interface WashOrderRow extends BaseEntity {
   pickupPinCode: string;
   qrCodeString: string;
   expectedDeliveryTime: number;
+  pickupDeadline?: string;
+  overdueFeeTotal?: number;
+  storageFeeTotal?: number;
+  movedToStorageAt?: string;
+  storageLocation?: string;
+  storageReference?: string;
 }
 
 export interface WashOrderDetail extends WashOrderRow {

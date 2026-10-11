@@ -15,6 +15,7 @@ namespace WashGo.Domain.Entities.Payment
         public string TransactionReference { get; set; } = string.Empty;
         public string? ProviderTransactionId { get; set; }
         public PaymentMethod PaymentMethod { get; set; }
+        public PaymentPurpose Purpose { get; set; } = PaymentPurpose.Order;
         public PaymentTransactionStatus Status { get; set; } = PaymentTransactionStatus.Pending;
         public decimal Amount { get; set; }
         public string? PaymentUrl { get; set; }

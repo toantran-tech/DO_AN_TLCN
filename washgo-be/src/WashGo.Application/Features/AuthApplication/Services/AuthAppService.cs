@@ -11,6 +11,7 @@ using Volo.Abp.Domain.Repositories;
 using WashGo.Application.Contracts.Features.AuthContracts.Commands;
 using WashGo.Application.Contracts.Features.AuthContracts.Results;
 using WashGo.Application.Contracts.Features.AuthContracts.Services;
+using WashGo.Core.Domain.Common;
 using WashGo.Core.Domain.Shared.Bases;
 using WashGo.Domain.Entities.Identity;
 using WashGo.Domain.Entities.Partner;

@@ -33,6 +33,7 @@ namespace WashGo.EntityFrameworkCore.EntityFrameworkCore
         public DbSet<LockerBox> LockerBoxes { get; set; } = null!;
         public DbSet<WashService> WashServices { get; set; } = null!;
         public DbSet<PaymentTransaction> PaymentTransactions { get; set; } = null!;
+        public DbSet<RefundRequest> RefundRequests { get; set; } = null!;
 
         public WashGoDbContext(DbContextOptions<WashGoDbContext> options)
             : base(options)
@@ -63,6 +64,7 @@ namespace WashGo.EntityFrameworkCore.EntityFrameworkCore
             builder.ApplyConfiguration(new LockerBoxEntityTypeConfiguration());
             builder.ApplyConfiguration(new WashServiceEntityTypeConfiguration());
             builder.ApplyConfiguration(new PaymentTransactionEntityTypeConfiguration());
+            builder.ApplyConfiguration(new RefundRequestEntityTypeConfiguration());
 
             builder.UseWashGoSnakeCaseColumns();
         }

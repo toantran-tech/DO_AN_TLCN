@@ -42,6 +42,12 @@ namespace WashGo.HttpApi.Endpoints.WashOrder
                 .WithName("Cập nhật trạng thái đơn")
                 .WithOpenApi();
 
+            group.MapPost("/move-to-storage", async (MoveOrderToStorageCommand command, IWashOrderAppService svc) =>
+                (await svc.MoveToStorageAsync(command)).CustomResult())
+                .RequireAuthorization("ShipperOrAdmin")
+                .WithName("Ghi nhận chuyển đồ quá hạn sang kho")
+                .WithOpenApi();
+
             group.MapPut("/assign-shipper", async (AssignShipperCommand command, IWashOrderAppService svc) =>
                 (await svc.AssignShipperAsync(command)).CustomResult())
                 .RequireAuthorization("AdminOnly")
