@@ -11,6 +11,7 @@ export enum WashOrderStatus {
   ReadyToReturn = 10,
   Returned = 11,
   Completed = 12,
+  MovedToStorage = 13,
   Cancelled = 99,
 }
 
@@ -27,6 +28,7 @@ export const WashOrderStatusLabels: Record<WashOrderStatus, { label: string; col
   [WashOrderStatus.ReadyToReturn]: { label: 'Chờ trả về tủ', color: 'info' },
   [WashOrderStatus.Returned]: { label: 'Đã trả về tủ', color: 'primary' },
   [WashOrderStatus.Completed]: { label: 'Hoàn tất', color: 'success' },
+  [WashOrderStatus.MovedToStorage]: { label: 'Đã chuyển vào kho', color: 'warning' },
   [WashOrderStatus.Cancelled]: { label: 'Đã hủy', color: 'error' },
 };
 

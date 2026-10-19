@@ -14,6 +14,7 @@ using WashGo.Domain.Entities.Locker.Interfaces;
 using WashGo.Domain.Entities.WashOrder;
 using WashGo.Domain.Entities.WashOrder.Interfaces;
 using WashGo.Domain.Entities.WashService.Interfaces;
+using WashGo.Application.Features.PaymentApplication.Services;
 using WashGo.Domain.Shared.Constants;
 using WashGo.Domain.Shared.Enums;
 
@@ -201,6 +202,26 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                     "Đơn hàng phải được thanh toán (PAID) trước khi chuyển sang trạng thái trả đồ.");
             }
 
+            if (command.NewStatus == WashOrderStatus.Returned && order.PickupDeadline.HasValue)
+            {
+                if (OverdueFeeCalculator.IsTransferToStorageDue(order.PickupDeadline, DateTime.UtcNow) &&
+                    !order.MovedToStorageAt.HasValue)
+                {
+                    return BadRequest<WashOrderDetailDto>(
+                        "Đơn đã quá 72 giờ quá hạn; Shipper/Admin cần ghi nhận chuyển đồ sang kho trước khi khách nhận.");
+                }
+
+                var overdueTotal = OverdueFeeCalculator.Calculate(
+                    order.PickupDeadline, DateTime.UtcNow);
+                order.OverdueFeeTotal = overdueTotal;
+                if (order.StorageFeeTotal < overdueTotal)
+                {
+                    await _orderRepo.UpdateAsync(order, autoSave: true);
+                    return BadRequest<WashOrderDetailDto>(
+                        $"Cần thanh toán phí lưu kho còn thiếu {overdueTotal - order.StorageFeeTotal:N0}đ trước khi hoàn tất nhận đồ.");
+                }
+            }
+
             if (command.NewStatus == WashOrderStatus.Paid)
             {
                 order.PaymentStatus = PaymentStatus.Paid;
@@ -237,6 +258,11 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             }
 
             order.Status = command.NewStatus;
+            if (command.NewStatus == WashOrderStatus.ReadyToReturn)
+            {
+                // Customers have 24 hours to collect the laundry from the return locker before storage fees start.
+                order.PickupDeadline = DateTime.UtcNow.AddHours(24);
+            }
             order.Timeline.Add(new WashOrderTimeline
             {
                 WashOrderId = order.Id,
@@ -252,6 +278,63 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             await _orderRepo.UpdateAsync(order, autoSave: true);
             var result = ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order);
             return Success(result, "Cập nhật trạng thái đơn thành công!");
+        }
+
+        public async Task<BaseResponse<WashOrderDetailDto>> MoveToStorageAsync(MoveOrderToStorageCommand command)
+        {
+            if (string.IsNullOrWhiteSpace(command.StorageLocation) || command.StorageLocation.Trim().Length > 200)
+                return BadRequest<WashOrderDetailDto>("Cần nhập vị trí kho hợp lệ (tối đa 200 ký tự).");
+            if (string.IsNullOrWhiteSpace(command.StorageReference) || command.StorageReference.Trim().Length > 120)
+                return BadRequest<WashOrderDetailDto>("Cần nhập mã biên nhận/vị trí lưu kho (tối đa 120 ký tự).");
+            if (!string.IsNullOrWhiteSpace(command.Note) && command.Note.Trim().Length > 140)
+                return BadRequest<WashOrderDetailDto>("Ghi chú chuyển kho tối đa 140 ký tự.");
+
+            var order = await _orderRepo.GetWithDetailsAsync(command.OrderId);
+            if (order == null)
+                return NotFound<WashOrderDetailDto>("Không tìm thấy đơn hàng.");
+            if (order.Status != WashOrderStatus.ReadyToReturn)
+                return BadRequest<WashOrderDetailDto>("Chỉ chuyển kho cho đồ đang nằm tại locker trả.");
+            if (order.MovedToStorageAt.HasValue)
+                return BadRequest<WashOrderDetailDto>("Đơn hàng đã được ghi nhận chuyển kho trước đó.");
+
+            var now = DateTime.UtcNow;
+            if (!OverdueFeeCalculator.IsTransferToStorageDue(order.PickupDeadline, now))
+                return BadRequest<WashOrderDetailDto>("Chỉ chuyển kho khi đã quá 72 giờ kể từ hạn nhận đồ.");
+
+            var locker = await _lockerRepo.GetWithBoxesAsync(order.LockerId);
+            if (locker == null)
+                return BadRequest<WashOrderDetailDto>("Không tìm thấy locker đang giữ đơn hàng.");
+            var box = locker.Boxes.FirstOrDefault(x => x.Id == order.BoxId);
+            if (box == null || box.Status != LockerBoxStatus.Occupied)
+                return BadRequest<WashOrderDetailDto>("Ô locker của đơn không ở trạng thái đang chứa đồ.");
+
+            var previousStatus = order.Status;
+            box.Status = LockerBoxStatus.Available;
+            box.CurrentPinCode = null;
+            locker.AvailableBoxes = locker.Boxes.Count(x => x.Status == LockerBoxStatus.Available);
+            await _lockerRepo.UpdateAsync(locker, autoSave: true);
+
+            order.Status = WashOrderStatus.MovedToStorage;
+            order.MovedToStorageAt = now;
+            order.StorageLocation = command.StorageLocation.Trim();
+            order.StorageReference = command.StorageReference.Trim();
+            order.OverdueFeeTotal = OverdueFeeCalculator.Calculate(order.PickupDeadline, now);
+            order.Timeline.Add(new WashOrderTimeline
+            {
+                WashOrderId = order.Id,
+                FromStatus = previousStatus,
+                Status = WashOrderStatus.MovedToStorage,
+                ActorId = CurrentUser.Id,
+                ActorName = CurrentUser.UserName ?? "Shipper/Admin",
+                ActorRole = "ShipperOrAdmin",
+                Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                Note = command.Note?.Trim() is { Length: > 0 } note
+                    ? $"Đã chuyển đồ sang kho {order.StorageLocation}, mã lưu kho {order.StorageReference}. {note}"
+                    : $"Đã chuyển đồ sang kho {order.StorageLocation}, mã lưu kho {order.StorageReference}."
+            });
+
+            await _orderRepo.UpdateAsync(order, autoSave: true);
+            return Success(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), "Đã ghi nhận chuyển đồ sang kho và giải phóng ô locker.");
         }
 
         public async Task<BaseResponse<WashOrderDetailDto>> AssignShipperAsync(AssignShipperCommand command)
@@ -299,6 +382,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 WashOrderStatus.AwaitingPayment => next == WashOrderStatus.Paid,
                 WashOrderStatus.Paid => next == WashOrderStatus.ReadyToReturn,
                 WashOrderStatus.ReadyToReturn => next == WashOrderStatus.Returned,
+                WashOrderStatus.MovedToStorage => next == WashOrderStatus.Returned,
                 WashOrderStatus.Returned => next == WashOrderStatus.Completed,
                 _ => false
             };

@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using AutoMapper;
 using Volo.Abp.Application;
 using Volo.Abp.AutoMapper;
 using Volo.Abp.Modularity;
@@ -19,6 +20,8 @@ namespace WashGo.Application
     {
         public override void ConfigureServices(ServiceConfigurationContext context)
         {
+            context.Services.AddAutoMapperObjectMapper<WashGoApplicationModule>();
+
             Configure<AbpAutoMapperOptions>(options =>
             {
                 options.AddMaps<WashGoApplicationModule>();

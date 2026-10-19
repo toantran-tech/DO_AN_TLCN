@@ -3,6 +3,7 @@ using Volo.Abp.Data;
 using Volo.Abp.EntityFrameworkCore;
 using WashGo.Domain.Entities.Identity;
 using WashGo.Domain.Entities.Locker;
+using WashGo.Domain.Entities.Payment;
 using WashGo.Domain.Entities.Partner;
 using WashGo.Domain.Entities.WashOrder;
 using WashGo.Domain.Entities.WashService;
@@ -31,6 +32,8 @@ namespace WashGo.EntityFrameworkCore.EntityFrameworkCore
         public DbSet<Locker> Lockers { get; set; } = null!;
         public DbSet<LockerBox> LockerBoxes { get; set; } = null!;
         public DbSet<WashService> WashServices { get; set; } = null!;
+        public DbSet<PaymentTransaction> PaymentTransactions { get; set; } = null!;
+        public DbSet<RefundRequest> RefundRequests { get; set; } = null!;
 
         public WashGoDbContext(DbContextOptions<WashGoDbContext> options)
             : base(options)
@@ -60,6 +63,8 @@ namespace WashGo.EntityFrameworkCore.EntityFrameworkCore
             builder.ApplyConfiguration(new LockerEntityTypeConfiguration());
             builder.ApplyConfiguration(new LockerBoxEntityTypeConfiguration());
             builder.ApplyConfiguration(new WashServiceEntityTypeConfiguration());
+            builder.ApplyConfiguration(new PaymentTransactionEntityTypeConfiguration());
+            builder.ApplyConfiguration(new RefundRequestEntityTypeConfiguration());
 
             builder.UseWashGoSnakeCaseColumns();
         }

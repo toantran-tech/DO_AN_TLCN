@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   Box,
   Card,
@@ -11,6 +11,7 @@ import {
   Stack,
   InputAdornment,
   IconButton,
+  Divider,
 } from '@mui/material';
 import Visibility from '@mui/icons-material/Visibility';
 import VisibilityOff from '@mui/icons-material/VisibilityOff';
@@ -18,6 +19,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import { RootState, AppDispatch } from '../../redux/store.redux';
 import { ACTION_ACCOUNT } from '../../redux/account/account.slice';
+import { GoogleSignInButton } from '../../components/google-sign-in/google-sign-in.component';
 
 export const LoginScreen: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
@@ -36,6 +38,13 @@ export const LoginScreen: React.FC = () => {
       navigate('/');
     }
   };
+
+  const handleGoogleCredential = useCallback(async (idToken: string) => {
+    const resultAction = await dispatch(ACTION_ACCOUNT.googleLogin({ idToken }));
+    if (ACTION_ACCOUNT.googleLogin.fulfilled.match(resultAction)) {
+      navigate('/');
+    }
+  }, [dispatch, navigate]);
 
   return (
     <Box
@@ -144,6 +153,16 @@ export const LoginScreen: React.FC = () => {
               </Button>
             </Stack>
           </form>
+
+          <Divider sx={{ my: 2.5 }}>
+            <Typography variant="caption" color="text.secondary">hoặc</Typography>
+          </Divider>
+
+          <GoogleSignInButton onCredential={handleGoogleCredential} disabled={loading} />
+
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.5, textAlign: 'center' }}>
+            Chỉ tài khoản quản trị đã được liên kết Google mới có thể đăng nhập bằng Google.
+          </Typography>
 
           <Box sx={{ mt: 3, p: 1.5, bgcolor: 'action.hover', borderRadius: 2 }}>
             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', fontWeight: 600 }}>

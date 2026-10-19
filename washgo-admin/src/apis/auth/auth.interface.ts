@@ -3,6 +3,14 @@ export interface LoginParams {
   password: string;
 }
 
+export interface GoogleLoginParams {
+  idToken: string;
+}
+
+export interface LinkGoogleParams extends GoogleLoginParams {
+  currentPassword: string;
+}
+
 export interface AuthUserData {
   id: string;
   email: string;

@@ -1,7 +1,7 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import { UserSnapshot } from '../../common/interfaces/api.interface';
-import { loginApi, refreshTokenApi } from '../../apis/auth/auth.api';
-import { LoginParams } from '../../apis/auth/auth.interface';
+import { googleAdminLoginApi, loginApi, refreshTokenApi } from '../../apis/auth/auth.api';
+import { GoogleLoginParams, LoginParams } from '../../apis/auth/auth.interface';
 
 export interface AccountState {
   accessToken: string | null;
@@ -54,6 +54,21 @@ export const refreshTokenThunk = createAsyncThunk(
       return rejectWithValue(res.message || 'Làm mới token thất bại');
     } catch (err: any) {
       return rejectWithValue(err?.message || 'Phiên đăng nhập đã hết hạn');
+    }
+  }
+);
+
+export const googleLoginThunk = createAsyncThunk(
+  'account/googleLogin',
+  async (params: GoogleLoginParams, { rejectWithValue }) => {
+    try {
+      const res = await googleAdminLoginApi(params);
+      if (res.data) {
+        return res.data;
+      }
+      return rejectWithValue(res.message || 'Đăng nhập Google không thành công');
+    } catch (err: any) {
+      return rejectWithValue(err?.response?.data?.message || err?.message || 'Không thể đăng nhập bằng Google');
     }
   }
 );
@@ -111,6 +126,29 @@ export const accountSlice = createSlice({
       state.error = action.payload as string;
     });
 
+    builder.addCase(googleLoginThunk.pending, (state) => {
+      state.loading = true;
+      state.error = null;
+    });
+    builder.addCase(googleLoginThunk.fulfilled, (state, action) => {
+      state.loading = false;
+      state.accessToken = action.payload.accessToken;
+      state.refreshToken = action.payload.refreshToken;
+      state.user = {
+        id: action.payload.user.id,
+        name: action.payload.user.fullName,
+        code: action.payload.user.email,
+        email: action.payload.user.email,
+        role: action.payload.user.role,
+        avatarUrl: action.payload.user.avatar,
+      };
+      state.isAuthenticated = true;
+    });
+    builder.addCase(googleLoginThunk.rejected, (state, action) => {
+      state.loading = false;
+      state.error = action.payload as string;
+    });
+
     // Refresh token
     builder.addCase(refreshTokenThunk.fulfilled, (state, action) => {
       state.accessToken = action.payload.accessToken;
@@ -129,6 +167,7 @@ export const { setCredentials, logout } = accountSlice.actions;
 export const ACTION_ACCOUNT = {
   ...accountSlice.actions,
   login: loginThunk,
+  googleLogin: googleLoginThunk,
   refreshToken: refreshTokenThunk,
 };
 export default accountSlice.reducer;

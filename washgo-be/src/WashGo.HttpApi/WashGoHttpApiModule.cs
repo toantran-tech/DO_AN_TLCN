@@ -7,6 +7,7 @@ using WashGo.Core.Endpoint;
 using WashGo.HttpApi.Endpoints.Auth;
 using WashGo.HttpApi.Endpoints.Locker;
 using WashGo.HttpApi.Endpoints.Merchant;
+using WashGo.HttpApi.Endpoints.Payment;
 using WashGo.HttpApi.Endpoints.ServiceArea;
 using WashGo.HttpApi.Endpoints.WashOrder;
 using WashGo.HttpApi.Endpoints.WashService;
@@ -28,6 +29,7 @@ namespace WashGo.HttpApi
             context.Services.AddTransient<IEndpointBase, WashServiceHandler>();
             context.Services.AddTransient<IEndpointBase, ServiceAreaHandler>();
             context.Services.AddTransient<IEndpointBase, MerchantHandler>();
+            context.Services.AddTransient<IEndpointBase, PaymentHandler>();
         }
     }
 }

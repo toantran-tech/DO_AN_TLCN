@@ -1,5 +1,5 @@
 # Kế hoạch triển khai dự án WashGo (Backend & Admin)
-Cập nhật lần cuối: 05/10/2026
+Cập nhật lần cuối: 19/10/2026
 
 ---
 
@@ -71,11 +71,13 @@ Cập nhật lần cuối: 05/10/2026
 - [x] **Bảo mật mật khẩu**: Sử dụng BCrypt.Net-Next để hash/verify mật khẩu.
 - [x] **JWT Token Generator**: Cấp JWT Access Token chứa các claim: `sub`, `email`, `role`, `user_id`.
 - [x] **Refresh Token Rotation**: Cơ chế cấp mới Access Token qua Refresh Token và thu hồi (revoke) khi logout.
+- [x] **Bảo vệ Refresh Token**: Chỉ lưu SHA-256 hash của Refresh Token trong database; logout chỉ được thu hồi token thuộc tài khoản đang đăng nhập.
 - [x] **Xác thực OTP**: Quản lý mã OTP có hạn sử dụng, trạng thái đã dùng và đếm số lần nhập sai.
-- [x] **Cấu hình RBAC ban đầu**:
+- [x] **Hạn chế abuse Auth**: Áp dụng rate limit cho các API nhạy cảm: login, register, gửi OTP, reset password và Google login.
+- [x] **Cấu hình RBAC & bảo vệ endpoint**:
   - Cấu hình JWT Bearer Authentication middleware trong ASP.NET Core.
-  - Thiết lập các policy: `AdminOnly`, `MerchantOrAdmin`, `ShipperOrAdmin`.
-  - Hiện tại mới kích hoạt `.RequireAuthorization()` ở endpoint `/auth/me`; các endpoint CRUD nền tảng chưa gắn policy chi tiết để thuận tiện phát triển/test ban đầu.
+  - Thiết lập các policy: `AdminOnly`, `MerchantOrAdmin`, `ShipperOrAdmin`, `CustomerOnly`, `OrderStatusUpdater`.
+  - Gắn policy cho các endpoint ServiceArea, Merchant, Locker, WashService và WashOrder.
 - [x] **Endpoints Auth (`/auth/*`)**:
   - `POST /auth/login`: Đăng nhập cấp JWT Token và Refresh Token.
   - `POST /auth/refresh-token`: Làm mới token.
@@ -84,11 +86,24 @@ Cập nhật lần cuối: 05/10/2026
   - `POST /auth/send-otp`: Gửi OTP xác thực.
   - `POST /auth/verify-otp`: Kiểm tra mã OTP.
   - `POST /auth/reset-password`: Đặt lại mật khẩu mới.
+  - `POST /auth/google`: Nhận và xác minh Google ID token, sau đó đăng nhập hoặc tạo tài khoản Customer mới.
+  - `POST /auth/google/admin`: Google login cho trang quản trị; chỉ chấp nhận Admin/Merchant/Shipper đã liên kết, không tự tạo Customer.
+  - `POST /auth/link-google`: Người dùng đã đăng nhập liên kết Google sau khi xác nhận lại mật khẩu hiện tại.
   - `GET /auth/me`: Lấy thông tin tài khoản hiện tại (yêu cầu Bearer Token).
-- [!] **Lưu ý hiện trạng Auth/OTP**:
-  - Đã triển khai mức dev/test.
-  - Hiện tại còn log OTP ra console và chấp nhận fallback mã `123456` để kiểm thử thủ công dễ dàng.
-  - Chưa production-ready: cần bỏ fallback `123456`, bỏ log console, tích hợp SMS/Email provider thực tế trước khi phát hành.
+- [x] **Harden public registration & OTP**:
+  - Public register chỉ tạo role `Customer`, không còn nhận role từ client.
+  - Đã loại bỏ password fallback trong Login và OTP fallback `123456`.
+  - OTP được hash bằng BCrypt trước khi lưu và kiểm tra thời hạn/số lần nhập sai.
+  - Có abstraction gửi email OTP qua SMTP; môi trường Development chỉ được phép in OTP ra console để test, API không trả OTP trong response.
+- [x] **Google OAuth Backend (Customer & tài khoản quản trị đã cấp quyền)**:
+  - Dùng Google ID token flow; backend xác minh chữ ký token và `audience` bằng Google Client ID của dự án WashGo.
+  - Tài khoản Google mới được tạo với role `Customer` và customer profile tương ứng.
+  - Admin/Merchant/Shipper không được tạo qua Google login. Họ phải có tài khoản WashGo đã được cấp quyền, đăng nhập mật khẩu, xác nhận lại mật khẩu và gọi `/auth/link-google` để liên kết Google.
+  - Sau khi liên kết, Google login trả đúng role sẵn có; Google account không tự được nâng quyền.
+  - Local Client ID đã cấu hình; Admin UI gọi riêng `/auth/google/admin`, nên Google account Customer mới không thể vào dashboard quản trị.
+  - Docker backend/admin đã build/chạy và Swagger đã xác nhận routes `/auth/google`, `/auth/google/admin`, `/auth/link-google`.
+- [ ] **Kiểm thử Google OAuth end-to-end**: Chờ Customer Web/Mobile Client lấy Google ID token thật rồi gọi API `/auth/google`.
+- [ ] **Cấu hình SMTP/SMS production**: Điền credentials provider thật qua biến môi trường/secret store và kiểm thử gửi OTP thực tế.
 
 ---
 
@@ -117,10 +132,12 @@ Cập nhật lần cuối: 05/10/2026
 ### 5. Giao diện Quản trị Web (Admin UI - `washgo-admin`)
 - [x] **Màn hình Đăng nhập / Đăng xuất (Login/Logout)**:
   - Form đăng nhập kết nối trực tiếp API Backend (`/auth/login`).
-  - Đã có logoutApi, UI logout hiện xóa token local; cần nối gọi `/auth/logout` để revoke refresh token.
+  - Đã có logoutApi; UI logout gọi `/auth/logout` để revoke refresh token rồi xóa session local.
   - Lưu trữ Token và User Info vào Redux store + LocalStorage.
   - Tự động đính kèm `Bearer <token>` vào request header qua Axios Interceptor.
   - Điều hướng tự động (Auth Guard / Protected Routes).
+  - Có nút Google Sign-In gọi `/auth/google/admin`; chỉ tài khoản Admin/Merchant/Shipper đã liên kết mới đăng nhập được.
+  - Có hộp thoại liên kết Google trong thanh tài khoản, bắt buộc nhập lại mật khẩu hiện tại trước khi chọn Google account.
 - [x] **Màn hình Quản lý Khu vực (Service Area)**: Kết nối API Backend thật (`/service-area`).
 - [x] **Màn hình Quản lý Đối tác (Merchant)**: Kết nối API Backend thật (`/merchant`), xem danh sách và trạng thái duyệt.
 - [x] **Màn hình Quản lý Tủ đồ (Locker)**: Hiển thị danh sách tủ, vị trí và số ô tủ (`/locker`).
@@ -139,32 +156,50 @@ Cập nhật lần cuối: 05/10/2026
 ## PHẦN II: CÁC NỘI DUNG CHƯA HOÀN THÀNH / KẾ HOẠCH TIẾP THEO (PENDING / ROADMAP)
 
 ### 1. Phân quyền Endpoint chặt chẽ (RBAC Enforce) & Chuẩn hóa Auth Production
-- [ ] Gắn Policy `.RequireAuthorization(...)` chi tiết cho từng nhóm endpoint backend:
-  - ServiceArea: `AdminOnly`
-  - Merchant: `AdminOnly` hoặc `MerchantOrAdmin`
-  - Locker: `MerchantOrAdmin`
-  - WashService: `MerchantOrAdmin`
-  - WashOrder: tạo đơn bởi `Customer`, đổi trạng thái bởi `MerchantOrAdmin` / `ShipperOrAdmin`.
-  - Thêm policy `CustomerOnly` nếu cần.
-- [ ] Chuẩn hóa Auth/OTP cho production:
-  - Bỏ mã OTP fallback `123456`.
-  - Bỏ log mã OTP ra console.
-  - Bỏ password fallback trong Login.
-  - Tích hợp dịch vụ SMS / Email thực tế (Twilio / Stringee / AWS SES).
+- [x] Gắn Policy `.RequireAuthorization(...)` chi tiết cho từng nhóm endpoint backend:
+  - ServiceArea: `AdminOnly`.
+  - Merchant: `AdminOnly`.
+  - Locker và WashService: `MerchantOrAdmin`.
+  - WashOrder: xem danh sách/chi tiết yêu cầu đăng nhập; tạo đơn bởi `Customer`; cập nhật trạng thái bởi `Admin`, `Merchant`, `Shipper`; phân công shipper bởi `Admin`.
+  - Đã thêm policy `CustomerOnly` và `OrderStatusUpdater`.
+- [x] Loại bỏ password fallback trong Login và OTP fallback `123456`; OTP chỉ được in console khi chạy Development để hỗ trợ test.
+- [x] Public register chỉ được tạo Customer; Refresh Token lưu hash và logout kiểm tra đúng token owner.
+- [x] Google OAuth: Customer mới được tạo tự động; Admin/Merchant/Shipper phải liên kết Google sau khi đăng nhập mật khẩu và xác nhận lại mật khẩu.
+- [x] Tích hợp Google Sign-In vào Admin UI, có màn hình liên kết Google riêng và không tự nâng quyền Google account.
+- [ ] Tích hợp Google Sign-In ở Customer Web/Mobile Client và kiểm thử end-to-end với Google ID token thật.
+- [ ] Tích hợp dịch vụ SMTP/SMS thực tế (Twilio / Stringee / AWS SES) và cấu hình secret production.
 - [ ] Cấu hình chuẩn hóa global route prefix `/api/v1` cho toàn bộ endpoint nếu có nhu cầu đồng bộ versioning.
 
 ---
 
 ### 2. Cổng thanh toán trực tuyến (Online Payment Gateway)
-- [ ] Tích hợp cổng thanh toán trực tuyến (VNPay / MoMo / ZaloPay):
-  - API tạo URL thanh toán cho đơn hàng (`POST /payment/create-url`).
-  - Xử lý Webhook / IPN callback từ phía cổng thanh toán để tự động cập nhật trạng thái đơn sang `PAID`.
-- [ ] Xử lý hoàn tiền (`Refund`, `RefundRequest`):
-  - Hoàn tiền khi đơn hàng gặp sự cố, hủy đơn trước khi giặt.
-  - Phê duyệt yêu cầu hoàn tiền từ Admin.
-- [ ] Tính và thu phí lưu kho quá hạn (`OverdueFee`):
-  - Tính phí phát sinh khi khách hàng để đồ trong tủ quá thời gian quy định (sau X giờ tính thêm Y VNĐ/giờ).
-  - Yêu cầu thanh toán phí phạt trước khi mở tủ nhận đồ.
+- [x] Payment sandbox foundation:
+  - `POST /payment/create-url`: tạo payment URL cho VNPay sandbox hoặc URL giả lập theo cấu hình.
+  - `POST /payment/callback`: callback sandbox yêu cầu Admin, chuyển đơn sang `PAID` qua business rule/order timeline.
+  - Từ chối tạo URL cho phương thức tiền mặt và xử lý callback idempotent khi đơn đã `PAID`.
+  - Lưu lịch sử giao dịch vào bảng `payment_transactions`, unique transaction reference và trạng thái `Pending/Succeeded/Failed/Refunded`.
+- [ ] Tích hợp cổng thanh toán thật (VNPay):
+  - [x] Tạo URL VNPay 2.1.0, ký HMAC-SHA512 và lấy cấu hình qua `Payment:VnPay`.
+  - [x] `GET /payment/vnpay-ipn`: xác minh chữ ký, merchant, số tiền và trạng thái trước khi cập nhật đơn.
+  - [ ] Cấu hình credential merchant, IPN HTTPS public URL tại VNPay Portal và kiểm thử end-to-end trên VNPay Sandbox.
+  - [ ] Chưa bật provider `VnPay` trên môi trường nhóm đến khi cấu hình secrets/IPN URL an toàn.
+- [x] Nền tảng yêu cầu hoàn tiền (`RefundRequest`):
+  - `POST /payment/refund-requests` để Customer gửi yêu cầu cho đơn đã thanh toán; chỉ chủ đơn được tạo/xem yêu cầu của mình qua `GET /payment/refund-requests/mine`.
+  - Admin dùng `GET /payment/refund-requests` để xem danh sách và `POST /payment/refund-requests/{id}/review` để duyệt/từ chối.
+  - Hoàn tiền hiện là thủ công ngoài hệ thống; sau khi thực hiện, Admin gọi `POST /payment/refund-requests/{id}/confirm-refunded` kèm mã tham chiếu.
+  - Khi xác nhận, cập nhật yêu cầu, giao dịch gốc và PaymentStatus của đơn thành `Refunded`.
+  - Migration `AddRefundRequests` đã áp dụng vào database local.
+- [ ] Tích hợp hoàn tiền tự động qua cổng VNPay/MoMo/ZaloPay (hiện chưa gọi API chuyển tiền thực tế).
+- [x] Nền tảng phí lưu kho quá hạn (`OverdueFee`):
+  - Mốc bắt đầu là khi đơn chuyển sang `ReadyToReturn` (đồ đã được đưa vào locker trả); hiện giả định 24 giờ đầu miễn phí.
+  - Sau hạn miễn phí, mỗi 24 giờ bắt đầu tính tròn thành một ngày: ngày quá hạn 1/2/3 lần lượt 10.000/20.000/50.000đ; từ ngày thứ 4 là 100.000đ/ngày. Cách làm tròn này cần được xác nhận theo quy định nghiệp vụ cuối cùng.
+  - Customer dùng `POST /payment/overdue-fee/create-url` để tạo giao dịch VNPay cho phí còn thiếu; IPN/callback phân biệt giao dịch phí lưu kho với tiền giặt, không đổi trạng thái thanh toán tiền giặt.
+  - Chặn chuyển đơn sang `Returned` (khách đã lấy đồ theo flow status hiện tại) nếu chưa trả đủ phí đã phát sinh.
+  - Migration `AddOverdueStorageFeePayments` đã áp dụng vào database local để phân biệt giao dịch tiền giặt và giao dịch phí lưu kho.
+  - Sau hơn 72 giờ quá hạn, `POST /wash-order/move-to-storage` dành cho Shipper/Admin ghi nhận vị trí và mã lưu kho, cập nhật trạng thái `MovedToStorage`, thêm timeline và giải phóng ô locker.
+  - Admin có form ghi nhận thao tác này trên màn hình chi tiết đơn. Người vận hành vẫn phải di chuyển đồ thực tế trước khi bấm xác nhận; hệ thống chưa kết nối thiết bị/kho tự động.
+  - Đơn `MovedToStorage` vẫn có thể thanh toán phần phí phát sinh; khách chỉ chuyển sang `Returned` sau khi phí đã trả đủ.
+  - Migration `AddOverdueStorageTransfer` đã áp dụng vào database local.
 
 ---
 
@@ -232,6 +267,7 @@ Cập nhật lần cuối: 05/10/2026
 
 ### 9. Ứng dụng Khách hàng (Customer App / Web Client)
 - [ ] Ứng dụng di động (Flutter / React Native) hoặc Web Client cho khách hàng:
+  - Tích hợp nút Google Sign-In, lấy Google ID token và gọi `POST /auth/google` (backend đã hoàn tất; Admin UI đã có luồng riêng cho tài khoản được cấp quyền).
   - Bản đồ tìm kiếm tủ đồ gần nhất theo định vị GPS.
   - Đặt đơn giặt, chọn ô tủ, nhận mã PIN/mã QR mở tủ để gửi đồ.
   - Theo dõi tiến độ giặt quần áo theo thời gian thực (Real-time Timeline).

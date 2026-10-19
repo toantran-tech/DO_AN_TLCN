@@ -14,18 +14,18 @@ export const AppContent: React.FC = () => {
         palette: {
           mode: themeMode,
           primary: {
-            main: '#2563eb', // Royal Blue
-            light: '#60a5fa',
-            dark: '#1d4ed8',
+            main: '#ff7043',
+            light: '#ffab91',
+            dark: '#e85d2a',
             contrastText: '#ffffff',
           },
           secondary: {
-            main: '#06b6d4', // Cyan
-            light: '#67e8f9',
-            dark: '#0e7490',
+            main: '#fb8c00',
+            light: '#ffcc80',
+            dark: '#ef6c00',
           },
           background: {
-            default: themeMode === 'light' ? '#f8fafc' : '#0f172a',
+            default: themeMode === 'light' ? '#f6f7f9' : '#0f172a',
             paper: themeMode === 'light' ? '#ffffff' : '#1e293b',
           },
           divider: themeMode === 'light' ? '#e2e8f0' : '#334155',
@@ -44,10 +44,10 @@ export const AppContent: React.FC = () => {
           MuiButton: {
             styleOverrides: {
               root: {
-                borderRadius: 8,
+                borderRadius: 10,
                 boxShadow: 'none',
                 '&:hover': {
-                  boxShadow: '0 4px 12px rgba(37, 99, 235, 0.2)',
+                  boxShadow: '0 4px 12px rgba(255, 112, 67, 0.18)',
                 },
               },
             },
@@ -56,6 +56,7 @@ export const AppContent: React.FC = () => {
             styleOverrides: {
               root: {
                 backgroundImage: 'none',
+                borderRadius: 14,
               },
             },
           },
