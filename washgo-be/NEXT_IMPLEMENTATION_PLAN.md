@@ -1,5 +1,5 @@
 # Kế hoạch triển khai dự án WashGo (Backend & Admin)
-Cập nhật lần cuối: 05/10/2026
+Cập nhật lần cuối: 19/10/2026
 
 ---
 
@@ -71,7 +71,9 @@ Cập nhật lần cuối: 05/10/2026
 - [x] **Bảo mật mật khẩu**: Sử dụng BCrypt.Net-Next để hash/verify mật khẩu.
 - [x] **JWT Token Generator**: Cấp JWT Access Token chứa các claim: `sub`, `email`, `role`, `user_id`.
 - [x] **Refresh Token Rotation**: Cơ chế cấp mới Access Token qua Refresh Token và thu hồi (revoke) khi logout.
+- [x] **Bảo vệ Refresh Token**: Chỉ lưu SHA-256 hash của Refresh Token trong database; logout chỉ được thu hồi token thuộc tài khoản đang đăng nhập.
 - [x] **Xác thực OTP**: Quản lý mã OTP có hạn sử dụng, trạng thái đã dùng và đếm số lần nhập sai.
+- [x] **Hạn chế abuse Auth**: Áp dụng rate limit cho các API nhạy cảm: login, register, gửi OTP, reset password và Google login.
 - [x] **Cấu hình RBAC & bảo vệ endpoint**:
   - Cấu hình JWT Bearer Authentication middleware trong ASP.NET Core.
   - Thiết lập các policy: `AdminOnly`, `MerchantOrAdmin`, `ShipperOrAdmin`, `CustomerOnly`, `OrderStatusUpdater`.
@@ -84,13 +86,24 @@ Cập nhật lần cuối: 05/10/2026
   - `POST /auth/send-otp`: Gửi OTP xác thực.
   - `POST /auth/verify-otp`: Kiểm tra mã OTP.
   - `POST /auth/reset-password`: Đặt lại mật khẩu mới.
+  - `POST /auth/google`: Nhận và xác minh Google ID token, sau đó đăng nhập hoặc tạo tài khoản Customer mới.
+  - `POST /auth/google/admin`: Google login cho trang quản trị; chỉ chấp nhận Admin/Merchant/Shipper đã liên kết, không tự tạo Customer.
+  - `POST /auth/link-google`: Người dùng đã đăng nhập liên kết Google sau khi xác nhận lại mật khẩu hiện tại.
   - `GET /auth/me`: Lấy thông tin tài khoản hiện tại (yêu cầu Bearer Token).
-- [x] **Loại bỏ cơ chế Auth/OTP dev-only**:
-  - Đã loại bỏ password fallback trong Login.
-  - Đã loại bỏ OTP fallback `123456`.
-  - Đã loại bỏ log mã OTP ra console.
+- [x] **Harden public registration & OTP**:
+  - Public register chỉ tạo role `Customer`, không còn nhận role từ client.
+  - Đã loại bỏ password fallback trong Login và OTP fallback `123456`.
   - OTP được hash bằng BCrypt trước khi lưu và kiểm tra thời hạn/số lần nhập sai.
-- [ ] **Tích hợp Email/SMS provider thực tế** để gửi OTP production.
+  - Có abstraction gửi email OTP qua SMTP; môi trường Development chỉ được phép in OTP ra console để test, API không trả OTP trong response.
+- [x] **Google OAuth Backend (Customer & tài khoản quản trị đã cấp quyền)**:
+  - Dùng Google ID token flow; backend xác minh chữ ký token và `audience` bằng Google Client ID của dự án WashGo.
+  - Tài khoản Google mới được tạo với role `Customer` và customer profile tương ứng.
+  - Admin/Merchant/Shipper không được tạo qua Google login. Họ phải có tài khoản WashGo đã được cấp quyền, đăng nhập mật khẩu, xác nhận lại mật khẩu và gọi `/auth/link-google` để liên kết Google.
+  - Sau khi liên kết, Google login trả đúng role sẵn có; Google account không tự được nâng quyền.
+  - Local Client ID đã cấu hình; Admin UI gọi riêng `/auth/google/admin`, nên Google account Customer mới không thể vào dashboard quản trị.
+  - Docker backend/admin đã build/chạy và Swagger đã xác nhận routes `/auth/google`, `/auth/google/admin`, `/auth/link-google`.
+- [ ] **Kiểm thử Google OAuth end-to-end**: Chờ Customer Web/Mobile Client lấy Google ID token thật rồi gọi API `/auth/google`.
+- [ ] **Cấu hình SMTP/SMS production**: Điền credentials provider thật qua biến môi trường/secret store và kiểm thử gửi OTP thực tế.
 
 ---
 
@@ -123,6 +136,8 @@ Cập nhật lần cuối: 05/10/2026
   - Lưu trữ Token và User Info vào Redux store + LocalStorage.
   - Tự động đính kèm `Bearer <token>` vào request header qua Axios Interceptor.
   - Điều hướng tự động (Auth Guard / Protected Routes).
+  - Có nút Google Sign-In gọi `/auth/google/admin`; chỉ tài khoản Admin/Merchant/Shipper đã liên kết mới đăng nhập được.
+  - Có hộp thoại liên kết Google trong thanh tài khoản, bắt buộc nhập lại mật khẩu hiện tại trước khi chọn Google account.
 - [x] **Màn hình Quản lý Khu vực (Service Area)**: Kết nối API Backend thật (`/service-area`).
 - [x] **Màn hình Quản lý Đối tác (Merchant)**: Kết nối API Backend thật (`/merchant`), xem danh sách và trạng thái duyệt.
 - [x] **Màn hình Quản lý Tủ đồ (Locker)**: Hiển thị danh sách tủ, vị trí và số ô tủ (`/locker`).
@@ -147,8 +162,12 @@ Cập nhật lần cuối: 05/10/2026
   - Locker và WashService: `MerchantOrAdmin`.
   - WashOrder: xem danh sách/chi tiết yêu cầu đăng nhập; tạo đơn bởi `Customer`; cập nhật trạng thái bởi `Admin`, `Merchant`, `Shipper`; phân công shipper bởi `Admin`.
   - Đã thêm policy `CustomerOnly` và `OrderStatusUpdater`.
-- [x] Loại bỏ password fallback trong Login, OTP fallback `123456` và log OTP console.
-- [ ] Tích hợp dịch vụ SMS / Email thực tế (Twilio / Stringee / AWS SES).
+- [x] Loại bỏ password fallback trong Login và OTP fallback `123456`; OTP chỉ được in console khi chạy Development để hỗ trợ test.
+- [x] Public register chỉ được tạo Customer; Refresh Token lưu hash và logout kiểm tra đúng token owner.
+- [x] Google OAuth: Customer mới được tạo tự động; Admin/Merchant/Shipper phải liên kết Google sau khi đăng nhập mật khẩu và xác nhận lại mật khẩu.
+- [x] Tích hợp Google Sign-In vào Admin UI, có màn hình liên kết Google riêng và không tự nâng quyền Google account.
+- [ ] Tích hợp Google Sign-In ở Customer Web/Mobile Client và kiểm thử end-to-end với Google ID token thật.
+- [ ] Tích hợp dịch vụ SMTP/SMS thực tế (Twilio / Stringee / AWS SES) và cấu hình secret production.
 - [ ] Cấu hình chuẩn hóa global route prefix `/api/v1` cho toàn bộ endpoint nếu có nhu cầu đồng bộ versioning.
 
 ---
@@ -248,6 +267,7 @@ Cập nhật lần cuối: 05/10/2026
 
 ### 9. Ứng dụng Khách hàng (Customer App / Web Client)
 - [ ] Ứng dụng di động (Flutter / React Native) hoặc Web Client cho khách hàng:
+  - Tích hợp nút Google Sign-In, lấy Google ID token và gọi `POST /auth/google` (backend đã hoàn tất; Admin UI đã có luồng riêng cho tài khoản được cấp quyền).
   - Bản đồ tìm kiếm tủ đồ gần nhất theo định vị GPS.
   - Đặt đơn giặt, chọn ô tủ, nhận mã PIN/mã QR mở tủ để gửi đồ.
   - Theo dõi tiến độ giặt quần áo theo thời gian thực (Real-time Timeline).

@@ -20,11 +20,40 @@ namespace WashGo.HttpApi.Endpoints.Auth
 
             group.MapPost("/login", async (LoginCommand command, IAuthAppService svc) =>
                 (await svc.LoginAsync(command)).CustomResult())
+                .RequireRateLimiting("auth-sensitive")
                 .WithName("Đăng nhập hệ thống")
+                .WithOpenApi();
+
+            group.MapPost("/google", async (GoogleLoginCommand command, IAuthAppService svc) =>
+                (await svc.GoogleLoginAsync(command)).CustomResult())
+                .RequireRateLimiting("auth-sensitive")
+                .WithName("Đăng nhập bằng Google")
+                .WithOpenApi();
+
+            group.MapPost("/google/admin", async (GoogleLoginCommand command, IAuthAppService svc) =>
+                (await svc.GoogleAdminLoginAsync(command)).CustomResult())
+                .RequireRateLimiting("auth-sensitive")
+                .WithName("Đăng nhập quản trị bằng Google")
+                .WithOpenApi();
+
+            group.MapPost("/link-google", async (LinkGoogleCommand command, HttpContext httpContext, IAuthAppService svc) =>
+            {
+                var userIdClaim = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier);
+                if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out var userId))
+                {
+                    return Results.Unauthorized();
+                }
+
+                return (await svc.LinkGoogleAsync(userId, command)).CustomResult();
+            })
+                .RequireAuthorization()
+                .RequireRateLimiting("auth-sensitive")
+                .WithName("Liên kết tài khoản Google")
                 .WithOpenApi();
 
             group.MapPost("/register", async (RegisterCommand command, IAuthAppService svc) =>
                 (await svc.RegisterAsync(command)).CustomResult())
+                .RequireRateLimiting("auth-sensitive")
                 .WithName("Đăng ký tài khoản mới")
                 .WithOpenApi();
 
@@ -33,14 +62,23 @@ namespace WashGo.HttpApi.Endpoints.Auth
                 .WithName("Làm mới Access Token")
                 .WithOpenApi();
 
-            group.MapPost("/logout", async (LogoutCommand command, IAuthAppService svc) =>
-                (await svc.LogoutAsync(command)).CustomResult())
+            group.MapPost("/logout", async (LogoutCommand command, HttpContext httpContext, IAuthAppService svc) =>
+            {
+                var userIdClaim = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier);
+                if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out var userId))
+                {
+                    return Results.Unauthorized();
+                }
+
+                return (await svc.LogoutAsync(userId, command)).CustomResult();
+            })
                 .RequireAuthorization()
                 .WithName("Đăng xuất hệ thống")
                 .WithOpenApi();
 
             group.MapPost("/send-otp", async (SendOtpCommand command, IAuthAppService svc) =>
                 (await svc.SendOtpAsync(command)).CustomResult())
+                .RequireRateLimiting("auth-sensitive")
                 .WithName("Gửi mã xác thực OTP")
                 .WithOpenApi();
 
@@ -51,6 +89,7 @@ namespace WashGo.HttpApi.Endpoints.Auth
 
             group.MapPost("/reset-password", async (ResetPasswordCommand command, IAuthAppService svc) =>
                 (await svc.ResetPasswordAsync(command)).CustomResult())
+                .RequireRateLimiting("auth-sensitive")
                 .WithName("Đặt lại mật khẩu")
                 .WithOpenApi();
 

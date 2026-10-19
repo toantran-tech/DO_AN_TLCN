@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using System.Text;
+using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Cors;
@@ -45,7 +46,11 @@ namespace WashGo.HttpApi.Host
             });
 
             // JWT Authentication Configuration
-            var secretKey = configuration["Jwt:SecretKey"] ?? "WashGo_Super_Secret_Key_For_Jwt_Token_Generation_2026!#@$";
+            var secretKey = configuration["Jwt:SecretKey"];
+            if (string.IsNullOrWhiteSpace(secretKey))
+            {
+                throw new AbpException("Jwt:SecretKey must be configured through application settings or environment variables.");
+            }
             var issuer = configuration["Jwt:Issuer"] ?? "WashGoBackend";
             var audience = configuration["Jwt:Audience"] ?? "WashGoClients";
 
@@ -78,6 +83,22 @@ namespace WashGo.HttpApi.Host
                 options.AddPolicy("ShipperOrAdmin", policy => policy.RequireRole("Admin", "Shipper"));
                 options.AddPolicy("CustomerOnly", policy => policy.RequireRole("Customer"));
                 options.AddPolicy("OrderStatusUpdater", policy => policy.RequireRole("Admin", "Merchant", "Shipper"));
+            });
+
+            context.Services.AddRateLimiter(options =>
+            {
+                options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+                options.AddPolicy("auth-sensitive", httpContext =>
+                    RateLimitPartition.GetFixedWindowLimiter(
+                        httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                        _ => new FixedWindowRateLimiterOptions
+                        {
+                            PermitLimit = 10,
+                            Window = TimeSpan.FromMinutes(1),
+                            QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                            QueueLimit = 0,
+                            AutoReplenishment = true
+                        }));
             });
 
             context.Services.AddCors(options =>
@@ -144,6 +165,7 @@ namespace WashGo.HttpApi.Host
 
             app.UseStaticFiles();
             app.UseRouting();
+            app.UseRateLimiter();
             app.UseCors();
 
             app.UseAuthentication();

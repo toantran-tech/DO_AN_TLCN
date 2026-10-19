@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
 import {
@@ -18,6 +18,12 @@ import {
   Divider,
   useMediaQuery,
   Stack,
+  Alert,
+  Button,
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  TextField,
 } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
 import Brightness4Icon from '@mui/icons-material/Brightness4';
@@ -26,11 +32,13 @@ import NotificationsOutlinedIcon from '@mui/icons-material/NotificationsOutlined
 import LogoutIcon from '@mui/icons-material/Logout';
 import WaterDropIcon from '@mui/icons-material/WaterDrop';
 import HeadsetMicOutlinedIcon from '@mui/icons-material/HeadsetMicOutlined';
+import GoogleIcon from '@mui/icons-material/Google';
 import { RootState } from '../redux/store.redux';
 import { toggleSidebar, toggleThemeMode } from '../redux/system/system.slice';
 import { logout } from '../redux/account/account.slice';
-import { logoutApi } from '../apis/auth/auth.api';
+import { linkGoogleApi, logoutApi } from '../apis/auth/auth.api';
 import { ROUTE_ITEMS } from './route.constant';
+import { GoogleSignInButton } from '../components/google-sign-in/google-sign-in.component';
 
 const DRAWER_WIDTH = 228;
 
@@ -40,6 +48,10 @@ export const AppLayout: React.FC = () => {
   const dispatch = useDispatch();
   const isNarrow = useMediaQuery('(max-width: 899px)');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [googleLinkOpen, setGoogleLinkOpen] = useState(false);
+  const [googleLinkError, setGoogleLinkError] = useState<string | null>(null);
+  const [googleLinked, setGoogleLinked] = useState(false);
+  const [googleLinkPassword, setGoogleLinkPassword] = useState('');
 
   const { sidebarOpen, themeMode } = useSelector((state: RootState) => state.system);
   const { user } = useSelector((state: RootState) => state.account);
@@ -60,6 +72,20 @@ export const AppLayout: React.FC = () => {
       navigate('/login', { replace: true });
     }
   };
+
+  const handleGoogleLink = useCallback(async (idToken: string) => {
+    setGoogleLinkError(null);
+    try {
+      const response = await linkGoogleApi({ idToken, currentPassword: googleLinkPassword });
+      if (response.data) {
+        setGoogleLinked(true);
+      } else {
+        setGoogleLinkError(response.message || 'Không thể liên kết tài khoản Google.');
+      }
+    } catch (error: any) {
+      setGoogleLinkError(error?.response?.data?.message || error?.message || 'Không thể liên kết tài khoản Google.');
+    }
+  }, [googleLinkPassword]);
 
   return (
     <Box sx={{ display: 'flex', minHeight: '100vh', backgroundColor: 'background.default' }}>
@@ -115,6 +141,11 @@ export const AppLayout: React.FC = () => {
                   {user?.role || 'Quản trị viên'}
                 </Typography>
               </Box>
+              <Tooltip title="Liên kết tài khoản Google">
+                <IconButton size="small" onClick={() => { setGoogleLinkOpen(true); setGoogleLinked(false); setGoogleLinkError(null); setGoogleLinkPassword(''); }}>
+                  <GoogleIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
               <Tooltip title="Đăng xuất">
                 <IconButton size="small" onClick={handleLogout} sx={{ ml: 0.5 }}>
                   <LogoutIcon fontSize="small" />
@@ -223,6 +254,36 @@ export const AppLayout: React.FC = () => {
       >
         <Outlet />
       </Box>
+
+      <Dialog open={googleLinkOpen} onClose={() => setGoogleLinkOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Liên kết tài khoản Google</DialogTitle>
+        <DialogContent>
+          {googleLinked ? (
+            <Alert severity="success" sx={{ mt: 1 }}>
+              Liên kết thành công. Lần sau bạn có thể chọn “Đăng nhập với Google” tại trang đăng nhập.
+            </Alert>
+          ) : (
+            <>
+              <Alert severity="info" sx={{ mt: 1, mb: 2 }}>
+                Nhập lại mật khẩu để xác nhận, sau đó chọn Google account muốn dùng cho lần đăng nhập sau.
+              </Alert>
+              <TextField
+                label="Xác nhận mật khẩu hiện tại"
+                type="password"
+                fullWidth
+                value={googleLinkPassword}
+                onChange={(event) => setGoogleLinkPassword(event.target.value)}
+                sx={{ mb: 2 }}
+              />
+              <GoogleSignInButton onCredential={handleGoogleLink} disabled={!googleLinkPassword} />
+              {googleLinkError && <Alert severity="error" sx={{ mt: 2 }}>{googleLinkError}</Alert>}
+            </>
+          )}
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
+            <Button onClick={() => setGoogleLinkOpen(false)}>Đóng</Button>
+          </Box>
+        </DialogContent>
+      </Dialog>
     </Box>
   );
 };
