@@ -6,15 +6,17 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Commands
 {
     public class CreateWashOrderCommand
     {
-        public Guid CustomerId { get; set; }
-        public string CustomerName { get; set; } = string.Empty;
-        public string CustomerPhoneNumber { get; set; } = string.Empty;
         public Guid LockerId { get; set; }
         public Guid BoxId { get; set; }
         public Guid? ReturnLockerId { get; set; }
         public PaymentMethod PaymentMethod { get; set; } = PaymentMethod.Cash;
         public string? CustomerNote { get; set; }
         public List<CreateWashOrderItemDto> Items { get; set; } = [];
+    }
+
+    public class CancelWashOrderCommand
+    {
+        public string Reason { get; set; } = string.Empty;
     }
 
     public class CreateWashOrderItemDto

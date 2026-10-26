@@ -5,6 +5,7 @@ using WashGo.Application.Contracts;
 using WashGo.Core;
 using WashGo.Core.Endpoint;
 using WashGo.HttpApi.Endpoints.Auth;
+using WashGo.HttpApi.Endpoints.Customer;
 using WashGo.HttpApi.Endpoints.Locker;
 using WashGo.HttpApi.Endpoints.Merchant;
 using WashGo.HttpApi.Endpoints.Payment;
@@ -24,6 +25,7 @@ namespace WashGo.HttpApi
         public override void ConfigureServices(ServiceConfigurationContext context)
         {
             context.Services.AddTransient<IEndpointBase, AuthHandler>();
+            context.Services.AddTransient<IEndpointBase, CustomerHandler>();
             context.Services.AddTransient<IEndpointBase, WashOrderHandler>();
             context.Services.AddTransient<IEndpointBase, LockerHandler>();
             context.Services.AddTransient<IEndpointBase, WashServiceHandler>();
