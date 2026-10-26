@@ -10,6 +10,7 @@ using WashGo.Core.Domain.Shared.Bases;
 using WashGo.Domain.Entities.Locker;
 using WashGo.Domain.Entities.Locker.Interfaces;
 using WashGo.Domain.Shared.Enums;
+using Volo.Abp.Uow;
 
 namespace WashGo.Application.Features.LockerApplication.Services
 {
@@ -99,12 +100,17 @@ namespace WashGo.Application.Features.LockerApplication.Services
 
         public async Task<BaseResponse<LockerResultDto>> UpdateAsync(UpdateLockerCommand command)
         {
+            if (!Enum.IsDefined(command.Status))
+                return BadRequest<LockerResultDto>("Trạng thái tủ không hợp lệ.");
+
+            using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
             var locker = await _lockerRepo.GetWithBoxesAsync(command.Id);
             if (locker == null)
             {
                 return NotFound<LockerResultDto>("Không tìm thấy trạm Locker để cập nhật!");
             }
 
+            var expectedStatus = locker.Status;
             locker.Name = command.Name;
             locker.Address = command.Address;
             locker.Ward = command.Ward;
@@ -116,34 +122,38 @@ namespace WashGo.Application.Features.LockerApplication.Services
             locker.Description = command.Description;
             locker.Status = command.Status;
 
-            await _lockerRepo.UpdateAsync(locker, autoSave: true);
+            if (!await _lockerRepo.TryUpdateDetailsAsync(locker, expectedStatus))
+                return BadRequest<LockerResultDto>(
+                    "Tủ đang có ô/đơn cần xử lý hoặc vừa đổi trạng thái; không thể cập nhật trạng thái tủ.");
+            await uow.CompleteAsync();
             var dto = ObjectMapper.Map<Locker, LockerResultDto>(locker);
             return Success(dto, "Cập nhật thông tin trạm Locker thành công!");
         }
 
         public async Task<BaseResponse<bool>> UpdateBoxStatusAsync(UpdateLockerBoxStatusCommand command)
         {
+            if (!Enum.IsDefined(command.NewStatus))
+                return BadRequest<bool>("Trạng thái ô tủ không hợp lệ.");
+
+            using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
             var locker = await _lockerRepo.GetWithBoxesAsync(command.LockerId);
             if (locker == null)
             {
                 return NotFound<bool>("Không tìm thấy tủ Locker!");
             }
 
-            var box = locker.Boxes.FirstOrDefault(b => b.Id == command.BoxId);
+            var box = locker.Boxes.FirstOrDefault(b => b.Id == command.BoxId && !b.IsDeleted);
             if (box == null)
             {
                 return NotFound<bool>("Không tìm thấy ô tủ!");
             }
 
-            box.Status = command.NewStatus;
-            if (command.NewStatus == LockerBoxStatus.Available)
-            {
-                box.CurrentPinCode = null;
-            }
-
-            locker.AvailableBoxes = locker.Boxes.Count(b => b.Status == LockerBoxStatus.Available);
-
-            await _lockerRepo.UpdateAsync(locker, autoSave: true);
+            if (box.Status == command.NewStatus)
+                return Success(true, "Ô tủ đã ở trạng thái yêu cầu.");
+            if (!await _lockerRepo.TrySetUnassignedBoxStatusAsync(locker.Id, box.Id,
+                    box.Status, command.NewStatus))
+                return BadRequest<bool>("Ô tủ đang gắn với đơn hàng hoặc vừa đổi trạng thái; không thể cập nhật trực tiếp.");
+            await uow.CompleteAsync();
             return Success(true, "Cập nhật trạng thái ô tủ thành công!");
         }
 

@@ -51,6 +51,97 @@ namespace WashGo.EntityFrameworkCore.Repositories
                     x => x.AvailableBoxes > 0 ? x.AvailableBoxes - 1 : 0));
             return lockerChanged == 1;
         }
+
+        public Task<bool> TryReleaseReservedBoxAsync(Guid lockerId, Guid boxId) =>
+            TryReleaseBoxAsync(lockerId, boxId, LockerBoxStatus.Reserved);
+
+        public Task<bool> TryReleaseOccupiedBoxAsync(Guid lockerId, Guid boxId) =>
+            TryReleaseBoxAsync(lockerId, boxId, LockerBoxStatus.Occupied);
+
+        private async Task<bool> TryReleaseBoxAsync(Guid lockerId, Guid boxId, LockerBoxStatus expectedStatus)
+        {
+            var db = await GetDbContextAsync();
+            var changed = await db.LockerBoxes
+                .Where(x => x.Id == boxId && x.LockerId == lockerId && !x.IsDeleted
+                    && x.Status == expectedStatus)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.Status, LockerBoxStatus.Available));
+            if (changed != 1)
+                return false;
+
+            var lockerChanged = await db.Lockers.Where(x => x.Id == lockerId && !x.IsDeleted)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.AvailableBoxes,
+                    x => x.AvailableBoxes + 1));
+            return lockerChanged == 1;
+        }
+
+        public async Task<bool> TryOccupyReservedBoxAsync(Guid lockerId, Guid boxId)
+        {
+            var db = await GetDbContextAsync();
+            return await db.LockerBoxes
+                .Where(x => x.Id == boxId && x.LockerId == lockerId && !x.IsDeleted
+                    && x.Status == LockerBoxStatus.Reserved)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.Status, LockerBoxStatus.Occupied)) == 1;
+        }
+
+        public async Task<bool> TrySetUnassignedBoxStatusAsync(Guid lockerId, Guid boxId,
+            LockerBoxStatus expectedStatus, LockerBoxStatus newStatus)
+        {
+            var db = await GetDbContextAsync();
+            var changed = await db.LockerBoxes
+                .Where(x => x.Id == boxId && x.LockerId == lockerId && !x.IsDeleted
+                    && x.Status == expectedStatus
+                    && !db.WashOrders.Any(order => !order.IsDeleted &&
+                        ((order.BoxId == boxId &&
+                          (order.Status == WashOrderStatus.Pending || order.Status == WashOrderStatus.Deposited)) ||
+                         (order.Status == WashOrderStatus.ReadyToReturn &&
+                          (order.ReturnBoxId == boxId ||
+                           (order.ReturnBoxId == null && order.BoxId == boxId))))))
+                .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.Status, newStatus));
+            if (changed != 1)
+                return false;
+
+            if ((expectedStatus == LockerBoxStatus.Available) == (newStatus == LockerBoxStatus.Available))
+                return true;
+
+            var becomingAvailable = newStatus == LockerBoxStatus.Available;
+            var lockerChanged = await db.Lockers.Where(x => x.Id == lockerId && !x.IsDeleted)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.AvailableBoxes,
+                    x => becomingAvailable
+                        ? (x.AvailableBoxes < x.TotalBoxes ? x.AvailableBoxes + 1 : x.TotalBoxes)
+                        : (x.AvailableBoxes > 0 ? x.AvailableBoxes - 1 : 0)));
+            return lockerChanged == 1;
+        }
+
+        public async Task<bool> TryUpdateDetailsAsync(Locker locker, LockerStatus expectedStatus)
+        {
+            var db = await GetDbContextAsync();
+            var query = db.Lockers.Where(x => x.Id == locker.Id && !x.IsDeleted && x.Status == expectedStatus);
+            if (locker.Status != expectedStatus && locker.Status != LockerStatus.Active)
+            {
+                query = query.Where(x =>
+                    !db.LockerBoxes.Any(box => box.LockerId == x.Id && !box.IsDeleted &&
+                        (box.Status == LockerBoxStatus.Reserved || box.Status == LockerBoxStatus.Occupied)) &&
+                    !db.WashOrders.Any(order => !order.IsDeleted &&
+                        ((order.LockerId == x.Id &&
+                          (order.Status == WashOrderStatus.Pending || order.Status == WashOrderStatus.Deposited)) ||
+                         (order.Status == WashOrderStatus.ReadyToReturn &&
+                          (order.ReturnBoxId.HasValue
+                              ? (order.ReturnLockerId ?? order.LockerId) == x.Id
+                              : order.LockerId == x.Id)))));
+            }
+
+            return await query.ExecuteUpdateAsync(setters => setters
+                .SetProperty(x => x.Name, locker.Name)
+                .SetProperty(x => x.Address, locker.Address)
+                .SetProperty(x => x.Ward, locker.Ward)
+                .SetProperty(x => x.District, locker.District)
+                .SetProperty(x => x.City, locker.City)
+                .SetProperty(x => x.Latitude, locker.Latitude)
+                .SetProperty(x => x.Longitude, locker.Longitude)
+                .SetProperty(x => x.LockerType, locker.LockerType)
+                .SetProperty(x => x.Description, locker.Description)
+                .SetProperty(x => x.Status, locker.Status)) == 1;
+        }
     }
 
     public class WashServiceRepository : MesRepository<WashGoDbContext, WashService, Guid>, IWashServiceRepository
