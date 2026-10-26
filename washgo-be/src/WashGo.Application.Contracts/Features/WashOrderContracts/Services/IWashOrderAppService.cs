@@ -12,8 +12,10 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Services
     public interface IWashOrderAppService : IApplicationService
     {
         Task<PaginatedResult<WashOrderResultDto>> GetListAsync(WashOrderFilterQuery query);
+        Task<PaginatedResult<WashOrderResultDto>> GetMyOrdersAsync(WashOrderFilterQuery query);
         Task<BaseResponse<WashOrderDetailDto>> GetByIdAsync(Guid id);
         Task<BaseResponse<WashOrderDetailDto>> CreateAsync(CreateWashOrderCommand command);
+        Task<BaseResponse<WashOrderDetailDto>> CancelAsync(Guid orderId, CancelWashOrderCommand command);
         Task<BaseResponse<WashOrderDetailDto>> UpdateStatusAsync(UpdateWashOrderStatusCommand command);
         Task<BaseResponse<WashOrderDetailDto>> MoveToStorageAsync(MoveOrderToStorageCommand command);
         Task<BaseResponse<WashOrderDetailDto>> AssignShipperAsync(AssignShipperCommand command);

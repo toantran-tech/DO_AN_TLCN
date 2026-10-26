@@ -20,8 +20,14 @@ namespace WashGo.HttpApi.Endpoints.WashOrder
 
             group.MapPost("/filter", async (WashOrderFilterQuery request, IWashOrderAppService svc) =>
                 (await svc.GetListAsync(request)).CustomResult())
-                .RequireAuthorization()
+                .RequireAuthorization("OrderStatusUpdater")
                 .WithName("Lọc danh sách đơn WashGo")
+                .WithOpenApi();
+
+            group.MapPost("/mine", async (WashOrderFilterQuery request, IWashOrderAppService svc) =>
+                (await svc.GetMyOrdersAsync(request)).CustomResult())
+                .RequireAuthorization("CustomerOnly")
+                .WithName("Xem danh sách đơn hàng của tôi")
                 .WithOpenApi();
 
             group.MapGet("/{id:guid}", async (Guid id, IWashOrderAppService svc) =>
@@ -34,6 +40,12 @@ namespace WashGo.HttpApi.Endpoints.WashOrder
                 (await svc.CreateAsync(command)).CustomResult())
                 .RequireAuthorization("CustomerOnly")
                 .WithName("Tạo đơn hàng WashGo mới")
+                .WithOpenApi();
+
+            group.MapPost("/{id:guid}/cancel", async (Guid id, CancelWashOrderCommand command, IWashOrderAppService svc) =>
+                (await svc.CancelAsync(id, command)).CustomResult())
+                .RequireAuthorization("CustomerOnly")
+                .WithName("Khách hàng hủy đơn của mình")
                 .WithOpenApi();
 
             group.MapPut("/status", async (UpdateWashOrderStatusCommand command, IWashOrderAppService svc) =>
@@ -56,7 +68,7 @@ namespace WashGo.HttpApi.Endpoints.WashOrder
 
             group.MapPost("/column-distinct-values", async (string field, WashOrderFilterQuery query, IWashOrderAppService svc) =>
                 (await svc.GetColumnDistinctValuesAsync(field, query)).CustomResult())
-                .RequireAuthorization()
+                .RequireAuthorization("OrderStatusUpdater")
                 .WithName("Lấy giá trị distinct cho bộ lọc cột đơn hàng")
                 .WithOpenApi();
         }

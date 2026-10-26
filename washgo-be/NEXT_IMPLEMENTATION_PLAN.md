@@ -1,5 +1,5 @@
 # Kế hoạch triển khai dự án WashGo (Backend & Admin)
-Cập nhật lần cuối: 19/10/2026
+Cập nhật lần cuối: 26/10/2026
 
 ---
 
@@ -126,8 +126,38 @@ Cập nhật lần cuối: 19/10/2026
     - Khi đồ giặt xong sẵn sàng trả về tủ (`ReadyToReturn`): ô tủ chuyển sang `Occupied`.
     - Khi khách đến nhận đồ (`Returned` / `Completed`): ô tủ chuyển về `Available`.
   - Ghi nhận lịch sử luồng trạng thái vào `WashOrderTimeline` (`order_status_history`) trong cùng transaction.
+- [x] **Bảo mật đơn hàng Customer**:
+  - `POST /wash-order/` không còn nhận `CustomerId`, tên hoặc số điện thoại từ client; backend lấy Customer hiện tại từ JWT và hồ sơ người dùng.
+  - `POST /wash-order/mine`: Customer chỉ lọc được các đơn thuộc chính mình.
+  - `GET /wash-order/{id}`: Customer nhận `404` khi cố xem đơn không thuộc tài khoản của mình.
+  - `POST /wash-order/{id}/cancel`: Customer chỉ hủy được đơn của mình khi còn `Pending`; backend giải phóng ô locker đang `Reserved` và ghi lịch sử hủy đơn.
+  - API lọc đơn quản trị (`/wash-order/filter`) và lấy dữ liệu bộ lọc cột chỉ dành cho `OrderStatusUpdater`.
 
 ---
+
+### 4.1. Hồ sơ Customer Backend
+- [x] `GET /customer/me`: lấy thông tin từ `User` và `Customer` theo JWT, yêu cầu policy `CustomerOnly` và tài khoản đang hoạt động.
+- [x] `PUT /customer/me`: sửa họ tên, điện thoại, địa chỉ, quận/huyện và tỉnh/thành phố. Không nhận ID, email, role, điểm thưởng hoặc tổng chi tiêu để cập nhật.
+- [x] Validation: họ tên 2–100 ký tự, điện thoại 9–15 chữ số (chuẩn hóa bỏ dấu phân cách), địa chỉ tối đa 500 ký tự, quận/thành phố tối đa 100 ký tự. Trường tùy chọn bỏ trống hoặc không gửi sẽ được xóa về `null` theo ngữ nghĩa PUT.
+- [x] Cập nhật `User` và `Customer` trong cùng transaction; không thay đổi schema và không cần migration.
+- [x] Backend build thành công: 0 warning, 0 error.
+- [x] Docker backend đã rebuild và smoke test runtime ngày 26/10/2026 đã PASS: `tests/smoke/customer-profile.ps1` kiểm tra lưu/đọc lại, đồng bộ `/auth/me`, validation không làm thay đổi hồ sơ, chuẩn hóa/xóa trường tùy chọn, chống sửa hồ sơ người khác và chống thay đổi email/role/số liệu qua JSON, quyền 401/403. Script tạo một tài khoản test riêng trên DB development và thu hồi các refresh token đã dùng sau test.
+- [ ] Upload/cập nhật avatar chưa nằm trong đợt triển khai này.
+- [ ] Unique số điện thoại chưa được áp dụng; cần thống nhất quy tắc và đồng bộ với luồng đăng ký trước khi bổ sung.
+
+### 4.2. Danh mục đặt đơn dành cho Customer Backend
+- [x] `GET /customer/services` (lọc `merchantId`, `serviceType`, `keyword`, phân trang) và `GET /customer/services/{id}`: chỉ trả dịch vụ đã duyệt, đang bán, thuộc Merchant đang hoạt động. DTO chỉ chứa thông tin hiển thị và giá, không lộ trường duyệt nội bộ.
+- [x] `GET /customer/lockers` (lọc `city`, `district`, `keyword`, phân trang) và `GET /customer/lockers/{id}`: chỉ trả tủ đang hoạt động, thuộc Merchant đang hoạt động và thực sự còn ô `Available`; số ô trống tính từ trạng thái slot hiện tại thay vì trường đếm lưu sẵn. API chi tiết trả ID/số/kích cỡ ô trống, không trả PIN.
+- [x] Cả bốn endpoint yêu cầu policy `CustomerOnly`; page/take được giới hạn an toàn. Không đổi schema, không cần migration.
+- [x] Backend build sạch (0 warning, 0 error), Docker backend đã rebuild và smoke test ngày 26/10/2026: Customer đọc/lọc/phân trang/xem chi tiết thành công (3 dịch vụ, 1 tủ với 3 ô trống trên DB dev); anonymous 401, Admin 403.
+- [ ] Client Customer chưa tích hợp các endpoint này; danh mục chỉ là ảnh chụp thời điểm truy vấn.
+
+### 4.3. Củng cố tạo đơn Customer Backend
+- [x] `POST /wash-order/` kiểm tra lại trạng thái tủ, ô, Merchant và tài khoản Customer tại thời điểm đặt; tủ trả đồ nếu khác tủ gửi phải đang hoạt động và thuộc cùng Merchant.
+- [x] Chỉ nhận dịch vụ đang bán, đã duyệt, thuộc đúng Merchant của tủ. Yêu cầu 1–30 dịch vụ không trùng, số lượng/khối lượng hợp lệ, phương thức thanh toán hợp lệ; dịch vụ tính theo kg phải có khối lượng. Giá và tổng tiền lấy từ dữ liệu dịch vụ trên server, không tin giá từ client.
+- [x] Giữ ô bằng `UPDATE` có điều kiện theo trạng thái `Available`; cập nhật bộ đếm ô và tạo order trong cùng transaction. Request thứ hai chọn cùng ô nhận 400 thay vì tạo thêm order. Không đổi schema, không cần migration.
+- [x] Build backend sạch (0 warning, 0 error), Docker đã rebuild và test runtime ngày 26/10/2026: tạo/hủy đơn khôi phục số ô trống, hai request đồng thời cùng ô nhận 201/400, sáu payload sai đều nhận 400 và không giữ ô.
+- [ ] Cần tiếp tục rà soát luồng hoàn/hủy và chuyển trạng thái locker khi có thao tác đồng thời; kiểm thử tải và thanh toán end-to-end trước khi dùng production.
 
 ### 5. Giao diện Quản trị Web (Admin UI - `washgo-admin`)
 - [x] **Màn hình Đăng nhập / Đăng xuất (Login/Logout)**:
@@ -150,6 +180,7 @@ Cập nhật lần cuối: 19/10/2026
 - [x] Backend build sạch: `0 Warning(s), 0 Error(s)`.
 - [x] EF Core không còn pending model changes.
 - [x] Frontend `washgo-admin` build sạch bằng Vite (`npm run build` thành công).
+- [x] Docker stack đã rebuild và chạy: PostgreSQL, Backend (`http://localhost:5000`) và Admin (`http://localhost:5173`). Swagger đã xác nhận route Customer Order mới; đăng nhập Customer seed và gọi `POST /wash-order/mine` thành công, còn `POST /wash-order/filter` bị chặn `403` đúng policy.
 
 ---
 
@@ -160,7 +191,7 @@ Cập nhật lần cuối: 19/10/2026
   - ServiceArea: `AdminOnly`.
   - Merchant: `AdminOnly`.
   - Locker và WashService: `MerchantOrAdmin`.
-  - WashOrder: xem danh sách/chi tiết yêu cầu đăng nhập; tạo đơn bởi `Customer`; cập nhật trạng thái bởi `Admin`, `Merchant`, `Shipper`; phân công shipper bởi `Admin`.
+  - WashOrder: danh sách quản trị và bộ lọc cột dành cho `Admin`, `Merchant`, `Shipper`; Customer dùng `POST /wash-order/mine` và chỉ xem được chi tiết đơn của chính mình. Tạo/hủy đơn bởi `Customer`; cập nhật trạng thái bởi `Admin`, `Merchant`, `Shipper`; phân công shipper bởi `Admin`.
   - Đã thêm policy `CustomerOnly` và `OrderStatusUpdater`.
 - [x] Loại bỏ password fallback trong Login và OTP fallback `123456`; OTP chỉ được in console khi chạy Development để hỗ trợ test.
 - [x] Public register chỉ được tạo Customer; Refresh Token lưu hash và logout kiểm tra đúng token owner.
