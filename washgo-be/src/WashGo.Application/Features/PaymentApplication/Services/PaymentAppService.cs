@@ -8,6 +8,7 @@ using System.Text;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using Volo.Abp.Domain.Repositories;
+using Volo.Abp.Uow;
 using WashGo.Application.Contracts.Features.PaymentContracts.Commands;
 using WashGo.Application.Contracts.Features.PaymentContracts.Results;
 using WashGo.Application.Contracts.Features.PaymentContracts.Services;
@@ -16,24 +17,24 @@ using WashGo.Application.Contracts.Features.WashOrderContracts.Services;
 using WashGo.Core.Domain.Shared.Bases;
 using WashGo.Domain.Shared.Enums;
 using WashGo.Domain.Entities.Payment;
-using WashGo.Domain.Entities.WashOrder;
-using WashOrderEntity = WashGo.Domain.Entities.WashOrder.WashOrder;
+using WashGo.Domain.Entities.Payment.Interfaces;
+using WashGo.Domain.Entities.WashOrder.Interfaces;
 
 namespace WashGo.Application.Features.PaymentApplication.Services
 {
     public class PaymentAppService : WashGoAppService, IPaymentAppService
     {
         private readonly IWashOrderAppService _orderService;
-        private readonly IRepository<PaymentTransaction, Guid> _transactionRepo;
+        private readonly IPaymentTransactionRepository _transactionRepo;
         private readonly IRepository<RefundRequest, Guid> _refundRequestRepo;
         private readonly IConfiguration _configuration;
-        private readonly IRepository<WashOrderEntity, Guid> _orders;
+        private readonly IWashOrderRepository _orders;
 
         public PaymentAppService(
             IWashOrderAppService orderService,
-            IRepository<PaymentTransaction, Guid> transactionRepo,
+            IPaymentTransactionRepository transactionRepo,
             IConfiguration configuration,
-            IRepository<WashOrderEntity, Guid> orders,
+            IWashOrderRepository orders,
             IRepository<RefundRequest, Guid> refundRequestRepo)
         {
             _orderService = orderService;
@@ -97,7 +98,8 @@ namespace WashGo.Application.Features.PaymentApplication.Services
         {
             if (!CurrentUser.Id.HasValue)
                 return BadRequest<PaymentResultDto>("Không xác định được tài khoản khách hàng.");
-            var order = await _orders.FindAsync(command.OrderId);
+            using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            var order = await _orders.GetForUpdateAsync(command.OrderId);
             if (order == null || order.CustomerId != CurrentUser.Id.Value)
                 return NotFound<PaymentResultDto>("Không tìm thấy đơn hàng của khách hàng.");
             if (order.PaymentStatus != PaymentStatus.Paid ||
@@ -112,6 +114,7 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             if (outstanding <= 0m)
             {
                 await _orders.UpdateAsync(order, autoSave: true);
+                await uow.CompleteAsync();
                 return BadRequest<PaymentResultDto>("Đơn hàng hiện không có phí lưu kho cần thanh toán.");
             }
 
@@ -141,6 +144,7 @@ namespace WashGo.Application.Features.PaymentApplication.Services
                 Amount = outstanding,
                 PaymentUrl = paymentUrl
             }, autoSave: true);
+            await uow.CompleteAsync();
 
             return Success(new PaymentResultDto
             {
@@ -159,8 +163,8 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             if (string.IsNullOrWhiteSpace(command.TransactionReference))
                 return BadRequest<PaymentResultDto>("Thiếu mã giao dịch thanh toán.");
 
-            var transaction = await _transactionRepo.FirstOrDefaultAsync(
-                x => x.TransactionReference == command.TransactionReference);
+            using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            var transaction = await _transactionRepo.GetForUpdateByReferenceAsync(command.TransactionReference);
             if (transaction == null || transaction.OrderId != command.OrderId)
                 return BadRequest<PaymentResultDto>("Mã giao dịch không hợp lệ.");
             if (transaction.PaymentMethod != PaymentMethod.VnPay ||
@@ -174,10 +178,13 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             var order = orderResponse.Data;
             if (!command.Success)
             {
+                if (transaction.Status != PaymentTransactionStatus.Pending)
+                    return BadRequest<PaymentResultDto>("Giao dịch đã được xử lý trước đó.");
                 transaction.Status = PaymentTransactionStatus.Failed;
                 transaction.FailureReason = "Sandbox payment failed or was cancelled.";
                 transaction.CompletedAt = DateTime.UtcNow;
                 await _transactionRepo.UpdateAsync(transaction, autoSave: true);
+                await uow.CompleteAsync();
                 return BadRequest<PaymentResultDto>("Thanh toán thất bại hoặc bị hủy.");
             }
 
@@ -190,24 +197,27 @@ namespace WashGo.Application.Features.PaymentApplication.Services
                         PaymentMethod = transaction.PaymentMethod, PaymentStatus = order.PaymentStatus,
                         TransactionReference = transaction.TransactionReference
                     }, "Phí lưu kho đã được ghi nhận trước đó.");
-                if (order.PaymentStatus != PaymentStatus.Paid ||
-                    order.Status is not (WashOrderStatus.ReadyToReturn or WashOrderStatus.MovedToStorage))
-                    return BadRequest<PaymentResultDto>("Đơn không còn chờ khách nhận tại locker.");
+                if (transaction.Status != PaymentTransactionStatus.Pending)
+                    return BadRequest<PaymentResultDto>("Giao dịch đã được xử lý trước đó.");
 
-                var due = OverdueFeeCalculator.Calculate(order.PickupDeadline, DateTime.UtcNow);
-                order.OverdueFeeTotal = due;
-                if (transaction.Amount > due - order.StorageFeeTotal)
-                    return BadRequest<PaymentResultDto>("Giao dịch phí lưu kho lớn hơn số tiền còn phải trả.");
-
-                var orderEntity = await _orders.FindAsync(transaction.OrderId);
+                var orderEntity = await _orders.GetForUpdateAsync(transaction.OrderId);
                 if (orderEntity == null)
                     return NotFound<PaymentResultDto>("Không tìm thấy đơn hàng cần cập nhật phí.");
+                if (orderEntity.PaymentStatus != PaymentStatus.Paid ||
+                    orderEntity.Status is not (WashOrderStatus.ReadyToReturn or WashOrderStatus.MovedToStorage))
+                    return BadRequest<PaymentResultDto>("Đơn không còn chờ khách nhận tại locker.");
+
+                var due = OverdueFeeCalculator.Calculate(orderEntity.PickupDeadline, DateTime.UtcNow);
+                if (transaction.Amount > due - orderEntity.StorageFeeTotal)
+                    return BadRequest<PaymentResultDto>("Giao dịch phí lưu kho lớn hơn số tiền còn phải trả.");
+
                 orderEntity.OverdueFeeTotal = due;
                 orderEntity.StorageFeeTotal += transaction.Amount;
                 await _orders.UpdateAsync(orderEntity, autoSave: true);
                 transaction.Status = PaymentTransactionStatus.Succeeded;
                 transaction.CompletedAt = DateTime.UtcNow;
                 await _transactionRepo.UpdateAsync(transaction, autoSave: true);
+                await uow.CompleteAsync();
                 return Success(new PaymentResultDto
                 {
                     OrderId = order.Id, OrderCode = order.OrderCode, Amount = transaction.Amount,
@@ -223,6 +233,7 @@ namespace WashGo.Application.Features.PaymentApplication.Services
                     transaction.Status = PaymentTransactionStatus.Succeeded;
                     transaction.CompletedAt ??= DateTime.UtcNow;
                     await _transactionRepo.UpdateAsync(transaction, autoSave: true);
+                    await uow.CompleteAsync();
                 }
 
                 return Success(new PaymentResultDto
@@ -251,6 +262,7 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             transaction.Status = PaymentTransactionStatus.Succeeded;
             transaction.CompletedAt = DateTime.UtcNow;
             await _transactionRepo.UpdateAsync(transaction, autoSave: true);
+            await uow.CompleteAsync();
 
             return Success(new PaymentResultDto
             {
@@ -276,7 +288,8 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             if (!parameters.TryGetValue("vnp_TxnRef", out var reference) || string.IsNullOrWhiteSpace(reference))
                 return Ip("01", "Order not found");
 
-            var transaction = await _transactionRepo.FirstOrDefaultAsync(x => x.TransactionReference == reference);
+            using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            var transaction = await _transactionRepo.GetForUpdateByReferenceAsync(reference);
             if (transaction == null || transaction.PaymentMethod != PaymentMethod.VnPay)
                 return Ip("01", "Order not found");
             if (transaction.Status == PaymentTransactionStatus.Succeeded)
@@ -298,6 +311,7 @@ namespace WashGo.Application.Features.PaymentApplication.Services
                 transaction.ProviderTransactionId = parameters.GetValueOrDefault("vnp_TransactionNo");
                 transaction.CompletedAt = DateTime.UtcNow;
                 await _transactionRepo.UpdateAsync(transaction, autoSave: true);
+                await uow.CompleteAsync();
                 return Ip("00", "Confirm Success");
             }
 
@@ -307,24 +321,23 @@ namespace WashGo.Application.Features.PaymentApplication.Services
 
             if (transaction.Purpose == PaymentPurpose.OverdueStorageFee)
             {
-                if (orderResponse.Data.PaymentStatus != PaymentStatus.Paid ||
-                    orderResponse.Data.Status is not (WashOrderStatus.ReadyToReturn or WashOrderStatus.MovedToStorage))
-                    return Ip("04", "Invalid order state");
-                var due = OverdueFeeCalculator.Calculate(orderResponse.Data.PickupDeadline, DateTime.UtcNow);
-                if (transaction.Amount > due - orderResponse.Data.StorageFeeTotal)
-                    return Ip("04", "Invalid amount");
-                orderResponse.Data.OverdueFeeTotal = due;
-                orderResponse.Data.StorageFeeTotal += transaction.Amount;
-                var orderEntity = await _orders.FindAsync(transaction.OrderId);
+                var orderEntity = await _orders.GetForUpdateAsync(transaction.OrderId);
                 if (orderEntity == null)
                     return Ip("01", "Order not found");
-                orderEntity.OverdueFeeTotal = orderResponse.Data.OverdueFeeTotal;
-                orderEntity.StorageFeeTotal = orderResponse.Data.StorageFeeTotal;
+                if (orderEntity.PaymentStatus != PaymentStatus.Paid ||
+                    orderEntity.Status is not (WashOrderStatus.ReadyToReturn or WashOrderStatus.MovedToStorage))
+                    return Ip("04", "Invalid order state");
+                var due = OverdueFeeCalculator.Calculate(orderEntity.PickupDeadline, DateTime.UtcNow);
+                if (transaction.Amount > due - orderEntity.StorageFeeTotal)
+                    return Ip("04", "Invalid amount");
+                orderEntity.OverdueFeeTotal = due;
+                orderEntity.StorageFeeTotal += transaction.Amount;
                 await _orders.UpdateAsync(orderEntity, autoSave: true);
                 transaction.Status = PaymentTransactionStatus.Succeeded;
                 transaction.ProviderTransactionId = parameters.GetValueOrDefault("vnp_TransactionNo");
                 transaction.CompletedAt = DateTime.UtcNow;
                 await _transactionRepo.UpdateAsync(transaction, autoSave: true);
+                await uow.CompleteAsync();
                 return Ip("00", "Confirm Success");
             }
             if (orderResponse.Data.PaymentStatus == PaymentStatus.Paid)
@@ -347,6 +360,7 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             transaction.ProviderTransactionId = parameters.GetValueOrDefault("vnp_TransactionNo");
             transaction.CompletedAt = DateTime.UtcNow;
             await _transactionRepo.UpdateAsync(transaction, autoSave: true);
+            await uow.CompleteAsync();
             return Ip("00", "Confirm Success");
         }
 

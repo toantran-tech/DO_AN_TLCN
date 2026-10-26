@@ -92,6 +92,7 @@ namespace WashGo.EntityFrameworkCore.Seeding
             // 6. Locker & Slots
             var lockerId = Guid.Parse("a1111111-aaaa-1111-aaaa-111111111111");
             await SeedLockerAsync(lockerId, merchantUserId, serviceAreaId, "LK_Q1_001", "Trạm Locker Bến Thành", "123 Lê Lợi", "Quận 1", "TP. Hồ Chí Minh");
+            await SeedReturnLockerAsync(merchantUserId, serviceAreaId);
 
             // 7. Wash Services
             var service1Id = Guid.Parse("b1111111-bbbb-1111-bbbb-111111111111");
@@ -305,6 +306,46 @@ namespace WashGo.EntityFrameworkCore.Seeding
 
                 await _lockerRepo.InsertAsync(locker, autoSave: true);
             }
+        }
+
+        private async Task SeedReturnLockerAsync(Guid merchantId, Guid serviceAreaId)
+        {
+            var lockerId = Guid.Parse("a2222222-aaaa-2222-aaaa-222222222222");
+            if (await _lockerRepo.FindAsync(lockerId) != null)
+                return;
+
+            var locker = new Locker(lockerId)
+            {
+                MerchantId = merchantId,
+                ServiceAreaId = serviceAreaId,
+                Code = "LK_Q1_002",
+                Name = "Trạm Locker Nhà thờ Đức Bà",
+                Address = "01 Công xã Paris",
+                District = "Quận 1",
+                City = "TP. Hồ Chí Minh",
+                Latitude = 10.7798,
+                Longitude = 106.6990,
+                TotalBoxes = 2,
+                AvailableBoxes = 2,
+                Status = LockerStatus.Active,
+                LockerType = LockerType.Normal,
+                Description = "Trạm tủ đồ thông minh 24/7 Nhà thờ Đức Bà"
+            };
+            locker.Boxes.Add(new LockerBox(Guid.Parse("c1111111-aaaa-1111-aaaa-111111111111"))
+            {
+                LockerId = lockerId,
+                SlotNumber = 1,
+                Size = LockerBoxSize.Standard,
+                Status = LockerBoxStatus.Available
+            });
+            locker.Boxes.Add(new LockerBox(Guid.Parse("c2222222-aaaa-2222-aaaa-222222222222"))
+            {
+                LockerId = lockerId,
+                SlotNumber = 2,
+                Size = LockerBoxSize.Large,
+                Status = LockerBoxStatus.Available
+            });
+            await _lockerRepo.InsertAsync(locker, autoSave: true);
         }
 
         private async Task SeedWashServiceAsync(Guid id, Guid merchantId, string code, string name, decimal unitPrice, decimal? pricePerKg, decimal? pricePerItem, WashServiceType type, string unit)

@@ -59,6 +59,7 @@ Cập nhật lần cuối: 26/10/2026
   - **Hạ tầng Tủ & Ô tủ**:
     - Locker: `Trạm Locker Bến Thành` (`LK_Q1_001`, Id: `a1111111-aaaa-1111-aaaa-111111111111`).
     - 3 ô tủ demo (`Slot 01` - Standard, `Slot 02` - Small, `Slot 03` - Large) với `TotalBoxes = 3`, `AvailableBoxes = 3`.
+    - Locker thứ hai cùng Merchant: `Trạm Locker Nhà thờ Đức Bà` (`LK_Q1_002`, Id: `a2222222-aaaa-2222-aaaa-222222222222`), có 2 ô; dùng để kiểm thử gửi và nhận ở hai tủ khác nhau. Seeder bỏ qua nếu ID đã tồn tại.
   - **Dịch vụ giặt**:
     - Giặt sấy sấy khô cao cấp (theo kg - `SVC_WASH_DRY`).
     - Giặt hấp giặt khô vest/đầm (theo chiếc - `SVC_DRY_CLEAN`).
@@ -157,7 +158,46 @@ Cập nhật lần cuối: 26/10/2026
 - [x] Chỉ nhận dịch vụ đang bán, đã duyệt, thuộc đúng Merchant của tủ. Yêu cầu 1–30 dịch vụ không trùng, số lượng/khối lượng hợp lệ, phương thức thanh toán hợp lệ; dịch vụ tính theo kg phải có khối lượng. Giá và tổng tiền lấy từ dữ liệu dịch vụ trên server, không tin giá từ client.
 - [x] Giữ ô bằng `UPDATE` có điều kiện theo trạng thái `Available`; cập nhật bộ đếm ô và tạo order trong cùng transaction. Request thứ hai chọn cùng ô nhận 400 thay vì tạo thêm order. Không đổi schema, không cần migration.
 - [x] Build backend sạch (0 warning, 0 error), Docker đã rebuild và test runtime ngày 26/10/2026: tạo/hủy đơn khôi phục số ô trống, hai request đồng thời cùng ô nhận 201/400, sáu payload sai đều nhận 400 và không giữ ô.
-- [ ] Cần tiếp tục rà soát luồng hoàn/hủy và chuyển trạng thái locker khi có thao tác đồng thời; kiểm thử tải và thanh toán end-to-end trước khi dùng production.
+- [ ] Cần kiểm thử tải, thanh toán end-to-end và các thao tác quản trị locker đồng thời trước khi dùng production.
+
+### 4.4. Hủy đơn Pending an toàn khi thao tác đồng thời
+- [x] Customer `POST /wash-order/{id}/cancel` chỉ đổi đơn từ `Pending` sang `Cancelled` bằng cập nhật có điều kiện, rồi giải phóng đúng ô đang `Reserved`; trạng thái đơn, trạng thái ô, bộ đếm ô và lịch sử hủy cùng một transaction. Nếu một bước không thành công, transaction không commit.
+- [x] Nhánh quản trị `PUT /wash-order/status` đổi `Pending → Cancelled` cũng giải phóng ô; nhánh `Pending → Deposited` chỉ nhận ô đang `Reserved`. Các chuyển trạng thái qua endpoint này dùng cập nhật có điều kiện để không ghi đè trạng thái vừa được request khác thay đổi.
+- [x] Build sạch (0 warning, 0 error), Docker backend đã rebuild và test ngày 26/10/2026: hủy Customer hai lần đồng thời trả 200/400; hủy Customer và Admin đồng thời trả 200/400; hủy Admin đơn Pending thành công; các case kết thúc `Cancelled` và số ô trống trở lại 3.
+- [ ] Cần kiểm thử tải và các tương tác quản trị đồng thời trước production.
+
+### 4.5. Đồng bộ ô gửi và ô trả trong luồng đơn
+- [x] `Deposited → Collected` giải phóng ô gửi bằng cập nhật có điều kiện `Occupied → Available`, không ghi đè một ô đã đổi trạng thái.
+- [x] `Paid → ReadyToReturn` chọn ô `Available` ở `ReturnLockerId` (hoặc tủ gửi nếu không chọn tủ khác), giữ ô có điều kiện rồi chuyển `Occupied` trong cùng transaction; lưu `ReturnBoxId`/`ReturnBoxNumber`. Nếu tủ trả hết ô, đơn giữ nguyên `Paid`.
+- [x] API chi tiết/danh sách đơn trả `ReturnLockerId`, `ReturnBoxId`, `ReturnBoxNumber` để client hiển thị đúng vị trí lấy đồ.
+- [x] `ReadyToReturn → Returned` chỉ giải phóng ô trả; `Returned → Completed` không giải phóng lần hai. Chuyển kho quá hạn dùng ô trả và cập nhật đơn/ô trong cùng transaction; hỗ trợ đơn cũ chưa có `ReturnBoxId` bằng cách dùng ô gửi như luồng cũ.
+- [x] Build sạch và Docker đã rebuild ngày 26/10/2026. Smoke test: ô gửi bị đơn khác giữ nhưng đồ trả được xếp sang ô khác; `Returned → Completed` trả đủ 3 ô. Khi cả 3 ô bị giữ, `ReadyToReturn` trả 400 và đơn vẫn `Paid`; sau khi ô được giải phóng, đơn hoàn tất và tủ trở lại 3 ô trống.
+- [x] Đã kiểm thử thực tế nhánh quá hạn và tủ trả khác tủ gửi ở mục 4.8 dưới đây.
+
+### 4.6. Bảo vệ ô tủ khỏi thao tác quản trị trực tiếp
+- [x] `PUT /locker/box-status` chặn đổi trạng thái ô đang gắn với đơn `Pending`/`Deposited` hoặc là ô trả của đơn `ReadyToReturn` (kể cả đơn cũ chưa lưu `ReturnBoxId`). Kiểm tra ràng buộc và đổi trạng thái ô trong một cập nhật có điều kiện; cập nhật bộ đếm ô cùng transaction.
+- [x] Ô không gắn đơn vẫn được chuyển sang bảo trì và mở lại; enum trạng thái không hợp lệ bị chặn.
+- [x] Build sạch và Docker backend đã rebuild ngày 26/10/2026. Smoke test: ép ô đang giữ đơn/chứa đồ/đang chờ khách nhận sang `Available` đều trả 400; ô rảnh đổi `Maintenance → Available` thành công và số ô trống trở lại 3.
+- [ ] Các thao tác quản trị và đặt/trả đơn đồng thời vẫn cần kiểm thử tải thêm trước production.
+
+### 4.7. Bảo vệ trạng thái cả tủ
+- [x] `PUT /locker/` chặn đưa tủ sang `Maintenance`/`Inactive` khi còn ô `Reserved`/`Occupied` hoặc đơn `Pending`/`Deposited`/`ReadyToReturn` liên quan. Kiểm tra và cập nhật trạng thái tủ trong một lệnh có điều kiện, cùng transaction.
+- [x] Sửa thông tin tủ chỉ cập nhật những trường metadata cần sửa, không ghi đè `AvailableBoxes` vừa được đơn hàng cập nhật; trạng thái enum không hợp lệ bị chặn.
+- [x] Build sạch và Docker backend đã rebuild ngày 26/10/2026. Smoke test: tủ có đơn `Pending` hoặc `ReadyToReturn` không thể chuyển bảo trì (400); sửa metadata khi có đơn vẫn giữ đúng bộ đếm ô; sau khi đơn kết thúc có thể chuyển bảo trì rồi mở lại, tủ còn đủ 3 ô trống.
+- [ ] Vẫn cần bài test chạy đồng thời giữa cập nhật cả tủ và tạo/trả đơn.
+
+### 4.8. Kiểm thử nhiều tủ và chuyển kho quá hạn
+- [x] Seeder bổ sung tủ demo thứ hai cùng Merchant, 2 ô, ID cố định; Docker restart không tạo trùng (catalog vẫn có đúng 2 tủ).
+- [x] Đơn gửi ở `LK_Q1_001` và nhận tại `LK_Q1_002` chạy đến `Completed`: tủ gửi trở lại 3 ô sau khi Shipper lấy đồ, tủ trả giảm 2→1 khi đồ nằm trong ô rồi trở lại 2 sau khi Customer nhận.
+- [x] Dùng một đơn smoke riêng ở DB dev, thử chuyển kho trước hạn nhận bị 400; sau đó chỉ chỉnh `pickup_deadline` của đúng đơn này về 73 giờ trước để mô phỏng quá hạn. `POST /wash-order/move-to-storage` chuyển đơn sang `MovedToStorage`, tính phí 180.000đ, giải phóng đúng ô trả ở tủ thứ hai; gọi chuyển kho lần hai bị 400.
+- [x] Khi chưa thanh toán phí lưu kho, `Returned` bị 400. Customer tạo giao dịch phí lưu kho sandbox 180.000đ, Admin xác nhận callback mock; sau đó đơn chuyển `Returned → Completed`, ghi nhận `StorageFeeTotal = 180.000đ`. Đây là kiểm thử sandbox, không phải giao dịch VNPay thật.
+- [ ] Chưa kiểm thử VNPay thật và race condition giữa chuyển kho với khách nhận đồ trong tải đồng thời; cần trước production. Callback phí đồng thời đã được xử lý và smoke test ở mục 4.9.
+
+### 4.9. Chống ghi nhận trùng phí lưu kho
+- [x] Tạo URL phí lưu kho khóa đơn trong transaction trước khi kiểm tra giao dịch `Pending`, tránh hai request đồng thời tạo hai giao dịch chờ cho cùng đơn.
+- [x] Callback sandbox và VNPay IPN khóa bản ghi giao dịch; khi ghi nhận phí thì khóa thêm đơn, kiểm tra số phí còn thiếu trên dữ liệu mới nhất, cộng tiền và đổi trạng thái giao dịch trong cùng transaction. Callback lặp không cộng phí lần hai. Không đổi schema, không cần migration.
+- [x] Build sạch, Docker backend đã rebuild ngày 26/10/2026. Smoke test sandbox: hai lệnh tạo URL đồng thời trả 200/400; hai callback cùng mã đồng thời đều trả 200 nhưng chỉ cộng `StorageFeeTotal` đúng một lần 10.000đ. Đơn test sau đó chuyển `Returned → Completed` thành công. Luồng thanh toán tiền giặt thông thường qua callback mock cũng đã test hồi quy đến `Completed`.
+- [ ] Chưa kiểm thử IPN VNPay thật với chữ ký từ provider và các giao dịch khác mã cùng đơn trong tải lớn; cần trước production.
 
 ### 5. Giao diện Quản trị Web (Admin UI - `washgo-admin`)
 - [x] **Màn hình Đăng nhập / Đăng xuất (Login/Logout)**:

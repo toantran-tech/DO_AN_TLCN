@@ -15,6 +15,8 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Results
         public string LockerName { get; set; } = string.Empty;
         public Guid BoxId { get; set; }
         public string BoxNumber { get; set; } = string.Empty;
+        public Guid? ReturnLockerId { get; set; }
+        public Guid? ReturnBoxId { get; set; }
         public string? ReturnBoxNumber { get; set; }
         public Guid? ShipperId { get; set; }
         public string? ShipperName { get; set; }

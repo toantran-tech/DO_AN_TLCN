@@ -257,6 +257,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 return BadRequest<WashOrderDetailDto>("Lý do hủy đơn tối đa 500 ký tự.");
             }
 
+            using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
             var order = await _orderRepo.GetWithDetailsAsync(orderId);
             if (order == null || order.CustomerId != CurrentUser.Id.Value)
             {
@@ -268,19 +269,10 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 return BadRequest<WashOrderDetailDto>("Chỉ có thể hủy đơn trước khi gửi đồ vào locker.");
             }
 
-            var previousStatus = order.Status;
-            var locker = await _lockerRepo.GetWithBoxesAsync(order.LockerId);
-            if (locker != null)
-            {
-                var box = locker.Boxes.FirstOrDefault(x => x.Id == order.BoxId);
-                if (box != null && box.Status == LockerBoxStatus.Reserved)
-                {
-                    box.Status = LockerBoxStatus.Available;
-                    box.CurrentPinCode = null;
-                    locker.AvailableBoxes = locker.Boxes.Count(x => x.Status == LockerBoxStatus.Available);
-                    await _lockerRepo.UpdateAsync(locker, autoSave: true);
-                }
-            }
+            if (!await _orderRepo.TryChangeStatusAsync(order.Id, WashOrderStatus.Pending, WashOrderStatus.Cancelled))
+                return BadRequest<WashOrderDetailDto>("Đơn hàng vừa đổi trạng thái; không thể hủy.");
+            if (!await _lockerRepo.TryReleaseReservedBoxAsync(order.LockerId, order.BoxId))
+                return BadRequest<WashOrderDetailDto>("Ô tủ không còn ở trạng thái giữ chỗ; chưa hủy đơn.");
 
             order.Status = WashOrderStatus.Cancelled;
             order.CancelledAt = DateTime.UtcNow;
@@ -291,7 +283,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             order.Timeline.Add(new WashOrderTimeline
             {
                 WashOrderId = order.Id,
-                FromStatus = previousStatus,
+                FromStatus = WashOrderStatus.Pending,
                 Status = WashOrderStatus.Cancelled,
                 ActorId = CurrentUser.Id.Value,
                 ActorName = CurrentUser.UserName ?? order.CustomerName,
@@ -301,11 +293,13 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             });
 
             await _orderRepo.UpdateAsync(order, autoSave: true);
+            await uow.CompleteAsync();
             return Success(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), "Hủy đơn hàng thành công.");
         }
 
         public async Task<BaseResponse<WashOrderDetailDto>> UpdateStatusAsync(UpdateWashOrderStatusCommand command)
         {
+            using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
             var order = await _orderRepo.GetWithDetailsAsync(command.OrderId);
             if (order == null)
             {
@@ -342,6 +336,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 if (order.StorageFeeTotal < overdueTotal)
                 {
                     await _orderRepo.UpdateAsync(order, autoSave: true);
+                    await uow.CompleteAsync();
                     return BadRequest<WashOrderDetailDto>(
                         $"Cần thanh toán phí lưu kho còn thiếu {overdueTotal - order.StorageFeeTotal:N0}đ trước khi hoàn tất nhận đồ.");
                 }
@@ -352,34 +347,57 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 order.PaymentStatus = PaymentStatus.Paid;
             }
 
-            // Locker box status update logic
-            var locker = await _lockerRepo.GetWithBoxesAsync(order.LockerId);
-            if (locker != null)
+            if (!await _orderRepo.TryChangeStatusAsync(order.Id, previousStatus, command.NewStatus))
+                return BadRequest<WashOrderDetailDto>("Đơn hàng vừa đổi trạng thái; vui lòng tải lại trước khi cập nhật.");
+
+            if (previousStatus == WashOrderStatus.Pending && command.NewStatus == WashOrderStatus.Cancelled)
             {
-                var box = locker.Boxes.FirstOrDefault(b => b.Id == order.BoxId);
-                if (box != null)
+                if (!await _lockerRepo.TryReleaseReservedBoxAsync(order.LockerId, order.BoxId))
+                    return BadRequest<WashOrderDetailDto>("Ô tủ không còn ở trạng thái giữ chỗ; chưa hủy đơn.");
+            }
+            else if (previousStatus == WashOrderStatus.Pending && command.NewStatus == WashOrderStatus.Deposited)
+            {
+                if (!await _lockerRepo.TryOccupyReservedBoxAsync(order.LockerId, order.BoxId))
+                    return BadRequest<WashOrderDetailDto>("Ô tủ không còn ở trạng thái giữ chỗ; chưa nhận đồ.");
+            }
+            else if (previousStatus == WashOrderStatus.Deposited &&
+                     command.NewStatus is WashOrderStatus.Collected or WashOrderStatus.Cancelled)
+            {
+                if (!await _lockerRepo.TryReleaseOccupiedBoxAsync(order.LockerId, order.BoxId))
+                    return BadRequest<WashOrderDetailDto>("Ô gửi đồ không còn ở trạng thái chứa đồ; chưa đổi trạng thái đơn.");
+            }
+            else if (command.NewStatus == WashOrderStatus.ReadyToReturn)
+            {
+                var returnLockerId = order.ReturnLockerId ?? order.LockerId;
+                var returnLocker = await _lockerRepo.GetWithBoxesAsync(returnLockerId);
+                if (returnLocker == null || returnLocker.Status != LockerStatus.Active ||
+                    returnLocker.MerchantId != order.MerchantId)
+                    return BadRequest<WashOrderDetailDto>("Tủ trả đồ không còn hoạt động hoặc không thuộc đối tác của đơn.");
+
+                LockerBox? returnBox = null;
+                foreach (var candidate in returnLocker.Boxes.Where(x => !x.IsDeleted &&
+                             x.Status == LockerBoxStatus.Available).OrderBy(x => x.SlotNumber))
                 {
-                    if (command.NewStatus == WashOrderStatus.Deposited)
-                    {
-                        box.Status = LockerBoxStatus.Occupied;
-                    }
-                    else if (command.NewStatus == WashOrderStatus.Collected)
-                    {
-                        box.Status = LockerBoxStatus.Available;
-                        box.CurrentPinCode = null;
-                    }
-                    else if (command.NewStatus == WashOrderStatus.ReadyToReturn)
-                    {
-                        box.Status = LockerBoxStatus.Occupied;
-                    }
-                    else if (command.NewStatus is WashOrderStatus.Returned or WashOrderStatus.Completed)
-                    {
-                        box.Status = LockerBoxStatus.Available;
-                        box.CurrentPinCode = null;
-                    }
+                    if (!await _lockerRepo.TryReserveBoxAsync(returnLockerId, candidate.Id))
+                        continue;
+                    if (!await _lockerRepo.TryOccupyReservedBoxAsync(returnLockerId, candidate.Id))
+                        return BadRequest<WashOrderDetailDto>("Không thể xác nhận ô trả đồ; vui lòng thử lại.");
+                    returnBox = candidate;
+                    break;
                 }
-                locker.AvailableBoxes = locker.Boxes.Count(b => b.Status == LockerBoxStatus.Available);
-                await _lockerRepo.UpdateAsync(locker, autoSave: true);
+                if (returnBox == null)
+                    return BadRequest<WashOrderDetailDto>("Tủ trả đồ đã hết ô trống; chưa chuyển trạng thái đơn.");
+
+                order.ReturnLockerId = returnLockerId;
+                order.ReturnBoxId = returnBox.Id;
+                order.ReturnBoxNumber = returnBox.BoxNumber;
+            }
+            else if (previousStatus == WashOrderStatus.ReadyToReturn &&
+                     command.NewStatus == WashOrderStatus.Returned)
+            {
+                var (returnLockerId, returnBoxId) = GetReturnSlot(order);
+                if (!await _lockerRepo.TryReleaseOccupiedBoxAsync(returnLockerId, returnBoxId))
+                    return BadRequest<WashOrderDetailDto>("Ô trả đồ không còn chứa đồ; chưa xác nhận khách nhận.");
             }
 
             order.Status = command.NewStatus;
@@ -401,6 +419,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             });
 
             await _orderRepo.UpdateAsync(order, autoSave: true);
+            await uow.CompleteAsync();
             var result = ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order);
             return Success(result, "Cập nhật trạng thái đơn thành công!");
         }
@@ -414,6 +433,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             if (!string.IsNullOrWhiteSpace(command.Note) && command.Note.Trim().Length > 140)
                 return BadRequest<WashOrderDetailDto>("Ghi chú chuyển kho tối đa 140 ký tự.");
 
+            using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
             var order = await _orderRepo.GetWithDetailsAsync(command.OrderId);
             if (order == null)
                 return NotFound<WashOrderDetailDto>("Không tìm thấy đơn hàng.");
@@ -426,18 +446,13 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             if (!OverdueFeeCalculator.IsTransferToStorageDue(order.PickupDeadline, now))
                 return BadRequest<WashOrderDetailDto>("Chỉ chuyển kho khi đã quá 72 giờ kể từ hạn nhận đồ.");
 
-            var locker = await _lockerRepo.GetWithBoxesAsync(order.LockerId);
-            if (locker == null)
-                return BadRequest<WashOrderDetailDto>("Không tìm thấy locker đang giữ đơn hàng.");
-            var box = locker.Boxes.FirstOrDefault(x => x.Id == order.BoxId);
-            if (box == null || box.Status != LockerBoxStatus.Occupied)
-                return BadRequest<WashOrderDetailDto>("Ô locker của đơn không ở trạng thái đang chứa đồ.");
-
             var previousStatus = order.Status;
-            box.Status = LockerBoxStatus.Available;
-            box.CurrentPinCode = null;
-            locker.AvailableBoxes = locker.Boxes.Count(x => x.Status == LockerBoxStatus.Available);
-            await _lockerRepo.UpdateAsync(locker, autoSave: true);
+            if (!await _orderRepo.TryChangeStatusAsync(order.Id, WashOrderStatus.ReadyToReturn,
+                    WashOrderStatus.MovedToStorage))
+                return BadRequest<WashOrderDetailDto>("Đơn hàng vừa đổi trạng thái; chưa chuyển kho.");
+            var (returnLockerId, returnBoxId) = GetReturnSlot(order);
+            if (!await _lockerRepo.TryReleaseOccupiedBoxAsync(returnLockerId, returnBoxId))
+                return BadRequest<WashOrderDetailDto>("Ô trả đồ không còn chứa đồ; chưa chuyển kho.");
 
             order.Status = WashOrderStatus.MovedToStorage;
             order.MovedToStorageAt = now;
@@ -459,6 +474,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             });
 
             await _orderRepo.UpdateAsync(order, autoSave: true);
+            await uow.CompleteAsync();
             return Success(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), "Đã ghi nhận chuyển đồ sang kho và giải phóng ô locker.");
         }
 
@@ -512,6 +528,11 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 _ => false
             };
         }
+
+        private static (Guid LockerId, Guid BoxId) GetReturnSlot(WashOrder order) =>
+            order.ReturnBoxId.HasValue
+                ? (order.ReturnLockerId ?? order.LockerId, order.ReturnBoxId.Value)
+                : (order.LockerId, order.BoxId); // Orders created before ReturnBoxId was recorded.
 
         public async Task<BaseResponse<List<ColumnFilterDistinctValueDto>>> GetColumnDistinctValuesAsync(string fieldName, WashOrderFilterQuery query)
         {
