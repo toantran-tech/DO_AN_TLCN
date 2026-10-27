@@ -340,12 +340,46 @@ namespace WashGo.Application.Features.AuthApplication.Services
                 return BadRequest<AuthResponseDto>("Số điện thoại không đúng định dạng.");
             }
 
+            if (string.IsNullOrWhiteSpace(command.OtpCode) || command.OtpCode.Trim().Length != 6)
+            {
+                return BadRequest<AuthResponseDto>("Vui lòng nhập mã OTP xác thực (6 chữ số).");
+            }
+
             var email = command.Email.Trim().ToLowerInvariant();
             var existingUser = await _userRepo.FirstOrDefaultAsync(u => u.Email.ToLower() == email);
             if (existingUser != null)
             {
                 return BadRequest<AuthResponseDto>($"Email '{command.Email}' đã được đăng ký.");
             }
+
+            var activeOtps = await _otpRepo.GetListAsync(o =>
+                o.Email.ToLower() == email &&
+                o.Purpose == OtpPurpose.Register &&
+                !o.IsUsed &&
+                o.ExpiryDate > DateTime.UtcNow);
+            var validOtp = activeOtps.OrderByDescending(o => o.CreatedAt).FirstOrDefault();
+
+            if (validOtp == null)
+            {
+                return BadRequest<AuthResponseDto>("Mã OTP xác thực không hợp lệ hoặc đã hết hạn.");
+            }
+
+            if (validOtp.AttemptCount >= validOtp.MaxAttempts)
+            {
+                return BadRequest<AuthResponseDto>("Bạn đã nhập sai mã OTP quá số lần quy định.");
+            }
+
+            bool isOtpValid = BCrypt.Net.BCrypt.Verify(command.OtpCode.Trim(), validOtp.CodeHash);
+            if (!isOtpValid)
+            {
+                validOtp.AttemptCount++;
+                await _otpRepo.UpdateAsync(validOtp, autoSave: true);
+                return BadRequest<AuthResponseDto>($"Mã OTP không chính xác. Còn lại {validOtp.MaxAttempts - validOtp.AttemptCount} lần thử.");
+            }
+
+            validOtp.IsUsed = true;
+            validOtp.UsedAt = DateTime.UtcNow;
+            await _otpRepo.UpdateAsync(validOtp, autoSave: true);
 
             // Public registration can only create Customer accounts. Merchant, Shipper
             // and Admin accounts must be provisioned by an authorized back-office flow.
@@ -417,7 +451,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
                 return BadRequest<bool>("Email không đúng định dạng.");
             }
 
-            if (command.Purpose != OtpPurpose.ForgotPassword)
+            if (command.Purpose != OtpPurpose.ForgotPassword && command.Purpose != OtpPurpose.Register)
             {
                 return BadRequest<bool>("Loại OTP này hiện chưa được hỗ trợ.");
             }
@@ -425,10 +459,20 @@ namespace WashGo.Application.Features.AuthApplication.Services
             var email = command.Email.Trim().ToLowerInvariant();
             var user = await _userRepo.FirstOrDefaultAsync(u => u.Email.ToLower() == email);
 
-            // Do not disclose whether an account exists.
-            if (user == null)
+            if (command.Purpose == OtpPurpose.Register)
             {
-                return Success(true, "Nếu email tồn tại, mã OTP đã được gửi. Vui lòng kiểm tra hộp thư.");
+                if (user != null)
+                {
+                    return BadRequest<bool>($"Email '{command.Email}' đã được đăng ký trong hệ thống.");
+                }
+            }
+            else if (command.Purpose == OtpPurpose.ForgotPassword)
+            {
+                // Do not disclose whether an account exists.
+                if (user == null)
+                {
+                    return Success(true, "Nếu email tồn tại, mã OTP đã được gửi. Vui lòng kiểm tra hộp thư.");
+                }
             }
 
             var activeOtps = await _otpRepo.GetListAsync(o =>
@@ -472,7 +516,11 @@ namespace WashGo.Application.Features.AuthApplication.Services
 
             await _otpRepo.InsertAsync(otp, autoSave: true);
 
-            return Success(true, "Nếu email tồn tại, mã OTP đã được gửi. Vui lòng kiểm tra hộp thư.");
+            var successMsg = command.Purpose == OtpPurpose.Register
+                ? "Mã xác thực OTP đã được gửi về email của bạn. Vui lòng kiểm tra hộp thư."
+                : "Nếu email tồn tại, mã OTP đã được gửi. Vui lòng kiểm tra hộp thư.";
+
+            return Success(true, successMsg);
         }
 
         public async Task<BaseResponse<bool>> VerifyOtpAsync(VerifyOtpCommand command)
@@ -480,6 +528,11 @@ namespace WashGo.Application.Features.AuthApplication.Services
             if (!IsValidEmail(command.Email) || string.IsNullOrWhiteSpace(command.Code) || command.Code.Length != 6)
             {
                 return BadRequest<bool>("Mã OTP không hợp lệ hoặc đã hết hạn.");
+            }
+
+            if (command.Purpose != OtpPurpose.ForgotPassword && command.Purpose != OtpPurpose.Register)
+            {
+                return BadRequest<bool>("Loại OTP này hiện chưa được hỗ trợ.");
             }
 
             var email = command.Email.Trim().ToLowerInvariant();
@@ -720,7 +773,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
         private static bool IsValidPhone(string phone)
         {
             var normalized = new string(phone.Where(char.IsDigit).ToArray());
-            return normalized.Length is >= 9 and <= 15;
+            return normalized.Length is >= 9 and <= 11;
         }
 
         private static string? NormalizePhone(string? phone)
