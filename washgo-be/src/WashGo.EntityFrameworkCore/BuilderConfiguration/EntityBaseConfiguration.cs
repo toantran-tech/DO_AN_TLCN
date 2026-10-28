@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Microsoft.EntityFrameworkCore.ValueGeneration;
+using NpgsqlTypes;
 using WashGo.Core.Domain.Common;
 
 namespace WashGo.EntityFrameworkCore.BuilderConfiguration
@@ -12,7 +13,8 @@ namespace WashGo.EntityFrameworkCore.BuilderConfiguration
             builder.HasKey(x => x.Id);
             builder.Property(x => x.Id).HasValueGenerator<SequentialGuidValueGenerator>();
 
-            builder.HasIndex(d => d.SearchVector).HasMethod("GIN");
+            builder.Property<NpgsqlTsVector>("SearchVector");
+            builder.HasIndex("SearchVector").HasMethod("GIN");
 
             builder.Property(x => x.CreatedOn)
                    .HasColumnType("bigint")

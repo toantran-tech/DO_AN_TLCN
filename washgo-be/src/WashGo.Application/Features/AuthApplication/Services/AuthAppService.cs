@@ -24,6 +24,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
 {
     public class AuthAppService : WashGoAppService, IAuthAppService
     {
+        private const string VerifiedRegistrationPrefix = "verified-register:";
         private readonly IRepository<User, Guid> _userRepo;
         private readonly IRepository<Role, Guid> _roleRepo;
         private readonly IRepository<RefreshToken, Guid> _refreshTokenRepo;
@@ -87,8 +88,8 @@ namespace WashGo.Application.Features.AuthApplication.Services
             user.LastLoginAt = DateTime.UtcNow;
             await _userRepo.UpdateAsync(user, autoSave: true);
 
-            var (accessToken, expiresAt) = GenerateJwtToken(user, roleName);
-            var refreshToken = await GenerateAndSaveRefreshTokenAsync(user.Id);
+            var (refreshToken, sessionId) = await GenerateAndSaveRefreshTokenAsync(user.Id);
+            var (accessToken, expiresAt) = GenerateJwtToken(user, roleName, sessionId);
 
             var result = new AuthResponseDto
             {
@@ -144,39 +145,52 @@ namespace WashGo.Application.Features.AuthApplication.Services
                 var existingEmailUser = await _userRepo.FirstOrDefaultAsync(u => u.Email.ToLower() == email);
                 if (existingEmailUser != null)
                 {
-                    return BadRequest<AuthResponseDto>(
-                        "Email này đã có tài khoản WashGo. Vui lòng đăng nhập bằng mật khẩu hoặc liên hệ hỗ trợ để liên kết Google.");
+                    var existingRole = await _roleRepo.FindAsync(existingEmailUser.RoleId);
+                    if (!string.Equals(existingRole?.Name, "Customer", StringComparison.OrdinalIgnoreCase))
+                        return BadRequest<AuthResponseDto>("Tài khoản này không thuộc Customer. Vui lòng dùng cổng quản trị.");
+                    if (!existingEmailUser.IsActive)
+                        return BadRequest<AuthResponseDto>("Tài khoản đã bị tạm khóa. Vui lòng liên hệ quản trị viên.");
+                    if (existingEmailUser.AuthProvider == AuthProvider.Google &&
+                        existingEmailUser.ProviderId != payload.Subject)
+                        return BadRequest<AuthResponseDto>("Email này đã liên kết với tài khoản Google khác.");
+
+                    // Google has verified ownership of this email, so reuse the existing Customer.
+                    existingEmailUser.AuthProvider = AuthProvider.Google;
+                    existingEmailUser.ProviderId = payload.Subject;
+                    existingEmailUser.Avatar ??= payload.Picture;
+                    user = existingEmailUser;
                 }
-
-                var customerRole = await _roleRepo.FirstOrDefaultAsync(r => r.Name == "Customer");
-                if (customerRole == null)
+                else
                 {
-                    return BadRequest<AuthResponseDto>("Không tìm thấy vai trò Customer trong hệ thống.");
+                    var customerRole = await _roleRepo.FirstOrDefaultAsync(r => r.Name == "Customer");
+                    if (customerRole == null)
+                        return BadRequest<AuthResponseDto>("Không tìm thấy vai trò Customer trong hệ thống.");
+
+                    user = new User(Guid.NewGuid())
+                    {
+                        RoleId = customerRole.Id,
+                        Email = email,
+                        FullName = string.IsNullOrWhiteSpace(payload.Name) ? email : payload.Name.Trim(),
+                        Avatar = payload.Picture,
+                        AuthProvider = AuthProvider.Google,
+                        ProviderId = payload.Subject,
+                        IsActive = true,
+                        CreatedAt = DateTime.UtcNow,
+                        UpdatedAt = DateTime.UtcNow
+                    };
+
+                    await _userRepo.InsertAsync(user, autoSave: true);
+
+                    var customer = new Customer(user.Id)
+                    {
+                        LoyaltyPoints = 0,
+                        TotalOrders = 0,
+                        TotalSpent = 0,
+                        CreatedAt = DateTime.UtcNow,
+                        UpdatedAt = DateTime.UtcNow
+                    };
+                    await _customerRepo.InsertAsync(customer, autoSave: true);
                 }
-
-                user = new User(Guid.NewGuid())
-                {
-                    RoleId = customerRole.Id,
-                    Email = email,
-                    FullName = string.IsNullOrWhiteSpace(payload.Name) ? email : payload.Name.Trim(),
-                    AuthProvider = AuthProvider.Google,
-                    ProviderId = payload.Subject,
-                    IsActive = true,
-                    CreatedAt = DateTime.UtcNow,
-                    UpdatedAt = DateTime.UtcNow
-                };
-
-                await _userRepo.InsertAsync(user, autoSave: true);
-
-                var customer = new Customer(user.Id)
-                {
-                    LoyaltyPoints = 0,
-                    TotalOrders = 0,
-                    TotalSpent = 0,
-                    CreatedAt = DateTime.UtcNow,
-                    UpdatedAt = DateTime.UtcNow
-                };
-                await _customerRepo.InsertAsync(customer, autoSave: true);
             }
 
             if (!user.IsActive)
@@ -184,19 +198,21 @@ namespace WashGo.Application.Features.AuthApplication.Services
                 return BadRequest<AuthResponseDto>("Tài khoản đã bị tạm khóa. Vui lòng liên hệ quản trị viên.");
             }
 
+            var role = await _roleRepo.FindAsync(user.RoleId);
+            if (role == null)
+                return BadRequest<AuthResponseDto>("Tài khoản không có vai trò hợp lệ.");
+            var roleName = role.Name;
+            if (allowCustomerRegistration && !roleName.Equals("Customer", StringComparison.OrdinalIgnoreCase))
+                return BadRequest<AuthResponseDto>("Tài khoản này không thuộc Customer. Vui lòng dùng cổng quản trị.");
+            if (!allowCustomerRegistration && roleName.Equals("Customer", StringComparison.OrdinalIgnoreCase))
+                return BadRequest<AuthResponseDto>("Tài khoản Customer không thể đăng nhập vào trang quản trị.");
+
             user.LastLoginAt = DateTime.UtcNow;
             user.UpdatedAt = DateTime.UtcNow;
             await _userRepo.UpdateAsync(user, autoSave: true);
 
-            var role = await _roleRepo.FindAsync(user.RoleId);
-            var roleName = role?.Name ?? "Customer";
-            if (!allowCustomerRegistration && roleName.Equals("Customer", StringComparison.OrdinalIgnoreCase))
-            {
-                return BadRequest<AuthResponseDto>("Tài khoản Customer không thể đăng nhập vào trang quản trị.");
-            }
-
-            var (accessToken, expiresAt) = GenerateJwtToken(user, roleName);
-            var refreshToken = await GenerateAndSaveRefreshTokenAsync(user.Id);
+            var (refreshToken, sessionId) = await GenerateAndSaveRefreshTokenAsync(user.Id);
+            var (accessToken, expiresAt) = GenerateJwtToken(user, roleName, sessionId);
 
             return Success(new AuthResponseDto
             {
@@ -278,8 +294,8 @@ namespace WashGo.Application.Features.AuthApplication.Services
             var role = await _roleRepo.FindAsync(user.RoleId);
             var roleName = role?.Name ?? "Customer";
 
-            var (accessToken, expiresAt) = GenerateJwtToken(user, roleName);
-            var newRefreshToken = await GenerateAndSaveRefreshTokenAsync(user.Id);
+            var (newRefreshToken, sessionId) = await GenerateAndSaveRefreshTokenAsync(user.Id);
+            var (accessToken, expiresAt) = GenerateJwtToken(user, roleName, sessionId);
 
             var result = new AuthResponseDto
             {
@@ -300,8 +316,15 @@ namespace WashGo.Application.Features.AuthApplication.Services
             return Success(result, "Làm mới phiên đăng nhập thành công!");
         }
 
-        public async Task<BaseResponse<bool>> LogoutAsync(Guid userId, LogoutCommand command)
+        public async Task<BaseResponse<bool>> LogoutAsync(Guid userId, Guid sessionId, LogoutCommand command)
         {
+            var currentSession = await _refreshTokenRepo.FindAsync(sessionId);
+            if (currentSession != null && currentSession.UserId == userId && !currentSession.IsRevoked)
+            {
+                currentSession.IsRevoked = true;
+                await _refreshTokenRepo.UpdateAsync(currentSession, autoSave: true);
+            }
+
             if (!string.IsNullOrWhiteSpace(command.RefreshToken))
             {
                 var tokenHash = HashRefreshToken(command.RefreshToken);
@@ -317,39 +340,43 @@ namespace WashGo.Application.Features.AuthApplication.Services
             return Success(true, "Đăng xuất thành công!");
         }
 
-        public async Task<BaseResponse<AuthResponseDto>> RegisterAsync(RegisterCommand command)
+        public async Task<BaseResponse<RegisterResultDto>> RegisterAsync(RegisterCommand command)
         {
             if (!IsValidEmail(command.Email))
             {
-                return BadRequest<AuthResponseDto>("Email không đúng định dạng.");
+                return BadRequest<RegisterResultDto>("Email không đúng định dạng.");
             }
 
             var passwordError = ValidatePassword(command.Password);
             if (passwordError != null)
             {
-                return BadRequest<AuthResponseDto>(passwordError);
+                return BadRequest<RegisterResultDto>(passwordError);
+            }
+            if (command.Password != command.ConfirmPassword)
+            {
+                return BadRequest<RegisterResultDto>("Xác nhận mật khẩu không khớp.");
             }
 
             if (string.IsNullOrWhiteSpace(command.FullName) || command.FullName.Trim().Length is < 2 or > 100)
             {
-                return BadRequest<AuthResponseDto>("Họ tên phải có từ 2 đến 100 ký tự.");
+                return BadRequest<RegisterResultDto>("Họ tên phải có từ 2 đến 100 ký tự.");
             }
 
-            if (!string.IsNullOrWhiteSpace(command.Phone) && !IsValidPhone(command.Phone))
+            if (string.IsNullOrWhiteSpace(command.Phone) || !IsValidPhone(command.Phone))
             {
-                return BadRequest<AuthResponseDto>("Số điện thoại không đúng định dạng.");
+                return BadRequest<RegisterResultDto>("Vui lòng nhập số điện thoại hợp lệ.");
             }
 
-            if (string.IsNullOrWhiteSpace(command.OtpCode) || command.OtpCode.Trim().Length != 6)
+            if (string.IsNullOrWhiteSpace(command.VerificationToken))
             {
-                return BadRequest<AuthResponseDto>("Vui lòng nhập mã OTP xác thực (6 chữ số).");
+                return BadRequest<RegisterResultDto>("Vui lòng xác minh email trước khi đăng ký.");
             }
 
             var email = command.Email.Trim().ToLowerInvariant();
             var existingUser = await _userRepo.FirstOrDefaultAsync(u => u.Email.ToLower() == email);
             if (existingUser != null)
             {
-                return BadRequest<AuthResponseDto>($"Email '{command.Email}' đã được đăng ký.");
+                return BadRequest<RegisterResultDto>($"Email '{command.Email}' đã được đăng ký.");
             }
 
             var activeOtps = await _otpRepo.GetListAsync(o =>
@@ -359,27 +386,15 @@ namespace WashGo.Application.Features.AuthApplication.Services
                 o.ExpiryDate > DateTime.UtcNow);
             var validOtp = activeOtps.OrderByDescending(o => o.CreatedAt).FirstOrDefault();
 
-            if (validOtp == null)
+            if (validOtp == null || !validOtp.CodeHash.StartsWith(VerifiedRegistrationPrefix, StringComparison.Ordinal))
             {
-                return BadRequest<AuthResponseDto>("Mã OTP xác thực không hợp lệ hoặc đã hết hạn.");
+                return BadRequest<RegisterResultDto>("Email chưa được xác minh hoặc phiên xác minh đã hết hạn.");
             }
 
-            if (validOtp.AttemptCount >= validOtp.MaxAttempts)
+            if (!BCrypt.Net.BCrypt.Verify(command.VerificationToken, validOtp.CodeHash[VerifiedRegistrationPrefix.Length..]))
             {
-                return BadRequest<AuthResponseDto>("Bạn đã nhập sai mã OTP quá số lần quy định.");
+                return BadRequest<RegisterResultDto>("Phiên xác minh email không hợp lệ.");
             }
-
-            bool isOtpValid = BCrypt.Net.BCrypt.Verify(command.OtpCode.Trim(), validOtp.CodeHash);
-            if (!isOtpValid)
-            {
-                validOtp.AttemptCount++;
-                await _otpRepo.UpdateAsync(validOtp, autoSave: true);
-                return BadRequest<AuthResponseDto>($"Mã OTP không chính xác. Còn lại {validOtp.MaxAttempts - validOtp.AttemptCount} lần thử.");
-            }
-
-            validOtp.IsUsed = true;
-            validOtp.UsedAt = DateTime.UtcNow;
-            await _otpRepo.UpdateAsync(validOtp, autoSave: true);
 
             // Public registration can only create Customer accounts. Merchant, Shipper
             // and Admin accounts must be provisioned by an authorized back-office flow.
@@ -387,8 +402,12 @@ namespace WashGo.Application.Features.AuthApplication.Services
 
             if (role == null)
             {
-                return BadRequest<AuthResponseDto>("Không tìm thấy vai trò phù hợp trong hệ thống.");
+                return BadRequest<RegisterResultDto>("Không tìm thấy vai trò phù hợp trong hệ thống.");
             }
+
+            validOtp.IsUsed = true;
+            validOtp.UsedAt = DateTime.UtcNow;
+            await _otpRepo.UpdateAsync(validOtp, autoSave: true);
 
             var passwordHash = BCrypt.Net.BCrypt.HashPassword(command.Password);
             var userId = Guid.NewGuid();
@@ -422,26 +441,8 @@ namespace WashGo.Application.Features.AuthApplication.Services
                 await _customerRepo.InsertAsync(customer, autoSave: true);
             }
 
-            var (accessToken, expiresAt) = GenerateJwtToken(user, role.Name);
-            var refreshToken = await GenerateAndSaveRefreshTokenAsync(user.Id);
-
-            var result = new AuthResponseDto
-            {
-                AccessToken = accessToken,
-                RefreshToken = refreshToken,
-                ExpiresAt = expiresAt,
-                User = new AuthUserDto
-                {
-                    Id = user.Id,
-                    Email = user.Email,
-                    FullName = user.FullName,
-                    Phone = user.Phone,
-                    Role = role.Name,
-                    Avatar = user.Avatar
-                }
-            };
-
-            return Created(result, "Đăng ký tài khoản thành công!");
+            return Created(new RegisterResultDto { Id = user.Id, Email = user.Email },
+                "Đăng ký tài khoản thành công! Vui lòng đăng nhập.");
         }
 
         public async Task<BaseResponse<bool>> SendOtpAsync(SendOtpCommand command)
@@ -454,6 +455,19 @@ namespace WashGo.Application.Features.AuthApplication.Services
             if (command.Purpose != OtpPurpose.ForgotPassword && command.Purpose != OtpPurpose.Register)
             {
                 return BadRequest<bool>("Loại OTP này hiện chưa được hỗ trợ.");
+            }
+
+            if (command.Purpose == OtpPurpose.Register)
+            {
+                if (string.IsNullOrWhiteSpace(command.FullName) || command.FullName.Trim().Length is < 2 or > 100)
+                    return BadRequest<bool>("Họ tên phải có từ 2 đến 100 ký tự.");
+                if (string.IsNullOrWhiteSpace(command.Phone) || !IsValidPhone(command.Phone))
+                    return BadRequest<bool>("Vui lòng nhập số điện thoại hợp lệ.");
+                var passwordError = ValidatePassword(command.Password);
+                if (passwordError != null)
+                    return BadRequest<bool>(passwordError);
+                if (command.Password != command.ConfirmPassword)
+                    return BadRequest<bool>("Xác nhận mật khẩu không khớp.");
             }
 
             var email = command.Email.Trim().ToLowerInvariant();
@@ -523,16 +537,16 @@ namespace WashGo.Application.Features.AuthApplication.Services
             return Success(true, successMsg);
         }
 
-        public async Task<BaseResponse<bool>> VerifyOtpAsync(VerifyOtpCommand command)
+        public async Task<BaseResponse<VerifyOtpResultDto>> VerifyOtpAsync(VerifyOtpCommand command)
         {
             if (!IsValidEmail(command.Email) || string.IsNullOrWhiteSpace(command.Code) || command.Code.Length != 6)
             {
-                return BadRequest<bool>("Mã OTP không hợp lệ hoặc đã hết hạn.");
+                return BadRequest<VerifyOtpResultDto>("Mã OTP không hợp lệ hoặc đã hết hạn.");
             }
 
             if (command.Purpose != OtpPurpose.ForgotPassword && command.Purpose != OtpPurpose.Register)
             {
-                return BadRequest<bool>("Loại OTP này hiện chưa được hỗ trợ.");
+                return BadRequest<VerifyOtpResultDto>("Loại OTP này hiện chưa được hỗ trợ.");
             }
 
             var email = command.Email.Trim().ToLowerInvariant();
@@ -545,12 +559,17 @@ namespace WashGo.Application.Features.AuthApplication.Services
 
             if (validOtp == null)
             {
-                return BadRequest<bool>("Mã OTP không hợp lệ hoặc đã hết hạn.");
+                return BadRequest<VerifyOtpResultDto>("Mã OTP không hợp lệ hoặc đã hết hạn.");
+            }
+
+            if (validOtp.CodeHash.StartsWith(VerifiedRegistrationPrefix, StringComparison.Ordinal))
+            {
+                return BadRequest<VerifyOtpResultDto>("Mã OTP đã được xác minh.");
             }
 
             if (validOtp.AttemptCount >= validOtp.MaxAttempts)
             {
-                return BadRequest<bool>("Bạn đã nhập sai mã OTP quá số lần quy định.");
+                return BadRequest<VerifyOtpResultDto>("Bạn đã nhập sai mã OTP quá số lần quy định.");
             }
 
             bool isValid = BCrypt.Net.BCrypt.Verify(command.Code, validOtp.CodeHash);
@@ -558,14 +577,24 @@ namespace WashGo.Application.Features.AuthApplication.Services
             {
                 validOtp.AttemptCount++;
                 await _otpRepo.UpdateAsync(validOtp, autoSave: true);
-                return BadRequest<bool>($"Mã OTP không chính xác. Còn lại {validOtp.MaxAttempts - validOtp.AttemptCount} lần thử.");
+                return BadRequest<VerifyOtpResultDto>($"Mã OTP không chính xác. Còn lại {validOtp.MaxAttempts - validOtp.AttemptCount} lần thử.");
+            }
+
+            if (command.Purpose == OtpPurpose.Register)
+            {
+                var verificationToken = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+                validOtp.CodeHash = VerifiedRegistrationPrefix + BCrypt.Net.BCrypt.HashPassword(verificationToken);
+                validOtp.ExpiryDate = DateTime.UtcNow.AddMinutes(10);
+                await _otpRepo.UpdateAsync(validOtp, autoSave: true);
+                return Success(new VerifyOtpResultDto { Verified = true, VerificationToken = verificationToken },
+                    "Xác minh email thành công!");
             }
 
             validOtp.IsUsed = true;
             validOtp.UsedAt = DateTime.UtcNow;
             await _otpRepo.UpdateAsync(validOtp, autoSave: true);
 
-            return Success(true, "Xác thực mã OTP thành công!");
+            return Success(new VerifyOtpResultDto { Verified = true }, "Xác thực mã OTP thành công!");
         }
 
         public async Task<BaseResponse<bool>> ResetPasswordAsync(ResetPasswordCommand command)
@@ -574,6 +603,10 @@ namespace WashGo.Application.Features.AuthApplication.Services
             if (passwordError != null)
             {
                 return BadRequest<bool>(passwordError);
+            }
+            if (command.NewPassword != command.ConfirmNewPassword)
+            {
+                return BadRequest<bool>("Xác nhận mật khẩu mới không khớp.");
             }
 
             var verifyResult = await VerifyOtpAsync(new VerifyOtpCommand
@@ -625,7 +658,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
             return Success(result);
         }
 
-        private (string token, DateTime expiresAt) GenerateJwtToken(User user, string roleName)
+        private (string token, DateTime expiresAt) GenerateJwtToken(User user, string roleName, Guid sessionId)
         {
             var secretKey = _configuration["Jwt:SecretKey"];
             if (string.IsNullOrWhiteSpace(secretKey))
@@ -649,7 +682,8 @@ namespace WashGo.Application.Features.AuthApplication.Services
                 new Claim(ClaimTypes.Name, user.FullName),
                 new Claim(ClaimTypes.Role, roleName),
                 new Claim("role", roleName),
-                new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
+                new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+                new Claim("session_id", sessionId.ToString())
             };
 
             var token = new JwtSecurityToken(
@@ -662,7 +696,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
             return (new JwtSecurityTokenHandler().WriteToken(token), expiresAt);
         }
 
-        private async Task<string> GenerateAndSaveRefreshTokenAsync(Guid userId)
+        private async Task<(string token, Guid sessionId)> GenerateAndSaveRefreshTokenAsync(Guid userId)
         {
             var randomBytes = new byte[64];
             using var rng = RandomNumberGenerator.Create();
@@ -671,7 +705,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
 
             var expDays = int.TryParse(_configuration["Jwt:RefreshTokenExpirationDays"], out var d) ? d : 30;
 
-            var entity = new RefreshToken
+            var entity = new RefreshToken(Guid.NewGuid())
             {
                 UserId = userId,
                 Token = HashRefreshToken(refreshTokenString),
@@ -681,7 +715,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
             };
 
             await _refreshTokenRepo.InsertAsync(entity, autoSave: true);
-            return refreshTokenString;
+            return (refreshTokenString, entity.Id);
         }
 
         private async Task RevokeAllRefreshTokensAsync(Guid userId)
@@ -736,17 +770,16 @@ namespace WashGo.Application.Features.AuthApplication.Services
             return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
         }
 
-        private static string? ValidatePassword(string password)
+        private static string? ValidatePassword(string? password)
         {
             if (string.IsNullOrWhiteSpace(password) || password.Length < 8 || password.Length > 128)
             {
                 return "Mật khẩu phải có từ 8 đến 128 ký tự.";
             }
 
-            if (!password.Any(char.IsUpper) || !password.Any(char.IsLower) ||
-                !password.Any(char.IsDigit) || !password.Any(ch => !char.IsLetterOrDigit(ch)))
+            if (!password.Any(char.IsUpper) || !password.Any(char.IsLower) || !password.Any(char.IsDigit))
             {
-                return "Mật khẩu phải có chữ hoa, chữ thường, chữ số và ký tự đặc biệt.";
+                return "Mật khẩu phải có chữ hoa, chữ thường và chữ số.";
             }
 
             return null;

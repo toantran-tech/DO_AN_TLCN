@@ -59,28 +59,4 @@ namespace WashGo.Domain.Entities.Locker
 
         public virtual ICollection<LockerBox> Boxes { get; set; }
     }
-
-    [SevagoTable(WashGoDbProperties.LockerSlots, Schema = WashGoDbProperties.Schema)]
-    public class LockerBox : BaseEntity
-    {
-        public LockerBox() { }
-        public LockerBox(Guid id) : base(id) { }
-
-        public Guid LockerId { get; set; }
-        public int SlotNumber { get; set; }
-
-        [NotMapped]
-        public string BoxNumber
-        {
-            get => SlotNumber.ToString();
-            set => SlotNumber = int.TryParse(value, out var number) ? number : 0;
-        }
-
-        public LockerBoxSize Size { get; set; } = LockerBoxSize.Standard;
-        public LockerBoxStatus Status { get; set; } = LockerBoxStatus.Available;
-        public DateTime? LastUsedAt { get; set; }
-
-        [NotMapped]
-        public string? CurrentPinCode { get; set; }
-    }
 }

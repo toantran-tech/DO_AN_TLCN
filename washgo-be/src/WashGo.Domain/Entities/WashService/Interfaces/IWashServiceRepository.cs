@@ -1,5 +1,5 @@
 using System;
-using WashGo.Core.DataAccess.Repository;
+using WashGo.Core.Domain.DataAccess.Repository;
 
 namespace WashGo.Domain.Entities.WashService.Interfaces
 {

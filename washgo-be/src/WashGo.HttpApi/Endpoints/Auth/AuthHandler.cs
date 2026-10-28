@@ -65,12 +65,14 @@ namespace WashGo.HttpApi.Endpoints.Auth
             group.MapPost("/logout", async (LogoutCommand command, HttpContext httpContext, IAuthAppService svc) =>
             {
                 var userIdClaim = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier);
-                if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out var userId))
+                var sessionIdClaim = httpContext.User.FindFirstValue("session_id");
+                if (!Guid.TryParse(userIdClaim, out var userId) ||
+                    !Guid.TryParse(sessionIdClaim, out var sessionId))
                 {
                     return Results.Unauthorized();
                 }
 
-                return (await svc.LogoutAsync(userId, command)).CustomResult();
+                return (await svc.LogoutAsync(userId, sessionId, command)).CustomResult();
             })
                 .RequireAuthorization()
                 .WithName("Đăng xuất hệ thống")

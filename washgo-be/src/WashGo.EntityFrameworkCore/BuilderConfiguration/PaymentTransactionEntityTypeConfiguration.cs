@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Microsoft.EntityFrameworkCore.ValueGeneration;
+using NpgsqlTypes;
 using WashGo.Domain.Entities.Payment;
 using WashGo.Domain.Entities.WashOrder;
 using WashGo.Domain.Shared.Constants;
@@ -14,6 +15,7 @@ namespace WashGo.EntityFrameworkCore.BuilderConfiguration
             builder.ToTable(WashGoDbProperties.PaymentTransactions, WashGoDbProperties.Schema);
             builder.HasKey(x => x.Id);
             builder.Property(x => x.Id).HasValueGenerator<SequentialGuidValueGenerator>();
+            builder.Property<NpgsqlTsVector>("SearchVector");
             builder.Property(x => x.TransactionReference).HasMaxLength(120).IsRequired();
             builder.HasIndex(x => x.TransactionReference).IsUnique();
             builder.Property(x => x.ProviderTransactionId).HasMaxLength(120);

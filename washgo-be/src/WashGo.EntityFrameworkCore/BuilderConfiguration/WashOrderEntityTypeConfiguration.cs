@@ -54,39 +54,4 @@ namespace WashGo.EntityFrameworkCore.BuilderConfiguration
             builder.HasMany(x => x.Timeline).WithOne().HasForeignKey(x => x.WashOrderId).OnDelete(DeleteBehavior.Cascade);
         }
     }
-
-    public class WashOrderItemEntityTypeConfiguration : IEntityTypeConfiguration<WashOrderItem>
-    {
-        public void Configure(EntityTypeBuilder<WashOrderItem> builder)
-        {
-            builder.ToTable(WashGoDbProperties.OrderItems, WashGoDbProperties.Schema);
-            builder.HasKey(x => x.Id);
-            builder.Property(x => x.Id).HasValueGenerator<SequentialGuidValueGenerator>();
-            builder.Property(x => x.WashOrderId).HasColumnName("order_id");
-            builder.Property(x => x.ServiceName).HasMaxLength(150).IsRequired();
-            builder.Property(x => x.WeightKg).HasPrecision(18, 2);
-            builder.Property(x => x.UnitPrice).HasPrecision(18, 2);
-            builder.Property(x => x.SubTotal).HasColumnName("total_price").HasPrecision(18, 2);
-            builder.Property(x => x.Note).HasMaxLength(500);
-            builder.HasOne<WashService>().WithMany().HasForeignKey(x => x.ServiceId).OnDelete(DeleteBehavior.Restrict);
-        }
-    }
-
-    public class WashOrderTimelineEntityTypeConfiguration : IEntityTypeConfiguration<WashOrderTimeline>
-    {
-        public void Configure(EntityTypeBuilder<WashOrderTimeline> builder)
-        {
-            builder.ToTable(WashGoDbProperties.OrderStatusHistory, WashGoDbProperties.Schema);
-            builder.HasKey(x => x.Id);
-            builder.Property(x => x.Id).HasValueGenerator<SequentialGuidValueGenerator>();
-            builder.Property(x => x.WashOrderId).HasColumnName("order_id");
-            builder.Property(x => x.FromStatus).HasColumnName("from_status");
-            builder.Property(x => x.Status).HasColumnName("to_status");
-            builder.Property(x => x.ActorId).HasColumnName("changed_by");
-            builder.Property(x => x.ActorName).HasMaxLength(150);
-            builder.Property(x => x.ActorRole).HasColumnName("changed_by_type").HasMaxLength(50);
-            builder.Property(x => x.Timestamp).HasColumnName("created_at");
-            builder.Property(x => x.Note).HasMaxLength(500);
-        }
-    }
 }
