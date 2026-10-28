@@ -1,6 +1,6 @@
 using System;
 using System.Threading.Tasks;
-using WashGo.Core.DataAccess.Repository;
+using WashGo.Core.Domain.DataAccess.Repository;
 using WashGo.Domain.Shared.Enums;
 
 namespace WashGo.Domain.Entities.WashOrder.Interfaces

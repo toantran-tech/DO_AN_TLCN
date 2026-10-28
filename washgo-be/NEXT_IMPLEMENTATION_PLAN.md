@@ -1,5 +1,5 @@
 # Kế hoạch triển khai dự án WashGo (Backend & Admin)
-Cập nhật lần cuối: 26/10/2026
+Cập nhật lần cuối: 28/10/2026
 
 ---
 
@@ -69,11 +69,17 @@ Cập nhật lần cuối: 26/10/2026
 ---
 
 ### 3. Xác thực & Phân quyền (Authentication & Authorization)
+- [x] **Chuẩn hóa cấu trúc Auth Contracts**: Tách `AuthContracts.cs` thành `Commands/AuthCommands.cs`, `Results/AuthResultDtos.cs`, `Services/IAuthAppService.cs`; chuyển `IAuthEmailSender` nội bộ về `WashGo.Application/Features/AuthApplication/Services`. Giữ nguyên hợp đồng HTTP/API.
+- [x] **Rà soát cấu trúc toàn bộ BE**: Quét 170 file C# gồm Host và migrations; tách contracts của `WashService`, `Merchant`, `Locker`, `ServiceArea`, `Customer` theo `Commands`, `Queries`, `Results`, `Services`; chuyển response DTO Payment về `Results`. Tách entity, EF configuration, repository, enum và constants đang gộp nhiều loại thành file riêng. Chuyển `IMesRepository` về `Core.Domain` để `WashGo.Domain` không phụ thuộc project chứa EF/ASP.NET; khai báo `SearchVector` trong EF bằng shadow property để Domain không phụ thuộc Npgsql. Kiểm tra cuối: không còn file nhiều namespace, trộn public interface/class, nhiều entity trong một file, nhiều EF configuration/repository trong một file hoặc namespace lệch thư mục. Build 0 lỗi/cảnh báo; EF model không khác migration cuối.
 - [x] **Bảo mật mật khẩu**: Sử dụng BCrypt.Net-Next để hash/verify mật khẩu.
 - [x] **JWT Token Generator**: Cấp JWT Access Token chứa các claim: `sub`, `email`, `role`, `user_id`.
 - [x] **Refresh Token Rotation**: Cơ chế cấp mới Access Token qua Refresh Token và thu hồi (revoke) khi logout.
 - [x] **Bảo vệ Refresh Token**: Chỉ lưu SHA-256 hash của Refresh Token trong database; logout chỉ được thu hồi token thuộc tài khoản đang đăng nhập.
 - [x] **Xác thực OTP**: Quản lý mã OTP có hạn sử dụng, trạng thái đã dùng và đếm số lần nhập sai.
+- [x] **API cho đăng ký Customer theo đặc tả/Figma**: UI thu thập họ tên, email, số điện thoại, mật khẩu và xác nhận mật khẩu; sau đó gọi `send-otp` → `verify-otp` trả `verificationToken` có hạn 10 phút → `register` nhận token cùng thông tin form. OTP không thể dùng lại sau khi xác minh; token được lưu dạng BCrypt trên bản ghi OTP hiện có. `register` trả ID/email và thông báo đăng nhập, không cấp phiên tự động. Quên mật khẩu dùng `send-otp` với purpose ForgotPassword rồi `reset-password` nhận OTP và mật khẩu mới.
+- [x] **Kiểm tra form trước OTP theo use case**: `send-otp` với purpose Register yêu cầu họ tên, số điện thoại, mật khẩu và xác nhận mật khẩu; kiểm tra hợp lệ cùng email chưa tồn tại trước khi gửi OTP. Mật khẩu tối thiểu 8 ký tự, có chữ hoa, chữ thường và chữ số. Purpose ForgotPassword vẫn chỉ cần email.
+- [x] **Hoàn tất kiểm tra Auth theo đặc tả**: `register` bắt buộc xác nhận mật khẩu; `reset-password` bắt buộc xác nhận mật khẩu mới. JWT access token gắn với phiên lưu trong DB; logout thu hồi phiên hiện tại ngay cả khi body không có refresh token. Khi refresh token được xoay vòng hoặc reset mật khẩu, phiên cũ bị thu hồi và access token cũ bị từ chối ngay. URL avatar Google được mã hóa đúng dạng JSON trước khi lưu vào cột `jsonb` và trả lại dạng URL cho API.
+- [ ] **Màn hình Customer theo Figma**: Chưa có frontend Customer trong `DO_AN` (hiện chỉ có `washgo-admin` và `washgo-be`). Khi triển khai app Customer, cần làm màn Đăng nhập, Đăng ký, Xác nhận OTP và Quên mật khẩu; sau đăng ký thành công điều hướng về Đăng nhập theo đặc tả.
 - [x] **Hạn chế abuse Auth**: Áp dụng rate limit cho các API nhạy cảm: login, register, gửi OTP, reset password và Google login.
 - [x] **Cấu hình RBAC & bảo vệ endpoint**:
   - Cấu hình JWT Bearer Authentication middleware trong ASP.NET Core.
@@ -99,6 +105,7 @@ Cập nhật lần cuối: 26/10/2026
 - [x] **Google OAuth Backend (Customer & tài khoản quản trị đã cấp quyền)**:
   - Dùng Google ID token flow; backend xác minh chữ ký token và `audience` bằng Google Client ID của dự án WashGo.
   - Tài khoản Google mới được tạo với role `Customer` và customer profile tương ứng.
+  - Google Customer với email đã có tài khoản Customer sẽ dùng lại tài khoản đó và liên kết Google đã xác minh email; không tạo trùng. Email thuộc role quản trị không đi qua `/auth/google`.
   - Admin/Merchant/Shipper không được tạo qua Google login. Họ phải có tài khoản WashGo đã được cấp quyền, đăng nhập mật khẩu, xác nhận lại mật khẩu và gọi `/auth/link-google` để liên kết Google.
   - Sau khi liên kết, Google login trả đúng role sẵn có; Google account không tự được nâng quyền.
   - Local Client ID đã cấu hình; Admin UI gọi riêng `/auth/google/admin`, nên Google account Customer mới không thể vào dashboard quản trị.

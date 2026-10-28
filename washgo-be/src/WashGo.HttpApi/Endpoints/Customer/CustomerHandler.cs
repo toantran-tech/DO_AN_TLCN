@@ -1,7 +1,8 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
-using WashGo.Application.Contracts.Features.CustomerContracts;
+using WashGo.Application.Contracts.Features.CustomerContracts.Commands;
+using WashGo.Application.Contracts.Features.CustomerContracts.Services;
 using WashGo.Core.Endpoint;
 using WashGo.Domain.Shared.Enums;
 

@@ -1,5 +1,3 @@
-using NpgsqlTypes;
-
 namespace WashGo.Core.Domain.Common
 {
     public interface ICreatable
@@ -23,11 +21,6 @@ namespace WashGo.Core.Domain.Common
     public interface ISoftDelete
     {
         bool IsDeleted { get; set; }
-    }
-
-    public interface ISearchable
-    {
-        NpgsqlTsVector? SearchVector { get; set; }
     }
 
     public interface IAuditUserSnapshot

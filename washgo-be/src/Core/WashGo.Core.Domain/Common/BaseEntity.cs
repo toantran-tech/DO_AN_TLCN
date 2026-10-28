@@ -1,11 +1,10 @@
 using System;
 using System.ComponentModel.DataAnnotations.Schema;
-using NpgsqlTypes;
 using Volo.Abp.Domain.Entities;
 
 namespace WashGo.Core.Domain.Common
 {
-    public abstract class BaseEntity : Entity<Guid>, IModifiable, ICreatable, IDeletable, ISearchable, ISoftDelete, IAuditUserSnapshot
+    public abstract class BaseEntity : Entity<Guid>, IModifiable, ICreatable, IDeletable, ISoftDelete, IAuditUserSnapshot
     {
         protected BaseEntity()
         {
@@ -28,8 +27,6 @@ namespace WashGo.Core.Domain.Common
         public bool IsDeleted { get; set; } = false;
         public string? DeletedBy { get; set; }
         public long? DeletedOn { get; set; }
-
-        public NpgsqlTsVector? SearchVector { get; set; }
 
         [Column(TypeName = "jsonb")]
         public string? Created { get; set; }

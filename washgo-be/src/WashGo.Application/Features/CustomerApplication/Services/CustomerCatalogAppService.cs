@@ -1,5 +1,6 @@
 using Volo.Abp.Domain.Repositories;
-using WashGo.Application.Contracts.Features.CustomerContracts;
+using WashGo.Application.Contracts.Features.CustomerContracts.Results;
+using WashGo.Application.Contracts.Features.CustomerContracts.Services;
 using WashGo.Core.Domain.Shared.Bases;
 using WashGo.Domain.Entities.Locker;
 using WashGo.Domain.Entities.Partner;

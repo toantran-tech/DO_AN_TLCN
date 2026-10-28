@@ -5,7 +5,6 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Volo.Abp.DependencyInjection;
-using WashGo.Application.Contracts.Features.AuthContracts.Services;
 using WashGo.Domain.Shared.Enums;
 
 namespace WashGo.Application.Features.AuthApplication.Services

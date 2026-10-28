@@ -10,6 +10,7 @@ using Volo.Abp.Domain.Repositories.EntityFrameworkCore;
 using Volo.Abp.EntityFrameworkCore;
 using Volo.Abp.ObjectMapping;
 using WashGo.Core.Domain.Common;
+using WashGo.Core.Domain.DataAccess.Repository;
 using WashGo.Core.Domain.Shared.Bases;
 
 namespace WashGo.Core.DataAccess.Repository

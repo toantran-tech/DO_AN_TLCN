@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Security.Claims;
 using System.Text;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -17,6 +18,7 @@ using Volo.Abp.Autofac;
 using Volo.Abp.Data;
 using Volo.Abp.EntityFrameworkCore;
 using Volo.Abp.Modularity;
+using Volo.Abp.Domain.Repositories;
 using Volo.Abp.Swashbuckle;
 using Volo.Abp.Threading;
 using WashGo.Application;
@@ -24,6 +26,7 @@ using WashGo.Core.Endpoint;
 using WashGo.EntityFrameworkCore;
 using WashGo.EntityFrameworkCore.EntityFrameworkCore;
 using WashGo.HttpApi;
+using WashGo.Domain.Entities.Identity;
 
 namespace WashGo.HttpApi.Host
 {
@@ -73,6 +76,32 @@ namespace WashGo.HttpApi.Host
                     ValidAudience = audience,
                     ValidateLifetime = true,
                     ClockSkew = TimeSpan.Zero
+                };
+                options.Events = new JwtBearerEvents
+                {
+                    OnTokenValidated = async tokenContext =>
+                    {
+                        var userIdText = tokenContext.Principal?.FindFirstValue(ClaimTypes.NameIdentifier);
+                        var sessionIdText = tokenContext.Principal?.FindFirstValue("session_id");
+                        if (!Guid.TryParse(userIdText, out var userId) ||
+                            !Guid.TryParse(sessionIdText, out var sessionId))
+                        {
+                            tokenContext.Fail("Phiên đăng nhập không hợp lệ.");
+                            return;
+                        }
+
+                        var tokenRepository = tokenContext.HttpContext.RequestServices
+                            .GetRequiredService<IRepository<RefreshToken, Guid>>();
+                        var userRepository = tokenContext.HttpContext.RequestServices
+                            .GetRequiredService<IRepository<User, Guid>>();
+                        var session = await tokenRepository.FindAsync(sessionId);
+                        var user = await userRepository.FindAsync(userId);
+                        if (session == null || session.UserId != userId || session.IsRevoked ||
+                            session.ExpiryDate <= DateTime.UtcNow || user == null || !user.IsActive)
+                        {
+                            tokenContext.Fail("Phiên đăng nhập đã hết hiệu lực.");
+                        }
+                    }
                 };
             });
 
