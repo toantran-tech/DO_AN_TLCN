@@ -18,6 +18,7 @@ using WashGo.Core.Domain.Shared.Bases;
 using WashGo.Domain.Shared.Enums;
 using WashGo.Domain.Entities.Payment;
 using WashGo.Domain.Entities.Payment.Interfaces;
+using WashGo.Domain.Entities.WashOrder;
 using WashGo.Domain.Entities.WashOrder.Interfaces;
 
 namespace WashGo.Application.Features.PaymentApplication.Services
@@ -56,6 +57,8 @@ namespace WashGo.Application.Features.PaymentApplication.Services
 
             if (order.Status != WashOrderStatus.AwaitingPayment)
                 return BadRequest<PaymentResultDto>("Đơn hàng chưa ở trạng thái chờ thanh toán.");
+            if (order.IncludedWeightKg > 0 && !order.ActualWeightKg.HasValue)
+                return BadRequest<PaymentResultDto>("Đơn chưa được Merchant cân thực tế và chốt giá.");
 
             if (command.PaymentMethod == PaymentMethod.Cash)
                 return BadRequest<PaymentResultDto>("Payment URL chỉ áp dụng cho phương thức thanh toán trực tuyến.");
@@ -171,11 +174,9 @@ namespace WashGo.Application.Features.PaymentApplication.Services
                 string.Equals(_configuration["Payment:Provider"], "VnPay", StringComparison.OrdinalIgnoreCase))
                 return BadRequest<PaymentResultDto>("Callback sandbox không được phép xác nhận giao dịch VNPay.");
 
-            var orderResponse = await _orderService.GetByIdAsync(command.OrderId);
-            if (!orderResponse.Succeeded || orderResponse.Data == null)
+            var order = await _orders.GetForUpdateAsync(command.OrderId);
+            if (order == null)
                 return NotFound<PaymentResultDto>("Không tìm thấy đơn hàng cần cập nhật thanh toán.");
-
-            var order = orderResponse.Data;
             if (!command.Success)
             {
                 if (transaction.Status != PaymentTransactionStatus.Pending)
@@ -226,15 +227,12 @@ namespace WashGo.Application.Features.PaymentApplication.Services
                 }, "Thanh toán phí lưu kho thành công.");
             }
 
+            if (transaction.Purpose != PaymentPurpose.Order)
+                return BadRequest<PaymentResultDto>("Mục đích giao dịch không hợp lệ.");
             if (order.PaymentStatus == PaymentStatus.Paid)
             {
                 if (transaction.Status != PaymentTransactionStatus.Succeeded)
-                {
-                    transaction.Status = PaymentTransactionStatus.Succeeded;
-                    transaction.CompletedAt ??= DateTime.UtcNow;
-                    await _transactionRepo.UpdateAsync(transaction, autoSave: true);
-                    await uow.CompleteAsync();
-                }
+                    return BadRequest<PaymentResultDto>("Đơn đã được thanh toán bởi giao dịch khác.");
 
                 return Success(new PaymentResultDto
                 {
@@ -247,17 +245,8 @@ namespace WashGo.Application.Features.PaymentApplication.Services
                 }, "Đơn hàng đã được ghi nhận thanh toán trước đó.");
             }
 
-            var result = await _orderService.UpdateStatusAsync(new UpdateWashOrderStatusCommand
-            {
-                OrderId = command.OrderId,
-                NewStatus = WashOrderStatus.Paid,
-                ActorRole = "PaymentGateway",
-                ActorName = "WashGo Payment Sandbox",
-                Note = $"Thanh toán thành công, mã giao dịch: {command.TransactionReference}"
-            });
-
-            if (!result.Succeeded || result.Data == null)
-                return BadRequest<PaymentResultDto>(result.Message ?? "Không thể cập nhật trạng thái thanh toán.");
+            if (!await MarkOrderPaidAsync(order, transaction, "WashGo Payment Sandbox"))
+                return BadRequest<PaymentResultDto>("Đơn hoặc số tiền không còn hợp lệ để xác nhận thanh toán.");
 
             transaction.Status = PaymentTransactionStatus.Succeeded;
             transaction.CompletedAt = DateTime.UtcNow;
@@ -266,11 +255,11 @@ namespace WashGo.Application.Features.PaymentApplication.Services
 
             return Success(new PaymentResultDto
             {
-                OrderId = result.Data.Id,
-                OrderCode = result.Data.OrderCode,
-                Amount = result.Data.FinalAmount,
+                OrderId = order.Id,
+                OrderCode = order.OrderCode,
+                Amount = order.FinalAmount,
                 PaymentMethod = transaction.PaymentMethod,
-                PaymentStatus = result.Data.PaymentStatus,
+                PaymentStatus = order.PaymentStatus,
                 TransactionReference = command.TransactionReference
             }, "Thanh toán thành công.");
         }
@@ -315,8 +304,8 @@ namespace WashGo.Application.Features.PaymentApplication.Services
                 return Ip("00", "Confirm Success");
             }
 
-            var orderResponse = await _orderService.GetByIdAsync(transaction.OrderId);
-            if (!orderResponse.Succeeded || orderResponse.Data == null)
+            var order = await _orders.GetForUpdateAsync(transaction.OrderId);
+            if (order == null)
                 return Ip("01", "Order not found");
 
             if (transaction.Purpose == PaymentPurpose.OverdueStorageFee)
@@ -340,21 +329,13 @@ namespace WashGo.Application.Features.PaymentApplication.Services
                 await uow.CompleteAsync();
                 return Ip("00", "Confirm Success");
             }
-            if (orderResponse.Data.PaymentStatus == PaymentStatus.Paid)
+            if (transaction.Purpose != PaymentPurpose.Order)
+                return Ip("04", "Invalid payment purpose");
+            if (order.PaymentStatus == PaymentStatus.Paid)
                 return Ip("02", "Order already confirmed");
-            if (orderResponse.Data.Status != WashOrderStatus.AwaitingPayment)
-                return Ip("04", "Invalid order state");
-
-            var update = await _orderService.UpdateStatusAsync(new UpdateWashOrderStatusCommand
-            {
-                OrderId = transaction.OrderId,
-                NewStatus = WashOrderStatus.Paid,
-                ActorRole = "PaymentGateway",
-                ActorName = "VNPay",
-                Note = $"VNPay xác nhận thanh toán, mã giao dịch: {parameters.GetValueOrDefault("vnp_TransactionNo", "")}"
-            });
-            if (!update.Succeeded || update.Data == null)
-                return Ip("99", "Unable to update order");
+            if (!await MarkOrderPaidAsync(order, transaction, "VNPay",
+                    parameters.GetValueOrDefault("vnp_TransactionNo")))
+                return Ip("04", "Invalid order state or amount");
 
             transaction.Status = PaymentTransactionStatus.Succeeded;
             transaction.ProviderTransactionId = parameters.GetValueOrDefault("vnp_TransactionNo");
@@ -362,6 +343,32 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             await _transactionRepo.UpdateAsync(transaction, autoSave: true);
             await uow.CompleteAsync();
             return Ip("00", "Confirm Success");
+        }
+
+        private async Task<bool> MarkOrderPaidAsync(WashOrder order, PaymentTransaction transaction,
+            string provider, string? providerReference = null)
+        {
+            if (transaction.OrderId != order.Id || transaction.Purpose != PaymentPurpose.Order ||
+                transaction.Status != PaymentTransactionStatus.Pending ||
+                transaction.Amount != order.FinalAmount ||
+                order.Status != WashOrderStatus.AwaitingPayment || order.PaymentStatus != PaymentStatus.Unpaid ||
+                order.IncludedWeightKg > 0 && !order.ActualWeightKg.HasValue)
+                return false;
+
+            order.Status = WashOrderStatus.Paid;
+            order.PaymentStatus = PaymentStatus.Paid;
+            order.Timeline.Add(new WashOrderTimeline
+            {
+                WashOrderId = order.Id,
+                FromStatus = WashOrderStatus.AwaitingPayment,
+                Status = WashOrderStatus.Paid,
+                ActorName = provider,
+                ActorRole = "PaymentGateway",
+                Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                Note = $"Thanh toán thành công, mã giao dịch: {providerReference ?? transaction.TransactionReference}"
+            });
+            await _orders.UpdateAsync(order, autoSave: true);
+            return true;
         }
 
         private string? BuildVnPayUrl(string orderCode, string reference, decimal amount, string clientIpAddress,

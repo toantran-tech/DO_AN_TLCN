@@ -54,6 +54,12 @@ namespace WashGo.HttpApi.Endpoints.WashOrder
                 .WithName("Cập nhật trạng thái đơn")
                 .WithOpenApi();
 
+            group.MapPut("/{id:guid}/actual-weight", async (Guid id, UpdateActualWeightCommand command, IWashOrderAppService svc) =>
+                (await svc.UpdateActualWeightAsync(id, command)).CustomResult())
+                .RequireAuthorization("MerchantOnly")
+                .WithName("Merchant cập nhật cân nặng thực tế và chốt giá")
+                .WithOpenApi();
+
             group.MapPost("/move-to-storage", async (MoveOrderToStorageCommand command, IWashOrderAppService svc) =>
                 (await svc.MoveToStorageAsync(command)).CustomResult())
                 .RequireAuthorization("ShipperOrAdmin")
@@ -62,8 +68,14 @@ namespace WashGo.HttpApi.Endpoints.WashOrder
 
             group.MapPut("/assign-shipper", async (AssignShipperCommand command, IWashOrderAppService svc) =>
                 (await svc.AssignShipperAsync(command)).CustomResult())
-                .RequireAuthorization("AdminOnly")
+                .RequireAuthorization("MerchantOrAdmin")
                 .WithName("Phân công Shipper cho đơn")
+                .WithOpenApi();
+
+            group.MapGet("/{id:guid}/available-shippers", async (Guid id, IWashOrderAppService svc) =>
+                (await svc.GetAvailableShippersAsync(id)).CustomResult())
+                .RequireAuthorization("MerchantOrAdmin")
+                .WithName("Xem Shipper khả dụng cho đơn")
                 .WithOpenApi();
 
             group.MapPost("/column-distinct-values", async (string field, WashOrderFilterQuery query, IWashOrderAppService svc) =>

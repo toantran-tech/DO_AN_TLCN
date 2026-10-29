@@ -1168,6 +1168,14 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("numeric(18,2)")
                         .HasColumnName("actual_weight_kg");
 
+                    b.Property<int?>("AssignedTaskType")
+                        .HasColumnType("integer")
+                        .HasColumnName("assigned_task_type");
+
+                    b.Property<int?>("BaseProcessingHours")
+                        .HasColumnType("integer")
+                        .HasColumnName("base_processing_hours");
+
                     b.Property<Guid>("BoxId")
                         .HasColumnType("uuid")
                         .HasColumnName("locker_slot_id");
@@ -1276,6 +1284,11 @@ namespace WashGo.EntityFrameworkCore.Migrations
                     b.Property<DateTime?>("FinishedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("finished_at");
+
+                    b.Property<decimal?>("IncludedWeightKg")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("included_weight_kg");
 
                     b.Property<bool>("IsDeleted")
                         .ValueGeneratedOnAdd()
@@ -1387,6 +1400,10 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("tsvector")
                         .HasColumnName("search_vector");
 
+                    b.Property<DateTime?>("ShipperAssignedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("shipper_assigned_at");
+
                     b.Property<Guid?>("ShipperId")
                         .HasColumnType("uuid")
                         .HasColumnName("shipper_id");
@@ -1418,6 +1435,11 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)")
                         .HasColumnName("total_amount");
+
+                    b.Property<decimal>("WeightSurchargeAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("weight_surcharge_amount");
 
                     b.HasKey("Id");
 
@@ -1463,6 +1485,10 @@ namespace WashGo.EntityFrameworkCore.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
+
+                    b.Property<bool>("IsWeightBased")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_weight_based");
 
                     b.Property<string>("Note")
                         .HasMaxLength(500)

@@ -13,6 +13,7 @@ using WashGo.Domain.Entities.Identity;
 using WashGo.Domain.Entities.Locker;
 using WashGo.Domain.Entities.Locker.Interfaces;
 using WashGo.Domain.Entities.Partner;
+using WashGo.Domain.Entities.Partner.Interfaces;
 using WashGo.Domain.Entities.WashOrder;
 using WashGo.Domain.Entities.WashOrder.Interfaces;
 using WashGo.Domain.Entities.WashService.Interfaces;
@@ -30,6 +31,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
         private readonly IRepository<User, Guid> _userRepo;
         private readonly IRepository<Merchant, Guid> _merchantRepo;
         private readonly IRepository<Customer, Guid> _customerRepo;
+        private readonly IShipperRepository _shipperRepo;
+        private readonly IRepository<Role, Guid> _roleRepo;
 
         public WashOrderAppService(
             IWashOrderRepository orderRepo,
@@ -37,7 +40,9 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             IWashServiceRepository serviceRepo,
             IRepository<User, Guid> userRepo,
             IRepository<Merchant, Guid> merchantRepo,
-            IRepository<Customer, Guid> customerRepo)
+            IRepository<Customer, Guid> customerRepo,
+            IShipperRepository shipperRepo,
+            IRepository<Role, Guid> roleRepo)
         {
             _orderRepo = orderRepo;
             _lockerRepo = lockerRepo;
@@ -45,13 +50,84 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             _userRepo = userRepo;
             _merchantRepo = merchantRepo;
             _customerRepo = customerRepo;
+            _shipperRepo = shipperRepo;
+            _roleRepo = roleRepo;
+        }
+
+        private readonly record struct OrderScope(string Role, Guid Id);
+
+        private async Task<OrderScope> GetOrderScopeAsync()
+        {
+            if (!CurrentUser.Id.HasValue) return new("None", Guid.Empty);
+            if (CurrentUser.IsInRole("Admin")) return new("Admin", CurrentUser.Id.Value);
+            if (CurrentUser.IsInRole("Merchant")) return new("Merchant", CurrentUser.Id.Value);
+            if (CurrentUser.IsInRole("Shipper"))
+            {
+                var shipper = await _shipperRepo.FirstOrDefaultAsync(x =>
+                    x.UserId == CurrentUser.Id.Value && x.IsActive);
+                return shipper == null ? new("None", Guid.Empty) : new("Shipper", shipper.Id);
+            }
+            if (CurrentUser.IsInRole("Customer")) return new("Customer", CurrentUser.Id.Value);
+            return new("None", Guid.Empty);
+        }
+
+        private static IQueryable<WashOrder> ApplyScope(IQueryable<WashOrder> query, OrderScope scope) =>
+            scope.Role switch
+            {
+                "Admin" => query,
+                "Merchant" => query.Where(x => x.MerchantId == scope.Id),
+                "Shipper" => query.Where(x => x.ShipperId == scope.Id),
+                "Customer" => query.Where(x => x.CustomerId == scope.Id),
+                _ => query.Where(x => false)
+            };
+
+        private static bool CanAccess(WashOrder order, OrderScope scope) => scope.Role switch
+        {
+            "Admin" => true,
+            "Merchant" => order.MerchantId == scope.Id,
+            "Shipper" => order.ShipperId == scope.Id,
+            "Customer" => order.CustomerId == scope.Id,
+            _ => false
+        };
+
+        private static T RedactStaffData<T>(T dto, OrderScope scope) where T : WashOrderResultDto
+        {
+            if (scope.Role is "Merchant" or "Shipper")
+            {
+                dto.CustomerId = Guid.Empty;
+                dto.CustomerName = "***";
+                dto.CustomerPhoneNumber = "***";
+                dto.DepositPinCode = string.Empty;
+                dto.PickupPinCode = string.Empty;
+                dto.QrCodeString = string.Empty;
+                if (dto is WashOrderDetailDto detail)
+                {
+                    detail.CustomerNote = null;
+                    foreach (var entry in detail.Timeline.Where(x => x.ActorRole == "Customer"))
+                    {
+                        entry.ActorId = null;
+                        entry.ActorName = "Khách hàng";
+                        entry.Note = null;
+                    }
+                }
+            }
+            return dto;
         }
 
         public async Task<PaginatedResult<WashOrderResultDto>> GetListAsync(WashOrderFilterQuery query)
         {
+            var scope = await GetOrderScopeAsync();
+            var isStaff = scope.Role is "Merchant" or "Shipper";
+            if (isStaff)
+            {
+                query.CustomerId = null;
+                query.ColumnFilters = query.ColumnFilters.Where(x => IsStaffField(x.Field)).ToList();
+                query.SortBy = query.SortBy.Where(x => IsStaffField(x.Field)).ToArray();
+            }
             var (data, total) = await _orderRepo.FilterProjectedDataAsync<WashOrderResultDto>(
                 filterFunc: q =>
                 {
+                    q = ApplyScope(q, scope);
                     if (query.Status.HasValue)
                         q = q.Where(x => x.Status == query.Status.Value);
                     if (query.PaymentStatus.HasValue)
@@ -67,9 +143,9 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                     if (!string.IsNullOrWhiteSpace(query.Keyword))
                     {
                         var kw = query.Keyword.Trim().ToLower();
-                        q = q.Where(x => x.OrderCode.ToLower().Contains(kw) ||
+                        q = q.Where(x => x.OrderCode.ToLower().Contains(kw) || !isStaff && (
                                          x.CustomerName.ToLower().Contains(kw) ||
-                                         x.CustomerPhoneNumber.Contains(kw));
+                                         x.CustomerPhoneNumber.Contains(kw)));
                     }
                     return q;
                 },
@@ -77,11 +153,13 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 defaultOrder: q => q.OrderByDescending(x => x.CreatedOn)
             );
 
-            return Success(data, total, query.Page, query.Take);
+            return Success(data.Select(x => RedactStaffData(x, scope)).ToList(), total, query.Page, query.Take);
         }
 
         public Task<PaginatedResult<WashOrderResultDto>> GetMyOrdersAsync(WashOrderFilterQuery query)
         {
+            if (!CurrentUser.IsInRole("Customer"))
+                return Task.FromResult(Success(Array.Empty<WashOrderResultDto>(), 0, query.Page, query.Take));
             query.CustomerId = CurrentUser.Id ?? Guid.Empty;
             return GetListAsync(query);
         }
@@ -94,14 +172,14 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 return NotFound<WashOrderDetailDto>("Không tìm thấy đơn hàng!");
             }
 
-            if (CurrentUser.IsInRole("Customer") &&
-                (!CurrentUser.Id.HasValue || order.CustomerId != CurrentUser.Id.Value))
+            var scope = await GetOrderScopeAsync();
+            if (!CanAccess(order, scope))
             {
                 return NotFound<WashOrderDetailDto>("Không tìm thấy đơn hàng của khách hàng.");
             }
 
             var dto = ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order);
-            return Success(dto);
+            return Success(RedactStaffData(dto, scope));
         }
 
         public async Task<BaseResponse<WashOrderDetailDto>> CreateAsync(CreateWashOrderCommand command)
@@ -113,7 +191,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
 
             if (command.Items == null || command.Items.Count is < 1 or > 30 ||
                 command.Items.Any(x => x.ServiceId == Guid.Empty || x.Quantity is < 1 or > 1000 ||
-                    (x.WeightKg.HasValue && (x.WeightKg.Value <= 0 || x.WeightKg.Value > 1000))) ||
+                    (x.WeightKg.HasValue && (x.WeightKg.Value <= 0 || x.WeightKg.Value > 1000 ||
+                        decimal.Round(x.WeightKg.Value, 2) != x.WeightKg.Value))) ||
                 command.Items.Select(x => x.ServiceId).Distinct().Count() != command.Items.Count)
                 return BadRequest<WashOrderDetailDto>("Cần chọn 1–30 dịch vụ khác nhau; số lượng và khối lượng phải hợp lệ.");
 
@@ -184,6 +263,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             };
 
             decimal total = 0;
+            var hasWeightService = false;
+            var baseProcessingHours = 0;
             foreach (var item in command.Items)
             {
                 var service = await _serviceRepo.FindAsync(item.ServiceId);
@@ -192,24 +273,30 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                     service.MerchantId != locker.MerchantId)
                     return BadRequest<WashOrderDetailDto>("Dịch vụ đã chọn không còn được bán bởi đối tác của tủ.");
 
-                if (item.WeightKg.HasValue && !service.PricePerKg.HasValue)
-                    return BadRequest<WashOrderDetailDto>("Dịch vụ đã chọn không hỗ trợ tính giá theo kg.");
-                if (!item.WeightKg.HasValue && service.Unit.Equals("kg", StringComparison.OrdinalIgnoreCase))
-                    return BadRequest<WashOrderDetailDto>("Vui lòng nhập khối lượng cho dịch vụ tính theo kg.");
+                var isWeightBased = service.Unit.Equals("kg", StringComparison.OrdinalIgnoreCase);
+                if (isWeightBased && item.Quantity != 1)
+                    return BadRequest<WashOrderDetailDto>("Dịch vụ theo gói kg chỉ chọn một gói cho mỗi loại dịch vụ.");
+                if (!isWeightBased && item.WeightKg.HasValue)
+                    return BadRequest<WashOrderDetailDto>("Dịch vụ theo chiếc/đôi không nhận khối lượng kg.");
+                if (service.EstimatedDurationHours is < 1 or > 8760)
+                    return BadRequest<WashOrderDetailDto>("Thời gian xử lý dịch vụ chưa được cấu hình hợp lệ.");
 
-                var unitPrice = item.WeightKg.HasValue
-                    ? service.PricePerKg!.Value
-                    : service.PricePerItem ?? service.UnitPrice;
+                // UnitPrice is the package base price for included-weight services.
+                // Estimated kilograms do not multiply this price a second time.
+                var unitPrice = isWeightBased ? service.UnitPrice : service.PricePerItem ?? service.UnitPrice;
                 if (unitPrice <= 0)
                     return BadRequest<WashOrderDetailDto>("Giá dịch vụ chưa được cấu hình hợp lệ.");
-                var subTotal = unitPrice * (item.WeightKg ?? item.Quantity);
+                var subTotal = isWeightBased ? unitPrice : unitPrice * item.Quantity;
                 total += subTotal;
+                hasWeightService |= isWeightBased;
+                baseProcessingHours = Math.Max(baseProcessingHours, service.EstimatedDurationHours);
                 order.Items.Add(new WashOrderItem
                 {
                     ServiceId = service.Id,
                     ServiceName = service.Name,
                     Quantity = item.Quantity,
                     WeightKg = item.WeightKg,
+                    IsWeightBased = isWeightBased,
                     UnitPrice = unitPrice,
                     SubTotal = subTotal,
                     Note = item.Note
@@ -218,6 +305,11 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
 
             order.TotalAmount = total;
             order.FinalAmount = total;
+            if (!Enum.IsDefined(box.Size))
+                return BadRequest<WashOrderDetailDto>("Kích thước ô tủ chưa được cấu hình hợp lệ.");
+            order.IncludedWeightKg = hasWeightService ? WashOrderWeightPricing.IncludedWeight(box.Size) : 0m;
+            order.BaseProcessingHours = baseProcessingHours;
+            order.ExpectedDeliveryTime = DateTimeOffset.UtcNow.AddHours(baseProcessingHours).ToUnixTimeSeconds();
 
             order.Timeline.Add(new WashOrderTimeline
             {
@@ -297,16 +389,85 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             return Success(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), "Hủy đơn hàng thành công.");
         }
 
-        public async Task<BaseResponse<WashOrderDetailDto>> UpdateStatusAsync(UpdateWashOrderStatusCommand command)
+        public async Task<BaseResponse<WashOrderDetailDto>> UpdateActualWeightAsync(Guid orderId, UpdateActualWeightCommand command)
         {
+            if (command.WeightKg <= 0 || command.WeightKg > 1000 || decimal.Round(command.WeightKg, 2) != command.WeightKg)
+                return BadRequest<WashOrderDetailDto>("Khối lượng phải lớn hơn 0, tối đa 1.000 kg và có tối đa 2 chữ số thập phân.");
+
+            var scope = await GetOrderScopeAsync();
             using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
-            var order = await _orderRepo.GetWithDetailsAsync(command.OrderId);
-            if (order == null)
+            await _orderRepo.GetForUpdateAsync(orderId);
+            var order = await _orderRepo.GetWithDetailsAsync(orderId);
+            if (order == null || scope.Role != "Merchant" || !CanAccess(order, scope))
+                return NotFound<WashOrderDetailDto>("Không tìm thấy đơn hàng thuộc tiệm để cập nhật cân nặng.");
+            if (order.Status != WashOrderStatus.Collected || order.PaymentStatus != PaymentStatus.Unpaid)
+                return BadRequest<WashOrderDetailDto>("Chỉ cân và chốt giá khi đơn đã lấy về tiệm, chưa bắt đầu giặt và chưa thanh toán.");
+            if (order.IncludedWeightKg is null || order.BaseProcessingHours is null)
+                return BadRequest<WashOrderDetailDto>("Đơn cũ chưa có thông tin giá gói; không tự áp dụng quy tắc mới để đổi giá đơn này.");
+            if (order.IncludedWeightKg <= 0 || !order.Items.Any(x => x.IsWeightBased))
+                return BadRequest<WashOrderDetailDto>("Đơn chỉ có dịch vụ theo chiếc/đôi, không áp dụng chốt giá theo kg.");
+            if (order.ActualWeightKg == command.WeightKg)
             {
-                return NotFound<WashOrderDetailDto>("Không tìm thấy đơn hàng!");
+                await uow.CompleteAsync();
+                return Success(RedactStaffData(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), scope),
+                    "Khối lượng này đã được chốt trước đó.");
             }
 
+            var pricing = WashOrderWeightPricing.Calculate(command.WeightKg, order.IncludedWeightKg.Value,
+                order.BaseProcessingHours.Value);
+            var finalAmount = order.TotalAmount + pricing.SurchargeAmount - order.DiscountAmount;
+            if (finalAmount <= 0)
+                return BadRequest<WashOrderDetailDto>("Giá cuối cùng không hợp lệ; chưa chốt cân nặng.");
+            var now = DateTime.UtcNow;
+            order.ActualWeightKg = command.WeightKg;
+            order.WeightSurchargeAmount = pricing.SurchargeAmount;
+            order.FinalAmount = finalAmount;
+            order.EtaUpdatedAt = now;
+            order.EstimatedFinishAt = now.AddHours(pricing.ProcessingHours);
+            order.ExpectedDeliveryTime = new DateTimeOffset(order.EstimatedFinishAt.Value).ToUnixTimeSeconds();
+            order.Timeline.Add(new WashOrderTimeline
+            {
+                WashOrderId = order.Id, FromStatus = order.Status, Status = order.Status,
+                ActorId = CurrentUser.Id, ActorName = CurrentUser.UserName ?? "Merchant", ActorRole = "Merchant",
+                Timestamp = new DateTimeOffset(now).ToUnixTimeSeconds(),
+                Note = $"Chốt {command.WeightKg:0.##} kg; vượt {pricing.ExcessWeightKg:0.##} kg; phụ phí {pricing.SurchargeAmount:0.##}đ; giá cuối {finalAmount:0.##}đ. Thanh toán sau khi giặt xong."
+            });
+            await _orderRepo.UpdateAsync(order, autoSave: true);
+            await uow.CompleteAsync();
+            return Success(RedactStaffData(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), scope),
+                "Đã chốt cân nặng, giá và ETA. Đơn tiếp tục xử lý giặt; khách thanh toán sau khi giặt xong.");
+        }
+
+        public async Task<BaseResponse<WashOrderDetailDto>> UpdateStatusAsync(UpdateWashOrderStatusCommand command)
+        {
+            if (command.NewStatus is WashOrderStatus.Paid or WashOrderStatus.Cancelled)
+                return BadRequest<WashOrderDetailDto>("Thanh toán và hủy đơn phải dùng luồng nghiệp vụ riêng.");
+
+            var scope = await GetOrderScopeAsync();
+            using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            await _orderRepo.GetForUpdateAsync(command.OrderId);
+            var order = await _orderRepo.GetWithDetailsAsync(command.OrderId);
+            if (order == null || !CanAccess(order, scope) || scope.Role == "Customer")
+            {
+                return NotFound<WashOrderDetailDto>("Không tìm thấy đơn hàng được phép cập nhật.");
+            }
+
+            if (scope.Role == "Merchant" && command.NewStatus is not
+                (WashOrderStatus.Washing or WashOrderStatus.Drying or WashOrderStatus.Ironing or
+                 WashOrderStatus.Folding or WashOrderStatus.AwaitingPayment) ||
+                scope.Role == "Shipper" && command.NewStatus is not
+                (WashOrderStatus.Collected or WashOrderStatus.ReadyToReturn))
+                return BadRequest<WashOrderDetailDto>("Vai trò hiện tại không được thực hiện bước này.");
+
+            if (scope.Role == "Shipper" &&
+                (command.NewStatus == WashOrderStatus.Collected && order.AssignedTaskType != DeliveryTaskType.Collect ||
+                 command.NewStatus == WashOrderStatus.ReadyToReturn && order.AssignedTaskType != DeliveryTaskType.Return))
+                return BadRequest<WashOrderDetailDto>("Shipper chưa được phân công cho nhiệm vụ giao nhận này.");
+
             var previousStatus = order.Status;
+            if (order.IncludedWeightKg > 0 && !order.ActualWeightKg.HasValue &&
+                command.NewStatus is WashOrderStatus.Washing or WashOrderStatus.AwaitingPayment)
+                return BadRequest<WashOrderDetailDto>("Merchant cần cập nhật số kg thực tế và chốt giá trước khi giặt hoặc yêu cầu thanh toán.");
             if (!IsValidTransition(previousStatus, command.NewStatus))
             {
                 return BadRequest<WashOrderDetailDto>(
@@ -315,7 +476,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
 
             // Payment enforcement rule: ReadyToReturn, Returned, Completed require PAID
             var isReturningOrComplete = command.NewStatus is WashOrderStatus.ReadyToReturn or WashOrderStatus.Returned or WashOrderStatus.Completed;
-            if (isReturningOrComplete && order.PaymentStatus != PaymentStatus.Paid && command.NewStatus != WashOrderStatus.Paid)
+            if (isReturningOrComplete && order.PaymentStatus != PaymentStatus.Paid)
             {
                 return BadRequest<WashOrderDetailDto>(
                     "Đơn hàng phải được thanh toán (PAID) trước khi chuyển sang trạng thái trả đồ.");
@@ -342,26 +503,16 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 }
             }
 
-            if (command.NewStatus == WashOrderStatus.Paid)
-            {
-                order.PaymentStatus = PaymentStatus.Paid;
-            }
-
             if (!await _orderRepo.TryChangeStatusAsync(order.Id, previousStatus, command.NewStatus))
                 return BadRequest<WashOrderDetailDto>("Đơn hàng vừa đổi trạng thái; vui lòng tải lại trước khi cập nhật.");
 
-            if (previousStatus == WashOrderStatus.Pending && command.NewStatus == WashOrderStatus.Cancelled)
-            {
-                if (!await _lockerRepo.TryReleaseReservedBoxAsync(order.LockerId, order.BoxId))
-                    return BadRequest<WashOrderDetailDto>("Ô tủ không còn ở trạng thái giữ chỗ; chưa hủy đơn.");
-            }
-            else if (previousStatus == WashOrderStatus.Pending && command.NewStatus == WashOrderStatus.Deposited)
+            if (previousStatus == WashOrderStatus.Pending && command.NewStatus == WashOrderStatus.Deposited)
             {
                 if (!await _lockerRepo.TryOccupyReservedBoxAsync(order.LockerId, order.BoxId))
                     return BadRequest<WashOrderDetailDto>("Ô tủ không còn ở trạng thái giữ chỗ; chưa nhận đồ.");
             }
             else if (previousStatus == WashOrderStatus.Deposited &&
-                     command.NewStatus is WashOrderStatus.Collected or WashOrderStatus.Cancelled)
+                     command.NewStatus == WashOrderStatus.Collected)
             {
                 if (!await _lockerRepo.TryReleaseOccupiedBoxAsync(order.LockerId, order.BoxId))
                     return BadRequest<WashOrderDetailDto>("Ô gửi đồ không còn ở trạng thái chứa đồ; chưa đổi trạng thái đơn.");
@@ -411,9 +562,9 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 WashOrderId = order.Id,
                 FromStatus = previousStatus,
                 Status = command.NewStatus,
-                ActorId = command.ActorId,
-                ActorName = command.ActorName ?? "Hệ thống",
-                ActorRole = command.ActorRole ?? "System",
+                ActorId = CurrentUser.Id,
+                ActorName = CurrentUser.UserName ?? "Nhân viên WashGo",
+                ActorRole = scope.Role,
                 Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
                 Note = command.Note ?? $"Chuyển trạng thái từ {previousStatus} sang {command.NewStatus}"
             });
@@ -421,11 +572,12 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             await _orderRepo.UpdateAsync(order, autoSave: true);
             await uow.CompleteAsync();
             var result = ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order);
-            return Success(result, "Cập nhật trạng thái đơn thành công!");
+            return Success(RedactStaffData(result, scope), "Cập nhật trạng thái đơn thành công!");
         }
 
         public async Task<BaseResponse<WashOrderDetailDto>> MoveToStorageAsync(MoveOrderToStorageCommand command)
         {
+            var scope = await GetOrderScopeAsync();
             if (string.IsNullOrWhiteSpace(command.StorageLocation) || command.StorageLocation.Trim().Length > 200)
                 return BadRequest<WashOrderDetailDto>("Cần nhập vị trí kho hợp lệ (tối đa 200 ký tự).");
             if (string.IsNullOrWhiteSpace(command.StorageReference) || command.StorageReference.Trim().Length > 120)
@@ -435,8 +587,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
 
             using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
             var order = await _orderRepo.GetWithDetailsAsync(command.OrderId);
-            if (order == null)
-                return NotFound<WashOrderDetailDto>("Không tìm thấy đơn hàng.");
+            if (order == null || !CanAccess(order, scope) || scope.Role is not ("Shipper" or "Admin"))
+                return NotFound<WashOrderDetailDto>("Không tìm thấy đơn hàng được phép chuyển kho.");
             if (order.Status != WashOrderStatus.ReadyToReturn)
                 return BadRequest<WashOrderDetailDto>("Chỉ chuyển kho cho đồ đang nằm tại locker trả.");
             if (order.MovedToStorageAt.HasValue)
@@ -475,42 +627,110 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
 
             await _orderRepo.UpdateAsync(order, autoSave: true);
             await uow.CompleteAsync();
-            return Success(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), "Đã ghi nhận chuyển đồ sang kho và giải phóng ô locker.");
+            return Success(RedactStaffData(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), scope), "Đã ghi nhận chuyển đồ sang kho và giải phóng ô locker.");
         }
 
         public async Task<BaseResponse<WashOrderDetailDto>> AssignShipperAsync(AssignShipperCommand command)
         {
+            var scope = await GetOrderScopeAsync();
+            using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            await _orderRepo.GetForUpdateAsync(command.OrderId);
             var order = await _orderRepo.GetWithDetailsAsync(command.OrderId);
-            if (order == null)
+            if (order == null || scope.Role is not ("Admin" or "Merchant") || !CanAccess(order, scope))
             {
-                return NotFound<WashOrderDetailDto>("Không tìm thấy đơn hàng!");
+                return NotFound<WashOrderDetailDto>("Không tìm thấy đơn hàng được phép phân công.");
             }
 
-            order.ShipperId = command.ShipperId;
-            order.ShipperName = command.ShipperName;
+            var task = GetAssignableTask(order);
+            if (!task.HasValue)
+                return BadRequest<WashOrderDetailDto>("Chỉ phân công khi đơn đã gửi đồ hoặc đã thanh toán và chờ mang đồ về tủ.");
+
+            // Serialize assignments for the same Shipper, including different orders.
+            var shipper = await _shipperRepo.GetForUpdateAsync(command.ShipperId);
+            if (shipper == null || shipper.MerchantId != order.MerchantId)
+                return BadRequest<WashOrderDetailDto>("Shipper phải thuộc cùng tiệm với đơn hàng.");
+            var user = await _userRepo.FindAsync(shipper.UserId);
+            if (!shipper.IsActive || shipper.Status != ShipperStatus.Available || user == null || !user.IsActive ||
+                !await _roleRepo.AnyAsync(x => x.Id == user.RoleId && x.Name == "Shipper" && x.IsActive))
+                return BadRequest<WashOrderDetailDto>("Shipper không hoạt động hoặc không sẵn sàng nhận chuyến.");
+            if (await AsyncExecuter.AnyAsync(ActiveDeliveryOrders(await _orderRepo.GetQueryableAsync())
+                    .Where(x => x.Id != order.Id && x.ShipperId == shipper.Id)))
+                return BadRequest<WashOrderDetailDto>("Shipper đang có chuyến chưa hoàn tất; vui lòng chọn người khác.");
+
+            if (order.ShipperId == shipper.Id && order.AssignedTaskType == task)
+            {
+                await uow.CompleteAsync();
+                return Success(RedactStaffData(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), scope),
+                    "Shipper đã được phân công cho nhiệm vụ này.");
+            }
+
+            order.ShipperId = shipper.Id;
+            order.ShipperName = user.FullName;
+            order.AssignedTaskType = task;
+            order.ShipperAssignedAt = DateTime.UtcNow;
             order.Timeline.Add(new WashOrderTimeline
             {
                 WashOrderId = order.Id,
                 Status = order.Status,
-                ActorId = command.ShipperId,
-                ActorName = command.ShipperName,
-                ActorRole = "Shipper",
+                ActorId = CurrentUser.Id,
+                ActorName = CurrentUser.UserName ?? "Admin",
+                ActorRole = scope.Role,
                 Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
-                Note = $"Phân công đơn hàng cho Shipper {command.ShipperName}"
+                Note = $"Phân công Shipper {user.FullName}: {(task == DeliveryTaskType.Collect ? "lấy đồ" : "trả đồ")}."
             });
 
             await _orderRepo.UpdateAsync(order, autoSave: true);
+            await uow.CompleteAsync();
             var result = ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order);
-            return Success(result, "Phân công Shipper thành công!");
+            return Success(RedactStaffData(result, scope), "Phân công Shipper thành công!");
         }
+
+        public async Task<BaseResponse<List<AvailableShipperDto>>> GetAvailableShippersAsync(Guid orderId)
+        {
+            var scope = await GetOrderScopeAsync();
+            var order = await _orderRepo.FindAsync(orderId);
+            if (order == null || scope.Role is not ("Admin" or "Merchant") || !CanAccess(order, scope))
+                return NotFound<List<AvailableShipperDto>>("Không tìm thấy đơn hàng được phép phân công.");
+            var task = GetAssignableTask(order);
+            if (!task.HasValue)
+                return BadRequest<List<AvailableShipperDto>>("Đơn chưa ở giai đoạn phân công giao nhận.");
+
+            var shippers = await _shipperRepo.GetQueryableAsync();
+            var users = await _userRepo.GetQueryableAsync();
+            var roles = await _roleRepo.GetQueryableAsync();
+            var activeOrders = ActiveDeliveryOrders(await _orderRepo.GetQueryableAsync());
+            var candidates = from shipper in shippers
+                             join user in users on shipper.UserId equals user.Id
+                             join role in roles on user.RoleId equals role.Id
+                             where shipper.MerchantId == order.MerchantId && shipper.IsActive &&
+                                 shipper.Status == ShipperStatus.Available && user.IsActive &&
+                                 role.IsActive && role.Name == "Shipper" &&
+                                 !activeOrders.Any(x => x.Id != orderId && x.ShipperId == shipper.Id)
+                             orderby user.FullName, shipper.Id
+                             select new AvailableShipperDto
+                             {
+                                 Id = shipper.Id, FullName = user.FullName, Phone = user.Phone,
+                                 VehicleType = shipper.VehicleType, VehiclePlate = shipper.VehiclePlate,
+                                 Rating = shipper.Rating, ActiveDeliveryCount = activeOrders.Count(x => x.ShipperId == shipper.Id),
+                                 TaskType = task.Value
+                             };
+            return Success(await AsyncExecuter.ToListAsync(candidates));
+        }
+
+        private static DeliveryTaskType? GetAssignableTask(WashOrder order) => order.Status switch
+        {
+            WashOrderStatus.Deposited => DeliveryTaskType.Collect,
+            WashOrderStatus.Paid when order.PaymentStatus == PaymentStatus.Paid => DeliveryTaskType.Return,
+            _ => null
+        };
+
+        private static IQueryable<WashOrder> ActiveDeliveryOrders(IQueryable<WashOrder> orders) =>
+            orders.Where(x => !x.IsDeleted && x.ShipperId != null &&
+                (x.Status == WashOrderStatus.Deposited && x.AssignedTaskType == DeliveryTaskType.Collect ||
+                 x.Status == WashOrderStatus.Paid && x.AssignedTaskType == DeliveryTaskType.Return));
 
         private static bool IsValidTransition(WashOrderStatus current, WashOrderStatus next)
         {
-            if (next == WashOrderStatus.Cancelled)
-            {
-                return current is WashOrderStatus.Pending or WashOrderStatus.Deposited;
-            }
-
             return current switch
             {
                 WashOrderStatus.Pending => next == WashOrderStatus.Deposited,
@@ -520,7 +740,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 WashOrderStatus.Drying => next is WashOrderStatus.Ironing or WashOrderStatus.Folding or WashOrderStatus.AwaitingPayment,
                 WashOrderStatus.Ironing => next is WashOrderStatus.Folding or WashOrderStatus.AwaitingPayment,
                 WashOrderStatus.Folding => next == WashOrderStatus.AwaitingPayment,
-                WashOrderStatus.AwaitingPayment => next == WashOrderStatus.Paid,
+                WashOrderStatus.AwaitingPayment => false, // Payment gateway confirms this transition internally.
                 WashOrderStatus.Paid => next == WashOrderStatus.ReadyToReturn,
                 WashOrderStatus.ReadyToReturn => next == WashOrderStatus.Returned,
                 WashOrderStatus.MovedToStorage => next == WashOrderStatus.Returned,
@@ -536,8 +756,20 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
 
         public async Task<BaseResponse<List<ColumnFilterDistinctValueDto>>> GetColumnDistinctValuesAsync(string fieldName, WashOrderFilterQuery query)
         {
-            var result = await _orderRepo.GetColumnDistinctValuesAsync(fieldName, query);
+            var scope = await GetOrderScopeAsync();
+            if (scope.Role is "None" or "Customer")
+                return NotFound<List<ColumnFilterDistinctValueDto>>("Không tìm thấy dữ liệu được phép xem.");
+            if ((scope.Role is "Merchant" or "Shipper") && !IsStaffField(fieldName))
+                return BadRequest<List<ColumnFilterDistinctValueDto>>("Không được lọc theo thông tin riêng tư của khách hàng.");
+            var result = await _orderRepo.GetColumnDistinctValuesAsync(fieldName, query,
+                baseFilter: q => ApplyScope(q, scope));
             return Success(result);
         }
+
+        private static bool IsStaffField(string field) => new[]
+        {
+            "OrderCode", "LockerName", "MerchantName", "ShipperName", "Status",
+            "PaymentStatus", "PaymentMethod", "CreatedOn", "ExpectedDeliveryTime"
+        }.Contains(field, StringComparer.OrdinalIgnoreCase);
     }
 }

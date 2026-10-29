@@ -33,6 +33,8 @@ namespace WashGo.EntityFrameworkCore.BuilderConfiguration
             builder.Property(x => x.DiscountAmount).HasPrecision(18, 2);
             builder.Property(x => x.FinalAmount).HasPrecision(18, 2);
             builder.Property(x => x.ActualWeightKg).HasPrecision(18, 2);
+            builder.Property(x => x.IncludedWeightKg).HasPrecision(18, 2);
+            builder.Property(x => x.WeightSurchargeAmount).HasPrecision(18, 2);
             builder.Property(x => x.OverdueFeeTotal).HasPrecision(18, 2);
             builder.Property(x => x.StorageFeeTotal).HasPrecision(18, 2);
             builder.Property(x => x.StorageLocation).HasMaxLength(200);
