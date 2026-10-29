@@ -44,6 +44,8 @@ namespace WashGo.Domain.Entities.WashOrder
         public string? MerchantName { get; set; }
 
         public Guid? ShipperId { get; set; }
+        public DeliveryTaskType? AssignedTaskType { get; set; }
+        public DateTime? ShipperAssignedAt { get; set; }
 
         [Filterable(ColumnVariant.Text)]
         public string? ShipperName { get; set; }
@@ -53,6 +55,9 @@ namespace WashGo.Domain.Entities.WashOrder
         public decimal DiscountAmount { get; set; }
         public decimal FinalAmount { get; set; }
         public decimal? ActualWeightKg { get; set; }
+        public decimal? IncludedWeightKg { get; set; }
+        public decimal WeightSurchargeAmount { get; set; }
+        public int? BaseProcessingHours { get; set; }
         public int? ActualItemCount { get; set; }
 
         [Filterable(ColumnVariant.MultiSelect)]

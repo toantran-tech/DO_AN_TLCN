@@ -13,7 +13,8 @@ namespace WashGo.Application.Contracts.Features.MerchantContracts.Services
 {
     public interface IMerchantAppService : IApplicationService
     {
-        Task<PaginatedResult<MerchantResultDto>> GetLi        Task<BaseResponse<MerchantResultDto>> GetByIdAsync(Guid id);
+        Task<PaginatedResult<MerchantResultDto>> GetListAsync(MerchantFilterQuery query);
+        Task<BaseResponse<MerchantResultDto>> GetByIdAsync(Guid id);
         Task<BaseResponse<MerchantResultDto>> CreateAsync(CreateMerchantCommand command);
         Task<BaseResponse<MerchantResultDto>> UpdateAsync(UpdateMerchantCommand command);
         Task<BaseResponse<MerchantResultDto>> UpdateStatusAsync(UpdateMerchantStatusCommand command);

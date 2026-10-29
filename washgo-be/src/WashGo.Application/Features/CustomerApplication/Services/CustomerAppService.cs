@@ -47,8 +47,8 @@ public class CustomerAppService : WashGoAppService, ICustomerAppService
             if (phone.Length > 30 || !Regex.IsMatch(phone, @"^\+?[0-9 ()\-]+$"))
                 return BadRequest<CustomerProfileDto>("Số điện thoại không đúng định dạng.");
             phone = new string(phone.Where(c => c is >= '0' and <= '9').ToArray());
-            if (phone.Length is < 9 or > 15)
-                return BadRequest<CustomerProfileDto>("Số điện thoại phải có từ 9 đến 15 chữ số.");
+            if (phone.Length is < 9 or > 11)
+                return BadRequest<CustomerProfileDto>("Số điện thoại phải có từ 9 đến 11 chữ số.");
         }
 
         var address = Clean(command.Address);

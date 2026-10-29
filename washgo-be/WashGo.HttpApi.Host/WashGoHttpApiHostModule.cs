@@ -109,6 +109,7 @@ namespace WashGo.HttpApi.Host
             {
                 options.AddPolicy("AdminOnly", policy => policy.RequireRole("Admin"));
                 options.AddPolicy("MerchantOrAdmin", policy => policy.RequireRole("Admin", "Merchant"));
+                options.AddPolicy("MerchantOnly", policy => policy.RequireRole("Merchant"));
                 options.AddPolicy("ShipperOrAdmin", policy => policy.RequireRole("Admin", "Shipper"));
                 options.AddPolicy("CustomerOnly", policy => policy.RequireRole("Customer"));
                 options.AddPolicy("OrderStatusUpdater", policy => policy.RequireRole("Admin", "Merchant", "Shipper"));

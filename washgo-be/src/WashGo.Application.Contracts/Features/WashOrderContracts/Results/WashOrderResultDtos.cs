@@ -19,12 +19,22 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Results
         public Guid? ReturnBoxId { get; set; }
         public string? ReturnBoxNumber { get; set; }
         public Guid? ShipperId { get; set; }
+        public DeliveryTaskType? AssignedTaskType { get; set; }
+        public DateTime? ShipperAssignedAt { get; set; }
         public string? ShipperName { get; set; }
         public Guid? MerchantId { get; set; }
         public string? MerchantName { get; set; }
         public decimal TotalAmount { get; set; }
         public decimal DiscountAmount { get; set; }
         public decimal FinalAmount { get; set; }
+        public decimal? ActualWeightKg { get; set; }
+        public decimal? IncludedWeightKg { get; set; }
+        public decimal? ExcessWeightKg => ActualWeightKg.HasValue && IncludedWeightKg.HasValue
+            ? Math.Max(0m, ActualWeightKg.Value - IncludedWeightKg.Value) : null;
+        public decimal WeightSurchargeAmount { get; set; }
+        public int? BaseProcessingHours { get; set; }
+        public DateTime? EstimatedFinishAt { get; set; }
+        public DateTime? EtaUpdatedAt { get; set; }
         public WashOrderStatus Status { get; set; }
         public PaymentStatus PaymentStatus { get; set; }
         public PaymentMethod PaymentMethod { get; set; }
@@ -56,6 +66,8 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Results
         public int Quantity { get; set; }
         public decimal UnitPrice { get; set; }
         public decimal SubTotal { get; set; }
+        public decimal? WeightKg { get; set; }
+        public bool IsWeightBased { get; set; }
         public string? Note { get; set; }
     }
 

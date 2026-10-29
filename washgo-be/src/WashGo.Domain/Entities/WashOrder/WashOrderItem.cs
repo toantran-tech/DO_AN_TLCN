@@ -14,6 +14,7 @@ namespace WashGo.Domain.Entities.WashOrder
         public string ServiceName { get; set; } = string.Empty;
         public int Quantity { get; set; }
         public decimal? WeightKg { get; set; }
+        public bool IsWeightBased { get; set; }
         public decimal UnitPrice { get; set; }
         public decimal SubTotal { get; set; }
         public string? Note { get; set; }
