@@ -71,6 +71,25 @@ namespace WashGo.Domain.Entities.WashOrder
         public string PickupPinCode { get; set; } = string.Empty;
         public string QrCodeString { get; set; } = string.Empty;
 
+        public DateTime? DepositedAt { get; set; }
+        public DateTime? PaidAt { get; set; }
+
+        public string? ShipperTaskPinCode { get; set; }
+        public string? ShipperTaskQrString { get; set; }
+        public int TaskPinAttemptCount { get; set; }
+        public DateTime? TaskPinLockoutUntil { get; set; }
+
+        public int CustomerDepositPinAttemptCount { get; set; }
+        public DateTime? CustomerDepositLockoutUntil { get; set; }
+
+        public int CustomerPickupPinAttemptCount { get; set; }
+        public DateTime? CustomerPickupLockoutUntil { get; set; }
+
+        public string? PickupSessionTokenHash { get; set; }
+        public DateTime? PickupSessionExpiresAt { get; set; }
+
+        public decimal? LockerOverdueFeeAtStorageTransfer { get; set; }
+
         [Filterable(ColumnVariant.DateRange, UnixUnit = UnixTimestampUnit.Seconds)]
         public long ExpectedDeliveryTime { get; set; }
 

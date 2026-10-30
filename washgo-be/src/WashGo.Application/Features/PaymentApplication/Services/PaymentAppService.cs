@@ -111,7 +111,7 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             if (command.PaymentMethod != PaymentMethod.VnPay)
                 return BadRequest<PaymentResultDto>("Hiện chỉ hỗ trợ thanh toán phí lưu kho qua VNPay.");
 
-            var overdueTotal = OverdueFeeCalculator.Calculate(order.PickupDeadline, DateTime.UtcNow);
+            var overdueTotal = OverdueFeeCalculator.GetTotalStorageDue(order, DateTime.UtcNow);
             order.OverdueFeeTotal = overdueTotal;
             var outstanding = overdueTotal - order.StorageFeeTotal;
             if (outstanding <= 0m)
@@ -208,7 +208,7 @@ namespace WashGo.Application.Features.PaymentApplication.Services
                     orderEntity.Status is not (WashOrderStatus.ReadyToReturn or WashOrderStatus.MovedToStorage))
                     return BadRequest<PaymentResultDto>("Đơn không còn chờ khách nhận tại locker.");
 
-                var due = OverdueFeeCalculator.Calculate(orderEntity.PickupDeadline, DateTime.UtcNow);
+                var due = OverdueFeeCalculator.GetTotalStorageDue(orderEntity, DateTime.UtcNow);
                 if (transaction.Amount > due - orderEntity.StorageFeeTotal)
                     return BadRequest<PaymentResultDto>("Giao dịch phí lưu kho lớn hơn số tiền còn phải trả.");
 
@@ -316,7 +316,7 @@ namespace WashGo.Application.Features.PaymentApplication.Services
                 if (orderEntity.PaymentStatus != PaymentStatus.Paid ||
                     orderEntity.Status is not (WashOrderStatus.ReadyToReturn or WashOrderStatus.MovedToStorage))
                     return Ip("04", "Invalid order state");
-                var due = OverdueFeeCalculator.Calculate(orderEntity.PickupDeadline, DateTime.UtcNow);
+                var due = OverdueFeeCalculator.GetTotalStorageDue(orderEntity, DateTime.UtcNow);
                 if (transaction.Amount > due - orderEntity.StorageFeeTotal)
                     return Ip("04", "Invalid amount");
                 orderEntity.OverdueFeeTotal = due;
@@ -357,6 +357,7 @@ namespace WashGo.Application.Features.PaymentApplication.Services
 
             order.Status = WashOrderStatus.Paid;
             order.PaymentStatus = PaymentStatus.Paid;
+            order.PaidAt = DateTime.UtcNow;
             order.Timeline.Add(new WashOrderTimeline
             {
                 WashOrderId = order.Id,

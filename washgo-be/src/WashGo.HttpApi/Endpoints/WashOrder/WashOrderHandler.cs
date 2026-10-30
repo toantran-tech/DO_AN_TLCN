@@ -94,6 +94,49 @@ namespace WashGo.HttpApi.Endpoints.WashOrder
                 .WithName("Lấy giá trị distinct cho bộ lọc cột đơn hàng")
                 .WithSummary("Lấy giá trị distinct cho bộ lọc cột đơn hàng.")
                 .WithOpenApi();
+
+            // QR/PIN simulation delivery & pickup endpoints
+            group.MapPost("/{id:guid}/deposit", async (Guid id, DepositWashOrderCommand command, IWashOrderAppService svc) =>
+                (await svc.DepositAsync(id, command)).CustomResult())
+                .RequireAuthorization("CustomerOnly")
+                .WithName("Khách hàng gửi đồ vào locker")
+                .WithSummary("Khách hàng nhập mã PIN hoặc quét QR để mở ô tủ gửi đồ và hoàn tất gửi đồ.")
+                .WithOpenApi();
+
+            group.MapPost("/{id:guid}/shipper-collect", async (Guid id, ShipperCollectOrderCommand command, IWashOrderAppService svc) =>
+                (await svc.ShipperCollectAsync(id, command)).CustomResult())
+                .RequireAuthorization("ShipperOrAdmin")
+                .WithName("Shipper lấy đồ từ locker về tiệm")
+                .WithSummary("Shipper xác thực mã nhiệm vụ lấy đồ, mở ô tủ gửi và chuyển trạng thái đơn sang Collected.")
+                .WithOpenApi();
+
+            group.MapPost("/{id:guid}/shipper-return", async (Guid id, ShipperReturnOrderCommand command, IWashOrderAppService svc) =>
+                (await svc.ShipperReturnAsync(id, command)).CustomResult())
+                .RequireAuthorization("ShipperOrAdmin")
+                .WithName("Shipper trả đồ vào locker")
+                .WithSummary("Shipper xác thực mã nhiệm vụ trả đồ, chọn ô tủ trống phù hợp và chuyển đơn sang ReadyToReturn.")
+                .WithOpenApi();
+
+            group.MapPost("/{id:guid}/open-pickup-box", async (Guid id, OpenPickupBoxCommand command, IWashOrderAppService svc) =>
+                (await svc.OpenPickupBoxAsync(id, command)).CustomResult())
+                .RequireAuthorization("CustomerOnly")
+                .WithName("Khách hàng mở tủ nhận đồ (Bước 1)")
+                .WithSummary("Khách hàng xác thực mã nhận đồ và kiểm tra thanh toán, hệ thống mở tủ và cấp token phiên lấy đồ.")
+                .WithOpenApi();
+
+            group.MapPost("/{id:guid}/confirm-pickup", async (Guid id, ConfirmPickupCommand command, IWashOrderAppService svc) =>
+                (await svc.ConfirmPickupAsync(id, command)).CustomResult())
+                .RequireAuthorization("CustomerOnly")
+                .WithName("Khách hàng xác nhận đã lấy đồ và đóng tủ (Bước 2)")
+                .WithSummary("Khách hàng xác nhận hoàn tất lấy đồ bằng token phiên; giải phóng ô tủ và hoàn tất đơn hàng.")
+                .WithOpenApi();
+
+            group.MapPost("/{id:guid}/pickup-storage", async (Guid id, PickupFromStorageCommand command, IWashOrderAppService svc) =>
+                (await svc.PickupFromStorageAsync(id, command)).CustomResult())
+                .RequireAuthorization("CustomerOnly")
+                .WithName("Khách hàng nhận đồ tại kho")
+                .WithSummary("Khách hàng hoàn tất nhận đồ đối với đơn quá hạn đã chuyển sang lưu kho sau khi thanh toán đủ phí.")
+                .WithOpenApi();
         }
     }
 }

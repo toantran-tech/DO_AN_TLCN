@@ -47,6 +47,19 @@ function Assert-Private($Order) {
     }
 }
 
+# Exercise the action endpoints; never simulate delivery through the generic status route.
+function Invoke-TestDelivery($Id, $Action, $Token) {
+    $view=(Call-Api Get "/wash-order/$Id" $null $Token).data
+    switch($Action){
+        'deposit' { Call-Api Post "/wash-order/$Id/deposit" @{pinCode=$view.depositPinCode} $Token }
+        'collect' { Call-Api Post "/wash-order/$Id/shipper-collect" @{pinCode=$view.shipperTaskPinCode} $Token }
+        'return' { Call-Api Post "/wash-order/$Id/shipper-return" @{pinCode=$view.shipperTaskPinCode} $Token }
+        'pickup' {
+            $opened=(Call-Api Post "/wash-order/$Id/open-pickup-box" @{pinCode=$view.pickupPinCode} $Token).data
+            Call-Api Post "/wash-order/$Id/confirm-pickup" @{pickupSessionToken=$opened.pickupSessionToken} $Token
+        }
+    }
+}
 if ($HelpersOnly) { return }
 
 $sessions = @{}
@@ -109,17 +122,18 @@ try {
 
     Assert-Status 404 Get "/wash-order/$orderId" $null $shipper
     Assert-Status 400 Put '/wash-order/assign-shipper' @{ orderId = "$orderId"; shipperId = "$shipperId" } $merchant
-    Call-Api Put '/wash-order/status' @{ orderId = "$orderId"; newStatus = 2 } $admin | Out-Null
+    Invoke-TestDelivery $orderId deposit $customer | Out-Null
     Call-Api Put '/wash-order/assign-shipper' @{ orderId = "$orderId"; shipperId = "$shipperId"; shipperName = 'Security smoke Shipper' } $merchant | Out-Null
     Assert-Private (Call-Api Get "/wash-order/$orderId" $null $shipper).data
     Sql "UPDATE washgo.orders SET shipper_id = NULL WHERE id = '$orderId';" | Out-Null
-    Assert-Status 404 Put '/wash-order/status' @{ orderId = "$orderId"; newStatus = 3 } $shipper
+    Assert-Status 404 Post "/wash-order/$orderId/shipper-collect" @{pinCode='000000'} $shipper
     $hidden = Call-Api Post '/wash-order/filter' @{ keyword = $created.orderCode; shipperId = "$shipperId" } $shipper
     if ($hidden.total -ne 0) { throw 'Shipper filter bypassed order scope.' }
     Sql "UPDATE washgo.orders SET shipper_id = '$shipperId' WHERE id = '$orderId';" | Out-Null
 
-    $collected = (Call-Api Put '/wash-order/status' @{
-        orderId = "$orderId"; newStatus = 3; actorId = "$merchantId"; actorName = 'Spoofed'; actorRole = 'Admin'
+    $task=(Call-Api Get "/wash-order/$orderId" $null $shipper).data
+    $collected = (Call-Api Post "/wash-order/$orderId/shipper-collect" @{
+        pinCode=$task.shipperTaskPinCode; actorId = "$merchantId"; actorName = 'Spoofed'; actorRole = 'Admin'
     } $shipper).data
     Assert-Private $collected
     $event = $collected.timeline | Where-Object { $_.status -eq 3 } | Select-Object -Last 1
@@ -147,9 +161,9 @@ try {
 
     Assert-Status 400 Put '/wash-order/status' @{ orderId = "$orderId"; newStatus = 10 } $shipper
     Call-Api Put '/wash-order/assign-shipper' @{ orderId = "$orderId"; shipperId = "$shipperId" } $merchant | Out-Null
-    Call-Api Put '/wash-order/status' @{ orderId = "$orderId"; newStatus = 10 } $shipper | Out-Null
-    Call-Api Put '/wash-order/status' @{ orderId = "$orderId"; newStatus = 11 } $admin | Out-Null
-    Call-Api Put '/wash-order/status' @{ orderId = "$orderId"; newStatus = 12 } $admin | Out-Null
+    Invoke-TestDelivery $orderId return $shipper | Out-Null
+    Invoke-TestDelivery $orderId pickup $customer | Out-Null
+
     $completed = $true
     Write-Output "PASS: public Paid/Cancelled blocked; Merchant/Shipper scope and privacy; server actor identity; mock payment and replay; invalid VNPay IPN. Retained completed test order: $orderId"
 }

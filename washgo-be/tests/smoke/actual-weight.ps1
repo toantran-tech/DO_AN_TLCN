@@ -19,6 +19,12 @@ function Create-TestOrder($Size, $Mixed=$false, $CountOnly=$false) {
     if($CountOnly){$items=@(@{serviceId="$itemService";quantity=2})}
     (Call-Api Post '/wash-order/' @{lockerId="$lockerId";boxId=$slot.id;items=$items;paymentMethod=2;customerNote='Actual weight smoke'} $customer).data
 }
+function Collect-WeightFixture($Id) {
+    Invoke-TestDelivery $Id deposit $customer | Out-Null
+    $carrier=Sql "SELECT id FROM washgo.shippers WHERE merchant_id='$merchantId' AND is_active=true AND status=1 LIMIT 1;"
+    Call-Api Put '/wash-order/assign-shipper' @{orderId="$Id";shipperId="$carrier"} $merchant | Out-Null
+    Invoke-TestDelivery $Id collect $admin | Out-Null
+}
 function Finish-TestOrder($Id) {
     Call-Api Put '/wash-order/status' @{orderId="$Id";newStatus=4} $merchant | Out-Null
     Call-Api Put '/wash-order/status' @{orderId="$Id";newStatus=8} $merchant | Out-Null
@@ -26,7 +32,10 @@ function Finish-TestOrder($Id) {
     if($payment.paymentUrl -notmatch '/payment/mock-checkout'){throw 'Local mock payment provider required.'}
     Call-Api Post '/payment/callback' @{orderId="$Id";transactionReference=$payment.transactionReference;success=$true} $admin | Out-Null
     Assert-Status 400 Put "/wash-order/$Id/actual-weight" @{weightKg=1} $merchant
-    foreach($state in @(10,11,12)){Call-Api Put '/wash-order/status' @{orderId="$Id";newStatus=$state} $admin | Out-Null}
+    $view=(Call-Api Get "/wash-order/$Id" $null $admin).data
+    Call-Api Put '/wash-order/assign-shipper' @{orderId="$Id";shipperId=$view.shipperId} $merchant | Out-Null
+    Invoke-TestDelivery $Id return $admin | Out-Null
+    Invoke-TestDelivery $Id pickup $customer | Out-Null
 }
 try {
     foreach($role in @('Admin','Merchant','Customer','Shipper')){
@@ -70,8 +79,7 @@ FROM washgo.services s WHERE id='$weightService';
         $hours=if($case.mixed){36}else{24}
         if($created.totalAmount -ne $base -or $created.finalAmount -ne $base -or $created.includedWeightKg -ne $case.included){throw 'New-order package pricing multiplied estimated kg or used wrong capacity.'}
         Assert-Status 400 Put "/wash-order/$id/actual-weight" @{weightKg=$case.kg} $merchant
-        Call-Api Put '/wash-order/status' @{orderId="$id";newStatus=2} $admin | Out-Null
-        Call-Api Put '/wash-order/status' @{orderId="$id";newStatus=3} $admin | Out-Null
+        Collect-WeightFixture $id
         Assert-Status 400 Put '/wash-order/status' @{orderId="$id";newStatus=4} $merchant
         Assert-Status 400 Put '/wash-order/status' @{orderId="$id";newStatus=8} $merchant
         foreach($token in @($admin,$customer,$sessions.Shipper.accessToken)){
@@ -126,8 +134,7 @@ FROM washgo.services s WHERE id='$weightService';
     }
     $countOrder=Create-TestOrder 2 $false $true
     $id=[Guid]$countOrder.id;$orders+=$id
-    Call-Api Put '/wash-order/status' @{orderId="$id";newStatus=2} $admin | Out-Null
-    Call-Api Put '/wash-order/status' @{orderId="$id";newStatus=3} $admin | Out-Null
+    Collect-WeightFixture $id
     Assert-Status 400 Put "/wash-order/$id/actual-weight" @{weightKg=6.5} $merchant
     if($countOrder.totalAmount -ne 40000){throw 'Count-based quantity pricing changed.'}
     Finish-TestOrder $id

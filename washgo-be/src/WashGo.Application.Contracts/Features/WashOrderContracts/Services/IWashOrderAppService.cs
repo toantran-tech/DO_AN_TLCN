@@ -22,5 +22,13 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Services
         Task<BaseResponse<WashOrderDetailDto>> AssignShipperAsync(AssignShipperCommand command);
         Task<BaseResponse<List<AvailableShipperDto>>> GetAvailableShippersAsync(Guid orderId);
         Task<BaseResponse<List<ColumnFilterDistinctValueDto>>> GetColumnDistinctValuesAsync(string fieldName, WashOrderFilterQuery query);
+
+        // QR/PIN simulation operations
+        Task<BaseResponse<WashOrderDetailDto>> DepositAsync(Guid orderId, DepositWashOrderCommand command);
+        Task<BaseResponse<WashOrderDetailDto>> ShipperCollectAsync(Guid orderId, ShipperCollectOrderCommand command);
+        Task<BaseResponse<WashOrderDetailDto>> ShipperReturnAsync(Guid orderId, ShipperReturnOrderCommand command);
+        Task<BaseResponse<OpenPickupBoxResultDto>> OpenPickupBoxAsync(Guid orderId, OpenPickupBoxCommand command);
+        Task<BaseResponse<WashOrderDetailDto>> ConfirmPickupAsync(Guid orderId, ConfirmPickupCommand command);
+        Task<BaseResponse<WashOrderDetailDto>> PickupFromStorageAsync(Guid orderId, PickupFromStorageCommand command);
     }
 }

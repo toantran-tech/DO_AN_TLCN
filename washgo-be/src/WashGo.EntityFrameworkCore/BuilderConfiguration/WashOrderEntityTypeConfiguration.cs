@@ -28,6 +28,9 @@ namespace WashGo.EntityFrameworkCore.BuilderConfiguration
             builder.Property(x => x.DepositPinCode).HasMaxLength(10);
             builder.Property(x => x.PickupPinCode).HasMaxLength(10);
             builder.Property(x => x.QrCodeString).HasColumnName("qr_code").HasMaxLength(500);
+            builder.Property(x => x.ShipperTaskPinCode).HasMaxLength(10);
+            builder.Property(x => x.ShipperTaskQrString).HasMaxLength(500);
+            builder.Property(x => x.PickupSessionTokenHash).HasMaxLength(128);
             builder.Property(x => x.CustomerNote).HasColumnName("note");
             builder.Property(x => x.TotalAmount).HasPrecision(18, 2);
             builder.Property(x => x.DiscountAmount).HasPrecision(18, 2);
@@ -37,6 +40,7 @@ namespace WashGo.EntityFrameworkCore.BuilderConfiguration
             builder.Property(x => x.WeightSurchargeAmount).HasPrecision(18, 2);
             builder.Property(x => x.OverdueFeeTotal).HasPrecision(18, 2);
             builder.Property(x => x.StorageFeeTotal).HasPrecision(18, 2);
+            builder.Property(x => x.LockerOverdueFeeAtStorageTransfer).HasPrecision(18, 2);
             builder.Property(x => x.StorageLocation).HasMaxLength(200);
             builder.Property(x => x.StorageReference).HasMaxLength(120);
             builder.Property(x => x.CancelFeeAmount).HasPrecision(18, 2);

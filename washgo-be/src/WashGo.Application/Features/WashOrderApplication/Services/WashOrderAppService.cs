@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
 using System.Threading.Tasks;
 using Volo.Abp.Domain.Repositories;
 using Volo.Abp.Uow;
@@ -92,7 +94,13 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
 
         private static T RedactStaffData<T>(T dto, OrderScope scope) where T : WashOrderResultDto
         {
-            if (scope.Role is "Merchant" or "Shipper")
+            if (scope.Role == "Customer")
+            {
+                // Customer cannot see Shipper task codes
+                dto.ShipperTaskPinCode = null;
+                dto.ShipperTaskQrString = null;
+            }
+            else if (scope.Role == "Merchant")
             {
                 dto.CustomerId = Guid.Empty;
                 dto.CustomerName = "***";
@@ -100,6 +108,33 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 dto.DepositPinCode = string.Empty;
                 dto.PickupPinCode = string.Empty;
                 dto.QrCodeString = string.Empty;
+                dto.ShipperTaskPinCode = null;
+                dto.ShipperTaskQrString = null;
+                if (dto is WashOrderDetailDto detail)
+                {
+                    detail.CustomerNote = null;
+                    foreach (var entry in detail.Timeline.Where(x => x.ActorRole == "Customer"))
+                    {
+                        entry.ActorId = null;
+                        entry.ActorName = "Khách hàng";
+                        entry.Note = null;
+                    }
+                }
+            }
+            else if (scope.Role == "Shipper")
+            {
+                dto.CustomerId = Guid.Empty;
+                dto.CustomerName = "***";
+                dto.CustomerPhoneNumber = "***";
+                dto.DepositPinCode = string.Empty;
+                dto.PickupPinCode = string.Empty;
+                dto.QrCodeString = string.Empty;
+                // Only the assigned shipper can see their task PIN & QR
+                if (scope.Id != dto.ShipperId)
+                {
+                    dto.ShipperTaskPinCode = null;
+                    dto.ShipperTaskQrString = null;
+                }
                 if (dto is WashOrderDetailDto detail)
                 {
                     detail.CustomerNote = null;
@@ -235,10 +270,10 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 : customerUser.FullName;
             var customerPhone = customerUser.Phone ?? string.Empty;
 
-            var random = new Random();
-            var depositPin = random.Next(100000, 999999).ToString();
-            var pickupPin = random.Next(100000, 999999).ToString();
-            var orderCode = $"WG{DateTime.UtcNow:yyMMdd}{random.Next(1000, 9999)}";
+            // Locker credentials use cryptographically secure random numbers.
+            var depositPin = RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
+            var pickupPin = RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
+            var orderCode = $"WG{DateTime.UtcNow:yyMMdd}{RandomNumberGenerator.GetInt32(1000, 10000)}";
 
             var order = new WashOrder
             {
@@ -257,7 +292,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 Status = WashOrderStatus.Pending,
                 DepositPinCode = depositPin,
                 PickupPinCode = pickupPin,
-                QrCodeString = $"WASHGO_ORDER:{orderCode}:PIN:{depositPin}",
+                QrCodeString = $"WASHGO:DEPOSIT:{orderCode}:{depositPin}",
                 CustomerNote = command.CustomerNote,
                 ExpectedDeliveryTime = DateTimeOffset.UtcNow.AddDays(1).ToUnixTimeSeconds()
             };
@@ -281,8 +316,6 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 if (service.EstimatedDurationHours is < 1 or > 8760)
                     return BadRequest<WashOrderDetailDto>("Thời gian xử lý dịch vụ chưa được cấu hình hợp lệ.");
 
-                // UnitPrice is the package base price for included-weight services.
-                // Estimated kilograms do not multiply this price a second time.
                 var unitPrice = isWeightBased ? service.UnitPrice : service.PricePerItem ?? service.UnitPrice;
                 if (unitPrice <= 0)
                     return BadRequest<WashOrderDetailDto>("Giá dịch vụ chưa được cấu hình hợp lệ.");
@@ -440,8 +473,13 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
 
         public async Task<BaseResponse<WashOrderDetailDto>> UpdateStatusAsync(UpdateWashOrderStatusCommand command)
         {
-            if (command.NewStatus is WashOrderStatus.Paid or WashOrderStatus.Cancelled)
-                return BadRequest<WashOrderDetailDto>("Thanh toán và hủy đơn phải dùng luồng nghiệp vụ riêng.");
+            if (command.NewStatus is WashOrderStatus.Paid or WashOrderStatus.Cancelled or
+                WashOrderStatus.Deposited or WashOrderStatus.Collected or
+                WashOrderStatus.ReadyToReturn or WashOrderStatus.Returned or
+                WashOrderStatus.Completed or WashOrderStatus.MovedToStorage)
+            {
+                return BadRequest<WashOrderDetailDto>($"Trạng thái {command.NewStatus} phải được thực hiện qua luồng nghiệp vụ riêng.");
+            }
 
             var scope = await GetOrderScopeAsync();
             using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
@@ -452,17 +490,13 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 return NotFound<WashOrderDetailDto>("Không tìm thấy đơn hàng được phép cập nhật.");
             }
 
+            if (scope.Role is not ("Merchant" or "Admin"))
+                return BadRequest<WashOrderDetailDto>("Chỉ Merchant hoặc Admin được cập nhật các bước xử lý giặt.");
+
             if (scope.Role == "Merchant" && command.NewStatus is not
                 (WashOrderStatus.Washing or WashOrderStatus.Drying or WashOrderStatus.Ironing or
-                 WashOrderStatus.Folding or WashOrderStatus.AwaitingPayment) ||
-                scope.Role == "Shipper" && command.NewStatus is not
-                (WashOrderStatus.Collected or WashOrderStatus.ReadyToReturn))
+                 WashOrderStatus.Folding or WashOrderStatus.AwaitingPayment))
                 return BadRequest<WashOrderDetailDto>("Vai trò hiện tại không được thực hiện bước này.");
-
-            if (scope.Role == "Shipper" &&
-                (command.NewStatus == WashOrderStatus.Collected && order.AssignedTaskType != DeliveryTaskType.Collect ||
-                 command.NewStatus == WashOrderStatus.ReadyToReturn && order.AssignedTaskType != DeliveryTaskType.Return))
-                return BadRequest<WashOrderDetailDto>("Shipper chưa được phân công cho nhiệm vụ giao nhận này.");
 
             var previousStatus = order.Status;
             if (order.IncludedWeightKg > 0 && !order.ActualWeightKg.HasValue &&
@@ -474,89 +508,10 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                     $"Không thể chuyển trạng thái từ {previousStatus} sang {command.NewStatus}.");
             }
 
-            // Payment enforcement rule: ReadyToReturn, Returned, Completed require PAID
-            var isReturningOrComplete = command.NewStatus is WashOrderStatus.ReadyToReturn or WashOrderStatus.Returned or WashOrderStatus.Completed;
-            if (isReturningOrComplete && order.PaymentStatus != PaymentStatus.Paid)
-            {
-                return BadRequest<WashOrderDetailDto>(
-                    "Đơn hàng phải được thanh toán (PAID) trước khi chuyển sang trạng thái trả đồ.");
-            }
-
-            if (command.NewStatus == WashOrderStatus.Returned && order.PickupDeadline.HasValue)
-            {
-                if (OverdueFeeCalculator.IsTransferToStorageDue(order.PickupDeadline, DateTime.UtcNow) &&
-                    !order.MovedToStorageAt.HasValue)
-                {
-                    return BadRequest<WashOrderDetailDto>(
-                        "Đơn đã quá 72 giờ quá hạn; Shipper/Admin cần ghi nhận chuyển đồ sang kho trước khi khách nhận.");
-                }
-
-                var overdueTotal = OverdueFeeCalculator.Calculate(
-                    order.PickupDeadline, DateTime.UtcNow);
-                order.OverdueFeeTotal = overdueTotal;
-                if (order.StorageFeeTotal < overdueTotal)
-                {
-                    await _orderRepo.UpdateAsync(order, autoSave: true);
-                    await uow.CompleteAsync();
-                    return BadRequest<WashOrderDetailDto>(
-                        $"Cần thanh toán phí lưu kho còn thiếu {overdueTotal - order.StorageFeeTotal:N0}đ trước khi hoàn tất nhận đồ.");
-                }
-            }
-
             if (!await _orderRepo.TryChangeStatusAsync(order.Id, previousStatus, command.NewStatus))
                 return BadRequest<WashOrderDetailDto>("Đơn hàng vừa đổi trạng thái; vui lòng tải lại trước khi cập nhật.");
 
-            if (previousStatus == WashOrderStatus.Pending && command.NewStatus == WashOrderStatus.Deposited)
-            {
-                if (!await _lockerRepo.TryOccupyReservedBoxAsync(order.LockerId, order.BoxId))
-                    return BadRequest<WashOrderDetailDto>("Ô tủ không còn ở trạng thái giữ chỗ; chưa nhận đồ.");
-            }
-            else if (previousStatus == WashOrderStatus.Deposited &&
-                     command.NewStatus == WashOrderStatus.Collected)
-            {
-                if (!await _lockerRepo.TryReleaseOccupiedBoxAsync(order.LockerId, order.BoxId))
-                    return BadRequest<WashOrderDetailDto>("Ô gửi đồ không còn ở trạng thái chứa đồ; chưa đổi trạng thái đơn.");
-            }
-            else if (command.NewStatus == WashOrderStatus.ReadyToReturn)
-            {
-                var returnLockerId = order.ReturnLockerId ?? order.LockerId;
-                var returnLocker = await _lockerRepo.GetWithBoxesAsync(returnLockerId);
-                if (returnLocker == null || returnLocker.Status != LockerStatus.Active ||
-                    returnLocker.MerchantId != order.MerchantId)
-                    return BadRequest<WashOrderDetailDto>("Tủ trả đồ không còn hoạt động hoặc không thuộc đối tác của đơn.");
-
-                LockerBox? returnBox = null;
-                foreach (var candidate in returnLocker.Boxes.Where(x => !x.IsDeleted &&
-                             x.Status == LockerBoxStatus.Available).OrderBy(x => x.SlotNumber))
-                {
-                    if (!await _lockerRepo.TryReserveBoxAsync(returnLockerId, candidate.Id))
-                        continue;
-                    if (!await _lockerRepo.TryOccupyReservedBoxAsync(returnLockerId, candidate.Id))
-                        return BadRequest<WashOrderDetailDto>("Không thể xác nhận ô trả đồ; vui lòng thử lại.");
-                    returnBox = candidate;
-                    break;
-                }
-                if (returnBox == null)
-                    return BadRequest<WashOrderDetailDto>("Tủ trả đồ đã hết ô trống; chưa chuyển trạng thái đơn.");
-
-                order.ReturnLockerId = returnLockerId;
-                order.ReturnBoxId = returnBox.Id;
-                order.ReturnBoxNumber = returnBox.BoxNumber;
-            }
-            else if (previousStatus == WashOrderStatus.ReadyToReturn &&
-                     command.NewStatus == WashOrderStatus.Returned)
-            {
-                var (returnLockerId, returnBoxId) = GetReturnSlot(order);
-                if (!await _lockerRepo.TryReleaseOccupiedBoxAsync(returnLockerId, returnBoxId))
-                    return BadRequest<WashOrderDetailDto>("Ô trả đồ không còn chứa đồ; chưa xác nhận khách nhận.");
-            }
-
             order.Status = command.NewStatus;
-            if (command.NewStatus == WashOrderStatus.ReadyToReturn)
-            {
-                // Customers have 24 hours to collect the laundry from the return locker before storage fees start.
-                order.PickupDeadline = DateTime.UtcNow.AddHours(24);
-            }
             order.Timeline.Add(new WashOrderTimeline
             {
                 WashOrderId = order.Id,
@@ -586,6 +541,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 return BadRequest<WashOrderDetailDto>("Ghi chú chuyển kho tối đa 140 ký tự.");
 
             using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            await _orderRepo.GetForUpdateAsync(command.OrderId);
             var order = await _orderRepo.GetWithDetailsAsync(command.OrderId);
             if (order == null || !CanAccess(order, scope) || scope.Role is not ("Shipper" or "Admin"))
                 return NotFound<WashOrderDetailDto>("Không tìm thấy đơn hàng được phép chuyển kho.");
@@ -610,7 +566,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             order.MovedToStorageAt = now;
             order.StorageLocation = command.StorageLocation.Trim();
             order.StorageReference = command.StorageReference.Trim();
-            order.OverdueFeeTotal = OverdueFeeCalculator.Calculate(order.PickupDeadline, now);
+            order.LockerOverdueFeeAtStorageTransfer = OverdueFeeCalculator.Calculate(order.PickupDeadline, now);
+            order.OverdueFeeTotal = order.LockerOverdueFeeAtStorageTransfer.Value;
             order.Timeline.Add(new WashOrderTimeline
             {
                 WashOrderId = order.Id,
@@ -657,8 +614,21 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                     .Where(x => x.Id != order.Id && x.ShipperId == shipper.Id)))
                 return BadRequest<WashOrderDetailDto>("Shipper đang có chuyến chưa hoàn tất; vui lòng chọn người khác.");
 
+            // Generate a secure 6-digit PIN and task QR for this assignment
+            var taskPin = RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
+            var taskTypeStr = task == DeliveryTaskType.Collect ? "COLLECT" : "RETURN";
+            var taskQr = $"WASHGO:{taskTypeStr}:{order.OrderCode}:{taskPin}";
+
             if (order.ShipperId == shipper.Id && order.AssignedTaskType == task)
             {
+                if (string.IsNullOrEmpty(order.ShipperTaskPinCode))
+                {
+                    order.ShipperTaskPinCode = taskPin;
+                    order.ShipperTaskQrString = taskQr;
+                    order.TaskPinAttemptCount = 0;
+                    order.TaskPinLockoutUntil = null;
+                    await _orderRepo.UpdateAsync(order, autoSave: true);
+                }
                 await uow.CompleteAsync();
                 return Success(RedactStaffData(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), scope),
                     "Shipper đã được phân công cho nhiệm vụ này.");
@@ -668,6 +638,11 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             order.ShipperName = user.FullName;
             order.AssignedTaskType = task;
             order.ShipperAssignedAt = DateTime.UtcNow;
+            order.ShipperTaskPinCode = taskPin;
+            order.ShipperTaskQrString = taskQr;
+            order.TaskPinAttemptCount = 0;
+            order.TaskPinLockoutUntil = null;
+
             order.Timeline.Add(new WashOrderTimeline
             {
                 WashOrderId = order.Id,
@@ -717,6 +692,628 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             return Success(await AsyncExecuter.ToListAsync(candidates));
         }
 
+        #region QR/PIN Simulation Flow
+
+        public async Task<BaseResponse<WashOrderDetailDto>> DepositAsync(Guid orderId, DepositWashOrderCommand command)
+        {
+            var scope = await GetOrderScopeAsync();
+            if (scope.Role != "Customer")
+                return BadRequest<WashOrderDetailDto>("Chỉ khách hàng mới có thể thực hiện thao tác gửi đồ.");
+
+            using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            await _orderRepo.GetForUpdateAsync(orderId);
+            var order = await _orderRepo.GetWithDetailsAsync(orderId);
+            if (order == null || !CanAccess(order, scope) || order.CustomerId != scope.Id)
+                return NotFound<WashOrderDetailDto>("Không tìm thấy đơn hàng.");
+
+            // Idempotency: already deposited
+            if (order.Status == WashOrderStatus.Deposited)
+            {
+                await uow.CompleteAsync();
+                return Success(RedactStaffData(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), scope),
+                    "Thao tác gửi đồ đã được thực hiện trước đó.");
+            }
+
+            if (order.Status != WashOrderStatus.Pending)
+                return BadRequest<WashOrderDetailDto>("Đơn hàng không ở trạng thái chờ gửi đồ.");
+
+            // Check 30-minute reservation window
+            var orderCreatedTime = DateTimeOffset.FromUnixTimeSeconds(order.CreatedOn).UtcDateTime;
+            if (DateTime.UtcNow > orderCreatedTime.AddMinutes(30))
+            {
+                return BadRequest<WashOrderDetailDto>("Đã quá 30 phút kể từ khi tạo đơn. Ô tủ đã hết thời gian giữ chỗ; vui lòng hủy đơn hoặc tạo đơn mới.");
+            }
+
+            // Check lockout
+            var (isLocked, remainingMinutes) = CheckLockout(order.CustomerDepositPinAttemptCount, order.CustomerDepositLockoutUntil);
+            if (isLocked)
+            {
+                return BadRequest<WashOrderDetailDto>($"Mã gửi đồ đang bị tạm khóa do nhập sai nhiều lần. Vui lòng thử lại sau {remainingMinutes} phút.");
+            }
+
+            var pinMatches = !string.IsNullOrWhiteSpace(command.PinCode) &&
+                string.Equals(command.PinCode.Trim(), order.DepositPinCode, StringComparison.OrdinalIgnoreCase);
+            var qrMatches = !string.IsNullOrWhiteSpace(command.QrCode) &&
+                string.Equals(command.QrCode.Trim(), order.QrCodeString, StringComparison.OrdinalIgnoreCase);
+
+            if (!pinMatches && !qrMatches)
+            {
+                var currentAttempts = await RecordFailedAttemptAsync(order, PinKind.CustomerDeposit);
+                // Commit the failed attempt while holding the order lock; no locker action has run.
+                await uow.CompleteAsync();
+                return BadRequest<WashOrderDetailDto>(currentAttempts >= 5
+                    ? "Nhập sai mã gửi đồ 5 lần liên tiếp. Mã tạm khóa trong 5 phút."
+                    : $"Mã PIN hoặc mã QR gửi đồ không chính xác (Lần thử {currentAttempts}/5).");
+            }
+
+            if (!await _lockerRepo.TryOccupyReservedBoxAsync(order.LockerId, order.BoxId))
+            {
+                await uow.RollbackAsync();
+                return BadRequest<WashOrderDetailDto>("Ô tủ không còn ở trạng thái giữ chỗ; vui lòng liên hệ hỗ trợ.");
+            }
+
+            var previousStatus = order.Status;
+            order.Status = WashOrderStatus.Deposited;
+            order.DepositedAt = DateTime.UtcNow;
+            order.CustomerDepositPinAttemptCount = 0;
+            order.CustomerDepositLockoutUntil = null;
+
+            order.Timeline.Add(new WashOrderTimeline
+            {
+                WashOrderId = order.Id,
+                FromStatus = previousStatus,
+                Status = WashOrderStatus.Deposited,
+                ActorId = CurrentUser.Id,
+                ActorName = CurrentUser.UserName ?? order.CustomerName,
+                ActorRole = "Customer",
+                Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                Note = "Khách hàng đã mở tủ bằng mã PIN/QR và gửi đồ thành công."
+            });
+
+            await _orderRepo.UpdateAsync(order, autoSave: true);
+            await uow.CompleteAsync();
+            return Success(RedactStaffData(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), scope),
+                "Gửi đồ vào tủ thành công! Đơn hàng đã chuyển sang trạng thái đã gửi đồ.");
+        }
+
+        public async Task<BaseResponse<WashOrderDetailDto>> ShipperCollectAsync(Guid orderId, ShipperCollectOrderCommand command)
+        {
+            var scope = await GetOrderScopeAsync();
+            if (scope.Role is not ("Shipper" or "Admin"))
+                return BadRequest<WashOrderDetailDto>("Chỉ Shipper được phân công hoặc Admin mới có quyền lấy đồ.");
+
+            using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            await _orderRepo.GetForUpdateAsync(orderId);
+            var order = await _orderRepo.GetWithDetailsAsync(orderId);
+            if (order == null || !CanAccess(order, scope))
+                return NotFound<WashOrderDetailDto>("Không tìm thấy đơn hàng.");
+
+            if (scope.Role == "Shipper")
+            {
+                if (order.ShipperId != scope.Id || order.AssignedTaskType != DeliveryTaskType.Collect)
+                {
+                    return BadRequest<WashOrderDetailDto>("Bạn chưa được phân công hoặc không có nhiệm vụ lấy đồ cho đơn này.");
+                }
+            }
+
+            // Idempotency: already collected
+            if (order.Status == WashOrderStatus.Collected)
+            {
+                await uow.CompleteAsync();
+                return Success(RedactStaffData(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), scope),
+                    "Thao tác lấy đồ đã được thực hiện trước đó.");
+            }
+
+            if (order.Status != WashOrderStatus.Deposited)
+                return BadRequest<WashOrderDetailDto>("Đơn hàng không ở trạng thái đã gửi đồ vào tủ.");
+
+            if (!order.ShipperId.HasValue || order.AssignedTaskType != DeliveryTaskType.Collect)
+                return BadRequest<WashOrderDetailDto>("Đơn hàng chưa được phân công chuyến lấy đồ.");
+
+            // Check lockout
+            var (isLocked, remainingMinutes) = CheckLockout(order.TaskPinAttemptCount, order.TaskPinLockoutUntil);
+            if (isLocked)
+            {
+                return BadRequest<WashOrderDetailDto>($"Mã nhiệm vụ đang bị tạm khóa do nhập sai nhiều lần. Vui lòng thử lại sau {remainingMinutes} phút.");
+            }
+
+            var pinMatches = !string.IsNullOrWhiteSpace(command.PinCode) &&
+                string.Equals(command.PinCode.Trim(), order.ShipperTaskPinCode, StringComparison.OrdinalIgnoreCase);
+            var qrMatches = !string.IsNullOrWhiteSpace(command.QrCode) &&
+                string.Equals(command.QrCode.Trim(), order.ShipperTaskQrString, StringComparison.OrdinalIgnoreCase);
+
+            if (!pinMatches && !qrMatches)
+            {
+                var currentAttempts = await RecordFailedAttemptAsync(order, PinKind.ShipperTask);
+                // Commit the failed attempt while holding the order lock; no locker action has run.
+                await uow.CompleteAsync();
+                return BadRequest<WashOrderDetailDto>(currentAttempts >= 5
+                    ? "Nhập sai mã nhiệm vụ 5 lần liên tiếp. Mã tạm khóa trong 5 phút."
+                    : $"Mã nhiệm vụ không chính xác (Lần thử {currentAttempts}/5).");
+            }
+
+            if (!await _lockerRepo.TryReleaseOccupiedBoxAsync(order.LockerId, order.BoxId))
+            {
+                await uow.RollbackAsync();
+                return BadRequest<WashOrderDetailDto>("Ô gửi đồ không còn ở trạng thái chứa đồ; chưa đổi trạng thái đơn.");
+            }
+
+            // SLA Check: 4 hours from deposited time
+            var depositedAt = order.DepositedAt ?? DateTime.UtcNow;
+            var elapsed = DateTime.UtcNow - depositedAt;
+            var isOverdueSla = elapsed > TimeSpan.FromHours(4);
+            var slaWarning = isOverdueSla ? $" (Cảnh báo: Trễ SLA lấy đồ {elapsed.TotalHours:0.#} giờ so với cam kết 4 giờ)" : string.Empty;
+
+            var previousStatus = order.Status;
+            order.Status = WashOrderStatus.Collected;
+            order.TaskPinAttemptCount = 0;
+            order.TaskPinLockoutUntil = null;
+
+            order.Timeline.Add(new WashOrderTimeline
+            {
+                WashOrderId = order.Id,
+                FromStatus = previousStatus,
+                Status = WashOrderStatus.Collected,
+                ActorId = CurrentUser.Id,
+                ActorName = CurrentUser.UserName ?? (scope.Role == "Admin" ? "Admin" : order.ShipperName ?? "Shipper"),
+                ActorRole = scope.Role,
+                Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                Note = $"Shipper đã mở ô tủ và lấy đồ về tiệm thành công.{slaWarning}"
+            });
+
+            await _orderRepo.UpdateAsync(order, autoSave: true);
+            await uow.CompleteAsync();
+            return Success(RedactStaffData(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), scope),
+                "Shipper lấy đồ thành công! Đơn hàng đã chuyển sang trạng thái đã thu gom.");
+        }
+
+        public async Task<BaseResponse<WashOrderDetailDto>> ShipperReturnAsync(Guid orderId, ShipperReturnOrderCommand command)
+        {
+            var scope = await GetOrderScopeAsync();
+            if (scope.Role is not ("Shipper" or "Admin"))
+                return BadRequest<WashOrderDetailDto>("Chỉ Shipper được phân công hoặc Admin mới có quyền trả đồ.");
+
+            using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            await _orderRepo.GetForUpdateAsync(orderId);
+            var order = await _orderRepo.GetWithDetailsAsync(orderId);
+            if (order == null || !CanAccess(order, scope))
+                return NotFound<WashOrderDetailDto>("Không tìm thấy đơn hàng.");
+
+            if (scope.Role == "Shipper")
+            {
+                if (order.ShipperId != scope.Id || order.AssignedTaskType != DeliveryTaskType.Return)
+                {
+                    return BadRequest<WashOrderDetailDto>("Bạn chưa được phân công hoặc không có nhiệm vụ trả đồ cho đơn này.");
+                }
+            }
+
+            if (order.PaymentStatus != PaymentStatus.Paid)
+            {
+                return BadRequest<WashOrderDetailDto>("Đơn hàng phải được thanh toán (PAID) trước khi Shipper trả đồ vào tủ.");
+            }
+
+            // Idempotency: already ready to return
+            if (order.Status == WashOrderStatus.ReadyToReturn)
+            {
+                await uow.CompleteAsync();
+                return Success(RedactStaffData(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), scope),
+                    "Thao tác trả đồ đã được thực hiện trước đó.");
+            }
+
+            if (order.Status != WashOrderStatus.Paid)
+                return BadRequest<WashOrderDetailDto>("Đơn hàng chưa ở trạng thái sẵn sàng để trả về tủ (phải là Paid).");
+
+            if (!order.ShipperId.HasValue || order.AssignedTaskType != DeliveryTaskType.Return)
+                return BadRequest<WashOrderDetailDto>("Đơn hàng chưa được phân công chuyến trả đồ.");
+
+            // Check lockout
+            var (isLocked, remainingMinutes) = CheckLockout(order.TaskPinAttemptCount, order.TaskPinLockoutUntil);
+            if (isLocked)
+            {
+                return BadRequest<WashOrderDetailDto>($"Mã nhiệm vụ đang bị tạm khóa do nhập sai nhiều lần. Vui lòng thử lại sau {remainingMinutes} phút.");
+            }
+
+            var pinMatches = !string.IsNullOrWhiteSpace(command.PinCode) &&
+                string.Equals(command.PinCode.Trim(), order.ShipperTaskPinCode, StringComparison.OrdinalIgnoreCase);
+            var qrMatches = !string.IsNullOrWhiteSpace(command.QrCode) &&
+                string.Equals(command.QrCode.Trim(), order.ShipperTaskQrString, StringComparison.OrdinalIgnoreCase);
+
+            if (!pinMatches && !qrMatches)
+            {
+                var currentAttempts = await RecordFailedAttemptAsync(order, PinKind.ShipperTask);
+                // Commit the failed attempt while holding the order lock; no locker action has run.
+                await uow.CompleteAsync();
+                return BadRequest<WashOrderDetailDto>(currentAttempts >= 5
+                    ? "Nhập sai mã nhiệm vụ 5 lần liên tiếp. Mã tạm khóa trong 5 phút."
+                    : $"Mã nhiệm vụ không chính xác (Lần thử {currentAttempts}/5).");
+            }
+
+            var returnLockerId = order.ReturnLockerId ?? order.LockerId;
+            var returnLocker = await _lockerRepo.GetWithBoxesAsync(returnLockerId);
+            if (returnLocker == null || returnLocker.Status != LockerStatus.Active || returnLocker.MerchantId != order.MerchantId)
+            {
+                await uow.RollbackAsync();
+                return BadRequest<WashOrderDetailDto>("Tủ trả đồ không còn hoạt động hoặc không thuộc đối tác của đơn.");
+            }
+
+            var sendLocker = returnLockerId == order.LockerId
+                ? returnLocker
+                : await _lockerRepo.GetWithBoxesAsync(order.LockerId);
+            var originalBox = sendLocker?.Boxes.FirstOrDefault(x => x.Id == order.BoxId);
+            var requiredSize = originalBox?.Size ?? LockerBoxSize.Small;
+
+            LockerBox? returnBox = null;
+            var candidates = returnLocker.Boxes
+                .Where(x => !x.IsDeleted && x.Status == LockerBoxStatus.Available && x.Size >= requiredSize)
+                .OrderBy(x => x.Size)
+                .ThenBy(x => x.SlotNumber);
+
+            foreach (var candidate in candidates)
+            {
+                if (!await _lockerRepo.TryReserveBoxAsync(returnLockerId, candidate.Id))
+                    continue;
+                if (!await _lockerRepo.TryOccupyReservedBoxAsync(returnLockerId, candidate.Id))
+                {
+                    await uow.RollbackAsync();
+                    return BadRequest<WashOrderDetailDto>("Không thể kích hoạt ô trả đồ; vui lòng thử lại.");
+                }
+                returnBox = candidate;
+                break;
+            }
+
+            if (returnBox == null)
+            {
+                await uow.RollbackAsync();
+                return BadRequest<WashOrderDetailDto>("Tủ trả đồ hiện không có ô trống phù hợp kích thước; chưa thể trả đồ.");
+            }
+
+            // SLA Check: 24 hours from payment time
+            var paidAt = order.PaidAt ?? DateTime.UtcNow;
+            var elapsedReturn = DateTime.UtcNow - paidAt;
+            var isOverdueReturn = elapsedReturn > TimeSpan.FromHours(24);
+            var slaReturnWarning = isOverdueReturn ? $" (Cảnh báo: Trễ SLA trả đồ {elapsedReturn.TotalHours:0.#} giờ so với cam kết 24 giờ)" : string.Empty;
+
+            var previousStatus = order.Status;
+            order.ReturnLockerId = returnLockerId;
+            order.ReturnBoxId = returnBox.Id;
+            order.ReturnBoxNumber = returnBox.BoxNumber;
+            order.Status = WashOrderStatus.ReadyToReturn;
+            order.PickupDeadline = DateTime.UtcNow.AddHours(24);
+            order.TaskPinAttemptCount = 0;
+            order.TaskPinLockoutUntil = null;
+
+            order.Timeline.Add(new WashOrderTimeline
+            {
+                WashOrderId = order.Id,
+                FromStatus = previousStatus,
+                Status = WashOrderStatus.ReadyToReturn,
+                ActorId = CurrentUser.Id,
+                ActorName = CurrentUser.UserName ?? (scope.Role == "Admin" ? "Admin" : order.ShipperName ?? "Shipper"),
+                ActorRole = scope.Role,
+                Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                Note = $"Đã đưa đồ sạch vào ô số {returnBox.BoxNumber} tại tủ {returnLocker.Name}. Khách có 24h để lấy đồ.{slaReturnWarning}"
+            });
+
+            await _orderRepo.UpdateAsync(order, autoSave: true);
+            await uow.CompleteAsync();
+            return Success(RedactStaffData(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), scope),
+                "Shipper trả đồ vào tủ thành công! Đơn hàng đã chuyển sang trạng thái chờ khách nhận.");
+        }
+
+        public async Task<BaseResponse<OpenPickupBoxResultDto>> OpenPickupBoxAsync(Guid orderId, OpenPickupBoxCommand command)
+        {
+            var scope = await GetOrderScopeAsync();
+            if (scope.Role != "Customer")
+                return BadRequest<OpenPickupBoxResultDto>("Chỉ khách hàng mới có thể mở tủ nhận đồ.");
+
+            using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            await _orderRepo.GetForUpdateAsync(orderId);
+            var order = await _orderRepo.GetWithDetailsAsync(orderId);
+            if (order == null || !CanAccess(order, scope) || order.CustomerId != scope.Id)
+                return NotFound<OpenPickupBoxResultDto>("Không tìm thấy đơn hàng.");
+
+            if (order.Status != WashOrderStatus.ReadyToReturn)
+                return BadRequest<OpenPickupBoxResultDto>("Đơn hàng không ở trạng thái sẵn sàng nhận đồ tại tủ.");
+
+            if (order.PaymentStatus != PaymentStatus.Paid)
+                return BadRequest<OpenPickupBoxResultDto>("Đơn hàng chưa được thanh toán.");
+
+            if (order.PickupDeadline.HasValue && OverdueFeeCalculator.IsTransferToStorageDue(order.PickupDeadline, DateTime.UtcNow))
+            {
+                return BadRequest<OpenPickupBoxResultDto>("Đơn hàng đã quá hạn 72 giờ và chuyển sang quy trình lưu kho. Vui lòng liên hệ hỗ trợ hoặc nhận đồ tại kho.");
+            }
+
+            var overdueFee = OverdueFeeCalculator.Calculate(order.PickupDeadline, DateTime.UtcNow);
+            order.OverdueFeeTotal = overdueFee;
+            if (order.StorageFeeTotal < overdueFee)
+            {
+                await _orderRepo.UpdateAsync(order, autoSave: true);
+                await uow.CompleteAsync();
+                return BadRequest<OpenPickupBoxResultDto>($"Cần thanh toán phí quá hạn còn thiếu {overdueFee - order.StorageFeeTotal:N0}đ trước khi mở tủ nhận đồ.");
+            }
+
+            // Check lockout
+            var (isLocked, remainingMinutes) = CheckLockout(order.CustomerPickupPinAttemptCount, order.CustomerPickupLockoutUntil);
+            if (isLocked)
+            {
+                return BadRequest<OpenPickupBoxResultDto>($"Mã nhận đồ đang bị tạm khóa do nhập sai nhiều lần. Vui lòng thử lại sau {remainingMinutes} phút.");
+            }
+
+            var pinMatches = !string.IsNullOrWhiteSpace(command.PinCode) &&
+                string.Equals(command.PinCode.Trim(), order.PickupPinCode, StringComparison.OrdinalIgnoreCase);
+            var qrMatches = !string.IsNullOrWhiteSpace(command.QrCode) &&
+                string.Equals(command.QrCode.Trim(), $"WASHGO:PICKUP:{order.OrderCode}:{order.PickupPinCode}", StringComparison.Ordinal);
+
+            if (!pinMatches && !qrMatches)
+            {
+                var currentAttempts = await RecordFailedAttemptAsync(order, PinKind.CustomerPickup);
+                // Commit the failed attempt while holding the order lock; no locker action has run.
+                await uow.CompleteAsync();
+                return BadRequest<OpenPickupBoxResultDto>(currentAttempts >= 5
+                    ? "Nhập sai mã nhận đồ 5 lần liên tiếp. Mã tạm khóa trong 5 phút."
+                    : $"Mã PIN hoặc mã QR nhận đồ không chính xác (Lần thử {currentAttempts}/5).");
+            }
+
+            // Generate secure session token (32 bytes = 64 hex chars)
+            var tokenBytes = new byte[32];
+            RandomNumberGenerator.Fill(tokenBytes);
+            var sessionToken = Convert.ToHexString(tokenBytes);
+            var tokenHash = HashToken(sessionToken);
+
+            order.PickupSessionTokenHash = tokenHash;
+            order.PickupSessionExpiresAt = DateTime.UtcNow.AddMinutes(10);
+            order.CustomerPickupPinAttemptCount = 0;
+            order.CustomerPickupLockoutUntil = null;
+
+            var returnLocker = await _lockerRepo.FindAsync(order.ReturnLockerId ?? order.LockerId);
+            await _orderRepo.UpdateAsync(order, autoSave: true);
+            await uow.CompleteAsync();
+            var result = new OpenPickupBoxResultDto
+            {
+                OrderId = order.Id,
+                OrderCode = order.OrderCode,
+                ReturnLockerId = order.ReturnLockerId ?? order.LockerId,
+                ReturnLockerName = returnLocker?.Name ?? order.LockerName,
+                ReturnBoxId = order.ReturnBoxId ?? order.BoxId,
+                ReturnBoxNumber = order.ReturnBoxNumber ?? order.BoxNumber,
+                PickupSessionToken = sessionToken,
+                ExpiresAt = order.PickupSessionExpiresAt.Value
+            };
+
+            return Success(result, $"Cửa ô tủ số {result.ReturnBoxNumber} đã mở! Vui lòng lấy đồ và xác nhận hoàn tất.");
+        }
+
+        public async Task<BaseResponse<WashOrderDetailDto>> ConfirmPickupAsync(Guid orderId, ConfirmPickupCommand command)
+        {
+            var scope = await GetOrderScopeAsync();
+            if (scope.Role != "Customer")
+                return BadRequest<WashOrderDetailDto>("Chỉ khách hàng mới có thể xác nhận nhận đồ.");
+
+            using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            await _orderRepo.GetForUpdateAsync(orderId);
+            var order = await _orderRepo.GetWithDetailsAsync(orderId);
+            if (order == null || !CanAccess(order, scope) || order.CustomerId != scope.Id)
+                return NotFound<WashOrderDetailDto>("Không tìm thấy đơn hàng.");
+
+            // Idempotency: already completed or returned
+            if (order.Status is WashOrderStatus.Returned or WashOrderStatus.Completed)
+            {
+                await uow.CompleteAsync();
+                return Success(RedactStaffData(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), scope),
+                    "Đơn hàng đã được xác nhận nhận đồ trước đó.");
+            }
+
+            if (order.PaymentStatus != PaymentStatus.Paid)
+                return BadRequest<WashOrderDetailDto>("Đơn hàng chưa được thanh toán tiền giặt.");
+
+            if (order.Status != WashOrderStatus.ReadyToReturn)
+                return BadRequest<WashOrderDetailDto>("Đơn hàng không ở trạng thái sẵn sàng nhận đồ tại tủ.");
+
+            if (string.IsNullOrWhiteSpace(command.PickupSessionToken))
+                return BadRequest<WashOrderDetailDto>("Thiếu mã phiên lấy đồ (PickupSessionToken).");
+
+            var tokenHash = HashToken(command.PickupSessionToken.Trim());
+            if (order.PickupSessionTokenHash == null ||
+                !string.Equals(order.PickupSessionTokenHash, tokenHash, StringComparison.OrdinalIgnoreCase) ||
+                !order.PickupSessionExpiresAt.HasValue ||
+                DateTime.UtcNow > order.PickupSessionExpiresAt.Value)
+            {
+                return BadRequest<WashOrderDetailDto>("Phiên lấy đồ không hợp lệ hoặc đã hết hạn (10 phút). Vui lòng quét mã mở tủ lại.");
+            }
+
+            var overdueFee = OverdueFeeCalculator.Calculate(order.PickupDeadline, DateTime.UtcNow);
+            order.OverdueFeeTotal = overdueFee;
+            if (order.StorageFeeTotal < overdueFee)
+            {
+                return BadRequest<WashOrderDetailDto>($"Phát sinh phí quá hạn bổ sung {overdueFee - order.StorageFeeTotal:N0}đ; vui lòng thanh toán trước khi đóng phiên.");
+            }
+
+            var (returnLockerId, returnBoxId) = GetReturnSlot(order);
+            if (!await _lockerRepo.TryReleaseOccupiedBoxAsync(returnLockerId, returnBoxId))
+            {
+                await uow.RollbackAsync();
+                return BadRequest<WashOrderDetailDto>("Ô trả đồ không còn ở trạng thái chứa đồ; chưa thể hoàn tất đơn.");
+            }
+
+            order.PickupSessionTokenHash = null;
+            order.PickupSessionExpiresAt = null;
+
+            var nowTs = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            order.Timeline.Add(new WashOrderTimeline
+            {
+                WashOrderId = order.Id,
+                FromStatus = WashOrderStatus.ReadyToReturn,
+                Status = WashOrderStatus.Returned,
+                ActorId = CurrentUser.Id,
+                ActorName = CurrentUser.UserName ?? order.CustomerName,
+                ActorRole = "Customer",
+                Timestamp = nowTs,
+                Note = "Khách hàng đã mở tủ và lấy đồ thành công."
+            });
+
+            order.Timeline.Add(new WashOrderTimeline
+            {
+                WashOrderId = order.Id,
+                FromStatus = WashOrderStatus.Returned,
+                Status = WashOrderStatus.Completed,
+                ActorId = CurrentUser.Id,
+                ActorName = CurrentUser.UserName ?? order.CustomerName,
+                ActorRole = "Customer",
+                Timestamp = nowTs + 1,
+                Note = "Đơn hàng hoàn tất."
+            });
+
+            order.Status = WashOrderStatus.Completed;
+            await _orderRepo.UpdateAsync(order, autoSave: true);
+            await uow.CompleteAsync();
+
+            return Success(RedactStaffData(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), scope),
+                "Xác nhận nhận đồ thành công! Cảm ơn bạn đã sử dụng dịch vụ WashGo.");
+        }
+
+        public async Task<BaseResponse<WashOrderDetailDto>> PickupFromStorageAsync(Guid orderId, PickupFromStorageCommand command)
+        {
+            var scope = await GetOrderScopeAsync();
+            if (scope.Role != "Customer")
+                return BadRequest<WashOrderDetailDto>("Chỉ khách hàng mới có thể xác nhận nhận đồ tại kho.");
+
+            using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            await _orderRepo.GetForUpdateAsync(orderId);
+            var order = await _orderRepo.GetWithDetailsAsync(orderId);
+            if (order == null || !CanAccess(order, scope) || order.CustomerId != scope.Id)
+                return NotFound<WashOrderDetailDto>("Không tìm thấy đơn hàng.");
+
+            // Idempotency: already completed or returned
+            if (order.Status is WashOrderStatus.Returned or WashOrderStatus.Completed)
+            {
+                await uow.CompleteAsync();
+                return Success(RedactStaffData(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), scope),
+                    "Đơn hàng đã được hoàn tất trước đó.");
+            }
+
+            if (order.PaymentStatus != PaymentStatus.Paid)
+                return BadRequest<WashOrderDetailDto>("Đơn hàng chưa được thanh toán tiền giặt.");
+
+            if (order.Status != WashOrderStatus.MovedToStorage)
+                return BadRequest<WashOrderDetailDto>("Đơn hàng không ở trạng thái lưu kho.");
+
+            var now = DateTime.UtcNow;
+            var totalDue = OverdueFeeCalculator.GetTotalStorageDue(order, now);
+            order.OverdueFeeTotal = totalDue;
+            if (order.StorageFeeTotal < totalDue)
+            {
+                await _orderRepo.UpdateAsync(order, autoSave: true);
+                await uow.CompleteAsync();
+                return BadRequest<WashOrderDetailDto>($"Cần thanh toán đủ phí lưu kho còn thiếu {totalDue - order.StorageFeeTotal:N0}đ trước khi nhận đồ tại kho.");
+            }
+
+            // Locker slot was already released during MoveToStorage; do NOT release again.
+            var nowTs = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            order.Timeline.Add(new WashOrderTimeline
+            {
+                WashOrderId = order.Id,
+                FromStatus = WashOrderStatus.MovedToStorage,
+                Status = WashOrderStatus.Returned,
+                ActorId = CurrentUser.Id,
+                ActorName = CurrentUser.UserName ?? order.CustomerName,
+                ActorRole = "Customer",
+                Timestamp = nowTs,
+                Note = command.Note?.Trim() is { Length: > 0 } note
+                    ? $"Khách hàng đã nhận lại đồ tại kho {order.StorageLocation}. {note}"
+                    : $"Khách hàng đã nhận lại đồ tại kho {order.StorageLocation}."
+            });
+
+            order.Timeline.Add(new WashOrderTimeline
+            {
+                WashOrderId = order.Id,
+                FromStatus = WashOrderStatus.Returned,
+                Status = WashOrderStatus.Completed,
+                ActorId = CurrentUser.Id,
+                ActorName = CurrentUser.UserName ?? order.CustomerName,
+                ActorRole = "Customer",
+                Timestamp = nowTs + 1,
+                Note = "Đơn hàng hoàn tất."
+            });
+
+            order.Status = WashOrderStatus.Completed;
+            await _orderRepo.UpdateAsync(order, autoSave: true);
+            await uow.CompleteAsync();
+
+            return Success(RedactStaffData(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), scope),
+                "Đã xác nhận nhận đồ tại kho thành công! Đơn hàng hoàn tất.");
+        }
+
+        #endregion
+
+        #region Helpers & Validations
+
+        private static string HashToken(string token)
+        {
+            using var sha = SHA256.Create();
+            var bytes = sha.ComputeHash(Encoding.UTF8.GetBytes(token));
+            return Convert.ToHexString(bytes);
+        }
+
+        private enum PinKind
+        {
+            CustomerDeposit,
+            ShipperTask,
+            CustomerPickup
+        }
+
+        // Called inside the action's transaction with the order row locked.
+        // Failed validation deliberately commits only its attempt counter before returning an error.
+        private async Task<int> RecordFailedAttemptAsync(WashOrder order, PinKind kind)
+        {
+            var now = DateTime.UtcNow;
+            int attempts;
+            switch (kind)
+            {
+                case PinKind.CustomerDeposit:
+                    if (order.CustomerDepositLockoutUntil <= now)
+                    {
+                        order.CustomerDepositPinAttemptCount = 0;
+                        order.CustomerDepositLockoutUntil = null;
+                    }
+                    attempts = ++order.CustomerDepositPinAttemptCount;
+                    if (attempts >= 5) order.CustomerDepositLockoutUntil = now.AddMinutes(5);
+                    break;
+                case PinKind.ShipperTask:
+                    if (order.TaskPinLockoutUntil <= now)
+                    {
+                        order.TaskPinAttemptCount = 0;
+                        order.TaskPinLockoutUntil = null;
+                    }
+                    attempts = ++order.TaskPinAttemptCount;
+                    if (attempts >= 5) order.TaskPinLockoutUntil = now.AddMinutes(5);
+                    break;
+                default:
+                    if (order.CustomerPickupLockoutUntil <= now)
+                    {
+                        order.CustomerPickupPinAttemptCount = 0;
+                        order.CustomerPickupLockoutUntil = null;
+                    }
+                    attempts = ++order.CustomerPickupPinAttemptCount;
+                    if (attempts >= 5) order.CustomerPickupLockoutUntil = now.AddMinutes(5);
+                    break;
+            }
+            await _orderRepo.UpdateAsync(order, autoSave: true);
+            return attempts;
+        }
+        private static (bool IsLocked, int RemainingMinutes) CheckLockout(int attempts, DateTime? lockoutUntil)
+        {
+            if (lockoutUntil.HasValue)
+            {
+                var now = DateTime.UtcNow;
+                if (now < lockoutUntil.Value)
+                {
+                    var remaining = (int)Math.Ceiling((lockoutUntil.Value - now).TotalMinutes);
+                    return (true, Math.Max(1, remaining));
+                }
+            }
+            return (false, 0);
+        }
+
         private static DeliveryTaskType? GetAssignableTask(WashOrder order) => order.Status switch
         {
             WashOrderStatus.Deposited => DeliveryTaskType.Collect,
@@ -733,18 +1330,11 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
         {
             return current switch
             {
-                WashOrderStatus.Pending => next == WashOrderStatus.Deposited,
-                WashOrderStatus.Deposited => next == WashOrderStatus.Collected,
                 WashOrderStatus.Collected => next == WashOrderStatus.Washing,
                 WashOrderStatus.Washing => next is WashOrderStatus.Drying or WashOrderStatus.Ironing or WashOrderStatus.Folding or WashOrderStatus.AwaitingPayment,
                 WashOrderStatus.Drying => next is WashOrderStatus.Ironing or WashOrderStatus.Folding or WashOrderStatus.AwaitingPayment,
                 WashOrderStatus.Ironing => next is WashOrderStatus.Folding or WashOrderStatus.AwaitingPayment,
                 WashOrderStatus.Folding => next == WashOrderStatus.AwaitingPayment,
-                WashOrderStatus.AwaitingPayment => false, // Payment gateway confirms this transition internally.
-                WashOrderStatus.Paid => next == WashOrderStatus.ReadyToReturn,
-                WashOrderStatus.ReadyToReturn => next == WashOrderStatus.Returned,
-                WashOrderStatus.MovedToStorage => next == WashOrderStatus.Returned,
-                WashOrderStatus.Returned => next == WashOrderStatus.Completed,
                 _ => false
             };
         }
@@ -752,7 +1342,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
         private static (Guid LockerId, Guid BoxId) GetReturnSlot(WashOrder order) =>
             order.ReturnBoxId.HasValue
                 ? (order.ReturnLockerId ?? order.LockerId, order.ReturnBoxId.Value)
-                : (order.LockerId, order.BoxId); // Orders created before ReturnBoxId was recorded.
+                : (order.LockerId, order.BoxId);
 
         public async Task<BaseResponse<List<ColumnFilterDistinctValueDto>>> GetColumnDistinctValuesAsync(string fieldName, WashOrderFilterQuery query)
         {
@@ -771,5 +1361,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             "OrderCode", "LockerName", "MerchantName", "ShipperName", "Status",
             "PaymentStatus", "PaymentMethod", "CreatedOn", "ExpectedDeliveryTime"
         }.Contains(field, StringComparer.OrdinalIgnoreCase);
+
+        #endregion
     }
 }

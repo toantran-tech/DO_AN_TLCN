@@ -1221,6 +1221,14 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnName("created_on")
                         .HasDefaultValueSql("EXTRACT(EPOCH FROM now())::bigint");
 
+                    b.Property<DateTime?>("CustomerDepositLockoutUntil")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("customer_deposit_lockout_until");
+
+                    b.Property<int>("CustomerDepositPinAttemptCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("customer_deposit_pin_attempt_count");
+
                     b.Property<Guid>("CustomerId")
                         .HasColumnType("uuid")
                         .HasColumnName("customer_id");
@@ -1241,6 +1249,14 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("character varying(20)")
                         .HasColumnName("customer_phone_number");
 
+                    b.Property<DateTime?>("CustomerPickupLockoutUntil")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("customer_pickup_lockout_until");
+
+                    b.Property<int>("CustomerPickupPinAttemptCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("customer_pickup_pin_attempt_count");
+
                     b.Property<string>("DeletedBy")
                         .HasColumnType("text")
                         .HasColumnName("deleted_by");
@@ -1258,6 +1274,10 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasMaxLength(10)
                         .HasColumnType("character varying(10)")
                         .HasColumnName("deposit_pin_code");
+
+                    b.Property<DateTime?>("DepositedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deposited_at");
 
                     b.Property<decimal>("DiscountAmount")
                         .HasPrecision(18, 2)
@@ -1306,6 +1326,11 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("character varying(150)")
                         .HasColumnName("locker_name");
 
+                    b.Property<decimal?>("LockerOverdueFeeAtStorageTransfer")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("locker_overdue_fee_at_storage_transfer");
+
                     b.Property<Guid?>("MerchantId")
                         .HasColumnType("uuid")
                         .HasColumnName("merchant_id");
@@ -1348,6 +1373,10 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("numeric(18,2)")
                         .HasColumnName("overdue_fee_total");
 
+                    b.Property<DateTime?>("PaidAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("paid_at");
+
                     b.Property<DateTime?>("PaymentDeadline")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("payment_deadline");
@@ -1369,6 +1398,15 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasMaxLength(10)
                         .HasColumnType("character varying(10)")
                         .HasColumnName("pickup_pin_code");
+
+                    b.Property<DateTime?>("PickupSessionExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("pickup_session_expires_at");
+
+                    b.Property<string>("PickupSessionTokenHash")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("pickup_session_token_hash");
 
                     b.Property<Guid?>("PromotionId")
                         .HasColumnType("uuid")
@@ -1412,6 +1450,16 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("text")
                         .HasColumnName("shipper_name");
 
+                    b.Property<string>("ShipperTaskPinCode")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("shipper_task_pin_code");
+
+                    b.Property<string>("ShipperTaskQrString")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("shipper_task_qr_string");
+
                     b.Property<int>("Status")
                         .HasColumnType("integer")
                         .HasColumnName("status");
@@ -1430,6 +1478,14 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasMaxLength(120)
                         .HasColumnType("character varying(120)")
                         .HasColumnName("storage_reference");
+
+                    b.Property<int>("TaskPinAttemptCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("task_pin_attempt_count");
+
+                    b.Property<DateTime?>("TaskPinLockoutUntil")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("task_pin_lockout_until");
 
                     b.Property<decimal>("TotalAmount")
                         .HasPrecision(18, 2)
