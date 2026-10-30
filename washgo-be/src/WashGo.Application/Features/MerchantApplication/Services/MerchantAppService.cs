@@ -130,6 +130,11 @@ namespace WashGo.Application.Features.MerchantApplication.Services
 
         public async Task<BaseResponse<MerchantResultDto>> UpdateAsync(UpdateMerchantCommand command)
         {
+            if (command.Status.HasValue && !Enum.IsDefined(typeof(MerchantStatus), command.Status.Value))
+            {
+                return BadRequest<MerchantResultDto>("Trạng thái Merchant không hợp lệ. Chỉ chấp nhận 1, 2 hoặc 3.");
+            }
+
             var entity = await _merchantRepo.FindAsync(command.Id);
             if (entity == null)
             {
@@ -137,6 +142,10 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             }
 
             ObjectMapper.Map(command, entity);
+            if (command.Status.HasValue)
+            {
+                entity.Status = command.Status.Value;
+            }
             entity.UpdatedAt = DateTime.UtcNow;
 
             await _merchantRepo.UpdateAsync(entity, autoSave: true);
@@ -171,6 +180,11 @@ namespace WashGo.Application.Features.MerchantApplication.Services
 
         public async Task<BaseResponse<MerchantResultDto>> UpdateStatusAsync(UpdateMerchantStatusCommand command)
         {
+            if (!Enum.IsDefined(typeof(MerchantStatus), command.Status))
+            {
+                return BadRequest<MerchantResultDto>("Trạng thái Merchant không hợp lệ. Chỉ chấp nhận 1, 2 hoặc 3.");
+            }
+
             var entity = await _merchantRepo.FindAsync(command.MerchantId);
             if (entity == null)
             {

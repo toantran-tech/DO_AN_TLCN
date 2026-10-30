@@ -12,7 +12,8 @@ namespace WashGo.Application.Features.MerchantApplication.Mappings
             CreateMap<Merchant, MerchantResultDto>();
             CreateMap<CreateMerchantCommand, Merchant>()
                 .ForMember(dest => dest.Id, opt => opt.MapFrom(src => src.UserId));
-            CreateMap<UpdateMerchantCommand, Merchant>();
+            CreateMap<UpdateMerchantCommand, Merchant>()
+                .ForMember(dest => dest.Status, opt => opt.Ignore());
         }
     }
 }

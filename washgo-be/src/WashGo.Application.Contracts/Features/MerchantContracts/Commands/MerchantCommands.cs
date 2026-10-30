@@ -29,7 +29,7 @@ namespace WashGo.Application.Contracts.Features.MerchantContracts.Commands
     public class UpdateMerchantCommand : CreateMerchantCommand
     {
         public Guid Id { get; set; }
-        public MerchantStatus Status { get; set; }
+        public MerchantStatus? Status { get; set; }
     }
 
     public class UpdateMerchantStatusCommand
