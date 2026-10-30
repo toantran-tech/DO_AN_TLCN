@@ -23,26 +23,31 @@ namespace WashGo.HttpApi.Endpoints.ServiceArea
             group.MapPost("/filter", async (ServiceAreaFilterQuery request, IServiceAreaAppService svc) =>
                 (await svc.GetListAsync(request)).CustomResult())
                 .WithName("Lọc danh sách vùng phục vụ")
+                .WithSummary("Lọc danh sách vùng phục vụ.")
                 .WithOpenApi();
 
             group.MapGet("/{id:guid}", async (Guid id, IServiceAreaAppService svc) =>
                 (await svc.GetByIdAsync(id)).CustomResult())
                 .WithName("Xem chi tiết vùng phục vụ")
+                .WithSummary("Xem chi tiết vùng phục vụ.")
                 .WithOpenApi();
 
             group.MapPost("/", async (CreateServiceAreaCommand command, IServiceAreaAppService svc) =>
                 (await svc.CreateAsync(command)).CustomResult())
                 .WithName("Thêm mới vùng phục vụ")
+                .WithSummary("Thêm mới vùng phục vụ.")
                 .WithOpenApi();
 
             group.MapPut("/", async (UpdateServiceAreaCommand command, IServiceAreaAppService svc) =>
                 (await svc.UpdateAsync(command)).CustomResult())
                 .WithName("Cập nhật vùng phục vụ")
+                .WithSummary("Cập nhật vùng phục vụ.")
                 .WithOpenApi();
 
             group.MapPatch("/{id:guid}/toggle-active", async (Guid id, IServiceAreaAppService svc) =>
                 (await svc.ToggleActiveAsync(id)).CustomResult())
                 .WithName("Bật / Tắt trạng thái vùng phục vụ")
+                .WithSummary("Bật / Tắt trạng thái vùng phục vụ.")
                 .WithOpenApi();
         }
     }

@@ -1,7 +1,9 @@
 # Tiến độ WashGo theo Đặc tả usecase (Backend trước)
-Cập nhật lần cuối: 29/10/2026
+Cập nhật lần cuối: 30/10/2026
 
 Nguồn đối chiếu: `../Đặc tả usecase.docx`. Trạng thái dưới đây đánh giá **nghiệp vụ Backend theo use case**, không đồng nghĩa có giao diện Customer hoặc đã kiểm thử với cổng thanh toán thật. “Một phần” nghĩa là đã có entity/API hoặc một nhánh xử lý nhưng chưa đủ điều kiện, quyền, dữ liệu hay kết quả mà use case yêu cầu. Các mục `[x]` ở nhật ký kỹ thuật phía dưới chỉ xác nhận phần việc kỹ thuật được ghi tại đó, **không** xác nhận toàn bộ use case đã hoàn thành.
+
+Ghi nhận ngày 30/10/2026: bổ sung .WithSummary(...) tiếng Việt cho toàn bộ 59 endpoint trong 8 nhóm API để hiển thị mục đích trên Swagger.
 
 ## I. Bản đồ use case và tiến độ hiện tại
 

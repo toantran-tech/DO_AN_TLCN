@@ -23,31 +23,37 @@ namespace WashGo.HttpApi.Endpoints.Locker
             group.MapPost("/filter", async (LockerFilterQuery request, ILockerAppService svc) =>
                 (await svc.GetListAsync(request)).CustomResult())
                 .WithName("Lọc danh sách Locker")
+                .WithSummary("Lọc danh sách Locker.")
                 .WithOpenApi();
 
             group.MapGet("/{id:guid}", async (Guid id, ILockerAppService svc) =>
                 (await svc.GetByIdAsync(id)).CustomResult())
                 .WithName("Xem chi tiết Locker")
+                .WithSummary("Xem chi tiết Locker.")
                 .WithOpenApi();
 
             group.MapPost("/", async (CreateLockerCommand command, ILockerAppService svc) =>
                 (await svc.CreateAsync(command)).CustomResult())
                 .WithName("Thêm mới tủ Locker")
+                .WithSummary("Thêm mới tủ Locker.")
                 .WithOpenApi();
 
             group.MapPut("/", async (UpdateLockerCommand command, ILockerAppService svc) =>
                 (await svc.UpdateAsync(command)).CustomResult())
                 .WithName("Cập nhật tủ Locker")
+                .WithSummary("Cập nhật tủ Locker.")
                 .WithOpenApi();
 
             group.MapPut("/box-status", async (UpdateLockerBoxStatusCommand command, ILockerAppService svc) =>
                 (await svc.UpdateBoxStatusAsync(command)).CustomResult())
                 .WithName("Cập nhật trạng thái ô tủ Locker")
+                .WithSummary("Cập nhật trạng thái ô tủ Locker.")
                 .WithOpenApi();
 
             group.MapPost("/column-distinct-values", async (string field, LockerFilterQuery query, ILockerAppService svc) =>
                 (await svc.GetColumnDistinctValuesAsync(field, query)).CustomResult())
                 .WithName("Lấy giá trị distinct cho bộ lọc Locker")
+                .WithSummary("Lấy giá trị distinct cho bộ lọc Locker.")
                 .WithOpenApi();
         }
     }

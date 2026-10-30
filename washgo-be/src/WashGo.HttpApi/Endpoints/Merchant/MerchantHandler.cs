@@ -23,26 +23,31 @@ namespace WashGo.HttpApi.Endpoints.Merchant
             group.MapPost("/filter", async (MerchantFilterQuery request, IMerchantAppService svc) =>
                 (await svc.GetListAsync(request)).CustomResult())
                 .WithName("Lọc danh sách đối tác giặt sấy")
+                .WithSummary("Lọc danh sách đối tác giặt sấy.")
                 .WithOpenApi();
 
             group.MapGet("/{id:guid}", async (Guid id, IMerchantAppService svc) =>
                 (await svc.GetByIdAsync(id)).CustomResult())
                 .WithName("Xem chi tiết đối tác giặt sấy")
+                .WithSummary("Xem chi tiết đối tác giặt sấy.")
                 .WithOpenApi();
 
             group.MapPost("/", async (CreateMerchantCommand command, IMerchantAppService svc) =>
                 (await svc.CreateAsync(command)).CustomResult())
                 .WithName("Thêm mới hồ sơ đối tác giặt sấy")
+                .WithSummary("Thêm mới hồ sơ đối tác giặt sấy.")
                 .WithOpenApi();
 
             group.MapPut("/", async (UpdateMerchantCommand command, IMerchantAppService svc) =>
                 (await svc.UpdateAsync(command)).CustomResult())
                 .WithName("Cập nhật hồ sơ đối tác giặt sấy")
+                .WithSummary("Cập nhật hồ sơ đối tác giặt sấy.")
                 .WithOpenApi();
 
             group.MapPut("/status", async (UpdateMerchantStatusCommand command, IMerchantAppService svc) =>
                 (await svc.UpdateStatusAsync(command)).CustomResult())
                 .WithName("Cập nhật trạng thái đối tác giặt sấy")
+                .WithSummary("Cập nhật trạng thái đối tác giặt sấy.")
                 .WithOpenApi();
         }
     }
