@@ -54,7 +54,7 @@ FROM washgo.shippers s WHERE user_id = '$seedUser';
         } $customer).data
         $orders += [Guid]$order.id
         Assert-Status 400 Put '/wash-order/assign-shipper' @{ orderId = $order.id; shipperId = "$fixtureShipper" } $merchant
-        Call-Api Put '/wash-order/status' @{ orderId = $order.id; newStatus = 2 } $admin | Out-Null
+        Invoke-TestDelivery $order.id deposit $customer | Out-Null
     }
     $first = $orders[0]
     $assignment = @{ orderId = "$first"; shipperId = "$fixtureShipper"; shipperName = 'Forged name' }
@@ -106,11 +106,11 @@ FROM washgo.shippers s WHERE user_id = '$seedUser';
         !$repeated.shipperAssignedAt -or $before.timeline.Count -ne $repeated.timeline.Count) { throw 'Assignment identity, task, or replay check failed.' }
     $available = (Call-Api Get "/wash-order/$loser/available-shippers" $null $merchant).data
     if (@($available | Where-Object { $_.id -eq "$fixtureShipper" }).Count) { throw 'Busy Shipper was listed for another order.' }
-    Call-Api Put '/wash-order/status' @{orderId="$winner";newStatus=3} $shipper | Out-Null
+    Invoke-TestDelivery $winner collect $shipper | Out-Null
     $available = (Call-Api Get "/wash-order/$loser/available-shippers" $null $merchant).data
     if (!@($available | Where-Object { $_.id -eq "$fixtureShipper" }).Count) { throw 'Shipper did not become available after collection.' }
     Call-Api Put '/wash-order/assign-shipper' @{orderId="$loser";shipperId="$fixtureShipper"} $merchant | Out-Null
-    Call-Api Put '/wash-order/status' @{orderId="$loser";newStatus=3} $shipper | Out-Null
+    Invoke-TestDelivery $loser collect $shipper | Out-Null
 
     foreach ($id in $orders) {
         $quote=(Call-Api Get "/wash-order/$id" $null $merchant).data
@@ -125,9 +125,9 @@ FROM washgo.shippers s WHERE user_id = '$seedUser';
         Assert-Status 400 Put '/wash-order/status' @{orderId="$id";newStatus=10} $shipper
         $returnAssignment = (Call-Api Put '/wash-order/assign-shipper' @{orderId="$id";shipperId="$fixtureShipper"} $merchant).data
         if ($returnAssignment.assignedTaskType -ne 2) { throw 'Return task not recorded.' }
-        Call-Api Put '/wash-order/status' @{orderId="$id";newStatus=10} $shipper | Out-Null
-        Call-Api Put '/wash-order/status' @{orderId="$id";newStatus=11} $admin | Out-Null
-        Call-Api Put '/wash-order/status' @{orderId="$id";newStatus=12} $admin | Out-Null
+        Invoke-TestDelivery $id return $shipper | Out-Null
+        Invoke-TestDelivery $id pickup $customer | Out-Null
+
     }
     $complete = $true
     Write-Output "PASS: Merchant assignment, role/ownership/state/availability checks, server name, replay, concurrent 200/400, separate collect/return tasks. Completed smoke orders: $($orders -join ', ')"

@@ -22,6 +22,8 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Results
         public DeliveryTaskType? AssignedTaskType { get; set; }
         public DateTime? ShipperAssignedAt { get; set; }
         public string? ShipperName { get; set; }
+        public string? ShipperTaskPinCode { get; set; }
+        public string? ShipperTaskQrString { get; set; }
         public Guid? MerchantId { get; set; }
         public string? MerchantName { get; set; }
         public decimal TotalAmount { get; set; }
@@ -40,8 +42,12 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Results
         public PaymentMethod PaymentMethod { get; set; }
         public string DepositPinCode { get; set; } = string.Empty;
         public string PickupPinCode { get; set; } = string.Empty;
+        public string? PickupQrCodeString => string.IsNullOrEmpty(PickupPinCode)
+            ? null : $"WASHGO:PICKUP:{OrderCode}:{PickupPinCode}";
         public string QrCodeString { get; set; } = string.Empty;
         public long ExpectedDeliveryTime { get; set; }
+        public DateTime? DepositedAt { get; set; }
+        public DateTime? PaidAt { get; set; }
         public DateTime? PickupDeadline { get; set; }
         public decimal OverdueFeeTotal { get; set; }
         public decimal StorageFeeTotal { get; set; }
@@ -80,5 +86,17 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Results
         public string? ActorRole { get; set; }
         public long Timestamp { get; set; }
         public string? Note { get; set; }
+    }
+
+    public class OpenPickupBoxResultDto
+    {
+        public Guid OrderId { get; set; }
+        public string OrderCode { get; set; } = string.Empty;
+        public Guid ReturnLockerId { get; set; }
+        public string ReturnLockerName { get; set; } = string.Empty;
+        public Guid ReturnBoxId { get; set; }
+        public string ReturnBoxNumber { get; set; } = string.Empty;
+        public string PickupSessionToken { get; set; } = string.Empty;
+        public DateTime ExpiresAt { get; set; }
     }
 }

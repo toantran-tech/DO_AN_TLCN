@@ -53,4 +53,38 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Commands
         public string StorageReference { get; set; } = string.Empty;
         public string? Note { get; set; }
     }
+
+    public class DepositWashOrderCommand
+    {
+        public string? PinCode { get; set; }
+        public string? QrCode { get; set; }
+    }
+
+    public class ShipperCollectOrderCommand
+    {
+        public string? PinCode { get; set; }
+        public string? QrCode { get; set; }
+    }
+
+    public class ShipperReturnOrderCommand
+    {
+        public string? PinCode { get; set; }
+        public string? QrCode { get; set; }
+    }
+
+    public class OpenPickupBoxCommand
+    {
+        public string? PinCode { get; set; }
+        public string? QrCode { get; set; }
+    }
+
+    public class ConfirmPickupCommand
+    {
+        public string PickupSessionToken { get; set; } = string.Empty;
+    }
+
+    public class PickupFromStorageCommand
+    {
+        public string? Note { get; set; }
+    }
 }
