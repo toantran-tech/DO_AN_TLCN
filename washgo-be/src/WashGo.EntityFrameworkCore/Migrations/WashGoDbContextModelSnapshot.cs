@@ -1191,9 +1191,23 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("numeric(18,2)")
                         .HasColumnName("cancel_fee_amount");
 
+                    b.Property<decimal>("CancelFeePaidAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("cancel_fee_paid_amount");
+
+                    b.Property<int?>("CancellationFromStatus")
+                        .HasColumnType("integer")
+                        .HasColumnName("cancellation_from_status");
+
                     b.Property<string>("CancellationReason")
                         .HasColumnType("text")
                         .HasColumnName("cancellation_reason");
+
+                    b.Property<decimal>("CancellationRefundAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("cancellation_refund_amount");
 
                     b.Property<DateTime?>("CancelledAt")
                         .HasColumnType("timestamp with time zone")
@@ -1206,6 +1220,14 @@ namespace WashGo.EntityFrameworkCore.Migrations
                     b.Property<int?>("CancelledByType")
                         .HasColumnType("integer")
                         .HasColumnName("cancelled_by_type");
+
+                    b.Property<DateTime?>("CancelledGoodsReturnedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("cancelled_goods_returned_at");
+
+                    b.Property<int>("CancelledGoodsStatus")
+                        .HasColumnType("integer")
+                        .HasColumnName("cancelled_goods_status");
 
                     b.Property<string>("Created")
                         .HasColumnType("jsonb")

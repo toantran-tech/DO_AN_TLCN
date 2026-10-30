@@ -16,6 +16,7 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Services
         Task<BaseResponse<WashOrderDetailDto>> GetByIdAsync(Guid id);
         Task<BaseResponse<WashOrderDetailDto>> CreateAsync(CreateWashOrderCommand command);
         Task<BaseResponse<WashOrderDetailDto>> CancelAsync(Guid orderId, CancelWashOrderCommand command);
+        Task<BaseResponse<CancellationQuoteDto>> GetCancellationQuoteAsync(Guid orderId);
         Task<BaseResponse<WashOrderDetailDto>> UpdateStatusAsync(UpdateWashOrderStatusCommand command);
         Task<BaseResponse<WashOrderDetailDto>> UpdateActualWeightAsync(Guid orderId, UpdateActualWeightCommand command);
         Task<BaseResponse<WashOrderDetailDto>> MoveToStorageAsync(MoveOrderToStorageCommand command);

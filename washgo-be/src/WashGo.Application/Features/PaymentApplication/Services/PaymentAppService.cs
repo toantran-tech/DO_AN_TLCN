@@ -161,6 +161,70 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             }, "Đã tạo giao dịch thanh toán phí lưu kho.");
         }
 
+        public async Task<BaseResponse<PaymentResultDto>> CreateCancellationFeePaymentAsync(CreatePaymentCommand command)
+        {
+            if (!CurrentUser.Id.HasValue)
+                return BadRequest<PaymentResultDto>("Không xác định được tài khoản khách hàng.");
+            using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            var order = await _orders.GetForUpdateAsync(command.OrderId);
+            if (order == null || order.CustomerId != CurrentUser.Id.Value)
+                return NotFound<PaymentResultDto>("Không tìm thấy đơn hàng của khách hàng.");
+            if (order.Status != WashOrderStatus.Cancelled)
+                return BadRequest<PaymentResultDto>("Chỉ thanh toán phí hủy cho đơn đã hủy.");
+            if (command.PaymentMethod != PaymentMethod.VnPay)
+                return BadRequest<PaymentResultDto>("Hiện chỉ hỗ trợ thanh toán phí hủy qua VNPay.");
+
+            var overdueTotal = order.CancelFeeAmount;
+
+            var outstanding = overdueTotal - order.CancelFeePaidAmount;
+            if (outstanding <= 0m)
+            {
+                await _orders.UpdateAsync(order, autoSave: true);
+                await uow.CompleteAsync();
+                return BadRequest<PaymentResultDto>("Đơn hàng hiện không có phí hủy cần thanh toán.");
+            }
+
+            var pending = await _transactionRepo.FirstOrDefaultAsync(x =>
+                x.OrderId == order.Id && x.Purpose == PaymentPurpose.CancellationFee &&
+                x.Status == PaymentTransactionStatus.Pending);
+            if (pending != null)
+                return BadRequest<PaymentResultDto>("Đơn đã có giao dịch phí hủy đang chờ xác nhận. Vui lòng chờ kết quả trước khi tạo giao dịch mới.");
+
+            var useVnPay = string.Equals(_configuration["Payment:Provider"], "VnPay", StringComparison.OrdinalIgnoreCase);
+            var reference = $"WG-CANCEL-{order.OrderCode}-{Guid.NewGuid():N}";
+            var paymentUrl = useVnPay
+                ? BuildVnPayUrl(order.OrderCode, reference, outstanding, command.ClientIpAddress,
+                    $"Cancellation fee {order.OrderCode}")
+                : $"http://localhost:5000/payment/mock-checkout?orderId={order.Id}&reference={reference}";
+            if (string.IsNullOrWhiteSpace(paymentUrl))
+                return BadRequest<PaymentResultDto>("Chưa cấu hình đầy đủ thông tin kết nối VNPay.");
+
+            await _orders.UpdateAsync(order, autoSave: true);
+            await _transactionRepo.InsertAsync(new PaymentTransaction
+            {
+                OrderId = order.Id,
+                TransactionReference = reference,
+                PaymentMethod = command.PaymentMethod,
+                Purpose = PaymentPurpose.CancellationFee,
+                Status = PaymentTransactionStatus.Pending,
+                Amount = outstanding,
+                PaymentUrl = paymentUrl
+            }, autoSave: true);
+            await uow.CompleteAsync();
+
+            return Success(new PaymentResultDto
+            {
+                OrderId = order.Id,
+                OrderCode = order.OrderCode,
+                Amount = outstanding,
+                PaymentMethod = command.PaymentMethod,
+                PaymentStatus = order.PaymentStatus,
+                Purpose = PaymentPurpose.CancellationFee,
+                TransactionReference = reference,
+                PaymentUrl = paymentUrl
+            }, "Đã tạo giao dịch thanh toán phí hủy.");
+        }
+
         public async Task<BaseResponse<PaymentResultDto>> HandleCallbackAsync(PaymentCallbackCommand command)
         {
             if (string.IsNullOrWhiteSpace(command.TransactionReference))
@@ -189,6 +253,24 @@ namespace WashGo.Application.Features.PaymentApplication.Services
                 return BadRequest<PaymentResultDto>("Thanh toán thất bại hoặc bị hủy.");
             }
 
+            if (transaction.Purpose == PaymentPurpose.CancellationFee)
+            {
+                if (transaction.Status != PaymentTransactionStatus.Succeeded)
+                {
+                    if (!await MarkCancellationFeePaidAsync(order, transaction, "Sandbox"))
+                        return BadRequest<PaymentResultDto>("Giao dịch hoặc số phí hủy không hợp lệ.");
+                    transaction.Status = PaymentTransactionStatus.Succeeded;
+                    transaction.CompletedAt = DateTime.UtcNow;
+                    await _transactionRepo.UpdateAsync(transaction, autoSave: true);
+                    await uow.CompleteAsync();
+                }
+                return Success(new PaymentResultDto
+                {
+                    OrderId = order.Id, OrderCode = order.OrderCode, Amount = transaction.Amount,
+                    PaymentMethod = transaction.PaymentMethod, PaymentStatus = order.PaymentStatus,
+                    TransactionReference = transaction.TransactionReference, Purpose = PaymentPurpose.CancellationFee
+                }, "Đã ghi nhận thanh toán phí hủy; đơn hàng vẫn ở trạng thái Đã hủy.");
+            }
             if (transaction.Purpose == PaymentPurpose.OverdueStorageFee)
             {
                 if (transaction.Status == PaymentTransactionStatus.Succeeded)
@@ -308,6 +390,17 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             if (order == null)
                 return Ip("01", "Order not found");
 
+            if (transaction.Purpose == PaymentPurpose.CancellationFee)
+            {
+                if (!await MarkCancellationFeePaidAsync(order, transaction, "VNPay"))
+                    return Ip("04", "Invalid cancellation fee");
+                transaction.Status = PaymentTransactionStatus.Succeeded;
+                transaction.ProviderTransactionId = parameters.GetValueOrDefault("vnp_TransactionNo");
+                transaction.CompletedAt = DateTime.UtcNow;
+                await _transactionRepo.UpdateAsync(transaction, autoSave: true);
+                await uow.CompleteAsync();
+                return Ip("00", "Confirm Success");
+            }
             if (transaction.Purpose == PaymentPurpose.OverdueStorageFee)
             {
                 var orderEntity = await _orders.GetForUpdateAsync(transaction.OrderId);
@@ -345,6 +438,24 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             return Ip("00", "Confirm Success");
         }
 
+        private async Task<bool> MarkCancellationFeePaidAsync(WashOrder order, PaymentTransaction transaction, string provider)
+        {
+            var outstanding = order.CancelFeeAmount - order.CancelFeePaidAmount;
+            if (order.Status != WashOrderStatus.Cancelled || outstanding <= 0m ||
+                transaction.OrderId != order.Id || transaction.Purpose != PaymentPurpose.CancellationFee ||
+                transaction.Status != PaymentTransactionStatus.Pending || transaction.Amount != outstanding)
+                return false;
+            order.CancelFeePaidAmount += transaction.Amount;
+            order.Timeline.Add(new WashOrderTimeline
+            {
+                WashOrderId = order.Id, FromStatus = order.Status, Status = order.Status,
+                ActorRole = "System", ActorName = provider,
+                Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                Note = $"Thanh toán phí hủy {transaction.Amount:N0}đ. Mã: {transaction.TransactionReference}"
+            });
+            await _orders.UpdateAsync(order, autoSave: true);
+            return true;
+        }
         private async Task<bool> MarkOrderPaidAsync(WashOrder order, PaymentTransaction transaction,
             string provider, string? providerReference = null)
         {
@@ -428,9 +539,12 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             if (string.IsNullOrWhiteSpace(command.Reason) || command.Reason.Trim().Length < 10)
                 return BadRequest<RefundRequestDto>("Lý do hoàn tiền cần có ít nhất 10 ký tự.");
 
-            var order = await _orders.FindAsync(command.OrderId);
+            using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            var order = await _orders.GetForUpdateAsync(command.OrderId);
             if (order == null || order.CustomerId != CurrentUser.Id.Value)
                 return NotFound<RefundRequestDto>("Không tìm thấy đơn hàng của khách hàng.");
+            if (order.Status == WashOrderStatus.Cancelled)
+                return BadRequest<RefundRequestDto>("Hoàn tiền đơn hủy được tạo tự động sau khi trừ phí hủy; không tạo yêu cầu hoàn toàn bộ giá đơn.");
             if (order.PaymentStatus != PaymentStatus.Paid)
                 return BadRequest<RefundRequestDto>("Chỉ tạo yêu cầu hoàn tiền cho đơn đã thanh toán.");
 
@@ -454,6 +568,7 @@ namespace WashGo.Application.Features.PaymentApplication.Services
                 Status = RefundRequestStatus.Pending
             };
             await _refundRequestRepo.InsertAsync(request, autoSave: true);
+            await uow.CompleteAsync();
             return Success(ToDto(request), "Đã gửi yêu cầu hoàn tiền, chờ Admin duyệt.");
         }
 
@@ -486,6 +601,7 @@ namespace WashGo.Application.Features.PaymentApplication.Services
 
         public async Task<BaseResponse<RefundRequestDto>> ConfirmRefundedAsync(Guid id, ConfirmRefundCommand command)
         {
+            using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
             var request = await _refundRequestRepo.FindAsync(id);
             if (request == null)
                 return NotFound<RefundRequestDto>("Không tìm thấy yêu cầu hoàn tiền.");
@@ -494,16 +610,22 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             if (string.IsNullOrWhiteSpace(command.RefundReference))
                 return BadRequest<RefundRequestDto>("Cần nhập mã tham chiếu giao dịch hoàn tiền.");
 
-            var order = await _orders.FindAsync(request.OrderId);
-            if (order == null || order.PaymentStatus != PaymentStatus.Paid)
+            // Match the payment callbacks' lock order: transaction, then order.
+            var reference = await AsyncExecuter.FirstOrDefaultAsync((await _transactionRepo.GetQueryableAsync())
+                .Where(x => x.OrderId == request.OrderId && x.Purpose == PaymentPurpose.Order &&
+                    x.Status == PaymentTransactionStatus.Succeeded).Select(x => x.TransactionReference));
+            var successful = reference == null ? null : await _transactionRepo.GetForUpdateByReferenceAsync(reference);
+            var order = await _orders.GetForUpdateAsync(request.OrderId);
+            if (order == null || order.PaymentStatus != PaymentStatus.Paid ||
+                successful != null && successful.Status != PaymentTransactionStatus.Succeeded)
                 return BadRequest<RefundRequestDto>("Đơn không còn ở trạng thái đã thanh toán.");
-
-            var successful = await _transactionRepo.FirstOrDefaultAsync(x =>
-                x.OrderId == order.Id && x.Purpose == PaymentPurpose.Order &&
-                x.Status == PaymentTransactionStatus.Succeeded);
             if (order.PaymentMethod != PaymentMethod.Cash && successful == null)
                 return BadRequest<RefundRequestDto>("Không tìm thấy giao dịch thanh toán gốc thành công.");
 
+            var refundable = (successful?.Amount ?? order.FinalAmount) -
+                (order.Status == WashOrderStatus.Cancelled ? order.CancelFeePaidAmount : 0m);
+            if (request.Amount <= 0m || request.Amount > refundable)
+                return BadRequest<RefundRequestDto>("Số tiền hoàn vượt quá phần còn lại sau khi trừ phí hủy.");
             if (successful != null)
             {
                 successful.Status = PaymentTransactionStatus.Refunded;
@@ -517,6 +639,7 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             request.RefundReference = command.RefundReference.Trim();
             request.RefundedAt = DateTime.UtcNow;
             await _refundRequestRepo.UpdateAsync(request, autoSave: true);
+            await uow.CompleteAsync();
             return Success(ToDto(request), "Đã ghi nhận Admin xác nhận hoàn tiền.");
         }
 

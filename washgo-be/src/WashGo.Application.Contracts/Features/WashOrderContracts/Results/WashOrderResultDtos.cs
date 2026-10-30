@@ -55,6 +55,15 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Results
         public string? StorageLocation { get; set; }
         public string? StorageReference { get; set; }
         public long CreatedOn { get; set; }
+        public decimal CancelFeeAmount { get; set; }
+        public decimal CancelFeePaidAmount { get; set; }
+        public decimal CancellationFeeOutstanding => Math.Max(0m, CancelFeeAmount - CancelFeePaidAmount);
+        public decimal CancellationRefundAmount { get; set; }
+        public DateTime? CancelledAt { get; set; }
+        public string? CancellationReason { get; set; }
+        public WashOrderStatus? CancellationFromStatus { get; set; }
+        public CancelledGoodsStatus CancelledGoodsStatus { get; set; }
+        public DateTime? CancelledGoodsReturnedAt { get; set; }
     }
 
     public class WashOrderDetailDto : WashOrderResultDto

@@ -22,6 +22,8 @@ using WashGo.Domain.Entities.WashService.Interfaces;
 using WashGo.Application.Features.PaymentApplication.Services;
 using WashGo.Domain.Shared.Constants;
 using WashGo.Domain.Shared.Enums;
+using WashGo.Domain.Entities.Payment;
+using WashGo.Domain.Entities.Payment.Interfaces;
 
 namespace WashGo.Application.Features.WashOrderApplication.Services
 {
@@ -35,6 +37,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
         private readonly IRepository<Customer, Guid> _customerRepo;
         private readonly IShipperRepository _shipperRepo;
         private readonly IRepository<Role, Guid> _roleRepo;
+        private readonly IPaymentTransactionRepository _payments;
+        private readonly IRepository<RefundRequest, Guid> _refunds;
 
         public WashOrderAppService(
             IWashOrderRepository orderRepo,
@@ -44,7 +48,9 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             IRepository<Merchant, Guid> merchantRepo,
             IRepository<Customer, Guid> customerRepo,
             IShipperRepository shipperRepo,
-            IRepository<Role, Guid> roleRepo)
+            IRepository<Role, Guid> roleRepo,
+            IPaymentTransactionRepository payments,
+            IRepository<RefundRequest, Guid> refunds)
         {
             _orderRepo = orderRepo;
             _lockerRepo = lockerRepo;
@@ -54,6 +60,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             _customerRepo = customerRepo;
             _shipperRepo = shipperRepo;
             _roleRepo = roleRepo;
+            _payments = payments;
+            _refunds = refunds;
         }
 
         private readonly record struct OrderScope(string Role, Guid Id);
@@ -102,6 +110,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             }
             else if (scope.Role == "Merchant")
             {
+                dto.CancellationReason = null;
                 dto.CustomerId = Guid.Empty;
                 dto.CustomerName = "***";
                 dto.CustomerPhoneNumber = "***";
@@ -123,6 +132,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             }
             else if (scope.Role == "Shipper")
             {
+                dto.CancellationReason = null;
                 dto.CustomerId = Guid.Empty;
                 dto.CustomerName = "***";
                 dto.CustomerPhoneNumber = "***";
@@ -364,62 +374,124 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             return Created(result, "Tạo đơn hàng WashGo thành công!");
         }
 
+        private async Task<decimal> GetVerifiedPaidAmountAsync(WashOrder order)
+        {
+            if (order.PaymentStatus != PaymentStatus.Paid) return 0m;
+            var payments = await _payments.GetListAsync(x => x.OrderId == order.Id &&
+                x.Purpose == PaymentPurpose.Order && x.Status == PaymentTransactionStatus.Succeeded);
+            return payments.Count > 0 ? payments.Sum(x => x.Amount)
+                : order.PaymentMethod == PaymentMethod.Cash ? order.FinalAmount : 0m;
+        }
+
+        public async Task<BaseResponse<CancellationQuoteDto>> GetCancellationQuoteAsync(Guid orderId)
+        {
+            var scope = await GetOrderScopeAsync();
+            var order = await _orderRepo.FindAsync(orderId);
+            if (scope.Role != "Customer" || order == null || order.CustomerId != scope.Id)
+                return NotFound<CancellationQuoteDto>("Không tìm thấy đơn hàng của khách hàng.");
+            var allowed = OrderCancellationPolicy.TryCalculate(order, DateTime.UtcNow,
+                out var basis, out var percent, out var fee);
+            var paid = await GetVerifiedPaidAmountAsync(order);
+            allowed = allowed && (order.PaymentStatus != PaymentStatus.Paid || paid > 0m);
+            if (order.Status == WashOrderStatus.Cancelled)
+            {
+                basis = order.CancellationFromStatus == WashOrderStatus.Collected ? order.FinalAmount : order.TotalAmount;
+                percent = order.CancellationFromStatus == WashOrderStatus.Collected ? 50 : order.CancelFeeAmount > 0m ? 30 : 0;
+            }
+            return Success(new CancellationQuoteDto
+            {
+                OrderId = order.Id, Status = order.Status, CanCancel = allowed,
+                Reason = allowed ? null : order.Status == WashOrderStatus.Cancelled ? "Đơn đã được hủy; hiển thị phí đã chốt." : "Đơn không đủ điều kiện hủy hoặc không có thanh toán gốc hợp lệ để đối chiếu.",
+                BasisAmount = basis, FeePercent = percent,
+                FeeAmount = order.Status == WashOrderStatus.Cancelled ? order.CancelFeeAmount : fee,
+                RefundAmount = order.Status == WashOrderStatus.Cancelled ? order.CancellationRefundAmount : Math.Max(0m, paid - fee),
+                FeeOutstanding = order.Status == WashOrderStatus.Cancelled
+                    ? Math.Max(0m, order.CancelFeeAmount - order.CancelFeePaidAmount) : Math.Max(0m, fee - paid)
+            }, "Báo phí chỉ là ước tính tại thời điểm xem; hệ thống tính lại khi xác nhận hủy.");
+        }
+
         public async Task<BaseResponse<WashOrderDetailDto>> CancelAsync(Guid orderId, CancelWashOrderCommand command)
         {
-            if (!CurrentUser.Id.HasValue)
-            {
-                return BadRequest<WashOrderDetailDto>("Không xác định được tài khoản khách hàng.");
-            }
-
+            var scope = await GetOrderScopeAsync();
+            if (scope.Role != "Customer")
+                return BadRequest<WashOrderDetailDto>("Chỉ khách hàng được hủy đơn của mình.");
             var reason = command.Reason?.Trim();
-            if (string.IsNullOrWhiteSpace(reason))
-            {
-                return BadRequest<WashOrderDetailDto>("Vui lòng nhập lý do hủy đơn.");
-            }
-
-            if (reason.Length > 500)
-            {
-                return BadRequest<WashOrderDetailDto>("Lý do hủy đơn tối đa 500 ký tự.");
-            }
+            if (string.IsNullOrWhiteSpace(reason) || reason.Length > 500)
+                return BadRequest<WashOrderDetailDto>("Lý do hủy đơn phải có từ 1 đến 500 ký tự.");
 
             using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            await _orderRepo.GetForUpdateAsync(orderId);
             var order = await _orderRepo.GetWithDetailsAsync(orderId);
-            if (order == null || order.CustomerId != CurrentUser.Id.Value)
-            {
+            if (order == null || order.CustomerId != scope.Id)
                 return NotFound<WashOrderDetailDto>("Không tìm thấy đơn hàng của khách hàng.");
-            }
+            if (order.Status == WashOrderStatus.Cancelled)
+                return Success(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), "Đơn hàng đã được hủy trước đó.");
+            var now = DateTime.UtcNow;
+            if (!OrderCancellationPolicy.TryCalculate(order, now, out _, out var percent, out var fee))
+                return BadRequest<WashOrderDetailDto>("Chỉ được hủy Pending, Deposited hoặc Collected đã cân; không hủy khi đã bắt đầu giặt.");
+            var paid = await GetVerifiedPaidAmountAsync(order);
+            if (order.PaymentStatus == PaymentStatus.Paid && paid <= 0m)
+                return BadRequest<WashOrderDetailDto>("Không có giao dịch thanh toán gốc hợp lệ để đối chiếu hoàn tiền.");
+            if (await _refunds.AnyAsync(x => x.OrderId == order.Id && x.Status != RefundRequestStatus.Rejected))
+                return BadRequest<WashOrderDetailDto>("Đơn đã có yêu cầu hoàn tiền; vui lòng xử lý yêu cầu đó trước khi hủy.");
 
-            if (order.Status != WashOrderStatus.Pending)
+            var previous = order.Status;
+            if (previous == WashOrderStatus.Pending &&
+                !await _lockerRepo.TryReleaseReservedBoxAsync(order.LockerId, order.BoxId))
             {
-                return BadRequest<WashOrderDetailDto>("Chỉ có thể hủy đơn trước khi gửi đồ vào locker.");
+                await uow.RollbackAsync();
+                return BadRequest<WashOrderDetailDto>("Ô tủ không còn được giữ chỗ; chưa hủy đơn.");
             }
-
-            if (!await _orderRepo.TryChangeStatusAsync(order.Id, WashOrderStatus.Pending, WashOrderStatus.Cancelled))
-                return BadRequest<WashOrderDetailDto>("Đơn hàng vừa đổi trạng thái; không thể hủy.");
-            if (!await _lockerRepo.TryReleaseReservedBoxAsync(order.LockerId, order.BoxId))
-                return BadRequest<WashOrderDetailDto>("Ô tủ không còn ở trạng thái giữ chỗ; chưa hủy đơn.");
-
+            // Occupied slots keep the customer's belongings until authenticated pickup.
+            order.CancelledGoodsStatus = previous switch
+            {
+                WashOrderStatus.Deposited => CancelledGoodsStatus.AtDepositLocker,
+                WashOrderStatus.Collected => CancelledGoodsStatus.AtMerchant,
+                _ => CancelledGoodsStatus.None
+            };
+            if (previous == WashOrderStatus.Deposited)
+            {
+                order.ReturnLockerId = order.LockerId;
+                order.ReturnBoxId = order.BoxId;
+                order.ReturnBoxNumber = order.BoxNumber;
+            }
             order.Status = WashOrderStatus.Cancelled;
-            order.CancelledAt = DateTime.UtcNow;
-            order.CancelledBy = CurrentUser.Id.Value;
+            order.CancellationFromStatus = previous;
+            order.CancelledAt = now;
+            order.CancelledBy = scope.Id;
             order.CancelledByType = OrderActorType.Customer;
             order.CancellationReason = reason;
-            order.CancelFeeAmount = 0;
+            order.CancelFeeAmount = fee;
+            order.CancelFeePaidAmount = Math.Min(fee, paid);
+            order.CancellationRefundAmount = Math.Max(0m, paid - fee);
+            order.AssignedTaskType = null;
+            order.ShipperTaskPinCode = null;
+            order.ShipperTaskQrString = null;
+            order.TaskPinAttemptCount = 0;
+            order.TaskPinLockoutUntil = null;
+            order.PickupSessionTokenHash = null;
+            order.PickupSessionExpiresAt = null;
+            if (order.CancellationRefundAmount > 0m)
+            {
+                await _refunds.InsertAsync(new RefundRequest
+                {
+                    OrderId = order.Id, CustomerId = order.CustomerId,
+                    Amount = order.CancellationRefundAmount,
+                    Reason = $"Hoàn tiền sau hủy đơn; phí {percent}%. {reason}",
+                    Status = RefundRequestStatus.Pending
+                }, autoSave: true);
+            }
             order.Timeline.Add(new WashOrderTimeline
             {
-                WashOrderId = order.Id,
-                FromStatus = WashOrderStatus.Pending,
-                Status = WashOrderStatus.Cancelled,
-                ActorId = CurrentUser.Id.Value,
-                ActorName = CurrentUser.UserName ?? order.CustomerName,
-                ActorRole = "Customer",
-                Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
-                Note = $"Khách hàng hủy đơn. Lý do: {reason}"
+                WashOrderId = order.Id, FromStatus = previous, Status = WashOrderStatus.Cancelled,
+                ActorId = scope.Id, ActorName = CurrentUser.UserName ?? order.CustomerName, ActorRole = "Customer",
+                Timestamp = new DateTimeOffset(now).ToUnixTimeSeconds(),
+                Note = $"Khách hủy đơn; phí {percent}% = {fee:N0}đ; lý do: {reason}. Vị trí đồ: {order.CancelledGoodsStatus}."
             });
-
             await _orderRepo.UpdateAsync(order, autoSave: true);
             await uow.CompleteAsync();
-            return Success(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), "Hủy đơn hàng thành công.");
+            return Success(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order),
+                "Đã hủy đơn. Phí còn thiếu phải thanh toán trước khi nhận lại đồ; đồ trong locker chưa được giải phóng.");
         }
 
         public async Task<BaseResponse<WashOrderDetailDto>> UpdateActualWeightAsync(Guid orderId, UpdateActualWeightCommand command)
@@ -887,20 +959,22 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 }
             }
 
-            if (order.PaymentStatus != PaymentStatus.Paid)
+            var cancelledReturn = order.Status == WashOrderStatus.Cancelled &&
+                order.CancellationFromStatus == WashOrderStatus.Collected;
+            if (!cancelledReturn && order.PaymentStatus != PaymentStatus.Paid)
             {
                 return BadRequest<WashOrderDetailDto>("Đơn hàng phải được thanh toán (PAID) trước khi Shipper trả đồ vào tủ.");
             }
 
             // Idempotency: already ready to return
-            if (order.Status == WashOrderStatus.ReadyToReturn)
+            if (order.Status == WashOrderStatus.ReadyToReturn || cancelledReturn && order.CancelledGoodsStatus is CancelledGoodsStatus.AtReturnLocker or CancelledGoodsStatus.ReturnedToCustomer)
             {
                 await uow.CompleteAsync();
                 return Success(RedactStaffData(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), scope),
                     "Thao tác trả đồ đã được thực hiện trước đó.");
             }
 
-            if (order.Status != WashOrderStatus.Paid)
+            if (order.Status != WashOrderStatus.Paid && !(cancelledReturn && order.CancelledGoodsStatus == CancelledGoodsStatus.AtMerchant))
                 return BadRequest<WashOrderDetailDto>("Đơn hàng chưa ở trạng thái sẵn sàng để trả về tủ (phải là Paid).");
 
             if (!order.ShipperId.HasValue || order.AssignedTaskType != DeliveryTaskType.Return)
@@ -970,15 +1044,16 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             // SLA Check: 24 hours from payment time
             var paidAt = order.PaidAt ?? DateTime.UtcNow;
             var elapsedReturn = DateTime.UtcNow - paidAt;
-            var isOverdueReturn = elapsedReturn > TimeSpan.FromHours(24);
+            var isOverdueReturn = !cancelledReturn && elapsedReturn > TimeSpan.FromHours(24);
             var slaReturnWarning = isOverdueReturn ? $" (Cảnh báo: Trễ SLA trả đồ {elapsedReturn.TotalHours:0.#} giờ so với cam kết 24 giờ)" : string.Empty;
 
             var previousStatus = order.Status;
             order.ReturnLockerId = returnLockerId;
             order.ReturnBoxId = returnBox.Id;
             order.ReturnBoxNumber = returnBox.BoxNumber;
-            order.Status = WashOrderStatus.ReadyToReturn;
-            order.PickupDeadline = DateTime.UtcNow.AddHours(24);
+            order.Status = cancelledReturn ? WashOrderStatus.Cancelled : WashOrderStatus.ReadyToReturn;
+            if (cancelledReturn) order.CancelledGoodsStatus = CancelledGoodsStatus.AtReturnLocker;
+            order.PickupDeadline = cancelledReturn ? null : DateTime.UtcNow.AddHours(24);
             order.TaskPinAttemptCount = 0;
             order.TaskPinLockoutUntil = null;
 
@@ -986,18 +1061,18 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             {
                 WashOrderId = order.Id,
                 FromStatus = previousStatus,
-                Status = WashOrderStatus.ReadyToReturn,
+                Status = order.Status,
                 ActorId = CurrentUser.Id,
                 ActorName = CurrentUser.UserName ?? (scope.Role == "Admin" ? "Admin" : order.ShipperName ?? "Shipper"),
                 ActorRole = scope.Role,
                 Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
-                Note = $"Đã đưa đồ sạch vào ô số {returnBox.BoxNumber} tại tủ {returnLocker.Name}. Khách có 24h để lấy đồ.{slaReturnWarning}"
+                Note = $"Đã trả đồ vào ô số {returnBox.BoxNumber} tại tủ {returnLocker.Name}. {(cancelledReturn ? "Đơn hủy chờ khách nhận lại đồ." : "Khách có 24h để lấy đồ.")}{slaReturnWarning}"
             });
 
             await _orderRepo.UpdateAsync(order, autoSave: true);
             await uow.CompleteAsync();
             return Success(RedactStaffData(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), scope),
-                "Shipper trả đồ vào tủ thành công! Đơn hàng đã chuyển sang trạng thái chờ khách nhận.");
+                cancelledReturn ? "Đã trả đồ của đơn hủy vào locker; đơn vẫn Cancelled, chờ khách nhận lại." : "Shipper trả đồ vào tủ thành công! Đơn hàng đã chuyển sang trạng thái chờ khách nhận.");
         }
 
         public async Task<BaseResponse<OpenPickupBoxResultDto>> OpenPickupBoxAsync(Guid orderId, OpenPickupBoxCommand command)
@@ -1012,18 +1087,21 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             if (order == null || !CanAccess(order, scope) || order.CustomerId != scope.Id)
                 return NotFound<OpenPickupBoxResultDto>("Không tìm thấy đơn hàng.");
 
-            if (order.Status != WashOrderStatus.ReadyToReturn)
+            var cancelledPickup = OrderCancellationPolicy.IsLockerPickup(order);
+            if (cancelledPickup && !OrderCancellationPolicy.FeeSettled(order))
+                return BadRequest<OpenPickupBoxResultDto>("Cần thanh toán đủ phí hủy trước khi nhận lại đồ.");
+            if (order.Status != WashOrderStatus.ReadyToReturn && !cancelledPickup)
                 return BadRequest<OpenPickupBoxResultDto>("Đơn hàng không ở trạng thái sẵn sàng nhận đồ tại tủ.");
 
-            if (order.PaymentStatus != PaymentStatus.Paid)
+            if (!OrderCancellationPolicy.IsLockerPickup(order) && order.PaymentStatus != PaymentStatus.Paid)
                 return BadRequest<OpenPickupBoxResultDto>("Đơn hàng chưa được thanh toán.");
 
-            if (order.PickupDeadline.HasValue && OverdueFeeCalculator.IsTransferToStorageDue(order.PickupDeadline, DateTime.UtcNow))
+            if (!cancelledPickup && order.PickupDeadline.HasValue && OverdueFeeCalculator.IsTransferToStorageDue(order.PickupDeadline, DateTime.UtcNow))
             {
                 return BadRequest<OpenPickupBoxResultDto>("Đơn hàng đã quá hạn 72 giờ và chuyển sang quy trình lưu kho. Vui lòng liên hệ hỗ trợ hoặc nhận đồ tại kho.");
             }
 
-            var overdueFee = OverdueFeeCalculator.Calculate(order.PickupDeadline, DateTime.UtcNow);
+            var overdueFee = cancelledPickup ? 0m : OverdueFeeCalculator.Calculate(order.PickupDeadline, DateTime.UtcNow);
             order.OverdueFeeTotal = overdueFee;
             if (order.StorageFeeTotal < overdueFee)
             {
@@ -1096,17 +1174,20 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 return NotFound<WashOrderDetailDto>("Không tìm thấy đơn hàng.");
 
             // Idempotency: already completed or returned
-            if (order.Status is WashOrderStatus.Returned or WashOrderStatus.Completed)
+            if (order.Status is WashOrderStatus.Returned or WashOrderStatus.Completed || order.Status == WashOrderStatus.Cancelled && order.CancelledGoodsStatus == CancelledGoodsStatus.ReturnedToCustomer)
             {
                 await uow.CompleteAsync();
                 return Success(RedactStaffData(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), scope),
                     "Đơn hàng đã được xác nhận nhận đồ trước đó.");
             }
 
-            if (order.PaymentStatus != PaymentStatus.Paid)
+            if (!OrderCancellationPolicy.IsLockerPickup(order) && order.PaymentStatus != PaymentStatus.Paid)
                 return BadRequest<WashOrderDetailDto>("Đơn hàng chưa được thanh toán tiền giặt.");
 
-            if (order.Status != WashOrderStatus.ReadyToReturn)
+            var cancelledPickup = OrderCancellationPolicy.IsLockerPickup(order);
+            if (cancelledPickup && !OrderCancellationPolicy.FeeSettled(order))
+                return BadRequest<WashOrderDetailDto>("Cần thanh toán đủ phí hủy trước khi nhận lại đồ.");
+            if (order.Status != WashOrderStatus.ReadyToReturn && !cancelledPickup)
                 return BadRequest<WashOrderDetailDto>("Đơn hàng không ở trạng thái sẵn sàng nhận đồ tại tủ.");
 
             if (string.IsNullOrWhiteSpace(command.PickupSessionToken))
@@ -1121,7 +1202,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 return BadRequest<WashOrderDetailDto>("Phiên lấy đồ không hợp lệ hoặc đã hết hạn (10 phút). Vui lòng quét mã mở tủ lại.");
             }
 
-            var overdueFee = OverdueFeeCalculator.Calculate(order.PickupDeadline, DateTime.UtcNow);
+            var overdueFee = cancelledPickup ? 0m : OverdueFeeCalculator.Calculate(order.PickupDeadline, DateTime.UtcNow);
             order.OverdueFeeTotal = overdueFee;
             if (order.StorageFeeTotal < overdueFee)
             {
@@ -1138,6 +1219,21 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             order.PickupSessionTokenHash = null;
             order.PickupSessionExpiresAt = null;
 
+            if (cancelledPickup)
+            {
+                order.CancelledGoodsStatus = CancelledGoodsStatus.ReturnedToCustomer;
+                order.CancelledGoodsReturnedAt = DateTime.UtcNow;
+                order.Timeline.Add(new WashOrderTimeline
+                {
+                    WashOrderId = order.Id, FromStatus = order.Status, Status = order.Status,
+                    ActorId = CurrentUser.Id, ActorName = CurrentUser.UserName ?? order.CustomerName,
+                    ActorRole = "Customer", Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                    Note = "Khách đã nhận lại đồ của đơn hủy và đóng cửa; giải phóng ô. Đơn vẫn là Cancelled."
+                });
+                await _orderRepo.UpdateAsync(order, autoSave: true);
+                await uow.CompleteAsync();
+                return Success(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), "Đã nhận lại đồ của đơn hủy.");
+            }
             var nowTs = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             order.Timeline.Add(new WashOrderTimeline
             {
@@ -1318,13 +1414,16 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
         {
             WashOrderStatus.Deposited => DeliveryTaskType.Collect,
             WashOrderStatus.Paid when order.PaymentStatus == PaymentStatus.Paid => DeliveryTaskType.Return,
+            WashOrderStatus.Cancelled when order.CancelledGoodsStatus == CancelledGoodsStatus.AtMerchant => DeliveryTaskType.Return,
             _ => null
         };
 
         private static IQueryable<WashOrder> ActiveDeliveryOrders(IQueryable<WashOrder> orders) =>
             orders.Where(x => !x.IsDeleted && x.ShipperId != null &&
                 (x.Status == WashOrderStatus.Deposited && x.AssignedTaskType == DeliveryTaskType.Collect ||
-                 x.Status == WashOrderStatus.Paid && x.AssignedTaskType == DeliveryTaskType.Return));
+                 x.Status == WashOrderStatus.Paid && x.AssignedTaskType == DeliveryTaskType.Return ||
+                 x.Status == WashOrderStatus.Cancelled && x.CancelledGoodsStatus == CancelledGoodsStatus.AtMerchant &&
+                    x.AssignedTaskType == DeliveryTaskType.Return));
 
         private static bool IsValidTransition(WashOrderStatus current, WashOrderStatus next)
         {

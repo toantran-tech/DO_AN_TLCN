@@ -5,6 +5,7 @@ namespace WashGo.Application.Contracts.Features.PaymentContracts.Results
 {
     public class PaymentResultDto
     {
+        public PaymentPurpose Purpose { get; set; } = PaymentPurpose.Order;
         public Guid OrderId { get; set; }
         public string OrderCode { get; set; } = string.Empty;
         public decimal Amount { get; set; }
