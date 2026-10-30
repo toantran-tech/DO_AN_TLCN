@@ -46,11 +46,18 @@ namespace WashGo.HttpApi.Endpoints.WashOrder
                 .WithSummary("Customer tạo đơn hàng và đặt ô tủ gửi đồ.")
                 .WithOpenApi();
 
+            group.MapGet("/{id:guid}/cancellation-quote", async (Guid id, IWashOrderAppService svc) =>
+                (await svc.GetCancellationQuoteAsync(id)).CustomResult())
+                .RequireAuthorization("CustomerOnly")
+                .WithName("Xem phí hủy đơn dự kiến")
+                .WithSummary("Customer xem điều kiện hủy, phí 0%/30%/50%, tiền hoàn và phí còn thiếu; tính lại khi xác nhận hủy.")
+                .WithOpenApi();
+
             group.MapPost("/{id:guid}/cancel", async (Guid id, CancelWashOrderCommand command, IWashOrderAppService svc) =>
                 (await svc.CancelAsync(id, command)).CustomResult())
                 .RequireAuthorization("CustomerOnly")
                 .WithName("Khách hàng hủy đơn của mình")
-                .WithSummary("Customer hủy đơn của mình khi đơn còn ở trạng thái chờ gửi đồ.")
+                .WithSummary("Customer hủy Pending, Deposited hoặc Collected đã cân; tính phí và hoàn tiền, giữ ô đang có đồ đến khi nhận lại.")
                 .WithOpenApi();
 
             group.MapPut("/status", async (UpdateWashOrderStatusCommand command, IWashOrderAppService svc) =>

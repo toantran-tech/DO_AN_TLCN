@@ -10,6 +10,7 @@ namespace WashGo.Application.Contracts.Features.PaymentContracts.Services
     public interface IPaymentAppService : IApplicationService
     {
         Task<BaseResponse<PaymentResultDto>> CreatePaymentAsync(CreatePaymentCommand command);
+        Task<BaseResponse<PaymentResultDto>> CreateCancellationFeePaymentAsync(CreatePaymentCommand command);
         Task<BaseResponse<PaymentResultDto>> CreateOverdueFeePaymentAsync(CreateOverdueFeePaymentCommand command);
         Task<BaseResponse<PaymentResultDto>> HandleCallbackAsync(PaymentCallbackCommand command);
         Task<VnPayIpnResultDto> HandleVnPayIpnAsync(IReadOnlyDictionary<string, string> parameters);

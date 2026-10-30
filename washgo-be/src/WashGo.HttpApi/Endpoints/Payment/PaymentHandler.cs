@@ -29,6 +29,16 @@ namespace WashGo.HttpApi.Endpoints.Payment
                 .WithSummary("Customer tạo giao dịch và URL thanh toán tiền giặt cho đơn hàng của mình.")
                 .WithOpenApi();
 
+            group.MapPost("/cancellation-fee/create-url", async (CreatePaymentCommand command, HttpContext context, IPaymentAppService service) =>
+            {
+                command.ClientIpAddress = context.Connection.RemoteIpAddress?.MapToIPv4().ToString() ?? "127.0.0.1";
+                return (await service.CreateCancellationFeePaymentAsync(command)).CustomResult();
+            })
+                .RequireAuthorization("CustomerOnly")
+                .WithName("Thanh toán phí hủy đơn")
+                .WithSummary("Customer tạo giao dịch phí hủy riêng; không thanh toán tiền giặt hoặc đổi đơn sang Paid.")
+                .WithOpenApi();
+
             group.MapPost("/callback", async (PaymentCallbackCommand command, IPaymentAppService service) =>
                 (await service.HandleCallbackAsync(command)).CustomResult())
                 .RequireAuthorization("AdminOnly")

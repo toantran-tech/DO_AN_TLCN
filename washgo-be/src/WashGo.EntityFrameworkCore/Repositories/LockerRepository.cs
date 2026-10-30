@@ -93,6 +93,9 @@ namespace WashGo.EntityFrameworkCore.Repositories
                     && !db.WashOrders.Any(order => !order.IsDeleted &&
                         ((order.BoxId == boxId &&
                           (order.Status == WashOrderStatus.Pending || order.Status == WashOrderStatus.Deposited)) ||
+                         (order.Status == WashOrderStatus.Cancelled &&
+                          ((order.CancelledGoodsStatus == CancelledGoodsStatus.AtDepositLocker && order.BoxId == boxId) ||
+                           (order.CancelledGoodsStatus == CancelledGoodsStatus.AtReturnLocker && order.ReturnBoxId == boxId))) ||
                          (order.Status == WashOrderStatus.ReadyToReturn &&
                           (order.ReturnBoxId == boxId ||
                            (order.ReturnBoxId == null && order.BoxId == boxId))))))
