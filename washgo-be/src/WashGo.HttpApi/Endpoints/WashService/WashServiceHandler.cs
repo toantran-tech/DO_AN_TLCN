@@ -23,31 +23,37 @@ namespace WashGo.HttpApi.Endpoints.WashService
             group.MapPost("/filter", async (WashServiceFilterQuery request, IWashServiceAppService svc) =>
                 (await svc.GetListAsync(request)).CustomResult())
                 .WithName("Lọc danh sách dịch vụ")
+                .WithSummary("Lọc danh sách dịch vụ.")
                 .WithOpenApi();
 
             group.MapGet("/{id:guid}", async (Guid id, IWashServiceAppService svc) =>
                 (await svc.GetByIdAsync(id)).CustomResult())
                 .WithName("Xem chi tiết dịch vụ")
+                .WithSummary("Xem chi tiết dịch vụ.")
                 .WithOpenApi();
 
             group.MapPost("/", async (CreateWashServiceCommand command, IWashServiceAppService svc) =>
                 (await svc.CreateAsync(command)).CustomResult())
                 .WithName("Thêm mới dịch vụ WashGo")
+                .WithSummary("Thêm mới dịch vụ WashGo.")
                 .WithOpenApi();
 
             group.MapPut("/", async (UpdateWashServiceCommand command, IWashServiceAppService svc) =>
                 (await svc.UpdateAsync(command)).CustomResult())
                 .WithName("Cập nhật dịch vụ WashGo")
+                .WithSummary("Cập nhật dịch vụ WashGo.")
                 .WithOpenApi();
 
             group.MapPut("/status", async (UpdateWashServiceStatusCommand command, IWashServiceAppService svc) =>
                 (await svc.UpdateStatusAsync(command)).CustomResult())
                 .WithName("Cập nhật trạng thái / duyệt dịch vụ")
+                .WithSummary("Cập nhật trạng thái / duyệt dịch vụ.")
                 .WithOpenApi();
 
             group.MapPost("/column-distinct-values", async (string field, WashServiceFilterQuery query, IWashServiceAppService svc) =>
                 (await svc.GetColumnDistinctValuesAsync(field, query)).CustomResult())
                 .WithName("Lấy giá trị distinct cho bộ lọc dịch vụ")
+                .WithSummary("Lấy giá trị distinct cho bộ lọc dịch vụ.")
                 .WithOpenApi();
         }
     }

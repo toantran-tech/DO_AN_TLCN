@@ -17,28 +17,40 @@ public class CustomerHandler : IEndpointBase
 
         group.MapGet("/me", async (ICustomerAppService service) =>
             (await service.GetMyProfileAsync()).CustomResult())
-            .WithName("Xem hồ sơ Customer của tôi").WithOpenApi();
+            .WithName("Xem hồ sơ Customer của tôi")
+            .WithSummary("Xem hồ sơ Customer của tôi.")
+            .WithOpenApi();
 
         group.MapPut("/me", async (UpdateCustomerProfileCommand command, ICustomerAppService service) =>
             (await service.UpdateMyProfileAsync(command)).CustomResult())
-            .WithName("Cập nhật hồ sơ Customer của tôi").WithOpenApi();
+            .WithName("Cập nhật hồ sơ Customer của tôi")
+            .WithSummary("Cập nhật hồ sơ Customer của tôi.")
+            .WithOpenApi();
 
         group.MapGet("/services", async (Guid? merchantId, WashServiceType? serviceType, string? keyword,
             int? page, int? take, ICustomerCatalogAppService catalog) =>
             (await catalog.GetServicesAsync(merchantId, serviceType, keyword, page ?? 1, take ?? 20)).CustomResult())
-            .WithName("Customer xem dịch vụ đang bán").WithOpenApi();
+            .WithName("Customer xem dịch vụ đang bán")
+            .WithSummary("Customer xem dịch vụ đang bán.")
+            .WithOpenApi();
 
         group.MapGet("/services/{id:guid}", async (Guid id, ICustomerCatalogAppService catalog) =>
             (await catalog.GetServiceAsync(id)).CustomResult())
-            .WithName("Customer xem chi tiết dịch vụ đang bán").WithOpenApi();
+            .WithName("Customer xem chi tiết dịch vụ đang bán")
+            .WithSummary("Customer xem chi tiết dịch vụ đang bán.")
+            .WithOpenApi();
 
         group.MapGet("/lockers", async (string? city, string? district, string? keyword,
             int? page, int? take, ICustomerCatalogAppService catalog) =>
             (await catalog.GetLockersAsync(city, district, keyword, page ?? 1, take ?? 20)).CustomResult())
-            .WithName("Customer tìm tủ còn ô trống").WithOpenApi();
+            .WithName("Customer tìm tủ còn ô trống")
+            .WithSummary("Customer tìm tủ còn ô trống.")
+            .WithOpenApi();
 
         group.MapGet("/lockers/{id:guid}", async (Guid id, ICustomerCatalogAppService catalog) =>
             (await catalog.GetLockerAsync(id)).CustomResult())
-            .WithName("Customer xem các ô tủ còn trống").WithOpenApi();
+            .WithName("Customer xem các ô tủ còn trống")
+            .WithSummary("Customer xem các ô tủ còn trống.")
+            .WithOpenApi();
     }
 }
