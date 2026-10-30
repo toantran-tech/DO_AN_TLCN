@@ -5,6 +5,8 @@ Nguồn đối chiếu: `../Đặc tả usecase.docx`. Trạng thái dưới đ�
 
 Ghi nhận ngày 30/10/2026: bổ sung .WithSummary(...) tiếng Việt cho toàn bộ 59 endpoint trong 8 nhóm API để hiển thị mục đích trên Swagger.
 
+Ghi nhận ngày 30/10/2026: PUT /merchant/ giữ trạng thái cũ khi bỏ hoặc gửi null cho status; hai API cập nhật hồ sơ/trạng thái Merchant chặn giá trị enum ngoài 1–3.
+
 ## I. Bản đồ use case và tiến độ hiện tại
 
 ### 1. Customer
