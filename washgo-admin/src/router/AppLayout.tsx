@@ -28,7 +28,6 @@ import {
 import MenuIcon from '@mui/icons-material/Menu';
 import Brightness4Icon from '@mui/icons-material/Brightness4';
 import Brightness7Icon from '@mui/icons-material/Brightness7';
-import NotificationsOutlinedIcon from '@mui/icons-material/NotificationsOutlined';
 import LogoutIcon from '@mui/icons-material/Logout';
 import WaterDropIcon from '@mui/icons-material/WaterDrop';
 import HeadsetMicOutlinedIcon from '@mui/icons-material/HeadsetMicOutlined';
@@ -39,6 +38,7 @@ import { logout } from '../redux/account/account.slice';
 import { linkGoogleApi, logoutApi } from '../apis/auth/auth.api';
 import { ROUTE_ITEMS } from './route.constant';
 import { GoogleSignInButton } from '../components/google-sign-in/google-sign-in.component';
+import { NotificationBell } from '../components/notification-bell/notification-bell.component';
 
 const DRAWER_WIDTH = 228;
 
@@ -121,11 +121,7 @@ export const AppLayout: React.FC = () => {
               </IconButton>
             </Tooltip>
 
-            <Tooltip title="Thông báo hệ thống">
-              <IconButton size="small">
-                <NotificationsOutlinedIcon />
-              </IconButton>
-            </Tooltip>
+            <NotificationBell />
 
             <Divider orientation="vertical" flexItem sx={{ mx: 0.5, height: 24, my: 'auto' }} />
 

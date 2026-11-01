@@ -4,6 +4,7 @@ using Volo.Abp.EntityFrameworkCore;
 using WashGo.Domain.Entities.Identity;
 using WashGo.Domain.Entities.Locker;
 using WashGo.Domain.Entities.Feedback;
+using WashGo.Domain.Entities.Notification;
 using WashGo.Domain.Entities.Payment;
 using WashGo.Domain.Entities.Promotion;
 using WashGo.Domain.Entities.Partner;
@@ -40,6 +41,7 @@ namespace WashGo.EntityFrameworkCore.EntityFrameworkCore
         public DbSet<PromotionUsage> PromotionUsages { get; set; } = null!;
         public DbSet<OrderRating> OrderRatings { get; set; } = null!;
         public DbSet<Incident> Incidents { get; set; } = null!;
+        public DbSet<Notification> Notifications { get; set; } = null!;
 
         public WashGoDbContext(DbContextOptions<WashGoDbContext> options)
             : base(options)
@@ -75,6 +77,7 @@ namespace WashGo.EntityFrameworkCore.EntityFrameworkCore
             builder.ApplyConfiguration(new PromotionUsageEntityTypeConfiguration());
             builder.ApplyConfiguration(new OrderRatingEntityTypeConfiguration());
             builder.ApplyConfiguration(new IncidentEntityTypeConfiguration());
+            builder.ApplyConfiguration(new NotificationEntityTypeConfiguration());
 
             builder.UseWashGoSnakeCaseColumns();
         }

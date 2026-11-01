@@ -10,6 +10,7 @@ using WashGo.Application.Contracts.Features.FeedbackContracts.Queries;
 using WashGo.Application.Contracts.Features.FeedbackContracts.Results;
 using WashGo.Application.Contracts.Features.FeedbackContracts.Services;
 using WashGo.Application.Features.FileApplication.Services;
+using WashGo.Application.Features.NotificationApplication.Services;
 using WashGo.Core.Domain.Shared.Bases;
 using WashGo.Domain.Entities.Feedback;
 using WashGo.Domain.Entities.Partner;
@@ -24,17 +25,20 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
         private readonly IWashOrderRepository _orderRepo;
         private readonly IRepository<Merchant, Guid> _merchantRepo;
         private readonly IConfiguration _configuration;
+        private readonly NotificationPublisher _notifications;
 
         public RatingAppService(
             IRepository<OrderRating, Guid> ratingRepo,
             IWashOrderRepository orderRepo,
             IRepository<Merchant, Guid> merchantRepo,
-            IConfiguration configuration)
+            IConfiguration configuration,
+            NotificationPublisher notifications)
         {
             _ratingRepo = ratingRepo;
             _orderRepo = orderRepo;
             _merchantRepo = merchantRepo;
             _configuration = configuration;
+            _notifications = notifications;
         }
 
         private static bool ValidStars(int? stars) => stars is null or (>= 1 and <= 5);
@@ -84,6 +88,7 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
             };
             await _ratingRepo.InsertAsync(rating, autoSave: true);
             await RefreshMerchantRatingAsync(order.MerchantId);
+            await _notifications.RatingCreatedAsync(rating);
             await uow.CompleteAsync();
             return Created(ToDto(rating), "Cảm ơn bạn đã đánh giá!");
         }
