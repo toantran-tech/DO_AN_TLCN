@@ -30,5 +30,6 @@ namespace WashGo.Domain.Shared.Constants
         public const string Notifications = "notifications";
         public const string SystemSettings = "system_settings";
         public const string ReminderLogs = "reminder_logs";
+        public const string MerchantSettlements = "merchant_settlements";
     }
 }

@@ -32,7 +32,7 @@ Ghi nhận ngày 30/10/2026: PUT /merchant/ giữ trạng thái cũ khi bỏ ho�
 | 2.3.4 Cập nhật số kg thực tế | Đã có BE cân/chốt giá | `PUT /wash-order/{id}/actual-weight` dành cho Merchant của đơn: tính phí/ETA theo mức 3/5/10 kg, lưu giá và thời lượng gói khi đặt đơn, chống phí trùng. Theo quyết định mới: cân xong giữ `Collected`, giặt xong mới `AwaitingPayment`. Chưa có thông báo tự động. |
 | 2.4.1–2.4.3 Quản lý Shipper | Đã có BE | Ngày 01/11: `/shipper` cho Merchant (tiệm của mình) và Admin: danh sách/lọc, thêm (tạo tài khoản Shipper, gửi mật khẩu tạm qua email), sửa, Đang làm việc/Tạm nghỉ; đếm số đơn đã giao. |
 | 2.4.4 Phân công Shipper | Đã có BE phân công; còn thông báo | Ngày 29/10: Merchant/Admin xem Shipper khả dụng theo đơn và phân công đúng tiệm, đúng giai đoạn, tài khoản đang hoạt động/khả dụng. Lưu riêng nhiệm vụ lấy/trả và thời điểm; chống phân công đồng thời. Chưa gửi thông báo Shipper vì module 5 chưa có. |
-| 2.5.1–2.5.3 Xem locker/ô/lịch sử | Một phần, cần sửa quyền | Có API locker chung cho Merchant/Admin; chưa ép locker thuộc Merchant và chưa có lịch sử sử dụng ô riêng. Policy hiện còn cho Merchant gọi API sửa tủ/ô, trong khi UC 2.5 ghi “chỉ xem”. |
+| 2.5.1–2.5.3 Xem locker/ô/lịch sử | Đã có BE | Ngày 01/11: Merchant chỉ xem locker được gán (danh sách, chi tiết ô có cờ `hasItems`), tạo/sửa locker và đổi trạng thái ô chỉ Admin; `GET /locker/{id}/usage-history` lịch sử từng lượt dùng ô. |
 | 2.6.1–2.6.3 Dịch vụ và đề xuất thay đổi | Một phần | Có CRUD/status dịch vụ và entity `ServiceChangeRequest`; chưa hoàn chỉnh luồng Merchant đề xuất → Admin duyệt theo use case. |
 
 ### 3. Admin
@@ -45,7 +45,7 @@ Ghi nhận ngày 30/10/2026: PUT /merchant/ giữ trạng thái cũ khi bỏ ho�
 | 3.5.1–3.5.6 Quản lý và duyệt dịch vụ | Một phần | Có API dịch vụ/status; từ 01/11 tạo/sửa dịch vụ chặn giá ≤ 0, thời lượng ngoài 1–8760 giờ và mã trùng ("Giá dịch vụ không hợp lệ."). Chưa xác nhận đầy đủ luồng đề xuất, duyệt/từ chối và xóa theo đặc tả. |
 | 3.6.1–3.6.5 Khuyến mãi | Đã có BE | Ngày 01/11: CRUD `/promotion`, lọc theo trạng thái/thời gian, bật/tắt, xóa khi chưa dùng, thống kê + xuất CSV. Chi tiết ở mục khuyến mãi bên dưới. |
 | 3.7.1–3.7.3 Khiếu nại và đánh giá | Đã có BE | Ngày 01/11: lọc/xử lý/từ chối khiếu nại, bồi thường 30/70/100/200% do server tính, ghi nhận chi trả; lọc/ẩn đánh giá, cập nhật điểm Merchant. |
-| 3.8.1–3.8.3 Tài chính | Một phần | Có danh sách/duyệt/xác nhận hoàn tiền thủ công; chưa có báo cáo doanh thu và hoa hồng theo use case. |
+| 3.8.1–3.8.3 Tài chính | Đã có BE | Ngày 01/11: `/finance` báo cáo doanh thu (tổng, theo Merchant, theo dịch vụ, theo ngày, xuất CSV), hoa hồng theo kỳ, kỳ đối soát + xác nhận chi trả; danh sách hoàn tiền lọc trạng thái, có mã đơn/tên khách và chi tiết. |
 | 3.9.1–3.9.4 Cài đặt hệ thống | Đã có BE | Ngày 01/11: `/system-setting` cấu hình SLA, % hoa hồng mặc định, phí quá hạn/lưu kho, % phí hủy, % bồi thường; các luồng đơn đọc cấu hình thay cho số viết cứng. |
 
 ### 4. Shipper và 5. Thông báo
@@ -73,6 +73,24 @@ Ghi nhận ngày 30/10/2026: PUT /merchant/ giữ trạng thái cũ khi bỏ ho�
 
 **Đồng bộ đặc tả Word ngày 31/10/2026:** Đã cập nhật UC Customer gửi đồ (quá 30 phút chỉ từ chối, không tự hủy), Customer nhận tại locker hai bước và phiên 10 phút, SLA Shipper lấy 4 giờ từ DepositedAt/trả 24 giờ từ PaidAt (trễ vẫn cho giao nhận), mã riêng và khóa 5 lần/5 phút. Bổ sung UC Nhận đồ tại kho với phí locker đã chốt + 100.000đ/mỗi ngày kho bắt đầu, không giải phóng ô lần hai. Giữ yêu cầu thông báo/đánh giá trong đặc tả; đây vẫn là phần chưa triển khai. Đã lưu bản dự phòng `../Đặc tả usecase.backup-20261031-021336.docx`; kiểm tra nội dung và ZIP chỉ đổi `word/document.xml`. Chưa xác minh bố cục trang: không có Python runtime đóng gói để chạy renderer; thử xuất Word sang PDF bị timeout 25 giây.
 **Dọn mục trùng ngày 31/10/2026:** Xóa đúng 3 bảng Hiển thị QR Code giống hệt cùng tiêu đề đi kèm trong bản project; giữ bảng QR còn lại trong nhóm Customer và bảng QR khác nội dung ở mục khác. Nội dung tất cả bảng còn lại được đối chiếu giữ nguyên; đánh lại mục 1.3.1–1.3.4. Bản Downloads không chỉnh sửa. Backup: `../Đặc tả usecase.backup-dedup-20261031-023310.docx`. Chưa render lại bố cục do giới hạn công cụ xem trước đã ghi ở trên.
+
+### Locker theo phạm vi Merchant ngày 01/11/2026 — UC 2.5.1–2.5.3
+
+- [x] **Phạm vi:** `POST /locker/filter`, `GET /locker/{id}`, bộ lọc cột chỉ trả locker của Merchant đang đăng nhập (Admin xem tất cả); locker của tiệm khác trả 404. Bỏ qua locker đã xóa mềm. Merchant chưa có locker: "Bạn chưa được gán locker nào."
+- [x] **Chỉ xem:** `POST /locker/`, `PUT /locker/`, `PUT /locker/box-status` chuyển sang `AdminOnly` (trước đây Merchant gọi được).
+- [x] **Trạng thái ô (2.5.2):** chi tiết locker trả từng ô với trạng thái Trống/Đang có đồ/Đang giữ chỗ/Bảo trì và cờ `hasItems` cho ô đang có đồ.
+- [x] **Lịch sử sử dụng (2.5.3):** `GET /locker/{id}/usage-history?fromDate&toDate&page&take` — mỗi lượt dùng ô: mã đơn, số ô, loại (1 = khách gửi, 2 = Shipper trả), thời gian đặt vào, thời gian lấy ra (null nếu đồ còn trong ô), trạng thái đơn; mốc thời gian lấy từ lịch sử trạng thái đơn (gửi/thu gom/trả/nhận), có nhánh đơn hủy và chuyển kho; không lộ thông tin khách. Chưa dùng: "Locker này chưa được sử dụng."
+- [x] `tests/smoke/locker-scope.ps1` PASS: thông báo Merchant chưa có locker, phạm vi danh sách/chi tiết/lịch sử, Merchant bị chặn 403 khi tạo/sửa/đổi trạng thái ô, ô giữ chỗ và ô có đồ, lịch sử đầy đủ thời gian sau một vòng đơn, đơn chưa gửi không xuất hiện, lọc theo thời gian.
+
+### Quản lý tài chính ngày 01/11/2026 — UC 3.8.1–3.8.3
+
+- [x] **Quy tắc số liệu:** doanh thu ghi nhận theo giao dịch thanh toán thành công (kể cả giao dịch sau đó được hoàn) tại thời điểm hoàn tất; tiền hoàn ghi nhận theo `RefundedAt` và trừ ra trong kỳ. Tách tiền giặt, phí quá hạn/lưu kho, phí hủy. Hoa hồng chỉ tính trên tiền giặt đã thu trừ phần hoàn (không âm), làm tròn đến đồng; thực trả Merchant = doanh thu ròng − hoa hồng. Phí quá hạn/lưu kho/hủy thuộc nền tảng.
+- [x] **Báo cáo doanh thu (Admin):** `POST /finance/revenue-report` lọc `fromDate/toDate` (Unix giây, mặc định 30 ngày, tối đa 366 ngày) và `merchantId`; trả tổng, theo Merchant, theo dịch vụ (giá dịch vụ trên đơn đã thanh toán, trước phụ phí/giảm giá), theo ngày giờ Việt Nam. Không có dữ liệu: "Không có dữ liệu trong khoảng thời gian này." `POST /finance/revenue-report/export` xuất CSV UTF-8 BOM.
+- [x] **Phí hoa hồng:** `POST /finance/commissions` theo kỳ: tổng doanh thu, đã hoàn, doanh thu ròng, tỷ lệ hoa hồng của Merchant, phí hoa hồng, số tiền thực trả.
+- [x] **Kỳ đối soát** (bảng `merchant_settlements`, migration `AddMerchantSettlements`): `POST /finance/settlements` chốt số liệu cho kỳ đã kết thúc (không cho kỳ tương lai hoặc trùng kỳ đã tạo), lưu snapshot tỷ lệ/hoa hồng; `POST /finance/settlements/filter` (Admin lọc Merchant/trạng thái, Merchant chỉ thấy của mình); `POST /finance/settlements/{id}/confirm-paid` ghi mã chuyển khoản. Merchant nhận thông báo khi tạo kỳ và khi được chi trả.
+- [x] **Danh sách hoàn tiền (3.8.3):** `GET /payment/refund-requests?status=` có mã đơn, tên khách, mới nhất trước, "Chưa có yêu cầu hoàn tiền nào."; `GET /payment/refund-requests/{id}` (Admin mọi yêu cầu, Customer của mình).
+- [x] `tests/smoke/finance.ps1` PASS: Merchant riêng 25% với 2 đơn đã thanh toán (1 đơn hoàn toàn bộ) và 1 đơn hủy thu phí 30%: tiền giặt 200.000đ, phí hủy 30.000đ, hoàn 100.000đ, tổng 130.000đ; theo Merchant/dịch vụ/ngày; kỳ rỗng; CSV; hoa hồng 25.000đ, thực trả 75.000đ; kỳ đối soát chặn kỳ tương lai và trùng kỳ, giữ snapshot khi đổi tỷ lệ, phạm vi Merchant, chi trả + thông báo; danh sách/chi tiết hoàn tiền; quyền 403/404.
+- [ ] Chưa có: biểu đồ (dữ liệu theo ngày đã có cho FE vẽ), đối soát tự động định kỳ, chuyển tiền thật.
 
 ### Đồng bộ đặc tả cập nhật ngày 01/11/2026 (bản Word mới)
 
@@ -540,7 +558,7 @@ Ví dụ đã thống nhất: Standard, giá cơ bản 100.000đ, thời gian c�
 ---
 
 ### 6. Module Đối soát doanh thu đối tác (Merchant Settlement)
-- [ ] Quản lý đối soát & doanh thu (`MerchantSettlement`):
+- [x] Quản lý đối soát & doanh thu (`MerchantSettlement`, 01/11/2026 — xem mục Quản lý tài chính):
   - Tính toán tổng doanh thu định kỳ (hàng tuần/hàng tháng) cho từng Merchant.
   - Trừ hoa hồng nền tảng WashGo (Platform Fee %).
   - Tạo kỳ đối soát và xác nhận thanh toán chuyển khoản cho đối tác.

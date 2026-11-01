@@ -586,12 +586,41 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             return Success(ToDto(request), "Đã gửi yêu cầu hoàn tiền, chờ Admin duyệt.");
         }
 
-        public async Task<BaseResponse<List<RefundRequestDto>>> GetRefundRequestsAsync(bool mineOnly)
+        // UC 3.8.3: newest first, optional status filter, enriched with order code and customer name.
+        public async Task<BaseResponse<List<RefundRequestDto>>> GetRefundRequestsAsync(bool mineOnly, RefundRequestStatus? status = null)
         {
-            var items = mineOnly
-                ? await _refundRequestRepo.GetListAsync(x => x.CustomerId == CurrentUser.Id)
-                : await _refundRequestRepo.GetListAsync();
-            return Success(items.OrderByDescending(x => x.CreatedOn).Select(ToDto).ToList());
+            var requests = await _refundRequestRepo.GetQueryableAsync();
+            if (mineOnly)
+                requests = requests.Where(x => x.CustomerId == CurrentUser.Id);
+            if (status.HasValue)
+                requests = requests.Where(x => x.Status == status.Value);
+            var orders = await _orders.GetQueryableAsync();
+            var rows = await AsyncExecuter.ToListAsync(
+                from r in requests
+                join o in orders on r.OrderId equals o.Id into joined
+                from o in joined.DefaultIfEmpty()
+                orderby r.CreatedOn descending
+                select new { r, OrderCode = o != null ? o.OrderCode : null, CustomerName = o != null ? o.CustomerName : null });
+            var dtos = rows.Select(x =>
+            {
+                var dto = ToDto(x.r);
+                dto.OrderCode = x.OrderCode;
+                dto.CustomerName = x.CustomerName;
+                return dto;
+            }).ToList();
+            return Success(dtos, dtos.Count == 0 ? "Chưa có yêu cầu hoàn tiền nào." : null);
+        }
+
+        public async Task<BaseResponse<RefundRequestDto>> GetRefundRequestAsync(Guid id)
+        {
+            var request = await _refundRequestRepo.FindAsync(id);
+            if (request == null || (!CurrentUser.IsInRole("Admin") && request.CustomerId != CurrentUser.Id))
+                return NotFound<RefundRequestDto>("Không tìm thấy yêu cầu hoàn tiền.");
+            var order = await _orders.FindAsync(request.OrderId);
+            var dto = ToDto(request);
+            dto.OrderCode = order?.OrderCode;
+            dto.CustomerName = order?.CustomerName;
+            return Success(dto);
         }
 
         public async Task<BaseResponse<RefundRequestDto>> ReviewRefundRequestAsync(Guid id, ReviewRefundRequestCommand command)

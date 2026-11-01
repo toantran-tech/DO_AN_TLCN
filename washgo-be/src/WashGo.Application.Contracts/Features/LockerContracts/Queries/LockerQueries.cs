@@ -12,5 +12,14 @@ namespace WashGo.Application.Contracts.Features.LockerContracts.Queries
         public string? City { get; set; }
         public string? District { get; set; }
     }
+
+    /// <summary>Lọc lịch sử theo thời gian đặt đồ vào ô (Unix giây).</summary>
+    public class LockerUsageQuery
+    {
+        public long? FromDate { get; set; }
+        public long? ToDate { get; set; }
+        public int Page { get; set; } = 1;
+        public int Take { get; set; } = 20;
+    }
 }
 

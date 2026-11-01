@@ -4,6 +4,7 @@ using Volo.Abp.EntityFrameworkCore;
 using WashGo.Domain.Entities.Identity;
 using WashGo.Domain.Entities.Locker;
 using WashGo.Domain.Entities.Feedback;
+using WashGo.Domain.Entities.Finance;
 using WashGo.Domain.Entities.Notification;
 using WashGo.Domain.Entities.Payment;
 using WashGo.Domain.Entities.Promotion;
@@ -45,6 +46,7 @@ namespace WashGo.EntityFrameworkCore.EntityFrameworkCore
         public DbSet<Notification> Notifications { get; set; } = null!;
         public DbSet<SystemSetting> SystemSettings { get; set; } = null!;
         public DbSet<ReminderLog> ReminderLogs { get; set; } = null!;
+        public DbSet<MerchantSettlement> MerchantSettlements { get; set; } = null!;
 
         public WashGoDbContext(DbContextOptions<WashGoDbContext> options)
             : base(options)
@@ -83,6 +85,7 @@ namespace WashGo.EntityFrameworkCore.EntityFrameworkCore
             builder.ApplyConfiguration(new NotificationEntityTypeConfiguration());
             builder.ApplyConfiguration(new SystemSettingEntityTypeConfiguration());
             builder.ApplyConfiguration(new ReminderLogEntityTypeConfiguration());
+            builder.ApplyConfiguration(new MerchantSettlementEntityTypeConfiguration());
 
             builder.UseWashGoSnakeCaseColumns();
         }

@@ -22,6 +22,8 @@ namespace WashGo.Domain.Shared.Enums
         MerchantReturnReminder = 21,
         SlaWarning = 22,
         StorageTransferDue = 23,
+        SettlementCreated = 24,
+        SettlementPaid = 25,
         NewTaskForShipper = 30,
         ShipperCollected = 31,
         ShipperReturned = 32,

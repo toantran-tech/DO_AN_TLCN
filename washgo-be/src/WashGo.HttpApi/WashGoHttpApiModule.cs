@@ -15,6 +15,7 @@ using WashGo.HttpApi.Endpoints.Files;
 using WashGo.HttpApi.Endpoints.Notification;
 using WashGo.HttpApi.Endpoints.SystemSetting;
 using WashGo.HttpApi.Endpoints.Shipper;
+using WashGo.HttpApi.Endpoints.Finance;
 using WashGo.HttpApi.Endpoints.ServiceArea;
 using WashGo.HttpApi.Endpoints.WashOrder;
 using WashGo.HttpApi.Endpoints.WashService;
@@ -45,6 +46,7 @@ namespace WashGo.HttpApi
             context.Services.AddTransient<IEndpointBase, NotificationHandler>();
             context.Services.AddTransient<IEndpointBase, SystemSettingHandler>();
             context.Services.AddTransient<IEndpointBase, ShipperHandler>();
+            context.Services.AddTransient<IEndpointBase, FinanceHandler>();
         }
     }
 }

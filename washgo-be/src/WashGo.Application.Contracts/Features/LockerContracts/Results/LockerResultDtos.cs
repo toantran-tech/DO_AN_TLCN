@@ -35,6 +35,23 @@ namespace WashGo.Application.Contracts.Features.LockerContracts.Results
         public string BoxNumber { get; set; } = string.Empty;
         public LockerBoxSize Size { get; set; }
         public LockerBoxStatus Status { get; set; }
+        /// <summary>Ô đang có đồ (UC 2.5.2 highlight).</summary>
+        public bool HasItems => Status == LockerBoxStatus.Occupied;
+    }
+
+    /// <summary>Một lượt sử dụng ô tủ (UC 2.5.3): khách gửi đồ hoặc Shipper trả đồ vào ô.</summary>
+    public class LockerUsageDto
+    {
+        public Guid OrderId { get; set; }
+        public string OrderCode { get; set; } = string.Empty;
+        public string BoxNumber { get; set; } = string.Empty;
+        /// <summary>1 = khách gửi đồ vào ô, 2 = Shipper trả đồ đã giặt vào ô.</summary>
+        public int UsageType { get; set; }
+        /// <summary>Thời gian gửi (đồ được đặt vào ô).</summary>
+        public DateTime? PutInAt { get; set; }
+        /// <summary>Thời gian lấy (đồ được lấy ra khỏi ô); null nếu đồ còn trong ô.</summary>
+        public DateTime? TakenOutAt { get; set; }
+        public WashOrderStatus OrderStatus { get; set; }
     }
 }
 
