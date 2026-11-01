@@ -607,6 +607,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 return BadRequest<WashOrderDetailDto>("Đơn đã có yêu cầu hoàn tiền; vui lòng xử lý yêu cầu đó trước khi hủy.");
 
             var previous = order.Status;
+            var voidedTaskShipperId = previous == WashOrderStatus.Deposited && order.AssignedTaskType == DeliveryTaskType.Collect
+                ? order.ShipperId : null;
             if (previous == WashOrderStatus.Pending &&
                 !await _lockerRepo.TryReleaseReservedBoxAsync(order.LockerId, order.BoxId))
             {
@@ -672,7 +674,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 Note = $"Khách hủy đơn; phí {percent}% = {fee:N0}đ; lý do: {reason}. Vị trí đồ: {order.CancelledGoodsStatus}."
             });
             await _orderRepo.UpdateAsync(order, autoSave: true);
-            await _notifications.CancelledAsync(order);
+            await _notifications.CancelledAsync(order, voidedTaskShipperId);
             await uow.CompleteAsync();
             return Success(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order),
                 "Đã hủy đơn. Phí còn thiếu phải thanh toán trước khi nhận lại đồ; đồ trong locker chưa được giải phóng.");
@@ -868,7 +870,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             if (!shipper.IsActive || shipper.Status != ShipperStatus.Available || user == null || !user.IsActive ||
                 !await _roleRepo.AnyAsync(x => x.Id == user.RoleId && x.Name == "Shipper" && x.IsActive))
                 return BadRequest<WashOrderDetailDto>("Shipper không hoạt động hoặc không sẵn sàng nhận chuyến.");
-            if (await AsyncExecuter.AnyAsync(ActiveDeliveryOrders(await _orderRepo.GetQueryableAsync())
+            if (await AsyncExecuter.AnyAsync(DeliveryTaskRules.ActiveDeliveries(await _orderRepo.GetQueryableAsync())
                     .Where(x => x.Id != order.Id && x.ShipperId == shipper.Id)))
                 return BadRequest<WashOrderDetailDto>("Shipper đang có chuyến chưa hoàn tất; vui lòng chọn người khác.");
 
@@ -932,7 +934,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             var shippers = await _shipperRepo.GetQueryableAsync();
             var users = await _userRepo.GetQueryableAsync();
             var roles = await _roleRepo.GetQueryableAsync();
-            var activeOrders = ActiveDeliveryOrders(await _orderRepo.GetQueryableAsync());
+            var activeOrders = DeliveryTaskRules.ActiveDeliveries(await _orderRepo.GetQueryableAsync());
             var candidates = from shipper in shippers
                              join user in users on shipper.UserId equals user.Id
                              join role in roles on user.RoleId equals role.Id
@@ -981,7 +983,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             var orderCreatedTime = DateTimeOffset.FromUnixTimeSeconds(order.CreatedOn).UtcDateTime;
             if (DateTime.UtcNow > orderCreatedTime.AddMinutes(depositWindow))
             {
-                return BadRequest<WashOrderDetailDto>($"Đã quá {depositWindow} phút kể từ khi tạo đơn. Ô tủ đã hết thời gian giữ chỗ; vui lòng hủy đơn hoặc tạo đơn mới.");
+                return BadRequest<WashOrderDetailDto>("Đã quá hạn gửi đồ. Vui lòng hủy đơn để giải phóng ô và tạo đơn mới.");
             }
 
             // Check lockout
@@ -1108,6 +1110,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
 
             var previousStatus = order.Status;
             order.Status = WashOrderStatus.Collected;
+            await CountDeliveryAsync(order.ShipperId);
             order.TaskPinAttemptCount = 0;
             order.TaskPinLockoutUntil = null;
 
@@ -1245,6 +1248,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             order.ReturnBoxNumber = returnBox.BoxNumber;
             order.Status = cancelledReturn ? WashOrderStatus.Cancelled : WashOrderStatus.ReadyToReturn;
             if (cancelledReturn) order.CancelledGoodsStatus = CancelledGoodsStatus.AtReturnLocker;
+            await CountDeliveryAsync(order.ShipperId);
             order.PickupDeadline = cancelledReturn ? null : DateTime.UtcNow.AddHours(returnSettings.FreePickupHours);
             order.TaskPinAttemptCount = 0;
             order.TaskPinLockoutUntil = null;
@@ -1424,6 +1428,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                     Note = "Khách đã nhận lại đồ của đơn hủy và đóng cửa; giải phóng ô. Đơn vẫn là Cancelled."
                 });
                 await _orderRepo.UpdateAsync(order, autoSave: true);
+                await _notifications.CancelledGoodsReturnedAsync(order);
                 await uow.CompleteAsync();
                 return Success(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), "Đã nhận lại đồ của đơn hủy.");
             }
@@ -1613,12 +1618,14 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             _ => null
         };
 
-        private static IQueryable<WashOrder> ActiveDeliveryOrders(IQueryable<WashOrder> orders) =>
-            orders.Where(x => !x.IsDeleted && x.ShipperId != null &&
-                (x.Status == WashOrderStatus.Deposited && x.AssignedTaskType == DeliveryTaskType.Collect ||
-                 x.Status == WashOrderStatus.Paid && x.AssignedTaskType == DeliveryTaskType.Return ||
-                 x.Status == WashOrderStatus.Cancelled && x.CancelledGoodsStatus == CancelledGoodsStatus.AtMerchant &&
-                    x.AssignedTaskType == DeliveryTaskType.Return));
+        private async Task CountDeliveryAsync(Guid? shipperId)
+        {
+            if (!shipperId.HasValue) return;
+            var shipper = await _shipperRepo.FindAsync(shipperId.Value);
+            if (shipper == null) return;
+            shipper.TotalDeliveries++;
+            await _shipperRepo.UpdateAsync(shipper, autoSave: true);
+        }
 
         private static bool IsValidTransition(WashOrderStatus current, WashOrderStatus next)
         {

@@ -103,7 +103,7 @@ namespace WashGo.Application.Features.NotificationApplication.Services
             await SendAsync(admins, type, title, content, linkType, linkId);
         }
 
-        private async Task<Guid?> ShipperUserIdAsync(Guid? shipperId) =>
+        public async Task<Guid?> ShipperUserIdAsync(Guid? shipperId) =>
             shipperId.HasValue ? (await _shipperRepo.FindAsync(shipperId.Value))?.UserId : null;
 
         private static string Money(decimal amount) => $"{amount:N0}đ";
@@ -179,6 +179,8 @@ namespace WashGo.Application.Features.NotificationApplication.Services
             var place = $"{locker?.Name ?? o.LockerName}, ô số {o.ReturnBoxNumber}";
             await SendAsync([await ShipperUserIdAsync(o.ShipperId)], NotificationType.ShipperReturned,
                 "Trả đồ thành công", $"Bạn đã trả đồ đơn #{o.OrderCode} thành công!", "order", o.Id);
+            await SendAsync([o.MerchantId], NotificationType.ShipperReturned, "Shipper đã trả đồ",
+                $"Shipper đã trả đồ đơn #{o.OrderCode} vào {place}.", "order", o.Id);
             var content = o.Status == WashOrderStatus.Cancelled
                 ? $"Đồ của đơn đã hủy #{o.OrderCode} đã được đưa về {place}. Vui lòng thanh toán phí hủy (nếu có) và đến nhận lại."
                 : $"Đồ của bạn đã sẵn sàng tại {place}. Vui lòng đến lấy trước {o.PickupDeadline?.AddHours(7):HH:mm dd/MM/yyyy}.";
@@ -193,12 +195,23 @@ namespace WashGo.Application.Features.NotificationApplication.Services
                 $"Khách hàng đã lấy đồ #{o.OrderCode}. Hoàn tất.", "order", o.Id);
         }
 
-        public async Task CancelledAsync(WashOrder o)
+        public async Task CancelledAsync(WashOrder o, Guid? voidedTaskShipperId)
         {
             await SendAsync([o.CustomerId], NotificationType.OrderCancelled, "Đơn hàng đã bị hủy",
                 $"Đơn hàng #{o.OrderCode} đã bị hủy. Lý do: {o.CancellationReason}.", "order", o.Id);
             await SendAsync([o.MerchantId], NotificationType.OrderCancelled, "Đơn hàng đã bị hủy",
                 $"Đơn hàng #{o.OrderCode} đã bị khách hủy.", "order", o.Id);
+            await SendAsync([await ShipperUserIdAsync(voidedTaskShipperId)], NotificationType.OrderCancelled,
+                "Nhiệm vụ đã bị hủy", $"Đơn hàng #{o.OrderCode} đã bị khách hủy; nhiệm vụ lấy đồ của bạn không còn hiệu lực.",
+                "order", o.Id);
+        }
+
+        public async Task CancelledGoodsReturnedAsync(WashOrder o)
+        {
+            await SendAsync([o.CustomerId], NotificationType.PickedUp, "Đã nhận lại đồ",
+                $"Bạn đã nhận lại đồ của đơn đã hủy #{o.OrderCode}.", "order", o.Id);
+            await SendAsync([o.MerchantId], NotificationType.PickedUp, "Khách đã nhận lại đồ",
+                $"Khách hàng đã nhận lại đồ của đơn đã hủy #{o.OrderCode}.", "order", o.Id);
         }
 
         public Task MovedToStorageAsync(WashOrder o) =>

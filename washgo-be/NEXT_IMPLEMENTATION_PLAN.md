@@ -30,7 +30,7 @@ Ghi nhận ngày 30/10/2026: PUT /merchant/ giữ trạng thái cũ khi bỏ ho�
 | 2.1.1 Đăng nhập; 2.1.2 Cập nhật hồ sơ | Một phần | Auth cho tài khoản Merchant đã có; chưa có API tự cập nhật hồ sơ Merchant theo use case. |
 | 2.3.1 Quản lý đơn; 2.3.2 Xem chi tiết đơn | Một phần | Ngày 29/10 đã ép phạm vi đơn theo Merchant, chặn xem/sửa ngoài quyền và ẩn thông tin Customer/PIN/QR trong response; còn hoàn thiện các nghiệp vụ xử lý đơn theo đặc tả. |
 | 2.3.4 Cập nhật số kg thực tế | Đã có BE cân/chốt giá | `PUT /wash-order/{id}/actual-weight` dành cho Merchant của đơn: tính phí/ETA theo mức 3/5/10 kg, lưu giá và thời lượng gói khi đặt đơn, chống phí trùng. Theo quyết định mới: cân xong giữ `Collected`, giặt xong mới `AwaitingPayment`. Chưa có thông báo tự động. |
-| 2.4.1–2.4.3 Quản lý Shipper | Chưa có | Có entity Shipper nhưng chưa có bộ API Merchant xem/thêm/sửa Shipper theo đặc tả. |
+| 2.4.1–2.4.3 Quản lý Shipper | Đã có BE | Ngày 01/11: `/shipper` cho Merchant (tiệm của mình) và Admin: danh sách/lọc, thêm (tạo tài khoản Shipper, gửi mật khẩu tạm qua email), sửa, Đang làm việc/Tạm nghỉ; đếm số đơn đã giao. |
 | 2.4.4 Phân công Shipper | Đã có BE phân công; còn thông báo | Ngày 29/10: Merchant/Admin xem Shipper khả dụng theo đơn và phân công đúng tiệm, đúng giai đoạn, tài khoản đang hoạt động/khả dụng. Lưu riêng nhiệm vụ lấy/trả và thời điểm; chống phân công đồng thời. Chưa gửi thông báo Shipper vì module 5 chưa có. |
 | 2.5.1–2.5.3 Xem locker/ô/lịch sử | Một phần, cần sửa quyền | Có API locker chung cho Merchant/Admin; chưa ép locker thuộc Merchant và chưa có lịch sử sử dụng ô riêng. Policy hiện còn cho Merchant gọi API sửa tủ/ô, trong khi UC 2.5 ghi “chỉ xem”. |
 | 2.6.1–2.6.3 Dịch vụ và đề xuất thay đổi | Một phần | Có CRUD/status dịch vụ và entity `ServiceChangeRequest`; chưa hoàn chỉnh luồng Merchant đề xuất → Admin duyệt theo use case. |
@@ -56,7 +56,7 @@ Ghi nhận ngày 30/10/2026: PUT /merchant/ giữ trạng thái cũ khi bỏ ho�
 | 4.3.1–4.3.2 Xem đơn được gán/chi tiết | Một phần | Đã tra Shipper qua `UserId`, ép phạm vi theo ID hồ sơ và ẩn thông tin Customer/PIN/QR. DTO nay có `assignedTaskType` (1 lấy/2 trả) và `shipperAssignedAt`; chưa có bộ lọc nhiệm vụ/lịch sử phân công riêng. |
 | 4.3.3–4.3.5 Lấy/trả đồ bằng QR, cập nhật giao nhận | Đã xong BE | Đã hoàn tất 6 endpoint mô phỏng QR/PIN: Customer gửi đồ, Shipper lấy đồ, Shipper trả đồ, Customer nhận đồ tại Locker (2 bước mở tủ + xác nhận), Customer nhận đồ tại kho. Có chống brute-force (sai 5 lần khóa 5 phút), mã nhiệm vụ riêng cho Shipper, SLA warning, idempotency, tự chuyển Returned -> Completed. |
 | 4.3.6 Lịch sử giao nhận | Chưa có | Chưa có API lịch sử giao nhận theo Shipper. |
-| 5.1–5.3 Xem, đánh dấu đã đọc, xóa thông báo | Đã có BE | Ngày 01/11: `/notification` (xem, đếm chưa đọc, đọc một/tất cả, xóa một/tất cả), SignalR `/hubs/notifications`, thông báo theo sự kiện cho 4 vai trò, chuông trên Admin. Còn nhắc nhở theo thời gian. |
+| 5.1–5.3 Xem, đánh dấu đã đọc, xóa thông báo | Đã có BE | Ngày 01/11: `/notification` (xem, đếm chưa đọc, đọc một/tất cả, xóa một/tất cả), SignalR `/hubs/notifications`, thông báo theo sự kiện cho 4 vai trò, nhắc nhở theo thời gian bằng worker định kỳ. |
 
 ## II. Thứ tự triển khai tiếp theo theo đặc tả
 
@@ -68,10 +68,41 @@ Ghi nhận ngày 30/10/2026: PUT /merchant/ giữ trạng thái cũ khi bỏ ho�
 5. **1.2.7 Hủy đơn — triển khai ngày 31/10/2026:** Một API hủy tính phí 0%/30%/50%, báo phí trước xác nhận, khóa order, giữ ô có đồ, thu phí qua sandbox/VNPay trước khi khách nhận lại. Đồ tại tiệm được phân công Shipper trả về locker. Chỉ giải phóng ô Reserved khi hủy Pending; ô Occupied được giải phóng sau QR/PIN + phiên xác nhận nhận lại. Hoàn tiền tự tạo khi có thanh toán gốc hợp lệ, trừ phí đã giữ lại; còn module thông báo.
 6. **3.6 Voucher — ĐÃ XONG BE ngày 01/11/2026** (xem mục bên dưới).
 7. **1.4.1–1.4.3/3.7 Đánh giá, sự cố–khiếu nại — ĐÃ XONG BE ngày 01/11/2026** (xem mục bên dưới). 
-8. **5.1–5.3 Thông báo — ĐÃ XONG BE ngày 01/11/2026** (xem mục bên dưới). Tiếp theo: **worker nhắc nhở theo thời gian** (gửi đồ 15 phút, lấy đồ 24h/48h, phí phạt, Shipper 30 phút/12h, Merchant trễ trả), rồi **3.9 Cài đặt hệ thống**, **2.4.1–2.4.3 Quản lý Shipper**, **3.8 Báo cáo tài chính**.
+8. **5.1–5.3 Thông báo — ĐÃ XONG BE ngày 01/11/2026** (xem mục bên dưới). 
+9. **3.9 Cài đặt hệ thống, nhắc nhở theo thời gian, 2.4.1–2.4.3 Quản lý Shipper — ĐÃ XONG BE ngày 01/11/2026** (xem các mục bên dưới). Tiếp theo: **3.8 Báo cáo doanh thu & hoa hồng**, **2.5 Locker theo phạm vi Merchant (chỉ xem)**, **2.6/3.5 luồng đề xuất – duyệt dịch vụ**, **2.1.2 Merchant tự cập nhật hồ sơ**, **3.3 Admin phân công đơn cho Merchant**.
 
 **Đồng bộ đặc tả Word ngày 31/10/2026:** Đã cập nhật UC Customer gửi đồ (quá 30 phút chỉ từ chối, không tự hủy), Customer nhận tại locker hai bước và phiên 10 phút, SLA Shipper lấy 4 giờ từ DepositedAt/trả 24 giờ từ PaidAt (trễ vẫn cho giao nhận), mã riêng và khóa 5 lần/5 phút. Bổ sung UC Nhận đồ tại kho với phí locker đã chốt + 100.000đ/mỗi ngày kho bắt đầu, không giải phóng ô lần hai. Giữ yêu cầu thông báo/đánh giá trong đặc tả; đây vẫn là phần chưa triển khai. Đã lưu bản dự phòng `../Đặc tả usecase.backup-20261031-021336.docx`; kiểm tra nội dung và ZIP chỉ đổi `word/document.xml`. Chưa xác minh bố cục trang: không có Python runtime đóng gói để chạy renderer; thử xuất Word sang PDF bị timeout 25 giây.
 **Dọn mục trùng ngày 31/10/2026:** Xóa đúng 3 bảng Hiển thị QR Code giống hệt cùng tiêu đề đi kèm trong bản project; giữ bảng QR còn lại trong nhóm Customer và bảng QR khác nội dung ở mục khác. Nội dung tất cả bảng còn lại được đối chiếu giữ nguyên; đánh lại mục 1.3.1–1.3.4. Bản Downloads không chỉnh sửa. Backup: `../Đặc tả usecase.backup-dedup-20261031-023310.docx`. Chưa render lại bố cục do giới hạn công cụ xem trước đã ghi ở trên.
+
+### Đồng bộ đặc tả cập nhật ngày 01/11/2026 (bản Word mới)
+
+- [x] UC 1.2.7: phí hủy Pending/Deposited tính trên `TotalAmount` (giá tạm tính **trước giảm**), Collected trên `FinalAmount` — đã trả lại đúng như đặc tả (bản trước tính trên giá sau giảm).
+- [x] UC 1.2.7 bước 11: hủy đơn Deposited đang có nhiệm vụ lấy đồ thì báo cho Shipper nhiệm vụ đã hủy; khách nhận lại đồ của đơn hủy thì báo khách và Merchant.
+- [x] UC 1.3.2 6b: quá hạn gửi đồ trả đúng thông báo "Đã quá hạn gửi đồ. Vui lòng hủy đơn để giải phóng ô và tạo đơn mới." (không tự hủy).
+- [x] UC 4.3.4 bước 12: Shipper trả đồ vào locker thì báo cho Merchant.
+- [x] Các quy tắc còn lại trong bản cập nhật (QR/PIN, phiên nhận 10 phút, SLA chỉ cảnh báo, phân công từng chuyến, đơn hủy) khớp với code hiện có; không cần sửa thêm.
+
+### Quản lý Shipper ngày 01/11/2026 — UC 2.4.1–2.4.3
+
+- [x] **API `/shipper` (MerchantOrAdmin):** `POST /filter` (từ khóa tên/SĐT/email/biển số, trạng thái Đang làm việc/Tạm nghỉ, trạng thái giao nhận; Admin lọc theo Merchant), `GET /{id}`, `POST /`, `PUT /{id}`. Merchant chỉ thấy/sửa Shipper của tiệm mình (Shipper tiệm khác trả 404); Admin tạo cho tiệm nào thì phải chọn `merchantId`. Danh sách trống: "Bạn chưa có Shipper nào."
+- [x] **Thêm Shipper:** tạo `User` role Shipper + hồ sơ `Shipper` trong một transaction; mật khẩu tạm 12 ký tự đúng chính sách (hoa/thường/số), lưu BCrypt, **không trả về trong API**, gửi qua email (`IAuthEmailSender.SendAccountCredentialsAsync`; local là Mailpit). Gửi email lỗi chỉ ghi log, tài khoản vẫn được tạo (Shipper dùng Quên mật khẩu). Nhận số CMND/CCCD (9 hoặc 12 số) và ảnh CMND qua `POST /files/images`.
+- [x] **Validation theo đặc tả:** "Vui lòng nhập họ tên Shipper.", "Số điện thoại không hợp lệ.", "Số điện thoại này đã được sử dụng.", "Email không hợp lệ.", "Email này đã được sử dụng." (so với mọi tài khoản, bỏ qua chính Shipper khi sửa), biển số bắt buộc trừ xe đạp. Sửa email thì Shipper đăng nhập bằng email mới.
+- [x] **Tạm nghỉ:** Shipper tạm nghỉ không được phân công (logic phân công sẵn có); không cho chuyển Tạm nghỉ khi đang có chuyến lấy/trả chưa xong. Quy tắc "chuyến đang giao" chuyển về `DeliveryTaskRules` (Domain) để phân công và quản lý Shipper dùng chung.
+- [x] **Số đơn đã giao:** `shippers.total_deliveries` tăng khi Shipper hoàn tất một chuyến lấy đồ hoặc trả đồ (gọi lặp không tăng thêm). Danh sách còn hiển thị số chuyến đang giao và đánh giá.
+- [x] `tests/smoke/shipper-management.ps1` PASS: quyền 401/403, phạm vi Merchant, validation tạo/sửa và trùng SĐT/email, mật khẩu không lộ trong response, đọc mật khẩu từ Mailpit và đăng nhập được với role Shipper, Admin tạo cho tiệm khác và Merchant không xem/sửa được, đổi email rồi đăng nhập bằng email mới, chặn Tạm nghỉ khi có chuyến, tăng số đơn đã giao sau khi lấy đồ, Shipper Tạm nghỉ không được phân công.
+- [ ] Chưa có: xóa Shipper, đánh giá Shipper từ khách, ứng dụng Shipper riêng (hiện Shipper dùng API).
+
+### Nhắc nhở theo thời gian ngày 01/11/2026
+
+- [x] **Worker `ReminderWorker`** (BackgroundService trong `WashGo.HttpApi.Host`, cùng tiến trình với SignalR hub nên thông báo vẫn real-time): quét mỗi `Reminders:IntervalSeconds` (mặc định 60 giây), tắt bằng `Reminders:Enabled=false`. Admin có thể quét ngay bằng `POST /notification/reminders/run`. Lượt quét lỗi được ghi log và thử lại ở lượt sau.
+- [x] **Chống gửi trùng:** bảng `reminder_logs` (migration `20261101091541_AddReminderLogs`, khóa duy nhất, ví dụ `deposit:{orderId}`, `overdue-fee:{orderId}:{ngày}`, `overdue-summary:{yyyy-MM-dd}`). Mỗi lời nhắc chỉ gửi một lần, kể cả khi người dùng đã xóa thông báo; đơn đổi trạng thái thì không còn bị nhắc.
+- [x] **Các lời nhắc (mốc lấy từ cấu hình SLA UC 3.9):**
+  - Khách: còn 15 phút trước hạn gửi đồ (đơn đã quá hạn không nhắc); còn nửa thời gian lấy đồ miễn phí; quá hạn ngày 1 kèm phí; phí phạt ngày 2, ngày 3.
+  - Shipper: nhiệm vụ lấy đồ quá 30 phút từ lúc phân công (phân công lại thì nhắc lại); nhắc trả đồ khi đơn đã thanh toán quá nửa SLA trả.
+  - Merchant: nhắc trả đồ ở nửa SLA trả; cảnh báo trễ SLA lấy đồ (từ lúc khách gửi) và trễ SLA trả đồ (từ lúc thanh toán); đơn cần chuyển kho.
+  - Admin: cảnh báo trễ lấy/trả của Merchant, đơn cần chuyển kho (quá 72 giờ), tổng hợp số đơn quá hạn lấy đồ mỗi ngày (theo giờ Việt Nam).
+- [x] `tests/smoke/reminders.ps1` PASS: chỉ Admin quét thủ công; từng lời nhắc tới đúng vai trò đúng một lần dù quét nhiều lần; đơn hết hạn gửi, đơn chưa đến mốc và đơn đã chuyển kho không bị nhắc.
+- [ ] Chưa có: tự hủy đơn quá hạn gửi đồ (theo quyết định ngày 31/10 chỉ chặn gửi, không tự hủy), tự chuyển kho, AI phát hiện bất thường. `WashGo.Background.Host` vẫn là khung chưa dùng.
 
 ### Cài đặt hệ thống ngày 01/11/2026 — UC 3.9.1, 3.9.2, 3.9.4
 

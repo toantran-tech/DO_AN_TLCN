@@ -119,6 +119,7 @@ INSERT INTO washgo.services SELECT (jsonb_populate_record(NULL::washgo.services,
     Call-Api Put '/wash-order/assign-shipper' @{orderId=$id;shipperId="$fixtureShipper"} $merchant | Out-Null
     Invoke-TestDelivery $id return $shipper | Out-Null
     Expect-Note $shipper $id 32 'Shipper' | Out-Null
+    Expect-Note $merchant $id 32 'Merchant' | Out-Null
     $ready=Expect-Note $customer $id 8 'Customer'
     if($ready.content -notmatch 'Notify Smoke Locker'){throw 'Ready-for-pickup missing locker.'}
     Invoke-TestDelivery $id pickup $customer | Out-Null
@@ -132,6 +133,12 @@ INSERT INTO washgo.services SELECT (jsonb_populate_record(NULL::washgo.services,
     $cancel=Expect-Note $customer $o2.id 10 'Customer'
     if($cancel.content -notmatch 'Notify smoke cancel'){throw 'Cancellation reason missing.'}
     Expect-Note $merchant $o2.id 10 'Merchant' | Out-Null
+    $l=(Call-Api Get "/customer/lockers/$lockerId" $null $customer).data
+    $o3=(Call-Api Post '/wash-order/' @{lockerId="$lockerId";boxId=$l.availableSlots[0].id;paymentMethod=2;items=@(@{serviceId="$kgServiceId";quantity=1})} $customer).data
+    Invoke-TestDelivery $o3.id deposit $customer | Out-Null
+    Call-Api Put '/wash-order/assign-shipper' @{orderId=$o3.id;shipperId="$fixtureShipper"} $merchant | Out-Null
+    Call-Api Post "/wash-order/$($o3.id)/cancel" @{reason='Notify smoke cancel deposited'} $customer | Out-Null
+    Expect-Note $shipper $o3.id 10 'Shipper with voided collect task' | Out-Null
 
     Write-Output '8. Ownership, mark read, read-all (UC 5.2)'
     $target=Expect-Note $customer $id 1 'Customer'
