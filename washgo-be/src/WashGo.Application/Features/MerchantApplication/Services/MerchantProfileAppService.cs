@@ -2,8 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
-using System.Text.Encodings.Web;
-using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using Volo.Abp.Domain.Repositories;
@@ -26,8 +24,6 @@ namespace WashGo.Application.Features.MerchantApplication.Services
     {
         private const string StoreImageType = "store";
         private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
-        private static readonly JsonSerializerOptions HoursJson = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
-        private static readonly Regex PhonePattern = new(@"^\+?[0-9 ()\-.]+$", RegexOptions.Compiled);
 
         private readonly IRepository<MerchantProfileRequest, Guid> _requestRepo;
         private readonly IRepository<Merchant, Guid> _merchantRepo;
@@ -99,14 +95,14 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             var name = command.BusinessName?.Trim() ?? string.Empty;
             var address = command.Address?.Trim() ?? string.Empty;
             var phone = command.Phone?.Trim() ?? string.Empty;
-            var hours = NormalizeHours(command.OpeningHours);
+            var hours = MerchantRules.NormalizeJson(command.OpeningHours);
             if (name.Length is 0 or > 200)
                 return BadRequest<MerchantProfileRequestDto>("Tên cửa hàng phải có từ 1 đến 200 ký tự.");
             if (address.Length is 0 or > 500)
                 return BadRequest<MerchantProfileRequestDto>("Địa chỉ không được để trống (tối đa 500 ký tự).");
-            var digits = new string(phone.Where(char.IsDigit).ToArray());
-            if (phone.Length > 20 || !PhonePattern.IsMatch(phone) || digits.Length is < 9 or > 11)
-                return BadRequest<MerchantProfileRequestDto>("Số điện thoại không hợp lệ.");
+            var digits = MerchantRules.NormalizePhone(phone);
+            if (digits == null)
+                return BadRequest<MerchantProfileRequestDto>(MerchantRules.InvalidPhone);
             if (hours?.Length > 1000)
                 return BadRequest<MerchantProfileRequestDto>("Giờ mở cửa quá dài.");
 
@@ -115,7 +111,7 @@ namespace WashGo.Application.Features.MerchantApplication.Services
                 BusinessName = merchant.BusinessName,
                 Address = merchant.Address,
                 Phone = merchant.Phone,
-                OpeningHours = NormalizeHours(merchant.OpeningHours),
+                OpeningHours = MerchantRules.NormalizeJson(merchant.OpeningHours),
                 ImageUrls = await StoreImagesAsync(merchant.Id)
             };
             var images = current.ImageUrls;
@@ -277,23 +273,6 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             if (current.OpeningHours != proposed.OpeningHours) changed.Add("openingHours");
             if (!current.ImageUrls.SequenceEqual(proposed.ImageUrls)) changed.Add("imageUrls");
             return changed;
-        }
-
-        // opening_hours is a jsonb column: keep valid JSON (compacted), store plain text such as "07:00-22:00" as a JSON string.
-        private static string? NormalizeHours(string? value)
-        {
-            if (string.IsNullOrWhiteSpace(value))
-                return null;
-            var text = value.Trim();
-            try
-            {
-                using var doc = JsonDocument.Parse(text);
-                return JsonSerializer.Serialize(doc.RootElement, HoursJson);
-            }
-            catch (JsonException)
-            {
-                return JsonSerializer.Serialize(text, HoursJson);
-            }
         }
 
         private static MerchantProfileDataDto Read(string json) =>

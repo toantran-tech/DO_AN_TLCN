@@ -13,6 +13,7 @@ namespace WashGo.Core.Endpoint
                 HttpStatusCode.Created => Results.Created(string.Empty, response),
                 HttpStatusCode.BadRequest => Results.BadRequest(response),
                 HttpStatusCode.NotFound => Results.NotFound(response),
+                HttpStatusCode.Conflict => Results.Conflict(response),
                 HttpStatusCode.Unauthorized => Results.Unauthorized(),
                 _ => Results.BadRequest(response)
             };

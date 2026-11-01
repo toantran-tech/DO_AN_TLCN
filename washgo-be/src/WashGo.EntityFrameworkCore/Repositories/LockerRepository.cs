@@ -143,6 +143,8 @@ namespace WashGo.EntityFrameworkCore.Repositories
                 .SetProperty(x => x.Longitude, locker.Longitude)
                 .SetProperty(x => x.LockerType, locker.LockerType)
                 .SetProperty(x => x.Description, locker.Description)
+                .SetProperty(x => x.ServiceAreaId, locker.ServiceAreaId)
+                .SetProperty(x => x.Images, locker.Images)
                 .SetProperty(x => x.Status, locker.Status)) == 1;
         }
     }

@@ -36,8 +36,6 @@ try {
 INSERT INTO washgo.services SELECT (jsonb_populate_record(NULL::washgo.services,to_jsonb(s)||jsonb_build_object(
 'id','$kgServiceId','code','SET_KG_$($kgServiceId.ToString('N'))','name','Settings Smoke Package','unit','kg',
 'base_price',100000,'price_per_item',NULL,'estimated_time',24,'is_active',true,'is_deleted',false))).* FROM washgo.services s WHERE merchant_id='$merchantId' AND unit='kg' AND is_deleted=false LIMIT 1;
-INSERT INTO washgo.users SELECT (jsonb_populate_record(NULL::washgo.users,to_jsonb(u)||jsonb_build_object(
-'id','$merchantUser','email','settings-$($merchantUser.ToString('N'))@example.com','full_name','Settings Smoke Merchant','auth_provider',1,'provider_id',NULL,'is_active',true))).* FROM washgo.users u WHERE id='$merchantId';
 "@ | Out-Null
     $locker=(Call-Api Post '/locker/' @{
         merchantId="$merchantId";code="SX_$([Guid]::NewGuid().ToString('N'))";name='Settings Smoke Locker'
@@ -90,9 +88,10 @@ INSERT INTO washgo.users SELECT (jsonb_populate_record(NULL::washgo.users,to_jso
 
     Write-Output '4. Default commission applies to new Merchants only when omitted'
     Call-Api Put '/system-setting/commission' @{defaultCommissionRate=27.5} $admin | Out-Null
-    $m=(Call-Api Post '/merchant/' @{userId="$merchantUser";businessName='Settings Smoke Laundry';address='Test';district='Test';city='Test';phone='0900000000'} $admin).data
+    $m=(Call-Api Post '/merchant/' @{email="settings-$($merchantUser.ToString('N'))@example.com";businessName='Settings Smoke Laundry';address='Test';district='Test';city='Test';phone='0900000000';latitude=10.7;longitude=106.6} $admin).data
+    $merchantUser=[Guid]$m.id
     if($m.commissionRate -ne 27.5){throw "Default commission not applied: $($m.commissionRate)."}
-    $upd=@{id="$merchantUser";userId="$merchantUser";businessName='Settings Smoke Laundry 2';address='Test';district='Test';city='Test';phone='0900000000'}
+    $upd=@{id="$merchantUser";businessName='Settings Smoke Laundry 2';address='Test';district='Test';city='Test';phone='0900000000';latitude=10.7;longitude=106.6}
     $kept=(Call-Api Put '/merchant/' $upd $admin).data
     if($kept.commissionRate -ne 27.5 -or $kept.businessName -ne 'Settings Smoke Laundry 2'){throw 'Update without commission changed it.'}
     $upd.commissionRate=15

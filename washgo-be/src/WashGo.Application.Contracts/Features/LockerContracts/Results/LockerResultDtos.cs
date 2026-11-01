@@ -10,7 +10,11 @@ namespace WashGo.Application.Contracts.Features.LockerContracts.Results
     {
         public Guid Id { get; set; }
         public Guid MerchantId { get; set; }
+        public string? MerchantName { get; set; }
         public Guid? ServiceAreaId { get; set; }
+        public string? ServiceAreaName { get; set; }
+        public List<string> ImageUrls { get; set; } = [];
+        public string? Description { get; set; }
         public string Code { get; set; } = string.Empty;
         public string Name { get; set; } = string.Empty;
         public string Address { get; set; } = string.Empty;

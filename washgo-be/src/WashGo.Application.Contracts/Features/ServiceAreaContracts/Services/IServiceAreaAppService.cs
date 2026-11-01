@@ -17,6 +17,8 @@ namespace WashGo.Application.Contracts.Features.ServiceAreaContracts.Services
         Task<BaseResponse<ServiceAreaResultDto>> CreateAsync(CreateServiceAreaCommand command);
         Task<BaseResponse<ServiceAreaResultDto>> UpdateAsync(UpdateServiceAreaCommand command);
         Task<BaseResponse<bool>> ToggleActiveAsync(Guid id);
+        Task<BaseResponse<AreaMerchantsDto>> GetMerchantsAsync(Guid id);
+        Task<BaseResponse<AreaMerchantsDto>> SetMerchantsAsync(Guid id, SetAreaMerchantsCommand command);
         Task<BaseResponse<List<ColumnFilterDistinctValueDto>>> GetColumnDistinctValuesAsync(string fieldName, ServiceAreaFilterQuery query);
     }
 }

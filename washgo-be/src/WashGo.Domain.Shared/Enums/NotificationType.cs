@@ -26,6 +26,7 @@ namespace WashGo.Domain.Shared.Enums
         SettlementPaid = 25,
         ServiceProposalReviewed = 26,
         MerchantProfileReviewed = 27,
+        MerchantStatusChanged = 29,
         NewTaskForShipper = 30,
         ShipperCollected = 31,
         ShipperReturned = 32,

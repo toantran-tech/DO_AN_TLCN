@@ -39,9 +39,9 @@ Ghi nhận ngày 30/10/2026: PUT /merchant/ giữ trạng thái cũ khi bỏ ho�
 
 | Use case trong đặc tả | Tiến độ BE | Đã có / phần còn thiếu |
 | --- | --- | --- |
-| 3.2.1–3.2.5 Quản lý Merchant | Một phần | Danh sách/chi tiết/tạo/sửa/đổi trạng thái đã có; cần đối chiếu tiếp các bước vùng phục vụ, phê duyệt và validation chi tiết. |
-| 3.3.1–3.3.3 Phân công đơn cho Merchant | Chưa có | Khi tạo đơn, Merchant được lấy từ locker; chưa có nghiệp vụ Admin gán thủ công hoặc tự động (AI) theo use case. |
-| 3.4.1–3.4.5 Quản lý locker | Một phần | Danh sách/chi tiết/tạo/sửa/trạng thái ô đã có; chưa đủ toàn bộ thao tác xóa/lịch sử theo đặc tả. |
+| 3.2.1–3.2.5 Quản lý Merchant | Đã có BE | Ngày 01/11: tạo Merchant kèm tài khoản + email mật khẩu tạm, kiểm tra email/MST/tọa độ/SĐT/chiết khấu; sửa đủ trường hợp đồng/SLA/ảnh; khóa cần lý do + xác nhận khi còn đơn, chặn đăng nhập; thiết lập vùng phục vụ với độ ưu tiên. |
+| 3.3.1–3.3.3 Phân công đơn cho Merchant | Bỏ khỏi phạm vi | Ngày 01/11 nhóm quyết định không làm; đơn vẫn lấy Merchant theo locker khi tạo. |
+| 3.4.1–3.4.5 Quản lý locker | Đã có BE | Ngày 01/11: danh sách có tên Merchant/khu vực/số ô trống, lọc khu vực; tạo/sửa kiểm tra tên trùng, tọa độ, khu vực, ảnh; xóa mềm khi không còn đơn; ô tủ chỉ chuyển Trống ↔ Bảo trì; lịch sử theo từng ô. |
 | 3.5.1–3.5.6 Quản lý và duyệt dịch vụ | Đã có BE | Ngày 01/11: `/wash-service` chỉ Admin, lọc theo Merchant/trạng thái duyệt, chặn tên trùng trong tiệm, xóa mềm (chặn khi còn đơn chưa xong); `/service-proposal` duyệt (tạo/cập nhật dịch vụ) hoặc từ chối có lý do, báo Merchant. |
 | 3.6.1–3.6.5 Khuyến mãi | Đã có BE | Ngày 01/11: CRUD `/promotion`, lọc theo trạng thái/thời gian, bật/tắt, xóa khi chưa dùng, thống kê + xuất CSV. Chi tiết ở mục khuyến mãi bên dưới. |
 | 3.7.1–3.7.3 Khiếu nại và đánh giá | Đã có BE | Ngày 01/11: lọc/xử lý/từ chối khiếu nại, bồi thường 30/70/100/200% do server tính, ghi nhận chi trả; lọc/ẩn đánh giá, cập nhật điểm Merchant. |
@@ -81,6 +81,24 @@ Ghi nhận ngày 30/10/2026: PUT /merchant/ giữ trạng thái cũ khi bỏ ho�
 - [x] **Trạng thái ô (2.5.2):** chi tiết locker trả từng ô với trạng thái Trống/Đang có đồ/Đang giữ chỗ/Bảo trì và cờ `hasItems` cho ô đang có đồ.
 - [x] **Lịch sử sử dụng (2.5.3):** `GET /locker/{id}/usage-history?fromDate&toDate&page&take` — mỗi lượt dùng ô: mã đơn, số ô, loại (1 = khách gửi, 2 = Shipper trả), thời gian đặt vào, thời gian lấy ra (null nếu đồ còn trong ô), trạng thái đơn; mốc thời gian lấy từ lịch sử trạng thái đơn (gửi/thu gom/trả/nhận), có nhánh đơn hủy và chuyển kho; không lộ thông tin khách. Chưa dùng: "Locker này chưa được sử dụng."
 - [x] `tests/smoke/locker-scope.ps1` PASS: thông báo Merchant chưa có locker, phạm vi danh sách/chi tiết/lịch sử, Merchant bị chặn 403 khi tạo/sửa/đổi trạng thái ô, ô giữ chỗ và ô có đồ, lịch sử đầy đủ thời gian sau một vòng đơn, đơn chưa gửi không xuất hiện, lọc theo thời gian.
+
+### Admin quản lý Merchant ngày 01/11/2026 — UC 3.2.1–3.2.5
+
+- [x] **Danh sách (3.2.1):** `POST /merchant/filter` trả email, tổng đơn (trừ đơn hủy), doanh thu (đơn đã thanh toán), số đơn chưa xử lý, ảnh, vùng phục vụ — tính từ đơn hàng thực tế; lọc thêm `serviceAreaId`. Rỗng: "Chưa có Merchant nào."
+- [x] **Thêm mới (3.2.2):** `POST /merchant/` không còn nhận `userId` có sẵn: hệ thống tạo tài khoản role Merchant (id tài khoản = id Merchant), mật khẩu tạm gửi email (gửi lỗi chỉ ghi log). Form: tên, MST, giấy phép kinh doanh, địa chỉ, quận, thành phố, tọa độ, SĐT, email, giờ mở cửa, ảnh, hoa hồng, bán kính, sức chứa, hợp đồng, SLA, vùng phục vụ. Lỗi: "Email này đã được sử dụng.", "Mã số thuế này đã được sử dụng.", "Tọa độ không hợp lệ.", "Số điện thoại không hợp lệ.", "Tỷ lệ chiết khấu phải từ 0-100%.". "Thêm Merchant thành công!"
+- [x] **Chỉnh sửa (3.2.3):** cùng kiểm tra; đổi email đăng nhập; bỏ `commissionRate`/`imageUrls`/`serviceAreaIds` = giữ nguyên. "Cập nhật Merchant thành công!" Giờ mở cửa và giấy phép (cột jsonb) được chuẩn hóa thành JSON như UC 2.1.2.
+- [x] **Khóa/mở khóa (3.2.4):** `PUT /merchant/status` khóa bắt buộc lý do; còn đơn chưa xử lý mà chưa `confirm` thì trả 409 "Merchant đang có X đơn chưa xử lý. Vẫn muốn khóa?". Khóa: tắt tài khoản, thu hồi refresh token, locker của Merchant ẩn với khách, không tạo được đơn mới, báo Merchant (loại 29): "Đã khóa Merchant thành công!" Mở khóa: "Đã mở khóa Merchant thành công!". `CustomResult` trả đúng HTTP 409.
+- [x] **Vùng phục vụ (3.2.5):** `/service-area/filter` có số Merchant mỗi vùng; `GET /service-area/{id}/merchants` liệt kê Merchant đang hoạt động kèm cờ đã gán và độ ưu tiên; `PUT /service-area/{id}/merchants` gán nhiều Merchant với độ ưu tiên 1–100, chặn trùng/Merchant không hoạt động, bỏ chọn tất cả cần `confirmEmpty` (409 "Vùng này chưa có Merchant nào phục vụ. Bạn có chắc muốn lưu?"). "Thiết lập vùng phục vụ thành công!"
+- [x] `tests/smoke/merchant-admin.ps1`, `tests/smoke/service-area-merchants.ps1` PASS; cập nhật `system-settings.ps1` theo form tạo Merchant mới; hồi quy `shipper-management.ps1`, `merchant-profile.ps1` PASS.
+
+### Admin quản lý Locker ngày 01/11/2026 — UC 3.4.1–3.4.5
+
+- [x] **Danh sách (3.4.1):** `POST /locker/filter` trả thêm tên Merchant phụ trách, tên khu vực, mô tả, số ô trống (đếm lại từ bảng ô, trước đây luôn 0 trong danh sách); lọc thêm `serviceAreaId`, `merchantId`. Admin không có kết quả: "Chưa có locker nào." Chi tiết trả ảnh và ô sắp theo số.
+- [x] **Thêm mới (3.4.2):** tên 1–200 ký tự, không trùng locker chưa xóa (không phân biệt hoa thường): "Tên locker này đã được sử dụng."; tọa độ trong khoảng hợp lệ và khác (0,0): "Tọa độ không hợp lệ."; Merchant phụ trách đang hoạt động; khu vực tồn tại; loại locker hợp lệ; ảnh phải do Admin upload. Số ô: truyền danh sách ô hoặc `boxCount` + `defaultBoxSize` (tạo ô 1..N), 1–200 ô, không trùng số. Mã để trống thì tự sinh `LK_…`, mã trùng (kể cả locker đã xóa) báo lỗi thay vì lỗi 500. "Thêm Locker thành công!"
+- [x] **Chỉnh sửa (3.4.3):** cùng kiểm tra; sửa được khu vực và ảnh (bỏ `imageUrls` = giữ ảnh, `[]` = xóa); Merchant phụ trách giữ nguyên. "Cập nhật Locker thành công!"
+- [x] **Xóa (3.4.4):** `DELETE /locker/{id}` (AdminOnly) xóa mềm locker và các ô; chặn khi còn ô đang có đồ/giữ chỗ hoặc đơn chưa hoàn tất dùng locker để gửi/trả (kể cả đồ của đơn hủy còn trong tủ): "Không thể xóa locker đang có đơn hàng chưa xử lý." "Xóa Locker thành công!" Locker đã xóa không còn hiện với Admin, Merchant, khách; tên được dùng lại.
+- [x] **Ô tủ (3.4.5):** `PUT /locker/box-status` chỉ cho Trống ↔ Bảo trì; ô đang có đồ/giữ chỗ không chuyển được. "Cập nhật ô tủ thành công!" `GET /locker/{id}/usage-history?boxId=` xem lịch sử từng ô.
+- [x] `tests/smoke/locker-admin.ps1` PASS; hồi quy `locker-scope.ps1`, `order-cancellation.ps1` PASS.
 
 ### Merchant cập nhật hồ sơ ngày 01/11/2026 — UC 2.1.2
 

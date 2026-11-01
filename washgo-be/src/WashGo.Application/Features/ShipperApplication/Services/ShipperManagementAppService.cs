@@ -137,7 +137,7 @@ namespace WashGo.Application.Features.ShipperApplication.Services
             if (role == null)
                 return BadRequest<ShipperDto>("Có lỗi xảy ra. Vui lòng thử lại.");
 
-            var temporaryPassword = GenerateTemporaryPassword();
+            var temporaryPassword = TemporaryPassword.Generate();
             var user = new User(GuidGenerator.Create())
             {
                 RoleId = role.Id,
@@ -268,24 +268,6 @@ namespace WashGo.Application.Features.ShipperApplication.Services
                 .GroupBy(x => x.ShipperId!.Value)
                 .Select(g => new { ShipperId = g.Key, Count = g.Count() }));
             return rows.ToDictionary(x => x.ShipperId, x => x.Count);
-        }
-
-        // Meets the account password policy: upper, lower and digit, 12 characters.
-        private static string GenerateTemporaryPassword()
-        {
-            const string upper = "ABCDEFGHJKLMNPQRSTUVWXYZ";
-            const string lower = "abcdefghijkmnpqrstuvwxyz";
-            const string digits = "23456789";
-            const string all = upper + lower + digits;
-            var chars = new List<char>
-            {
-                upper[RandomNumberGenerator.GetInt32(upper.Length)],
-                lower[RandomNumberGenerator.GetInt32(lower.Length)],
-                digits[RandomNumberGenerator.GetInt32(digits.Length)]
-            };
-            while (chars.Count < 12)
-                chars.Add(all[RandomNumberGenerator.GetInt32(all.Length)]);
-            return new string(chars.OrderBy(_ => RandomNumberGenerator.GetInt32(int.MaxValue)).ToArray());
         }
 
         private static ShipperDto ToDto(Shipper s, User u, int activeTasks) => new()
