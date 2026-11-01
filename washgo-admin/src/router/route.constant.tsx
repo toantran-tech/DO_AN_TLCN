@@ -5,6 +5,7 @@ import MeetingRoomIcon from '@mui/icons-material/MeetingRoom';
 import DryCleaningIcon from '@mui/icons-material/DryCleaning';
 import MapIcon from '@mui/icons-material/Map';
 import StorefrontIcon from '@mui/icons-material/Storefront';
+import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 
 export interface RouteConfig {
   path: string;
@@ -50,5 +51,12 @@ export const ROUTE_ITEMS: RouteConfig[] = [
     label: 'Đối tác giặt sấy',
     icon: <StorefrontIcon />,
     permission: 'WashGo.Merchants',
+  },
+  {
+    path: '/promotion',
+    label: 'Khuyến mãi',
+    icon: <LocalOfferIcon />,
+    permission: 'WashGo.Promotions',
+    role: ['Admin'],
   },
 ];

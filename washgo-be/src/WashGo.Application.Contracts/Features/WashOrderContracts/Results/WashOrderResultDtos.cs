@@ -27,6 +27,7 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Results
         public Guid? MerchantId { get; set; }
         public string? MerchantName { get; set; }
         public decimal TotalAmount { get; set; }
+        public string? PromotionCode { get; set; }
         public decimal DiscountAmount { get; set; }
         public decimal FinalAmount { get; set; }
         public decimal? ActualWeightKg { get; set; }

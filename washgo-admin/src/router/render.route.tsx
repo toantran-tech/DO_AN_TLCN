@@ -10,6 +10,7 @@ import { LockerScreen } from '../screens/locker/locker.screen';
 import { WashServiceScreen } from '../screens/wash-service/wash-service.screen';
 import { ServiceAreaScreen } from '../screens/service-area/service-area.screen';
 import { MerchantScreen } from '../screens/merchant/merchant.screen';
+import { PromotionScreen } from '../screens/promotion/promotion.screen';
 
 const ProtectedRoute: React.FC<{ children: React.ReactElement }> = ({ children }) => {
   const { isAuthenticated } = useSelector((state: RootState) => state.account);
@@ -42,6 +43,7 @@ export const AppRouter: React.FC = () => {
         <Route path="/wash-service" element={<WashServiceScreen />} />
         <Route path="/service-area" element={<ServiceAreaScreen />} />
         <Route path="/merchant" element={<MerchantScreen />} />
+        <Route path="/promotion" element={<PromotionScreen />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />
