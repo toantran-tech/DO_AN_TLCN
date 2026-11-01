@@ -15,14 +15,23 @@ namespace WashGo.Domain.Shared.Enums
         OrderCancelled = 10,
         MovedToStorage = 11,
         IncidentProcessed = 12,
+        DepositReminder = 13,
+        PickupReminder = 14,
+        OverdueFeeApplied = 15,
         NewOrderForMerchant = 20,
+        MerchantReturnReminder = 21,
+        SlaWarning = 22,
+        StorageTransferDue = 23,
         NewTaskForShipper = 30,
         ShipperCollected = 31,
         ShipperReturned = 32,
+        ShipperCollectReminder = 33,
+        ShipperReturnReminder = 34,
         NewIncident = 40,
         RefundRequested = 41,
         NewRating = 42,
         CustomerDeposited = 43,
-        CustomerPickedUp = 44
+        CustomerPickedUp = 44,
+        OverdueSummary = 45
     }
 }

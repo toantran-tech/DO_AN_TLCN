@@ -48,6 +48,13 @@ namespace WashGo.HttpApi.Endpoints.Notification
                 .WithSummary("Xóa một thông báo của tôi.")
                 .WithOpenApi();
 
+            group.MapPost("/reminders/run", async (IOrderReminderAppService svc) =>
+                (await svc.RunAsync()).CustomResult())
+                .RequireAuthorization("AdminOnly")
+                .WithName("Quét nhắc nhở ngay")
+                .WithSummary("Admin chạy ngay một lượt quét nhắc nhở theo thời gian (worker tự chạy định kỳ); lời nhắc đã gửi không gửi lại.")
+                .WithOpenApi();
+
             group.MapDelete("/", async (INotificationAppService svc) =>
                 (await svc.DeleteAllAsync()).CustomResult())
                 .WithName("Xóa tất cả thông báo")

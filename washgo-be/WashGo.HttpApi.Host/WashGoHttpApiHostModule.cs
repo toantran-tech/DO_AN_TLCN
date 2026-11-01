@@ -31,6 +31,7 @@ using WashGo.EntityFrameworkCore;
 using WashGo.EntityFrameworkCore.EntityFrameworkCore;
 using WashGo.HttpApi;
 using WashGo.HttpApi.Hubs;
+using WashGo.HttpApi.Host.Workers;
 using WashGo.Domain.Entities.Identity;
 
 namespace WashGo.HttpApi.Host
@@ -163,6 +164,7 @@ namespace WashGo.HttpApi.Host
             });
 
             context.Services.AddSignalR();
+            context.Services.AddHostedService<ReminderWorker>();
             context.Services.AddEndpointsApiExplorer();
             context.Services.AddSwaggerGen(options =>
             {

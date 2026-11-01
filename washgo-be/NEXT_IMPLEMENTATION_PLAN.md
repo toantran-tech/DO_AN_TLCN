@@ -56,7 +56,7 @@ Ghi nhận ngày 30/10/2026: PUT /merchant/ giữ trạng thái cũ khi bỏ ho�
 | 4.3.1–4.3.2 Xem đơn được gán/chi tiết | Một phần | Đã tra Shipper qua `UserId`, ép phạm vi theo ID hồ sơ và ẩn thông tin Customer/PIN/QR. DTO nay có `assignedTaskType` (1 lấy/2 trả) và `shipperAssignedAt`; chưa có bộ lọc nhiệm vụ/lịch sử phân công riêng. |
 | 4.3.3–4.3.5 Lấy/trả đồ bằng QR, cập nhật giao nhận | Đã xong BE | Đã hoàn tất 6 endpoint mô phỏng QR/PIN: Customer gửi đồ, Shipper lấy đồ, Shipper trả đồ, Customer nhận đồ tại Locker (2 bước mở tủ + xác nhận), Customer nhận đồ tại kho. Có chống brute-force (sai 5 lần khóa 5 phút), mã nhiệm vụ riêng cho Shipper, SLA warning, idempotency, tự chuyển Returned -> Completed. |
 | 4.3.6 Lịch sử giao nhận | Chưa có | Chưa có API lịch sử giao nhận theo Shipper. |
-| 5.1–5.3 Xem, đánh dấu đã đọc, xóa thông báo | Đã có BE + Admin UI | Ngày 01/11: `/notification` (xem, đếm chưa đọc, đọc một/tất cả, xóa một/tất cả), SignalR `/hubs/notifications`, thông báo theo sự kiện cho 4 vai trò, chuông trên Admin. Còn nhắc nhở theo thời gian. |
+| 5.1–5.3 Xem, đánh dấu đã đọc, xóa thông báo | Đã có BE + Admin UI | Ngày 01/11: `/notification` (xem, đếm chưa đọc, đọc một/tất cả, xóa một/tất cả), SignalR `/hubs/notifications`, thông báo theo sự kiện cho 4 vai trò, chuông trên Admin, nhắc nhở theo thời gian bằng worker định kỳ. |
 
 ## II. Thứ tự triển khai tiếp theo theo đặc tả
 
@@ -72,6 +72,18 @@ Ghi nhận ngày 30/10/2026: PUT /merchant/ giữ trạng thái cũ khi bỏ ho�
 
 **Đồng bộ đặc tả Word ngày 31/10/2026:** Đã cập nhật UC Customer gửi đồ (quá 30 phút chỉ từ chối, không tự hủy), Customer nhận tại locker hai bước và phiên 10 phút, SLA Shipper lấy 4 giờ từ DepositedAt/trả 24 giờ từ PaidAt (trễ vẫn cho giao nhận), mã riêng và khóa 5 lần/5 phút. Bổ sung UC Nhận đồ tại kho với phí locker đã chốt + 100.000đ/mỗi ngày kho bắt đầu, không giải phóng ô lần hai. Giữ yêu cầu thông báo/đánh giá trong đặc tả; đây vẫn là phần chưa triển khai. Đã lưu bản dự phòng `../Đặc tả usecase.backup-20261031-021336.docx`; kiểm tra nội dung và ZIP chỉ đổi `word/document.xml`. Chưa xác minh bố cục trang: không có Python runtime đóng gói để chạy renderer; thử xuất Word sang PDF bị timeout 25 giây.
 **Dọn mục trùng ngày 31/10/2026:** Xóa đúng 3 bảng Hiển thị QR Code giống hệt cùng tiêu đề đi kèm trong bản project; giữ bảng QR còn lại trong nhóm Customer và bảng QR khác nội dung ở mục khác. Nội dung tất cả bảng còn lại được đối chiếu giữ nguyên; đánh lại mục 1.3.1–1.3.4. Bản Downloads không chỉnh sửa. Backup: `../Đặc tả usecase.backup-dedup-20261031-023310.docx`. Chưa render lại bố cục do giới hạn công cụ xem trước đã ghi ở trên.
+
+### Nhắc nhở theo thời gian ngày 01/11/2026
+
+- [x] **Worker `ReminderWorker`** (BackgroundService trong `WashGo.HttpApi.Host`, cùng tiến trình với SignalR hub nên thông báo vẫn real-time): quét mỗi `Reminders:IntervalSeconds` (mặc định 60 giây), tắt bằng `Reminders:Enabled=false`. Admin có thể quét ngay bằng `POST /notification/reminders/run`. Lượt quét lỗi được ghi log và thử lại ở lượt sau.
+- [x] **Chống gửi trùng:** bảng `reminder_logs` (migration `20261101091541_AddReminderLogs`, khóa duy nhất, ví dụ `deposit:{orderId}`, `overdue-fee:{orderId}:{ngày}`, `overdue-summary:{yyyy-MM-dd}`). Mỗi lời nhắc chỉ gửi một lần, kể cả khi người dùng đã xóa thông báo; đơn đổi trạng thái thì không còn bị nhắc.
+- [x] **Các lời nhắc (mốc lấy từ cấu hình SLA UC 3.9):**
+  - Khách: còn 15 phút trước hạn gửi đồ (đơn đã quá hạn không nhắc); còn nửa thời gian lấy đồ miễn phí; quá hạn ngày 1 kèm phí; phí phạt ngày 2, ngày 3.
+  - Shipper: nhiệm vụ lấy đồ quá 30 phút từ lúc phân công (phân công lại thì nhắc lại); nhắc trả đồ khi đơn đã thanh toán quá nửa SLA trả.
+  - Merchant: nhắc trả đồ ở nửa SLA trả; cảnh báo trễ SLA lấy đồ (từ lúc khách gửi) và trễ SLA trả đồ (từ lúc thanh toán); đơn cần chuyển kho.
+  - Admin: cảnh báo trễ lấy/trả của Merchant, đơn cần chuyển kho (quá 72 giờ), tổng hợp số đơn quá hạn lấy đồ mỗi ngày (theo giờ Việt Nam).
+- [x] `tests/smoke/reminders.ps1` PASS: chỉ Admin quét thủ công; từng lời nhắc tới đúng vai trò đúng một lần dù quét nhiều lần; đơn hết hạn gửi, đơn chưa đến mốc và đơn đã chuyển kho không bị nhắc.
+- [ ] Chưa có: tự hủy đơn quá hạn gửi đồ (theo quyết định ngày 31/10 chỉ chặn gửi, không tự hủy), tự chuyển kho, AI phát hiện bất thường. `WashGo.Background.Host` vẫn là khung chưa dùng.
 
 ### Cài đặt hệ thống ngày 01/11/2026 — UC 3.9.1, 3.9.2, 3.9.4
 
