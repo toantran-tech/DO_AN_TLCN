@@ -47,6 +47,7 @@ namespace WashGo.EntityFrameworkCore.EntityFrameworkCore
         public DbSet<SystemSetting> SystemSettings { get; set; } = null!;
         public DbSet<ReminderLog> ReminderLogs { get; set; } = null!;
         public DbSet<MerchantSettlement> MerchantSettlements { get; set; } = null!;
+        public DbSet<MerchantProfileRequest> MerchantProfileRequests { get; set; } = null!;
 
         public WashGoDbContext(DbContextOptions<WashGoDbContext> options)
             : base(options)
@@ -86,6 +87,7 @@ namespace WashGo.EntityFrameworkCore.EntityFrameworkCore
             builder.ApplyConfiguration(new SystemSettingEntityTypeConfiguration());
             builder.ApplyConfiguration(new ReminderLogEntityTypeConfiguration());
             builder.ApplyConfiguration(new MerchantSettlementEntityTypeConfiguration());
+            builder.ApplyConfiguration(new MerchantProfileRequestEntityTypeConfiguration());
 
             builder.UseWashGoSnakeCaseColumns();
         }

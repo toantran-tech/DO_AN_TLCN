@@ -1281,6 +1281,62 @@ namespace WashGo.EntityFrameworkCore.Migrations
                     b.ToTable("merchant_images", "washgo");
                 });
 
+            modelBuilder.Entity("WashGo.Domain.Entities.Partner.MerchantProfileRequest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CurrentData")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("current_data");
+
+                    b.Property<Guid>("MerchantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("merchant_id");
+
+                    b.Property<string>("ProposedData")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("proposed_data");
+
+                    b.Property<string>("RejectionReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("rejection_reason");
+
+                    b.Property<DateTime?>("ReviewedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("reviewed_at");
+
+                    b.Property<Guid?>("ReviewedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("reviewed_by");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer")
+                        .HasColumnName("status");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ReviewedBy");
+
+                    b.HasIndex("Status");
+
+                    b.HasIndex("MerchantId", "Status");
+
+                    b.ToTable("merchant_profile_requests", "washgo");
+                });
+
             modelBuilder.Entity("WashGo.Domain.Entities.Partner.MerchantServiceArea", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2843,6 +2899,20 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasForeignKey("MerchantId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("WashGo.Domain.Entities.Partner.MerchantProfileRequest", b =>
+                {
+                    b.HasOne("WashGo.Domain.Entities.Partner.Merchant", null)
+                        .WithMany()
+                        .HasForeignKey("MerchantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("WashGo.Domain.Entities.Identity.User", null)
+                        .WithMany()
+                        .HasForeignKey("ReviewedBy")
+                        .OnDelete(DeleteBehavior.SetNull);
                 });
 
             modelBuilder.Entity("WashGo.Domain.Entities.Partner.MerchantServiceArea", b =>

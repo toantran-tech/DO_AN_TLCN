@@ -27,13 +27,13 @@ Ghi nhận ngày 30/10/2026: PUT /merchant/ giữ trạng thái cũ khi bỏ ho�
 
 | Use case trong đặc tả | Tiến độ BE | Đã có / phần còn thiếu |
 | --- | --- | --- |
-| 2.1.1 Đăng nhập; 2.1.2 Cập nhật hồ sơ | Một phần | Auth cho tài khoản Merchant đã có; chưa có API tự cập nhật hồ sơ Merchant theo use case. |
+| 2.1.1 Đăng nhập; 2.1.2 Cập nhật hồ sơ | Đã có BE | Ngày 01/11: `/merchant-profile` Merchant xem hồ sơ cửa hàng và gửi yêu cầu cập nhật (chờ Admin duyệt, báo Admin); `/merchant-profile-request` Admin duyệt/từ chối có lý do. |
 | 2.3.1 Quản lý đơn; 2.3.2 Xem chi tiết đơn | Một phần | Ngày 29/10 đã ép phạm vi đơn theo Merchant, chặn xem/sửa ngoài quyền và ẩn thông tin Customer/PIN/QR trong response; còn hoàn thiện các nghiệp vụ xử lý đơn theo đặc tả. |
 | 2.3.4 Cập nhật số kg thực tế | Đã có BE cân/chốt giá | `PUT /wash-order/{id}/actual-weight` dành cho Merchant của đơn: tính phí/ETA theo mức 3/5/10 kg, lưu giá và thời lượng gói khi đặt đơn, chống phí trùng. Theo quyết định mới: cân xong giữ `Collected`, giặt xong mới `AwaitingPayment`. Chưa có thông báo tự động. |
 | 2.4.1–2.4.3 Quản lý Shipper | Đã có BE | Ngày 01/11: `/shipper` cho Merchant (tiệm của mình) và Admin: danh sách/lọc, thêm (tạo tài khoản Shipper, gửi mật khẩu tạm qua email), sửa, Đang làm việc/Tạm nghỉ; đếm số đơn đã giao. |
 | 2.4.4 Phân công Shipper | Đã có BE phân công; còn thông báo | Ngày 29/10: Merchant/Admin xem Shipper khả dụng theo đơn và phân công đúng tiệm, đúng giai đoạn, tài khoản đang hoạt động/khả dụng. Lưu riêng nhiệm vụ lấy/trả và thời điểm; chống phân công đồng thời. Chưa gửi thông báo Shipper vì module 5 chưa có. |
 | 2.5.1–2.5.3 Xem locker/ô/lịch sử | Đã có BE | Ngày 01/11: Merchant chỉ xem locker được gán (danh sách, chi tiết ô có cờ `hasItems`), tạo/sửa locker và đổi trạng thái ô chỉ Admin; `GET /locker/{id}/usage-history` lịch sử từng lượt dùng ô. |
-| 2.6.1–2.6.3 Dịch vụ và đề xuất thay đổi | Một phần | Có CRUD/status dịch vụ và entity `ServiceChangeRequest`; chưa hoàn chỉnh luồng Merchant đề xuất → Admin duyệt theo use case. |
+| 2.6.1–2.6.3 Dịch vụ và đề xuất thay đổi | Đã có BE | Ngày 01/11: `/merchant-service` Merchant xem dịch vụ đã duyệt của tiệm, đề xuất thêm mới/chỉnh sửa (chờ Admin duyệt, báo Admin); không còn gọi trực tiếp `/wash-service`. |
 
 ### 3. Admin
 
@@ -42,7 +42,7 @@ Ghi nhận ngày 30/10/2026: PUT /merchant/ giữ trạng thái cũ khi bỏ ho�
 | 3.2.1–3.2.5 Quản lý Merchant | Một phần | Danh sách/chi tiết/tạo/sửa/đổi trạng thái đã có; cần đối chiếu tiếp các bước vùng phục vụ, phê duyệt và validation chi tiết. |
 | 3.3.1–3.3.3 Phân công đơn cho Merchant | Chưa có | Khi tạo đơn, Merchant được lấy từ locker; chưa có nghiệp vụ Admin gán thủ công hoặc tự động (AI) theo use case. |
 | 3.4.1–3.4.5 Quản lý locker | Một phần | Danh sách/chi tiết/tạo/sửa/trạng thái ô đã có; chưa đủ toàn bộ thao tác xóa/lịch sử theo đặc tả. |
-| 3.5.1–3.5.6 Quản lý và duyệt dịch vụ | Một phần | Có API dịch vụ/status; từ 01/11 tạo/sửa dịch vụ chặn giá ≤ 0, thời lượng ngoài 1–8760 giờ và mã trùng ("Giá dịch vụ không hợp lệ."). Chưa xác nhận đầy đủ luồng đề xuất, duyệt/từ chối và xóa theo đặc tả. |
+| 3.5.1–3.5.6 Quản lý và duyệt dịch vụ | Đã có BE | Ngày 01/11: `/wash-service` chỉ Admin, lọc theo Merchant/trạng thái duyệt, chặn tên trùng trong tiệm, xóa mềm (chặn khi còn đơn chưa xong); `/service-proposal` duyệt (tạo/cập nhật dịch vụ) hoặc từ chối có lý do, báo Merchant. |
 | 3.6.1–3.6.5 Khuyến mãi | Đã có BE | Ngày 01/11: CRUD `/promotion`, lọc theo trạng thái/thời gian, bật/tắt, xóa khi chưa dùng, thống kê + xuất CSV. Chi tiết ở mục khuyến mãi bên dưới. |
 | 3.7.1–3.7.3 Khiếu nại và đánh giá | Đã có BE | Ngày 01/11: lọc/xử lý/từ chối khiếu nại, bồi thường 30/70/100/200% do server tính, ghi nhận chi trả; lọc/ẩn đánh giá, cập nhật điểm Merchant. |
 | 3.8.1–3.8.3 Tài chính | Đã có BE | Ngày 01/11: `/finance` báo cáo doanh thu (tổng, theo Merchant, theo dịch vụ, theo ngày, xuất CSV), hoa hồng theo kỳ, kỳ đối soát + xác nhận chi trả; danh sách hoàn tiền lọc trạng thái, có mã đơn/tên khách và chi tiết. |
@@ -81,6 +81,23 @@ Ghi nhận ngày 30/10/2026: PUT /merchant/ giữ trạng thái cũ khi bỏ ho�
 - [x] **Trạng thái ô (2.5.2):** chi tiết locker trả từng ô với trạng thái Trống/Đang có đồ/Đang giữ chỗ/Bảo trì và cờ `hasItems` cho ô đang có đồ.
 - [x] **Lịch sử sử dụng (2.5.3):** `GET /locker/{id}/usage-history?fromDate&toDate&page&take` — mỗi lượt dùng ô: mã đơn, số ô, loại (1 = khách gửi, 2 = Shipper trả), thời gian đặt vào, thời gian lấy ra (null nếu đồ còn trong ô), trạng thái đơn; mốc thời gian lấy từ lịch sử trạng thái đơn (gửi/thu gom/trả/nhận), có nhánh đơn hủy và chuyển kho; không lộ thông tin khách. Chưa dùng: "Locker này chưa được sử dụng."
 - [x] `tests/smoke/locker-scope.ps1` PASS: thông báo Merchant chưa có locker, phạm vi danh sách/chi tiết/lịch sử, Merchant bị chặn 403 khi tạo/sửa/đổi trạng thái ô, ô giữ chỗ và ô có đồ, lịch sử đầy đủ thời gian sau một vòng đơn, đơn chưa gửi không xuất hiện, lọc theo thời gian.
+
+### Merchant cập nhật hồ sơ ngày 01/11/2026 — UC 2.1.2
+
+- [x] **Xem hồ sơ:** `GET /merchant-profile/` (MerchantOnly): tên cửa hàng, MST, email đăng nhập, địa chỉ, tọa độ, SĐT, giờ mở cửa, ảnh cửa hàng, trạng thái, đánh giá, tổng đơn, hoa hồng, bán kính, sức chứa, hợp đồng và yêu cầu đang chờ duyệt (nếu có).
+- [x] **Gửi yêu cầu:** `POST /merchant-profile/update-requests` với tên cửa hàng, địa chỉ, SĐT, giờ mở cửa, hình ảnh (bỏ `imageUrls` = giữ ảnh hiện tại, `[]` = xóa ảnh). Kiểm tra "Số điện thoại không hợp lệ." (9–11 chữ số, lưu dạng chỉ số), tên/địa chỉ không trống, ảnh mới phải do chính Merchant upload ("Không thể upload ảnh. Vui lòng thử lại."), không có thay đổi thì từ chối, mỗi lúc một yêu cầu chờ duyệt. Lưu bảng `merchant_profile_requests` (migration `AddMerchantProfileRequests`) với dữ liệu đề xuất + dữ liệu hiện tại; hồ sơ chưa đổi. Báo Admin (loại 47): "Yêu cầu cập nhật đã được gửi. Vui lòng chờ Admin phê duyệt."
+- [x] **Giờ mở cửa:** cột `opening_hours` là jsonb — JSON hợp lệ được giữ nguyên (thu gọn), chữ thường như `07:00-22:00` được lưu thành chuỗi JSON.
+- [x] **Admin duyệt:** `POST /merchant-profile-request/filter` (Admin lọc trạng thái/Merchant, chờ duyệt lên trước; Merchant chỉ thấy của mình), `GET /merchant-profile-request/{id}` (kèm `changedFields`), `POST …/{id}/approve` áp dụng vào hồ sơ và thay ảnh cửa hàng (`merchant_images` loại `store`), `POST …/{id}/reject` bắt buộc lý do. Merchant nhận thông báo (loại 27) kèm lý do khi bị từ chối.
+- [x] `tests/smoke/merchant-profile.ps1` PASS: xem hồ sơ, 403 cho Admin, SĐT sai, tên/địa chỉ trống, ảnh của người khác/đường dẫn lạ, không thay đổi, gửi yêu cầu + hồ sơ chưa đổi + thông báo Admin, chặn yêu cầu thứ hai, phạm vi Merchant, từ chối cần lý do, duyệt áp dụng đủ trường và ảnh, bỏ `imageUrls` giữ ảnh, `[]` xóa ảnh.
+
+### Đề xuất và duyệt dịch vụ ngày 01/11/2026 — UC 2.6.1–2.6.3, 3.5.1–3.5.6
+
+- [x] **Merchant (2.6.1):** `POST /merchant-service/filter` chỉ dịch vụ đã duyệt, chưa xóa của tiệm; rỗng: "Chưa có dịch vụ nào được cung cấp." Merchant bị chặn 403 ở `/wash-service`.
+- [x] **Đề xuất thêm mới (2.6.2):** `POST /merchant-service/proposals` (tên, mô tả, giá, giá/kg, giá/chiếc, thời gian xử lý, danh mục, đơn vị, ảnh đã upload của tiệm, lý do). Kiểm tra "Giá dịch vụ không hợp lệ.", tên 1–200 ký tự, thời gian 1–8760 giờ; tên trùng (không phân biệt hoa thường) với dịch vụ hoặc đề xuất đang chờ: "Tên dịch vụ này đã tồn tại." Lưu `ServiceChangeRequest` trạng thái chờ, báo Admin (loại 46): "Đề xuất đã được gửi. Vui lòng chờ Admin phê duyệt."
+- [x] **Đề xuất chỉnh sửa (2.6.3):** `POST /merchant-service/{serviceId}/proposals` chỉ cho dịch vụ của tiệm, giữ danh mục/đơn vị, lưu ảnh chụp dữ liệu hiện tại và đề xuất; mỗi dịch vụ chỉ một đề xuất chờ.
+- [x] **Admin duyệt (3.5.5–3.5.6):** `POST /service-proposal/filter` (Admin lọc trạng thái/loại/Merchant, Merchant chỉ thấy của mình, chờ duyệt lên trước), `GET /service-proposal/{id}`; `POST /service-proposal/{id}/approve` kiểm tra lại rồi tạo dịch vụ đã duyệt (mã `SVC_…`) hoặc cập nhật dịch vụ: "Đã phê duyệt đề xuất!"; `POST /service-proposal/{id}/reject` bắt buộc lý do: "Đã từ chối đề xuất!". Merchant nhận thông báo kèm lý do (loại 26).
+- [x] **Admin quản lý (3.5.1–3.5.4):** `/wash-service` chỉ Admin; lọc theo Merchant, trạng thái duyệt; tạo/sửa kiểm tra Merchant tồn tại, mã và tên trùng; "Thêm Dịch vụ thành công!", "Cập nhật Dịch vụ thành công!"; `DELETE /wash-service/{id}` xóa mềm, chặn "Không thể xóa dịch vụ đang có đơn hàng." khi còn đơn chưa hoàn tất/hủy; dịch vụ đã xóa không còn hiển thị.
+- [x] `tests/smoke/service-proposals.ps1` PASS: danh sách rỗng, quyền 403, giá/tên/thời gian sai, tên trùng với đề xuất đang chờ, thông báo Admin, phạm vi Merchant, duyệt tạo dịch vụ + thông báo, duyệt lại bị chặn, đề xuất sửa + một đề xuất chờ, từ chối cần lý do, duyệt sửa cập nhật dịch vụ, Admin lọc/tên trùng/Merchant không tồn tại, xóa bị chặn khi có đơn rồi xóa được sau khi hủy đơn.
 
 ### Quản lý tài chính ngày 01/11/2026 — UC 3.8.1–3.8.3
 

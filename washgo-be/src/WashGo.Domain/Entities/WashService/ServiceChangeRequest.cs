@@ -9,6 +9,9 @@ namespace WashGo.Domain.Entities.WashService
     [SevagoTable(WashGoDbProperties.ServiceChangeRequests, Schema = WashGoDbProperties.Schema)]
     public class ServiceChangeRequest : Entity<Guid>
     {
+        public ServiceChangeRequest() { }
+        public ServiceChangeRequest(Guid id) : base(id) { }
+
         public Guid MerchantId { get; set; }
         public Guid? ServiceId { get; set; }
         public ServiceChangeRequestType RequestType { get; set; }

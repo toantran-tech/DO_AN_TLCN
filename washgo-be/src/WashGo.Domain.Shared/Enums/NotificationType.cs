@@ -24,6 +24,8 @@ namespace WashGo.Domain.Shared.Enums
         StorageTransferDue = 23,
         SettlementCreated = 24,
         SettlementPaid = 25,
+        ServiceProposalReviewed = 26,
+        MerchantProfileReviewed = 27,
         NewTaskForShipper = 30,
         ShipperCollected = 31,
         ShipperReturned = 32,
@@ -34,6 +36,8 @@ namespace WashGo.Domain.Shared.Enums
         NewRating = 42,
         CustomerDeposited = 43,
         CustomerPickedUp = 44,
-        OverdueSummary = 45
+        OverdueSummary = 45,
+        ServiceProposalSubmitted = 46,
+        MerchantProfileUpdateRequested = 47
     }
 }

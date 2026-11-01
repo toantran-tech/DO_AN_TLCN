@@ -460,7 +460,13 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             // Locker credentials use cryptographically secure random numbers.
             var depositPin = RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
             var pickupPin = RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
-            var orderCode = $"WG{DateTime.UtcNow:yyMMdd}{RandomNumberGenerator.GetInt32(1000, 10000)}";
+            // Only 9000 codes per day: regenerate on collision instead of failing on the unique index.
+            string orderCode;
+            var attempts = 0;
+            do
+            {
+                orderCode = $"WG{DateTime.UtcNow:yyMMdd}{RandomNumberGenerator.GetInt32(1000, 10000)}";
+            } while (++attempts < 10 && await _orderRepo.AnyAsync(x => x.OrderCode == orderCode));
 
             var order = new WashOrder
             {
