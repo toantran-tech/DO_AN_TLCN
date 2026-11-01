@@ -6,6 +6,8 @@ import DryCleaningIcon from '@mui/icons-material/DryCleaning';
 import MapIcon from '@mui/icons-material/Map';
 import StorefrontIcon from '@mui/icons-material/Storefront';
 import LocalOfferIcon from '@mui/icons-material/LocalOffer';
+import ReportProblemIcon from '@mui/icons-material/ReportProblem';
+import StarRateIcon from '@mui/icons-material/StarRate';
 
 export interface RouteConfig {
   path: string;
@@ -57,6 +59,20 @@ export const ROUTE_ITEMS: RouteConfig[] = [
     label: 'Khuyến mãi',
     icon: <LocalOfferIcon />,
     permission: 'WashGo.Promotions',
+    role: ['Admin'],
+  },
+  {
+    path: '/incident',
+    label: 'Khiếu nại',
+    icon: <ReportProblemIcon />,
+    permission: 'WashGo.Incidents',
+    role: ['Admin'],
+  },
+  {
+    path: '/rating',
+    label: 'Đánh giá',
+    icon: <StarRateIcon />,
+    permission: 'WashGo.Ratings',
     role: ['Admin'],
   },
 ];
