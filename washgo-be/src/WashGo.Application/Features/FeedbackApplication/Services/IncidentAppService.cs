@@ -10,6 +10,7 @@ using WashGo.Application.Contracts.Features.FeedbackContracts.Queries;
 using WashGo.Application.Contracts.Features.FeedbackContracts.Results;
 using WashGo.Application.Contracts.Features.FeedbackContracts.Services;
 using WashGo.Application.Features.FileApplication.Services;
+using WashGo.Application.Features.NotificationApplication.Services;
 using WashGo.Core.Domain.Shared.Bases;
 using WashGo.Domain.Entities.Feedback;
 using WashGo.Domain.Entities.Feedback.Interfaces;
@@ -29,19 +30,22 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
         private readonly IRepository<WashOrderTimeline, Guid> _timelineRepo;
         private readonly IRepository<Merchant, Guid> _merchantRepo;
         private readonly IConfiguration _configuration;
+        private readonly NotificationPublisher _notifications;
 
         public IncidentAppService(
             IIncidentRepository incidentRepo,
             IWashOrderRepository orderRepo,
             IRepository<WashOrderTimeline, Guid> timelineRepo,
             IRepository<Merchant, Guid> merchantRepo,
-            IConfiguration configuration)
+            IConfiguration configuration,
+            NotificationPublisher notifications)
         {
             _incidentRepo = incidentRepo;
             _orderRepo = orderRepo;
             _timelineRepo = timelineRepo;
             _merchantRepo = merchantRepo;
             _configuration = configuration;
+            _notifications = notifications;
         }
 
         public async Task<BaseResponse<IncidentResultDto>> CreateAsync(CreateIncidentCommand command)
@@ -92,6 +96,7 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
                 Status = IncidentStatus.Pending
             };
             await _incidentRepo.InsertAsync(incident, autoSave: true);
+            await _notifications.IncidentCreatedAsync(incident);
             await uow.CompleteAsync();
             return Created(ToDto(incident),
                 "Báo cáo của bạn đã được gửi. Chúng tôi sẽ xử lý trong thời gian sớm nhất.");
@@ -182,6 +187,7 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
             incident.ReviewedBy = CurrentUser.Id;
             incident.ReviewedAt = DateTime.UtcNow;
             await _incidentRepo.UpdateAsync(incident, autoSave: true);
+            await _notifications.IncidentProcessedAsync(incident);
             await uow.CompleteAsync();
             return Success(ToDto(incident), incident.CompensationAmount > 0
                 ? $"Đã xử lý khiếu nại; tạo yêu cầu bồi thường {incident.CompensationAmount:N0}đ cho khách hàng."
@@ -206,6 +212,7 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
             incident.ReviewedBy = CurrentUser.Id;
             incident.ReviewedAt = DateTime.UtcNow;
             await _incidentRepo.UpdateAsync(incident, autoSave: true);
+            await _notifications.IncidentProcessedAsync(incident);
             await uow.CompleteAsync();
             return Success(ToDto(incident), "Đã từ chối khiếu nại.");
         }

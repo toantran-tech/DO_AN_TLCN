@@ -48,7 +48,7 @@ namespace WashGo.Application.Features.PromotionApplication.Services
         public async Task<PaginatedResult<PromotionResultDto>> GetListAsync(PromotionFilterQuery query)
         {
             var now = DateTime.UtcNow;
-            var queryable = await _promotionRepo.GetQueryableAsync();
+            var queryable = (await _promotionRepo.GetQueryableAsync()).Where(x => !x.IsDeleted);
 
             if (query.DiscountType.HasValue)
                 queryable = queryable.Where(x => x.DiscountType == query.DiscountType.Value);
@@ -99,7 +99,7 @@ namespace WashGo.Application.Features.PromotionApplication.Services
 
         public async Task<BaseResponse<PromotionResultDto>> GetByIdAsync(Guid id)
         {
-            var entity = await _promotionRepo.FindAsync(id);
+            var entity = await FindActiveAsync(id);
             if (entity == null)
                 return NotFound<PromotionResultDto>("Không tìm thấy mã giảm giá!");
             return Success(ToDto(entity, DateTime.UtcNow));
@@ -111,7 +111,7 @@ namespace WashGo.Application.Features.PromotionApplication.Services
             var error = Validate(command, code);
             if (error != null)
                 return BadRequest<PromotionResultDto>(error);
-            if (await _promotionRepo.AnyAsync(x => x.Code == code))
+            if (await _promotionRepo.AnyAsync(x => x.Code == code && !x.IsDeleted))
                 return BadRequest<PromotionResultDto>("Mã giảm giá này đã tồn tại.");
 
             var entity = new Promotion { Code = code };
@@ -122,7 +122,7 @@ namespace WashGo.Application.Features.PromotionApplication.Services
 
         public async Task<BaseResponse<PromotionResultDto>> UpdateAsync(UpdatePromotionCommand command)
         {
-            var entity = await _promotionRepo.FindAsync(command.Id);
+            var entity = await FindActiveAsync(command.Id);
             if (entity == null)
                 return NotFound<PromotionResultDto>("Không tìm thấy mã giảm giá để cập nhật!");
 
@@ -134,7 +134,7 @@ namespace WashGo.Application.Features.PromotionApplication.Services
             {
                 if (await _usageRepo.AnyAsync(x => x.PromotionId == entity.Id))
                     return BadRequest<PromotionResultDto>("Không thể đổi mã của khuyến mãi đã có lượt sử dụng.");
-                if (await _promotionRepo.AnyAsync(x => x.Code == code && x.Id != entity.Id))
+                if (await _promotionRepo.AnyAsync(x => x.Code == code && x.Id != entity.Id && !x.IsDeleted))
                     return BadRequest<PromotionResultDto>("Mã giảm giá này đã tồn tại.");
                 entity.Code = code;
             }
@@ -149,19 +149,24 @@ namespace WashGo.Application.Features.PromotionApplication.Services
 
         public async Task<BaseResponse<bool>> DeleteAsync(Guid id)
         {
-            var entity = await _promotionRepo.FindAsync(id);
+            var entity = await FindActiveAsync(id);
             if (entity == null)
                 return NotFound<bool>("Không tìm thấy mã giảm giá!");
             if (entity.UsedCount > 0 || await _usageRepo.AnyAsync(x => x.PromotionId == id && !x.IsReverted))
                 return BadRequest<bool>("Không thể xóa mã đã có lượt sử dụng.");
 
-            await _promotionRepo.DeleteAsync(entity, autoSave: true);
+            // Soft delete keeps the record for audit; the filtered unique index lets the code be reused.
+            entity.IsDeleted = true;
+            entity.IsActive = false;
+            entity.DeletedOn = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            entity.DeletedBy = CurrentUser.Id?.ToString();
+            await _promotionRepo.UpdateAsync(entity, autoSave: true);
             return Success(true, "Xóa Khuyến mãi thành công!");
         }
 
         public async Task<BaseResponse<bool>> ToggleActiveAsync(Guid id)
         {
-            var entity = await _promotionRepo.FindAsync(id);
+            var entity = await FindActiveAsync(id);
             if (entity == null)
                 return NotFound<bool>("Không tìm thấy mã giảm giá!");
 
@@ -172,7 +177,7 @@ namespace WashGo.Application.Features.PromotionApplication.Services
 
         public async Task<BaseResponse<PromotionStatisticsDto>> GetStatisticsAsync(Guid id, long? fromDate, long? toDate)
         {
-            var entity = await _promotionRepo.FindAsync(id);
+            var entity = await FindActiveAsync(id);
             if (entity == null)
                 return NotFound<PromotionStatisticsDto>("Không tìm thấy mã giảm giá!");
 
@@ -182,7 +187,7 @@ namespace WashGo.Application.Features.PromotionApplication.Services
 
         public async Task<BaseResponse<string>> ExportStatisticsCsvAsync(Guid id, long? fromDate, long? toDate)
         {
-            var entity = await _promotionRepo.FindAsync(id);
+            var entity = await FindActiveAsync(id);
             if (entity == null)
                 return NotFound<string>("Không tìm thấy mã giảm giá!");
 
@@ -195,6 +200,12 @@ namespace WashGo.Application.Features.PromotionApplication.Services
             csv.AppendLine(string.Join(',', "TONG", stats.UsedCount.ToString(CultureInfo.InvariantCulture),
                 stats.TotalDiscountAmount.ToString(CultureInfo.InvariantCulture), stats.Revenue.ToString(CultureInfo.InvariantCulture)));
             return Success(csv.ToString());
+        }
+
+        private async Task<Promotion?> FindActiveAsync(Guid id)
+        {
+            var entity = await _promotionRepo.FindAsync(id);
+            return entity == null || entity.IsDeleted ? null : entity;
         }
 
         private async Task<PromotionStatisticsDto> BuildStatisticsAsync(Promotion promotion, long? fromDate, long? toDate)

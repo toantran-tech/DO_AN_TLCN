@@ -20,6 +20,7 @@ using WashGo.Domain.Entities.WashOrder;
 using WashGo.Domain.Entities.WashOrder.Interfaces;
 using WashGo.Domain.Entities.WashService.Interfaces;
 using WashGo.Application.Contracts.Features.PromotionContracts.Results;
+using WashGo.Application.Features.NotificationApplication.Services;
 using WashGo.Application.Features.PaymentApplication.Services;
 using WashGo.Domain.Entities.Promotion;
 using WashGo.Domain.Entities.Promotion.Interfaces;
@@ -44,6 +45,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
         private readonly IRepository<RefundRequest, Guid> _refunds;
         private readonly IPromotionRepository _promotionRepo;
         private readonly IRepository<PromotionUsage, Guid> _promotionUsageRepo;
+        private readonly NotificationPublisher _notifications;
 
         public WashOrderAppService(
             IWashOrderRepository orderRepo,
@@ -57,7 +59,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             IPaymentTransactionRepository payments,
             IRepository<RefundRequest, Guid> refunds,
             IPromotionRepository promotionRepo,
-            IRepository<PromotionUsage, Guid> promotionUsageRepo)
+            IRepository<PromotionUsage, Guid> promotionUsageRepo,
+            NotificationPublisher notifications)
         {
             _orderRepo = orderRepo;
             _lockerRepo = lockerRepo;
@@ -71,6 +74,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             _refunds = refunds;
             _promotionRepo = promotionRepo;
             _promotionUsageRepo = promotionUsageRepo;
+            _notifications = notifications;
         }
 
         private readonly record struct OrderScope(string Role, Guid Id);
@@ -300,7 +304,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
         {
             var code = Promotion.NormalizeCode(promotionCode);
             if (code.Length == 0) return (null, 0m, null);
-            var promotion = await _promotionRepo.FirstOrDefaultAsync(x => x.Code == code);
+            var promotion = await _promotionRepo.FirstOrDefaultAsync(x => x.Code == code && !x.IsDeleted);
             if (promotion == null) return (null, 0m, "Mã giảm giá không tồn tại.");
             var used = await CountCustomerPromotionUsesAsync(promotion.Id, customerId);
             var reason = promotion.GetIneligibleReason(now, orderAmount, used);
@@ -350,7 +354,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             var customerId = CurrentUser.Id.Value;
             var now = DateTime.UtcNow;
             var promotions = await AsyncExecuter.ToListAsync((await _promotionRepo.GetQueryableAsync())
-                .Where(x => x.IsActive && x.StartAt <= now && x.EndAt >= now
+                .Where(x => !x.IsDeleted && x.IsActive && x.StartAt <= now && x.EndAt >= now
                     && (x.UsageLimit == null || x.UsedCount < x.UsageLimit))
                 .OrderBy(x => x.EndAt));
             var promotionIds = promotions.Select(x => x.Id).ToList();
@@ -529,6 +533,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                     UsedAt = now
                 }, autoSave: true);
             }
+            await _notifications.OrderCreatedAsync(order);
             await uow.CompleteAsync();
 
             var result = ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order);
@@ -641,6 +646,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                     Reason = $"Hoàn tiền sau hủy đơn; phí {percent}%. {reason}",
                     Status = RefundRequestStatus.Pending
                 }, autoSave: true);
+                await _notifications.RefundRequestedAsync(order, order.CancellationRefundAmount);
             }
             // A cancelled order gives the voucher use back to the customer and the global quota.
             var usage = order.PromotionId.HasValue
@@ -661,6 +667,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 Note = $"Khách hủy đơn; phí {percent}% = {fee:N0}đ; lý do: {reason}. Vị trí đồ: {order.CancelledGoodsStatus}."
             });
             await _orderRepo.UpdateAsync(order, autoSave: true);
+            await _notifications.CancelledAsync(order);
             await uow.CompleteAsync();
             return Success(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order),
                 "Đã hủy đơn. Phí còn thiếu phải thanh toán trước khi nhận lại đồ; đồ trong locker chưa được giải phóng.");
@@ -769,6 +776,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             });
 
             await _orderRepo.UpdateAsync(order, autoSave: true);
+            await _notifications.ProcessingAsync(order);
             await uow.CompleteAsync();
             var result = ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order);
             return Success(RedactStaffData(result, scope), "Cập nhật trạng thái đơn thành công!");
@@ -827,6 +835,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             });
 
             await _orderRepo.UpdateAsync(order, autoSave: true);
+            await _notifications.MovedToStorageAsync(order);
             await uow.CompleteAsync();
             return Success(RedactStaffData(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), scope), "Đã ghi nhận chuyển đồ sang kho và giải phóng ô locker.");
         }
@@ -899,6 +908,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             });
 
             await _orderRepo.UpdateAsync(order, autoSave: true);
+            await _notifications.ShipperAssignedAsync(order, order.AssignedTaskType ?? DeliveryTaskType.Collect);
             await uow.CompleteAsync();
             var result = ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order);
             return Success(RedactStaffData(result, scope), "Phân công Shipper thành công!");
@@ -1015,6 +1025,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             });
 
             await _orderRepo.UpdateAsync(order, autoSave: true);
+            await _notifications.DepositedAsync(order);
             await uow.CompleteAsync();
             return Success(RedactStaffData(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), scope),
                 "Gửi đồ vào tủ thành công! Đơn hàng đã chuyển sang trạng thái đã gửi đồ.");
@@ -1106,6 +1117,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             });
 
             await _orderRepo.UpdateAsync(order, autoSave: true);
+            await _notifications.CollectedAsync(order);
             await uow.CompleteAsync();
             return Success(RedactStaffData(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), scope),
                 "Shipper lấy đồ thành công! Đơn hàng đã chuyển sang trạng thái đã thu gom.");
@@ -1242,6 +1254,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             });
 
             await _orderRepo.UpdateAsync(order, autoSave: true);
+            await _notifications.ReturnedToLockerAsync(order);
             await uow.CompleteAsync();
             return Success(RedactStaffData(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), scope),
                 cancelledReturn ? "Đã trả đồ của đơn hủy vào locker; đơn vẫn Cancelled, chờ khách nhận lại." : "Shipper trả đồ vào tủ thành công! Đơn hàng đã chuyển sang trạng thái chờ khách nhận.");
@@ -1433,6 +1446,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
 
             order.Status = WashOrderStatus.Completed;
             await _orderRepo.UpdateAsync(order, autoSave: true);
+            await _notifications.PickedUpAsync(order);
             await uow.CompleteAsync();
 
             return Success(RedactStaffData(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), scope),
@@ -1505,6 +1519,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
 
             order.Status = WashOrderStatus.Completed;
             await _orderRepo.UpdateAsync(order, autoSave: true);
+            await _notifications.PickedUpAsync(order);
             await uow.CompleteAsync();
 
             return Success(RedactStaffData(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), scope),
