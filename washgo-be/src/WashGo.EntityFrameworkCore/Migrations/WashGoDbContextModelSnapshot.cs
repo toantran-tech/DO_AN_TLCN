@@ -1738,6 +1738,116 @@ namespace WashGo.EntityFrameworkCore.Migrations
                     b.ToTable("promotion_usages", "washgo");
                 });
 
+            modelBuilder.Entity("WashGo.Domain.Entities.SystemConfig.SystemSetting", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int>("CancelCollectedPercent")
+                        .HasColumnType("integer")
+                        .HasColumnName("cancel_collected_percent");
+
+                    b.Property<int>("CancelDepositedPercent")
+                        .HasColumnType("integer")
+                        .HasColumnName("cancel_deposited_percent");
+
+                    b.Property<int>("CancelLatePendingPercent")
+                        .HasColumnType("integer")
+                        .HasColumnName("cancel_late_pending_percent");
+
+                    b.Property<int>("CompensationLightPercent")
+                        .HasColumnType("integer")
+                        .HasColumnName("compensation_light_percent");
+
+                    b.Property<int>("CompensationLostPercent")
+                        .HasColumnType("integer")
+                        .HasColumnName("compensation_lost_percent");
+
+                    b.Property<int>("CompensationMediumPercent")
+                        .HasColumnType("integer")
+                        .HasColumnName("compensation_medium_percent");
+
+                    b.Property<int>("CompensationSeverePercent")
+                        .HasColumnType("integer")
+                        .HasColumnName("compensation_severe_percent");
+
+                    b.Property<decimal>("DefaultCommissionRate")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)")
+                        .HasColumnName("default_commission_rate");
+
+                    b.Property<int>("DepositWindowMinutes")
+                        .HasColumnType("integer")
+                        .HasColumnName("deposit_window_minutes");
+
+                    b.Property<int>("FreePickupHours")
+                        .HasColumnType("integer")
+                        .HasColumnName("free_pickup_hours");
+
+                    b.Property<int>("MerchantCollectSlaHours")
+                        .HasColumnType("integer")
+                        .HasColumnName("merchant_collect_sla_hours");
+
+                    b.Property<int>("MerchantReturnSlaHours")
+                        .HasColumnType("integer")
+                        .HasColumnName("merchant_return_sla_hours");
+
+                    b.Property<decimal>("OverdueFeeDay1")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("overdue_fee_day1");
+
+                    b.Property<decimal>("OverdueFeeDay2")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("overdue_fee_day2");
+
+                    b.Property<decimal>("OverdueFeeDay3")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("overdue_fee_day3");
+
+                    b.Property<decimal>("StorageFeePerDay")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("storage_fee_per_day");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("system_settings", "washgo");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("5e771165-0000-4000-8000-000000000001"),
+                            CancelCollectedPercent = 50,
+                            CancelDepositedPercent = 30,
+                            CancelLatePendingPercent = 30,
+                            CompensationLightPercent = 30,
+                            CompensationLostPercent = 200,
+                            CompensationMediumPercent = 70,
+                            CompensationSeverePercent = 100,
+                            DefaultCommissionRate = 20m,
+                            DepositWindowMinutes = 30,
+                            FreePickupHours = 24,
+                            MerchantCollectSlaHours = 4,
+                            MerchantReturnSlaHours = 24,
+                            OverdueFeeDay1 = 10000m,
+                            OverdueFeeDay2 = 20000m,
+                            OverdueFeeDay3 = 50000m,
+                            StorageFeePerDay = 100000m
+                        });
+                });
+
             modelBuilder.Entity("WashGo.Domain.Entities.WashOrder.WashOrder", b =>
                 {
                     b.Property<Guid>("Id")

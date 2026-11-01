@@ -1,11 +1,12 @@
 using System;
+using WashGo.Domain.Entities.SystemConfig;
 using WashGo.Domain.Shared.Enums;
 
 namespace WashGo.Domain.Entities.WashOrder
 {
     public static class OrderCancellationPolicy
     {
-        public static bool TryCalculate(WashOrder order, DateTime now,
+        public static bool TryCalculate(WashOrder order, DateTime now, SystemSetting settings,
             out decimal basis, out int percent, out decimal fee)
         {
             // Spec UC 1.2.7: Pending/Deposited fees use TotalAmount (pre-discount); Collected uses FinalAmount.
@@ -16,14 +17,15 @@ namespace WashGo.Domain.Entities.WashOrder
             switch (order.Status)
             {
                 case WashOrderStatus.Pending:
-                    percent = new DateTimeOffset(now).ToUnixTimeSeconds() - order.CreatedOn > 1800 ? 30 : 0;
+                    percent = new DateTimeOffset(now).ToUnixTimeSeconds() - order.CreatedOn > settings.DepositWindowMinutes * 60L
+                        ? settings.CancelLatePendingPercent : 0;
                     break;
                 case WashOrderStatus.Deposited:
-                    percent = 30;
+                    percent = settings.CancelDepositedPercent;
                     break;
                 case WashOrderStatus.Collected when order.ActualWeightKg > 0:
                     basis = order.FinalAmount;
-                    percent = 50;
+                    percent = settings.CancelCollectedPercent;
                     break;
                 default:
                     return false;

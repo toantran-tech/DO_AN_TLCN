@@ -22,6 +22,7 @@ using WashGo.Domain.Entities.WashOrder;
 using WashGo.Domain.Entities.WashOrder.Interfaces;
 
 using WashGo.Application.Features.NotificationApplication.Services;
+using WashGo.Application.Features.SystemSettingApplication.Services;
 
 namespace WashGo.Application.Features.PaymentApplication.Services
 {
@@ -33,6 +34,7 @@ namespace WashGo.Application.Features.PaymentApplication.Services
         private readonly IConfiguration _configuration;
         private readonly IWashOrderRepository _orders;
         private readonly NotificationPublisher _notifications;
+        private readonly SystemSettingProvider _settings;
 
         public PaymentAppService(
             IWashOrderAppService orderService,
@@ -40,7 +42,8 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             IConfiguration configuration,
             IWashOrderRepository orders,
             IRepository<RefundRequest, Guid> refundRequestRepo,
-            NotificationPublisher notifications)
+            NotificationPublisher notifications,
+            SystemSettingProvider settings)
         {
             _orderService = orderService;
             _transactionRepo = transactionRepo;
@@ -48,6 +51,7 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             _orders = orders;
             _refundRequestRepo = refundRequestRepo;
             _notifications = notifications;
+            _settings = settings;
         }
 
         public async Task<BaseResponse<PaymentResultDto>> CreatePaymentAsync(CreatePaymentCommand command)
@@ -116,7 +120,7 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             if (command.PaymentMethod != PaymentMethod.VnPay)
                 return BadRequest<PaymentResultDto>("Hiện chỉ hỗ trợ thanh toán phí lưu kho qua VNPay.");
 
-            var overdueTotal = OverdueFeeCalculator.GetTotalStorageDue(order, DateTime.UtcNow);
+            var overdueTotal = OverdueFeeCalculator.GetTotalStorageDue(order, DateTime.UtcNow, await _settings.GetAsync());
             order.OverdueFeeTotal = overdueTotal;
             var outstanding = overdueTotal - order.StorageFeeTotal;
             if (outstanding <= 0m)
@@ -296,7 +300,7 @@ namespace WashGo.Application.Features.PaymentApplication.Services
                     orderEntity.Status is not (WashOrderStatus.ReadyToReturn or WashOrderStatus.MovedToStorage))
                     return BadRequest<PaymentResultDto>("Đơn không còn chờ khách nhận tại locker.");
 
-                var due = OverdueFeeCalculator.GetTotalStorageDue(orderEntity, DateTime.UtcNow);
+                var due = OverdueFeeCalculator.GetTotalStorageDue(orderEntity, DateTime.UtcNow, await _settings.GetAsync());
                 if (transaction.Amount > due - orderEntity.StorageFeeTotal)
                     return BadRequest<PaymentResultDto>("Giao dịch phí lưu kho lớn hơn số tiền còn phải trả.");
 
@@ -417,7 +421,7 @@ namespace WashGo.Application.Features.PaymentApplication.Services
                 if (orderEntity.PaymentStatus != PaymentStatus.Paid ||
                     orderEntity.Status is not (WashOrderStatus.ReadyToReturn or WashOrderStatus.MovedToStorage))
                     return Ip("04", "Invalid order state");
-                var due = OverdueFeeCalculator.GetTotalStorageDue(orderEntity, DateTime.UtcNow);
+                var due = OverdueFeeCalculator.GetTotalStorageDue(orderEntity, DateTime.UtcNow, await _settings.GetAsync());
                 if (transaction.Amount > due - orderEntity.StorageFeeTotal)
                     return Ip("04", "Invalid amount");
                 orderEntity.OverdueFeeTotal = due;

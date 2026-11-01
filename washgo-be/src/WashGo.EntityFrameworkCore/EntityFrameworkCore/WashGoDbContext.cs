@@ -7,6 +7,7 @@ using WashGo.Domain.Entities.Feedback;
 using WashGo.Domain.Entities.Notification;
 using WashGo.Domain.Entities.Payment;
 using WashGo.Domain.Entities.Promotion;
+using WashGo.Domain.Entities.SystemConfig;
 using WashGo.Domain.Entities.Partner;
 using WashGo.Domain.Entities.WashOrder;
 using WashGo.Domain.Entities.WashService;
@@ -42,6 +43,7 @@ namespace WashGo.EntityFrameworkCore.EntityFrameworkCore
         public DbSet<OrderRating> OrderRatings { get; set; } = null!;
         public DbSet<Incident> Incidents { get; set; } = null!;
         public DbSet<Notification> Notifications { get; set; } = null!;
+        public DbSet<SystemSetting> SystemSettings { get; set; } = null!;
 
         public WashGoDbContext(DbContextOptions<WashGoDbContext> options)
             : base(options)
@@ -78,6 +80,7 @@ namespace WashGo.EntityFrameworkCore.EntityFrameworkCore
             builder.ApplyConfiguration(new OrderRatingEntityTypeConfiguration());
             builder.ApplyConfiguration(new IncidentEntityTypeConfiguration());
             builder.ApplyConfiguration(new NotificationEntityTypeConfiguration());
+            builder.ApplyConfiguration(new SystemSettingEntityTypeConfiguration());
 
             builder.UseWashGoSnakeCaseColumns();
         }

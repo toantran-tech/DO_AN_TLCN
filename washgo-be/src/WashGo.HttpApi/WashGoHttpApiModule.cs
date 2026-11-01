@@ -13,6 +13,7 @@ using WashGo.HttpApi.Endpoints.Promotion;
 using WashGo.HttpApi.Endpoints.Feedback;
 using WashGo.HttpApi.Endpoints.Files;
 using WashGo.HttpApi.Endpoints.Notification;
+using WashGo.HttpApi.Endpoints.SystemSetting;
 using WashGo.HttpApi.Endpoints.ServiceArea;
 using WashGo.HttpApi.Endpoints.WashOrder;
 using WashGo.HttpApi.Endpoints.WashService;
@@ -41,6 +42,7 @@ namespace WashGo.HttpApi
             context.Services.AddTransient<IEndpointBase, RatingHandler>();
             context.Services.AddTransient<IEndpointBase, IncidentHandler>();
             context.Services.AddTransient<IEndpointBase, NotificationHandler>();
+            context.Services.AddTransient<IEndpointBase, SystemSettingHandler>();
         }
     }
 }

@@ -28,5 +28,6 @@ namespace WashGo.Domain.Shared.Constants
         public const string OrderRatings = "order_ratings";
         public const string Incidents = "incidents";
         public const string Notifications = "notifications";
+        public const string SystemSettings = "system_settings";
     }
 }
