@@ -461,6 +461,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 CustomerName = customerName,
                 CustomerPhoneNumber = customerPhone,
                 MerchantId = locker.MerchantId,
+                MerchantName = merchant.BusinessName,
                 LockerId = locker.Id,
                 LockerName = locker.Name,
                 BoxId = box.Id,

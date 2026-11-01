@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Linq;
 using System.Security.Claims;
 using System.Text;
@@ -8,6 +9,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Cors;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.IdentityModel.Tokens;
@@ -22,6 +24,7 @@ using Volo.Abp.Domain.Repositories;
 using Volo.Abp.Swashbuckle;
 using Volo.Abp.Threading;
 using WashGo.Application;
+using WashGo.Application.Features.FileApplication.Services;
 using WashGo.Core.Endpoint;
 using WashGo.EntityFrameworkCore;
 using WashGo.EntityFrameworkCore.EntityFrameworkCore;
@@ -194,6 +197,15 @@ namespace WashGo.HttpApi.Host
             }
 
             app.UseStaticFiles();
+            // Uploaded evidence images live outside wwwroot so a Docker volume can persist them.
+            var uploadRoot = UploadStorage.GetRoot(context.ServiceProvider.GetRequiredService<IConfiguration>());
+            Directory.CreateDirectory(uploadRoot);
+            app.UseStaticFiles(new StaticFileOptions
+            {
+                FileProvider = new PhysicalFileProvider(uploadRoot),
+                RequestPath = UploadStorage.RequestPath,
+                ServeUnknownFileTypes = false
+            });
             app.UseRouting();
             app.UseRateLimiter();
             app.UseCors();

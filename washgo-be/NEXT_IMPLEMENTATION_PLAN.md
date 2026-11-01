@@ -21,7 +21,7 @@ Ghi nhận ngày 30/10/2026: PUT /merchant/ giữ trạng thái cũ khi bỏ ho�
 | 1.2.6 Theo dõi đơn; 1.2.8 Lịch sử đơn | Một phần | `POST /wash-order/mine`, chi tiết và timeline đã có; chưa có cập nhật thời gian thực/thông báo theo use case. |
 | 1.2.7 Hủy đơn | BE hủy/thu phí/trả đồ đã triển khai; còn thông báo | Báo phí + hủy Pending 0%/30%, Deposited 30%, Collected đã cân 50%; thanh toán phí riêng và hoàn tiền có đối chiếu. Giữ ô có đồ, cho khách nhận lại hoặc Shipper trả từ tiệm qua locker. Không đổi đơn hủy sang Completed. |
 | 1.3 Gửi đồ / nhận đồ bằng QR | BE mô phỏng đã kiểm thử | Có endpoint gửi, mở ô nhận, xác nhận nhận và nhận tại kho. Tách QR gửi/nhận; xác nhận nhận tại locker cần token phiên 10 phút, hoàn tất đơn trong transaction. Không tích hợp phần cứng. |
-| 1.4.1 Đánh giá; 1.4.2 Báo cáo sự cố; 1.4.3 Danh sách khiếu nại | Chưa có | `RefundRequest` là yêu cầu hoàn tiền, không thay cho đánh giá hoặc báo cáo sự cố có loại, mức độ, ảnh và hạn 3 ngày. |
+| 1.4.1 Đánh giá; 1.4.2 Báo cáo sự cố; 1.4.3 Danh sách khiếu nại | Đã có BE | Ngày 01/11: upload ảnh `POST /files/images`, `POST /rating`, `POST /incident` (hạn 3 ngày, ≥1 ảnh), `GET /incident/mine`. Còn thông báo cho Admin và Customer UI. |
 
 ### 2. Merchant
 
@@ -44,7 +44,7 @@ Ghi nhận ngày 30/10/2026: PUT /merchant/ giữ trạng thái cũ khi bỏ ho�
 | 3.4.1–3.4.5 Quản lý locker | Một phần | Danh sách/chi tiết/tạo/sửa/trạng thái ô đã có; chưa đủ toàn bộ thao tác xóa/lịch sử theo đặc tả. |
 | 3.5.1–3.5.6 Quản lý và duyệt dịch vụ | Một phần | Có API dịch vụ/status; từ 01/11 tạo/sửa dịch vụ chặn giá ≤ 0, thời lượng ngoài 1–8760 giờ và mã trùng ("Giá dịch vụ không hợp lệ."). Chưa xác nhận đầy đủ luồng đề xuất, duyệt/từ chối và xóa theo đặc tả. |
 | 3.6.1–3.6.5 Khuyến mãi | Đã có BE + Admin UI | Ngày 01/11: CRUD `/promotion`, lọc theo trạng thái/thời gian, bật/tắt, xóa khi chưa dùng, thống kê + xuất CSV; màn hình Admin "Khuyến mãi". Chi tiết ở mục khuyến mãi bên dưới. |
-| 3.7.1–3.7.3 Khiếu nại và đánh giá | Chưa có | Chưa có Incident/Rating và quy trình xử lý khiếu nại. |
+| 3.7.1–3.7.3 Khiếu nại và đánh giá | Đã có BE + Admin UI | Ngày 01/11: lọc/xử lý/từ chối khiếu nại, bồi thường 30/70/100/200% do server tính, ghi nhận chi trả; lọc/ẩn đánh giá, cập nhật điểm Merchant. Màn hình Admin "Khiếu nại", "Đánh giá". |
 | 3.8.1–3.8.3 Tài chính | Một phần | Có danh sách/duyệt/xác nhận hoàn tiền thủ công; chưa có báo cáo doanh thu và hoa hồng theo use case. |
 | 3.9.1–3.9.4 Cài đặt hệ thống | Chưa có | Chưa có API cấu hình SLA, hoa hồng và phí phạt/bồi thường động. |
 
@@ -66,10 +66,25 @@ Ghi nhận ngày 30/10/2026: PUT /merchant/ giữ trạng thái cũ khi bỏ ho�
 4. **1.3 và 4.3 QR/PIN — ĐÃ HOÀN TẤT BE ngày 31/10/2026:** Hoàn tất trọn bộ 6 endpoint chuyên biệt theo từng hành động với kiểm tra mã, quyền, hạn giờ, chống brute-force và cập nhật trạng thái ô tủ trong cùng transaction. Khách gửi đồ (`POST /deposit`) trong 30 phút. Shipper lấy đồ (`POST /shipper-collect`) giải phóng ô gửi, kiểm tra SLA 4h. Shipper trả đồ (`POST /shipper-return`) tự tìm ô kích thước phù hợp, kiểm tra SLA 24h, bắt buộc đơn đã thanh toán (Paid). Khách nhận đồ tại tủ 2 bước: mở tủ (`POST /open-pickup-box`) cấp token 10 phút, xác nhận đóng tủ (`POST /confirm-pickup`) giải phóng ô, ghi `Returned` rồi tự động `Completed` trong cùng transaction. Khách nhận đồ tại kho (`POST /pickup-storage`) tính đúng phí lưu kho (100k/ngày) mà không đụng vào ô tủ. Chặn toàn bộ đường tắt qua API status chung.
 
 5. **1.2.7 Hủy đơn — triển khai ngày 31/10/2026:** Một API hủy tính phí 0%/30%/50%, báo phí trước xác nhận, khóa order, giữ ô có đồ, thu phí qua sandbox/VNPay trước khi khách nhận lại. Đồ tại tiệm được phân công Shipper trả về locker. Chỉ giải phóng ô Reserved khi hủy Pending; ô Occupied được giải phóng sau QR/PIN + phiên xác nhận nhận lại. Hoàn tiền tự tạo khi có thanh toán gốc hợp lệ, trừ phí đã giữ lại; còn module thông báo.
-6. **3.6 Voucher — ĐÃ XONG BE + Admin UI ngày 01/11/2026** (xem mục bên dưới). Tiếp theo: **1.4.1–1.4.3/3.7 Đánh giá, sự cố–khiếu nại**, rồi các use case còn lại theo bảng trên.
+6. **3.6 Voucher — ĐÃ XONG BE + Admin UI ngày 01/11/2026** (xem mục bên dưới).
+7. **1.4.1–1.4.3/3.7 Đánh giá, sự cố–khiếu nại — ĐÃ XONG BE + Admin UI ngày 01/11/2026** (xem mục bên dưới). Tiếp theo: **5.1–5.3 Thông báo** (nhiều UC đang chờ module này), rồi các use case còn lại theo bảng trên.
 
 **Đồng bộ đặc tả Word ngày 31/10/2026:** Đã cập nhật UC Customer gửi đồ (quá 30 phút chỉ từ chối, không tự hủy), Customer nhận tại locker hai bước và phiên 10 phút, SLA Shipper lấy 4 giờ từ DepositedAt/trả 24 giờ từ PaidAt (trễ vẫn cho giao nhận), mã riêng và khóa 5 lần/5 phút. Bổ sung UC Nhận đồ tại kho với phí locker đã chốt + 100.000đ/mỗi ngày kho bắt đầu, không giải phóng ô lần hai. Giữ yêu cầu thông báo/đánh giá trong đặc tả; đây vẫn là phần chưa triển khai. Đã lưu bản dự phòng `../Đặc tả usecase.backup-20261031-021336.docx`; kiểm tra nội dung và ZIP chỉ đổi `word/document.xml`. Chưa xác minh bố cục trang: không có Python runtime đóng gói để chạy renderer; thử xuất Word sang PDF bị timeout 25 giây.
 **Dọn mục trùng ngày 31/10/2026:** Xóa đúng 3 bảng Hiển thị QR Code giống hệt cùng tiêu đề đi kèm trong bản project; giữ bảng QR còn lại trong nhóm Customer và bảng QR khác nội dung ở mục khác. Nội dung tất cả bảng còn lại được đối chiếu giữ nguyên; đánh lại mục 1.3.1–1.3.4. Bản Downloads không chỉnh sửa. Backup: `../Đặc tả usecase.backup-dedup-20261031-023310.docx`. Chưa render lại bố cục do giới hạn công cụ xem trước đã ghi ở trên.
+
+### Đánh giá, sự cố và khiếu nại ngày 01/11/2026 — UC 1.4.1–1.4.3, 3.7.1–3.7.3
+
+- [x] **Upload ảnh `POST /files/images`** (đã đăng nhập, form field `file`): chỉ nhận JPG/PNG/WEBP xác định bằng chữ ký tệp, tối đa 5MB; lưu `uploads/{userId}/{guid}.{ext}` trên volume Docker `washgo_uploads`, phục vụ tĩnh tại `/uploads/...`. Đánh giá/khiếu nại chỉ nhận URL ảnh do chính người gửi upload và còn tồn tại (tối đa 5 ảnh) — không gắn được URL tùy ý hoặc ảnh người khác.
+- [x] **Migration `20261101072505_AddRatingsAndIncidents`:** bảng `order_ratings` (unique `order_id`, sao tổng + 4 tiêu chí, nhận xét, ảnh `text[]`, ẩn/lý do) và `incidents` (loại, mức độ, mô tả, ảnh, trạng thái, kết quả, bên chịu trách nhiệm, mức/giá trị/tiền bồi thường, trạng thái chi trả).
+- [x] **Đánh giá (Customer):** `POST /rating` chỉ cho đơn `Completed` của chính khách; "Vui lòng chọn số sao đánh giá."; tiêu chí 1–5; "Bạn đã đánh giá đơn hàng này rồi." (khóa đơn + unique, hai request đồng thời chỉ một 201); "Cảm ơn bạn đã đánh giá!". `GET /rating/order/{orderId}`.
+- [x] **Điểm Merchant:** `merchants.rating` = trung bình sao các đánh giá đang hiển thị (làm tròn 1 chữ số), cập nhật khi đánh giá mới hoặc ẩn/hiện.
+- [x] **Admin/Merchant xem đánh giá:** `POST /rating/filter` lọc số sao, Merchant, thời gian, trạng thái ẩn; Merchant chỉ thấy đánh giá hiển thị của tiệm mình và tên khách bị che `***`. `PATCH /rating/{id}/visibility` (Admin) ẩn bắt buộc lý do / hiện lại.
+- [x] **Báo cáo sự cố (Customer):** `POST /incident` cho đơn `Completed`, trong 3 ngày kể từ mốc `Completed` trên timeline ("Đã quá thời hạn báo cáo sự cố."), bắt buộc ≥1 ảnh ("Vui lòng upload ít nhất 1 ảnh minh chứng."), một khiếu nại chờ xử lý mỗi đơn; trạng thái Chờ xử lý. `GET /incident/mine` ("Bạn chưa có khiếu nại nào."), `GET /incident/{id}` chỉ chủ khiếu nại hoặc Admin.
+- [x] **Xử lý khiếu nại (Admin):** `POST /incident/filter` (trạng thái, mức độ, loại, Merchant, thời gian; chờ xử lý lên đầu). `POST /incident/{id}/resolve`: bên chịu trách nhiệm, mức bồi thường Nhẹ 30%/Trung bình 70%/Nặng 100%/Mất đồ 200% × giá trị đồ — tiền do server tính, payload không quyết định; tạo khoản bồi thường chờ chi trả. `POST /incident/{id}/reject` bắt buộc lý do. Khóa dòng khi xử lý, đã xử lý thì không xử lý lại. `POST /incident/{id}/confirm-compensation` ghi nhận chi trả thủ công kèm mã tham chiếu (gọi lặp không ghi đè).
+- [x] **Sửa kèm:** tạo đơn trước đây không lưu `orders.merchant_name` (44/44 đơn trong DB local để trống) — nay lưu tên tiệm khi đặt; đánh giá/khiếu nại của đơn cũ lấy tên từ bảng Merchant.
+- [x] **Admin UI:** màn "Khiếu nại" (lọc, chi tiết + ảnh, xử lý/từ chối, xem trước tiền bồi thường, xác nhận chi trả) và "Đánh giá" (lọc sao/ẩn, chi tiết tiêu chí + ảnh, ẩn/hiện). Docker build thành công.
+- [x] `tests/smoke/feedback.ps1` PASS: upload (401, sai định dạng, >5MB, phục vụ ảnh), đánh giá (quyền, đơn chưa xong, thiếu/sai sao, ảnh của người khác, đường dẫn lạ, đánh giá lặp, race), điểm Merchant khớp trung bình hiển thị, Admin lọc/ẩn, Merchant chỉ thấy tiệm mình và tên khách bị che, khiếu nại (quá 3 ngày, thiếu ảnh, sai loại, đơn người khác, trùng khi đang chờ), danh sách của khách, xử lý 70% × 200.000 = 140.000đ, không xử lý lại, chi trả + replay, từ chối, mất đồ 200%.
+- [ ] Chưa có: thông báo cho Admin/Customer/Merchant (module 5), ảnh theo từng giai đoạn gửi/lấy/trả để đối chiếu (UC 3.7.2 bước 2), cấu hình % bồi thường động (UC 3.9.4), Customer UI.
 
 ### Khuyến mãi ngày 01/11/2026 — UC 3.6.1–3.6.5 và UC 1.2.1 bước 8–15
 
@@ -469,12 +484,8 @@ Ví dụ đã thống nhất: Standard, giá cơ bản 100.000đ, thời gian c�
 ---
 
 ### 5. Module Đánh giá & Xử lý sự cố (Rating & Damage Report)
-- [ ] Đánh giá dịch vụ (`Rating`):
-  - Khách hàng chấm điểm sao (1-5 sao) và nhận xét chất lượng giặt của Merchant sau khi hoàn thành đơn.
-  - Hiển thị rating trung bình của đối tác trên hệ thống.
-- [ ] Báo cáo sự cố đồ giặt (`DamageReport`):
-  - Báo cáo đồ bị hư hỏng, rách, phai màu, thất lạc.
-  - Tiếp nhận và giải quyết khiếu nại giữa Khách hàng và Merchant.
+- [x] Đánh giá dịch vụ (`OrderRating`): sao 1–5 + tiêu chí, nhận xét, ảnh; điểm trung bình Merchant (01/11/2026).
+- [x] Báo cáo sự cố (`Incident`): hư hỏng/mất đồ/khác, mức độ, ảnh bắt buộc, Admin xử lý và bồi thường (01/11/2026).
 - [ ] Xử lý đồ tồn kho lưu trữ lâu ngày (`StorageItem`):
   - Thu gom đồ quá hạn không có người lấy về kho lưu trữ tập trung.
 
