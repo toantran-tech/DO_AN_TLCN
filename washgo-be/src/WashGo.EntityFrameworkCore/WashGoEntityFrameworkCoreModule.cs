@@ -3,6 +3,7 @@ using Volo.Abp.EntityFrameworkCore.PostgreSql;
 using Volo.Abp.Modularity;
 using WashGo.Core;
 using WashGo.Domain;
+using WashGo.Domain.Entities.Feedback.Interfaces;
 using WashGo.Domain.Entities.Locker.Interfaces;
 using WashGo.Domain.Entities.Payment.Interfaces;
 using WashGo.Domain.Entities.Partner.Interfaces;
@@ -32,6 +33,7 @@ namespace WashGo.EntityFrameworkCore
                 options.AddRepository<WashGo.Domain.Entities.Partner.Shipper, ShipperRepository>();
                 options.AddRepository<WashGo.Domain.Entities.WashService.WashService, WashServiceRepository>();
                 options.AddRepository<WashGo.Domain.Entities.Promotion.Promotion, PromotionRepository>();
+                options.AddRepository<WashGo.Domain.Entities.Feedback.Incident, IncidentRepository>();
             });
 
             context.Services.AddTransient<IWashOrderRepository, WashOrderRepository>();
@@ -40,6 +42,7 @@ namespace WashGo.EntityFrameworkCore
             context.Services.AddTransient<IShipperRepository, ShipperRepository>();
             context.Services.AddTransient<IWashServiceRepository, WashServiceRepository>();
             context.Services.AddTransient<IPromotionRepository, PromotionRepository>();
+            context.Services.AddTransient<IIncidentRepository, IncidentRepository>();
         }
     }
 }
