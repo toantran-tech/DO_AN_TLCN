@@ -14,6 +14,7 @@ import { PromotionScreen } from '../screens/promotion/promotion.screen';
 import { IncidentScreen } from '../screens/incident/incident.screen';
 import { RatingScreen } from '../screens/rating/rating.screen';
 import { SystemSettingScreen } from '../screens/system-setting/system-setting.screen';
+import { ShipperScreen } from '../screens/shipper/shipper.screen';
 
 const ProtectedRoute: React.FC<{ children: React.ReactElement }> = ({ children }) => {
   const { isAuthenticated } = useSelector((state: RootState) => state.account);
@@ -50,6 +51,7 @@ export const AppRouter: React.FC = () => {
         <Route path="/incident" element={<IncidentScreen />} />
         <Route path="/rating" element={<RatingScreen />} />
         <Route path="/system-setting" element={<SystemSettingScreen />} />
+        <Route path="/shipper" element={<ShipperScreen />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />
