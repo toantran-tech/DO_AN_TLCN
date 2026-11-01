@@ -6,6 +6,7 @@ using WashGo.Domain;
 using WashGo.Domain.Entities.Locker.Interfaces;
 using WashGo.Domain.Entities.Payment.Interfaces;
 using WashGo.Domain.Entities.Partner.Interfaces;
+using WashGo.Domain.Entities.Promotion.Interfaces;
 using WashGo.Domain.Entities.WashOrder.Interfaces;
 using WashGo.Domain.Entities.WashService.Interfaces;
 using WashGo.EntityFrameworkCore.EntityFrameworkCore;
@@ -30,6 +31,7 @@ namespace WashGo.EntityFrameworkCore
                 options.AddRepository<WashGo.Domain.Entities.Payment.PaymentTransaction, PaymentTransactionRepository>();
                 options.AddRepository<WashGo.Domain.Entities.Partner.Shipper, ShipperRepository>();
                 options.AddRepository<WashGo.Domain.Entities.WashService.WashService, WashServiceRepository>();
+                options.AddRepository<WashGo.Domain.Entities.Promotion.Promotion, PromotionRepository>();
             });
 
             context.Services.AddTransient<IWashOrderRepository, WashOrderRepository>();
@@ -37,6 +39,7 @@ namespace WashGo.EntityFrameworkCore
             context.Services.AddTransient<IPaymentTransactionRepository, PaymentTransactionRepository>();
             context.Services.AddTransient<IShipperRepository, ShipperRepository>();
             context.Services.AddTransient<IWashServiceRepository, WashServiceRepository>();
+            context.Services.AddTransient<IPromotionRepository, PromotionRepository>();
         }
     }
 }

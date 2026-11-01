@@ -43,7 +43,14 @@ namespace WashGo.HttpApi.Endpoints.WashOrder
                 (await svc.CreateAsync(command)).CustomResult())
                 .RequireAuthorization("CustomerOnly")
                 .WithName("Tạo đơn hàng WashGo mới")
-                .WithSummary("Customer tạo đơn hàng và đặt ô tủ gửi đồ.")
+                .WithSummary("Customer tạo đơn hàng và đặt ô tủ gửi đồ; có thể kèm mã giảm giá (promotionCode).")
+                .WithOpenApi();
+
+            group.MapPost("/apply-voucher", async (ApplyVoucherCommand command, IWashOrderAppService svc) =>
+                (await svc.ApplyVoucherAsync(command)).CustomResult())
+                .RequireAuthorization("CustomerOnly")
+                .WithName("Báo giá đơn và áp dụng mã giảm giá")
+                .WithSummary("Customer xem giá đơn tính từ server, danh sách mã giảm giá khả dụng và kiểm tra mã đã chọn trước khi tạo đơn.")
                 .WithOpenApi();
 
             group.MapGet("/{id:guid}/cancellation-quote", async (Guid id, IWashOrderAppService svc) =>

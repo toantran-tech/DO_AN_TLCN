@@ -1153,6 +1153,209 @@ namespace WashGo.EntityFrameworkCore.Migrations
                     b.ToTable("refund_requests", "washgo");
                 });
 
+            modelBuilder.Entity("WashGo.Domain.Entities.Promotion.Promotion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("code");
+
+                    b.Property<string>("Created")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("created");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("text")
+                        .HasColumnName("created_by");
+
+                    b.Property<long>("CreatedOn")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_on");
+
+                    b.Property<string>("DeletedBy")
+                        .HasColumnType("text")
+                        .HasColumnName("deleted_by");
+
+                    b.Property<long?>("DeletedOn")
+                        .HasColumnType("bigint")
+                        .HasColumnName("deleted_on");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("description");
+
+                    b.Property<int>("DiscountType")
+                        .HasColumnType("integer")
+                        .HasColumnName("discount_type");
+
+                    b.Property<decimal>("DiscountValue")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("discount_value");
+
+                    b.Property<DateTime>("EndAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("end_at");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
+
+                    b.Property<decimal?>("MaxDiscountAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("max_discount_amount");
+
+                    b.Property<decimal>("MinOrderAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("min_order_amount");
+
+                    b.Property<string>("Modified")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("modified");
+
+                    b.Property<string>("ModifiedBy")
+                        .HasColumnType("text")
+                        .HasColumnName("modified_by");
+
+                    b.Property<long>("ModifiedOn")
+                        .HasColumnType("bigint")
+                        .HasColumnName("modified_on");
+
+                    b.Property<NpgsqlTsVector>("SearchVector")
+                        .HasColumnType("tsvector")
+                        .HasColumnName("search_vector");
+
+                    b.Property<DateTime>("StartAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("start_at");
+
+                    b.Property<int?>("UsageLimit")
+                        .HasColumnType("integer")
+                        .HasColumnName("usage_limit");
+
+                    b.Property<int?>("UsageLimitPerCustomer")
+                        .HasColumnType("integer")
+                        .HasColumnName("usage_limit_per_customer");
+
+                    b.Property<int>("UsedCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("used_count");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique()
+                        .HasFilter("is_deleted = false");
+
+                    b.HasIndex("IsActive");
+
+                    b.HasIndex("StartAt", "EndAt");
+
+                    b.ToTable("promotions", "washgo");
+                });
+
+            modelBuilder.Entity("WashGo.Domain.Entities.Promotion.PromotionUsage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Created")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("created");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("text")
+                        .HasColumnName("created_by");
+
+                    b.Property<long>("CreatedOn")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_on");
+
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("customer_id");
+
+                    b.Property<string>("DeletedBy")
+                        .HasColumnType("text")
+                        .HasColumnName("deleted_by");
+
+                    b.Property<long?>("DeletedOn")
+                        .HasColumnType("bigint")
+                        .HasColumnName("deleted_on");
+
+                    b.Property<decimal>("DiscountAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("discount_amount");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
+
+                    b.Property<bool>("IsReverted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_reverted");
+
+                    b.Property<string>("Modified")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("modified");
+
+                    b.Property<string>("ModifiedBy")
+                        .HasColumnType("text")
+                        .HasColumnName("modified_by");
+
+                    b.Property<long>("ModifiedOn")
+                        .HasColumnType("bigint")
+                        .HasColumnName("modified_on");
+
+                    b.Property<decimal>("OrderAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("order_amount");
+
+                    b.Property<Guid>("OrderId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("order_id");
+
+                    b.Property<Guid>("PromotionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("promotion_id");
+
+                    b.Property<DateTime?>("RevertedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("reverted_at");
+
+                    b.Property<NpgsqlTsVector>("SearchVector")
+                        .HasColumnType("tsvector")
+                        .HasColumnName("search_vector");
+
+                    b.Property<DateTime>("UsedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("used_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrderId")
+                        .IsUnique();
+
+                    b.HasIndex("PromotionId", "CustomerId");
+
+                    b.ToTable("promotion_usages", "washgo");
+                });
+
             modelBuilder.Entity("WashGo.Domain.Entities.WashOrder.WashOrder", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1429,6 +1632,11 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasMaxLength(128)
                         .HasColumnType("character varying(128)")
                         .HasColumnName("pickup_session_token_hash");
+
+                    b.Property<string>("PromotionCode")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("promotion_code");
 
                     b.Property<Guid?>("PromotionId")
                         .HasColumnType("uuid")
@@ -2027,6 +2235,23 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .IsRequired();
 
                     b.Navigation("Order");
+                });
+
+            modelBuilder.Entity("WashGo.Domain.Entities.Promotion.PromotionUsage", b =>
+                {
+                    b.HasOne("WashGo.Domain.Entities.WashOrder.WashOrder", null)
+                        .WithMany()
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("WashGo.Domain.Entities.Promotion.Promotion", "Promotion")
+                        .WithMany()
+                        .HasForeignKey("PromotionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Promotion");
                 });
 
             modelBuilder.Entity("WashGo.Domain.Entities.WashOrder.WashOrder", b =>

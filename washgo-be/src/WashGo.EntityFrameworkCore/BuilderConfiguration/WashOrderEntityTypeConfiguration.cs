@@ -34,6 +34,7 @@ namespace WashGo.EntityFrameworkCore.BuilderConfiguration
             builder.Property(x => x.CustomerNote).HasColumnName("note");
             builder.Property(x => x.TotalAmount).HasPrecision(18, 2);
             builder.Property(x => x.DiscountAmount).HasPrecision(18, 2);
+            builder.Property(x => x.PromotionCode).HasMaxLength(50);
             builder.Property(x => x.FinalAmount).HasPrecision(18, 2);
             builder.Property(x => x.ActualWeightKg).HasPrecision(18, 2);
             builder.Property(x => x.IncludedWeightKg).HasPrecision(18, 2);

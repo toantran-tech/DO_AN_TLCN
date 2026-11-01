@@ -8,7 +8,8 @@ namespace WashGo.Domain.Entities.WashOrder
         public static bool TryCalculate(WashOrder order, DateTime now,
             out decimal basis, out int percent, out decimal fee)
         {
-            basis = order.TotalAmount;
+            // Fees use the discounted price the customer actually owes.
+            basis = order.TotalAmount - order.DiscountAmount;
             percent = 0;
             fee = 0;
             if (order.PaymentStatus == PaymentStatus.Refunded) return false;

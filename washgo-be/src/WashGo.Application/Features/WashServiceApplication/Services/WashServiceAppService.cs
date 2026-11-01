@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Volo.Abp.Domain.Repositories;
 using WashGo.Application.Contracts.Features.WashServiceContracts.Commands;
 using WashGo.Application.Contracts.Features.WashServiceContracts.Queries;
 using WashGo.Application.Contracts.Features.WashServiceContracts.Results;
@@ -56,8 +57,25 @@ namespace WashGo.Application.Features.WashServiceApplication.Services
             return Success(dto);
         }
 
+        private async Task<string?> ValidateAsync(CreateWashServiceCommand command, Guid? currentId)
+        {
+            if (string.IsNullOrWhiteSpace(command.Code) || string.IsNullOrWhiteSpace(command.Name))
+                return "Mã và tên dịch vụ không được để trống.";
+            if (command.UnitPrice <= 0 || command.PricePerKg is <= 0 || command.PricePerItem is <= 0)
+                return "Giá dịch vụ không hợp lệ.";
+            if (command.EstimatedDurationHours is < 1 or > 8760)
+                return "Thời gian xử lý phải từ 1 đến 8760 giờ.";
+            if (await _serviceRepo.AnyAsync(x => x.Code == command.Code && x.Id != currentId))
+                return $"Mã dịch vụ '{command.Code}' đã tồn tại.";
+            return null;
+        }
+
         public async Task<BaseResponse<WashServiceResultDto>> CreateAsync(CreateWashServiceCommand command)
         {
+            var error = await ValidateAsync(command, null);
+            if (error != null)
+                return BadRequest<WashServiceResultDto>(error);
+
             var entity = ObjectMapper.Map<CreateWashServiceCommand, WashService>(command);
             entity.ApprovalStatus = Domain.Shared.Enums.ServiceApprovalStatus.Approved;
             entity.IsActive = true;
@@ -73,6 +91,10 @@ namespace WashGo.Application.Features.WashServiceApplication.Services
             {
                 return NotFound<WashServiceResultDto>("Không tìm thấy dịch vụ để cập nhật!");
             }
+
+            var error = await ValidateAsync(command, command.Id);
+            if (error != null)
+                return BadRequest<WashServiceResultDto>(error);
 
             ObjectMapper.Map(command, entity);
             await _serviceRepo.UpdateAsync(entity, autoSave: true);

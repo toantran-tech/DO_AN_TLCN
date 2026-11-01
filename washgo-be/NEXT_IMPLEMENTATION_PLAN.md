@@ -1,5 +1,5 @@
 # Tiến độ WashGo theo Đặc tả usecase (Backend trước)
-Cập nhật lần cuối: 31/10/2026
+Cập nhật lần cuối: 01/11/2026
 
 Nguồn đối chiếu: `../Đặc tả usecase.docx`. Trạng thái dưới đây đánh giá **nghiệp vụ Backend theo use case**, không đồng nghĩa có giao diện Customer hoặc đã kiểm thử với cổng thanh toán thật. “Một phần” nghĩa là đã có entity/API hoặc một nhánh xử lý nhưng chưa đủ điều kiện, quyền, dữ liệu hay kết quả mà use case yêu cầu. Các mục `[x]` ở nhật ký kỹ thuật phía dưới chỉ xác nhận phần việc kỹ thuật được ghi tại đó, **không** xác nhận toàn bộ use case đã hoàn thành.
 
@@ -15,7 +15,7 @@ Ghi nhận ngày 30/10/2026: PUT /merchant/ giữ trạng thái cũ khi bỏ ho�
 | --- | --- | --- |
 | 1.1.1 Đăng ký; 1.1.2 Đăng nhập; 1.1.3 Quên mật khẩu | Đã có BE | Email/OTP, mật khẩu, Google Customer, refresh/logout đã có; SMTP thực tế và Customer UI chưa triển khai. |
 | 1.1.4 Xem hồ sơ; 1.1.5 Cập nhật hồ sơ | Một phần | `GET/PUT /customer/me` đã có; avatar/upload và các chi tiết còn lại của đặc tả chưa hoàn tất. |
-| 1.2.1 Tạo đơn | Một phần | Tạo đơn, tính giá từ server, giữ ô và sinh QR gửi đồ; endpoint deposit kiểm tra hạn 30 phút. Chưa áp dụng voucher. |
+| 1.2.1 Tạo đơn | Một phần | Tạo đơn, tính giá từ server, giữ ô và sinh QR gửi đồ; endpoint deposit kiểm tra hạn 30 phút. Từ 01/11 có báo giá + danh sách mã khả dụng (`POST /wash-order/apply-voucher`) và áp mã khi tạo đơn, ghi lượt dùng trong cùng transaction giữ ô. Còn thông báo "Đơn hàng đã tạo". |
 | 1.2.2 Xem danh sách locker | Một phần | API danh mục tủ/ô trống đã có; bản đồ/định vị là phần client chưa có. |
 | 1.2.4 Thanh toán | Một phần | Đã khóa `Paid` ở API đổi trạng thái ngày 29/10; IPN/sandbox dùng xác nhận nội bộ, khóa giao dịch/đơn và đối chiếu số tiền. Mock và replay đã test; chưa kiểm thử VNPay thật. |
 | 1.2.6 Theo dõi đơn; 1.2.8 Lịch sử đơn | Một phần | `POST /wash-order/mine`, chi tiết và timeline đã có; chưa có cập nhật thời gian thực/thông báo theo use case. |
@@ -42,8 +42,8 @@ Ghi nhận ngày 30/10/2026: PUT /merchant/ giữ trạng thái cũ khi bỏ ho�
 | 3.2.1–3.2.5 Quản lý Merchant | Một phần | Danh sách/chi tiết/tạo/sửa/đổi trạng thái đã có; cần đối chiếu tiếp các bước vùng phục vụ, phê duyệt và validation chi tiết. |
 | 3.3.1–3.3.3 Phân công đơn cho Merchant | Chưa có | Khi tạo đơn, Merchant được lấy từ locker; chưa có nghiệp vụ Admin gán thủ công hoặc tự động (AI) theo use case. |
 | 3.4.1–3.4.5 Quản lý locker | Một phần | Danh sách/chi tiết/tạo/sửa/trạng thái ô đã có; chưa đủ toàn bộ thao tác xóa/lịch sử theo đặc tả. |
-| 3.5.1–3.5.6 Quản lý và duyệt dịch vụ | Một phần | Có API dịch vụ/status; chưa xác nhận đầy đủ luồng đề xuất, duyệt/từ chối và xóa theo đặc tả. |
-| 3.6.1–3.6.5 Khuyến mãi | Chưa có | Chưa có module Promotion, API quản trị hoặc áp dụng voucher khi tạo đơn. |
+| 3.5.1–3.5.6 Quản lý và duyệt dịch vụ | Một phần | Có API dịch vụ/status; từ 01/11 tạo/sửa dịch vụ chặn giá ≤ 0, thời lượng ngoài 1–8760 giờ và mã trùng ("Giá dịch vụ không hợp lệ."). Chưa xác nhận đầy đủ luồng đề xuất, duyệt/từ chối và xóa theo đặc tả. |
+| 3.6.1–3.6.5 Khuyến mãi | Đã có BE + Admin UI | Ngày 01/11: CRUD `/promotion`, lọc theo trạng thái/thời gian, bật/tắt, xóa khi chưa dùng, thống kê + xuất CSV; màn hình Admin "Khuyến mãi". Chi tiết ở mục khuyến mãi bên dưới. |
 | 3.7.1–3.7.3 Khiếu nại và đánh giá | Chưa có | Chưa có Incident/Rating và quy trình xử lý khiếu nại. |
 | 3.8.1–3.8.3 Tài chính | Một phần | Có danh sách/duyệt/xác nhận hoàn tiền thủ công; chưa có báo cáo doanh thu và hoa hồng theo use case. |
 | 3.9.1–3.9.4 Cài đặt hệ thống | Chưa có | Chưa có API cấu hình SLA, hoa hồng và phí phạt/bồi thường động. |
@@ -66,10 +66,25 @@ Ghi nhận ngày 30/10/2026: PUT /merchant/ giữ trạng thái cũ khi bỏ ho�
 4. **1.3 và 4.3 QR/PIN — ĐÃ HOÀN TẤT BE ngày 31/10/2026:** Hoàn tất trọn bộ 6 endpoint chuyên biệt theo từng hành động với kiểm tra mã, quyền, hạn giờ, chống brute-force và cập nhật trạng thái ô tủ trong cùng transaction. Khách gửi đồ (`POST /deposit`) trong 30 phút. Shipper lấy đồ (`POST /shipper-collect`) giải phóng ô gửi, kiểm tra SLA 4h. Shipper trả đồ (`POST /shipper-return`) tự tìm ô kích thước phù hợp, kiểm tra SLA 24h, bắt buộc đơn đã thanh toán (Paid). Khách nhận đồ tại tủ 2 bước: mở tủ (`POST /open-pickup-box`) cấp token 10 phút, xác nhận đóng tủ (`POST /confirm-pickup`) giải phóng ô, ghi `Returned` rồi tự động `Completed` trong cùng transaction. Khách nhận đồ tại kho (`POST /pickup-storage`) tính đúng phí lưu kho (100k/ngày) mà không đụng vào ô tủ. Chặn toàn bộ đường tắt qua API status chung.
 
 5. **1.2.7 Hủy đơn — triển khai ngày 31/10/2026:** Một API hủy tính phí 0%/30%/50%, báo phí trước xác nhận, khóa order, giữ ô có đồ, thu phí qua sandbox/VNPay trước khi khách nhận lại. Đồ tại tiệm được phân công Shipper trả về locker. Chỉ giải phóng ô Reserved khi hủy Pending; ô Occupied được giải phóng sau QR/PIN + phiên xác nhận nhận lại. Hoàn tiền tự tạo khi có thanh toán gốc hợp lệ, trừ phí đã giữ lại; còn module thông báo.
-6. Sau khi luồng đơn ổn định: **3.6 Voucher**, **1.4.2/3.7 Sự cố–khiếu nại**, rồi các use case còn lại theo bảng trên.
+6. **3.6 Voucher — ĐÃ XONG BE + Admin UI ngày 01/11/2026** (xem mục bên dưới). Tiếp theo: **1.4.1–1.4.3/3.7 Đánh giá, sự cố–khiếu nại**, rồi các use case còn lại theo bảng trên.
 
 **Đồng bộ đặc tả Word ngày 31/10/2026:** Đã cập nhật UC Customer gửi đồ (quá 30 phút chỉ từ chối, không tự hủy), Customer nhận tại locker hai bước và phiên 10 phút, SLA Shipper lấy 4 giờ từ DepositedAt/trả 24 giờ từ PaidAt (trễ vẫn cho giao nhận), mã riêng và khóa 5 lần/5 phút. Bổ sung UC Nhận đồ tại kho với phí locker đã chốt + 100.000đ/mỗi ngày kho bắt đầu, không giải phóng ô lần hai. Giữ yêu cầu thông báo/đánh giá trong đặc tả; đây vẫn là phần chưa triển khai. Đã lưu bản dự phòng `../Đặc tả usecase.backup-20261031-021336.docx`; kiểm tra nội dung và ZIP chỉ đổi `word/document.xml`. Chưa xác minh bố cục trang: không có Python runtime đóng gói để chạy renderer; thử xuất Word sang PDF bị timeout 25 giây.
 **Dọn mục trùng ngày 31/10/2026:** Xóa đúng 3 bảng Hiển thị QR Code giống hệt cùng tiêu đề đi kèm trong bản project; giữ bảng QR còn lại trong nhóm Customer và bảng QR khác nội dung ở mục khác. Nội dung tất cả bảng còn lại được đối chiếu giữ nguyên; đánh lại mục 1.3.1–1.3.4. Bản Downloads không chỉnh sửa. Backup: `../Đặc tả usecase.backup-dedup-20261031-023310.docx`. Chưa render lại bố cục do giới hạn công cụ xem trước đã ghi ở trên.
+
+### Khuyến mãi ngày 01/11/2026 — UC 3.6.1–3.6.5 và UC 1.2.1 bước 8–15
+
+- [x] **Entity & Migration `20261101065121_AddPromotions`:** bảng `promotions` (mã, mô tả, loại giảm 1=% / 2=cố định, mức giảm, đơn tối thiểu, giảm tối đa, bắt đầu/kết thúc UTC, tổng lượt, lượt/khách, đã dùng, kích hoạt) và `promotion_usages` (mã, đơn, khách, giá trước giảm, tiền giảm, thời điểm, đã trả lại). Thêm cột `orders.promotion_code` lưu snapshot mã. Unique `promotions.code` chỉ trên bản ghi chưa xóa mềm nên mã đã xóa được dùng lại; unique `promotion_usages.order_id`.
+- [x] **Admin API `/promotion` (AdminOnly):** `POST /filter` (lọc trạng thái tính toán 0=Ngừng/1=Sắp diễn ra/2=Đang áp dụng/3=Hết hạn/4=Hết lượt, loại giảm, khoảng thời gian hiệu lực qua `fromDate/toDate` Unix giây, từ khóa), `GET /{id}`, `POST /`, `PUT /`, `DELETE /{id}`, `PATCH /{id}/toggle-active`, `GET /{id}/statistics`, `GET /{id}/statistics/export` (CSV UTF-8 BOM).
+- [x] **Validation theo đặc tả:** mã 3–50 ký tự `A-Z0-9-_` (tự viết hoa, bỏ khoảng trắng); "Mã giảm giá này đã tồn tại."; "Thời gian kết thúc phải sau thời gian bắt đầu."; "Mức giảm không hợp lệ." (≤ 0, % > 100, đơn tối thiểu âm, giảm tối đa ≤ 0); lượt/khách không vượt tổng lượt. Sửa: không đổi mã khi đã có lượt dùng, tổng lượt không nhỏ hơn số đã dùng, không ghi đè `UsedCount`. Xóa: "Không thể xóa mã đã có lượt sử dụng." (xóa mềm).
+- [x] **Khách hàng — `POST /wash-order/apply-voucher` (CustomerOnly):** nhận `lockerId`, `items`, `promotionCode?`; tính giá từ server bằng cùng hàm với tạo đơn; trả tổng tiền, danh sách mã đang hiệu lực kèm `isEligible`, `ineligibleReason`, `estimatedDiscountAmount`, lượt còn lại của khách; có mã thì trả giá sau giảm hoặc 400 với thông báo đặc tả ("Đơn hàng chưa đủ điều kiện áp dụng mã này.", hết hạn, chưa bắt đầu, hết lượt, hết lượt của khách, không tồn tại). Không có mã khả dụng: "Hiện tại không có mã giảm giá khả dụng cho đơn hàng này."
+- [x] **Tạo đơn kèm `promotionCode`:** kiểm tra lại mã trên giá server; trong transaction giữ ô, tăng `used_count` bằng một `UPDATE` có điều kiện (hiệu lực, còn lượt) — khóa dòng nên đếm lại lượt/khách được tuần tự hóa; lỗi thì rollback, không giữ ô. Lưu `PromotionId`, `PromotionCode`, `DiscountAmount`, `FinalAmount`, timeline ghi mã và số tiền giảm.
+- [x] **Quy tắc tiền đã chốt trong code:** giảm % làm tròn đến đồng, áp trần "giảm tối đa"; tiền giảm tính trên giá cơ bản lúc đặt đơn và giữ nguyên khi Merchant cân (giá cuối = giá gói + phụ phí cân − giảm giá). Sau giảm đơn còn tối thiểu 5.000đ (`Promotion.MinPayableAmount`) để vẫn thanh toán được qua cổng — cần nhóm xác nhận con số này.
+- [x] **Hủy đơn:** trả lại lượt dùng (đánh dấu `is_reverted`, giảm `used_count` đúng một lần, hủy lặp không trả lần hai). Phí hủy Pending/Deposited tính trên giá sau giảm (`TotalAmount − DiscountAmount`); Collected vẫn 50% `FinalAmount`. Đơn không dùng mã giữ nguyên kết quả cũ.
+- [x] **Thống kê:** số lượt dùng, tổng tiền giảm, tổng giá trước giảm, doanh thu (giá cuối) và phần đã thanh toán của các đơn dùng mã chưa hủy; số liệu theo ngày giờ Việt Nam (UTC+7). Chưa dùng: "Mã này chưa được sử dụng lần nào."
+- [x] **Admin UI `/promotion`:** bảng Mã, Mô tả, Loại giảm, Mức giảm, Thời gian, Lượt dùng, Trạng thái; lọc trạng thái + từ khóa; modal thêm/sửa, popup xác nhận xóa, công tắc bật/tắt, hộp thống kê có biểu đồ theo ngày và nút xuất CSV. Docker build (`tsc -b && vite build`) thành công.
+- [x] **Sửa kèm (phát hiện khi chạy test):** DB local có dịch vụ thử `SVC_NEG` giá −50.000đ làm `order-security.ps1` lỗi 400. API tạo/sửa dịch vụ trước đây không kiểm tra giá; nay chặn giá ≤ 0, thời lượng sai và mã trùng. Catalog khách (`/customer/services`) ẩn dịch vụ giá ≤ 0. Không sửa dữ liệu DB.
+- [x] `tests/smoke/promotions.ps1` PASS trên Docker: quyền 401/403, validation tạo, lọc trạng thái/thời gian, báo giá + danh sách khả dụng, trần %, mức tối thiểu 5.000đ, lưu giảm giá trên đơn, giới hạn tổng/lượt khách, đơn bị từ chối không giữ ô, sửa/xóa mã đã dùng, dùng lại mã đã xóa, hủy trả lượt (kể cả hủy lặp), phí hủy theo giá sau giảm, cân kg giữ giảm giá, hai đơn đồng thời tranh mã còn 1 lượt (đúng một 201), thống kê + CSV, tắt mã.
+- [ ] Chưa có: mã chỉ cho khách mới/đơn đầu tiên, giới hạn theo Merchant/dịch vụ, gửi thông báo, ứng dụng Customer để hiển thị bước chọn mã.
 
 ### Hủy đơn và nhận lại đồ ngày 31/10/2026 — UC 1.2.7
 
@@ -446,11 +461,10 @@ Ví dụ đã thống nhất: Standard, giá cơ bản 100.000đ, thời gian c�
 ---
 
 ### 4. Module Khuyến mãi & Giảm giá (Promotions & Vouchers)
-- [ ] Quản lý chương trình khuyến mãi (`Promotion`, `PromotionUsage`):
-  - Tạo mã giảm giá theo %, theo số tiền cố định, giới hạn lượt dùng, thời gian hiệu lực.
-  - Giảm giá cho đơn hàng đầu tiên của khách hàng mới.
-- [ ] API áp dụng voucher khi tạo đơn hàng (`POST /wash-order/apply-voucher`).
-- [ ] Giao diện quản lý khuyến mãi trên Admin UI.
+- [x] Quản lý chương trình khuyến mãi (`Promotion`, `PromotionUsage`): mã theo %/cố định, đơn tối thiểu, giảm tối đa, tổng lượt, lượt/khách, thời gian hiệu lực (01/11/2026).
+  - [ ] Giảm giá cho đơn hàng đầu tiên của khách hàng mới.
+- [x] API báo giá/áp dụng voucher (`POST /wash-order/apply-voucher`) và `promotionCode` khi tạo đơn.
+- [x] Giao diện quản lý khuyến mãi trên Admin UI.
 
 ---
 
