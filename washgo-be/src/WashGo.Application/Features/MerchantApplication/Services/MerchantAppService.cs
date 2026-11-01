@@ -12,6 +12,8 @@ using WashGo.Domain.Entities.Identity;
 using WashGo.Domain.Entities.Partner;
 using WashGo.Domain.Shared.Enums;
 
+using WashGo.Application.Features.SystemSettingApplication.Services;
+
 namespace WashGo.Application.Features.MerchantApplication.Services
 {
     public class MerchantAppService : WashGoAppService, IMerchantAppService
@@ -19,15 +21,18 @@ namespace WashGo.Application.Features.MerchantApplication.Services
         private readonly IRepository<Merchant, Guid> _merchantRepo;
         private readonly IRepository<User, Guid> _userRepo;
         private readonly IRepository<MerchantServiceArea, Guid> _msaRepo;
+        private readonly SystemSettingProvider _settings;
 
         public MerchantAppService(
             IRepository<Merchant, Guid> merchantRepo,
             IRepository<User, Guid> userRepo,
-            IRepository<MerchantServiceArea, Guid> msaRepo)
+            IRepository<MerchantServiceArea, Guid> msaRepo,
+            SystemSettingProvider settings)
         {
             _merchantRepo = merchantRepo;
             _userRepo = userRepo;
             _msaRepo = msaRepo;
+            _settings = settings;
         }
 
         public async Task<PaginatedResult<MerchantResultDto>> GetListAsync(MerchantFilterQuery query)
@@ -98,7 +103,10 @@ namespace WashGo.Application.Features.MerchantApplication.Services
                 return BadRequest<MerchantResultDto>("Hồ sơ Merchant cho User này đã tồn tại.");
             }
 
+            if (command.CommissionRate is < 0 or > 100)
+                return BadRequest<MerchantResultDto>("Tỷ lệ phí phải từ 0-100%.");
             var entity = ObjectMapper.Map<CreateMerchantCommand, Merchant>(command);
+            entity.CommissionRate = command.CommissionRate ?? (await _settings.GetAsync()).DefaultCommissionRate;
             entity.Status = MerchantStatus.Active;
             entity.Rating = 5.0m;
             entity.CreatedAt = DateTime.UtcNow;
@@ -134,6 +142,9 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             {
                 return BadRequest<MerchantResultDto>("Trạng thái Merchant không hợp lệ. Chỉ chấp nhận 1, 2 hoặc 3.");
             }
+
+            if (command.CommissionRate is < 0 or > 100)
+                return BadRequest<MerchantResultDto>("Tỷ lệ phí phải từ 0-100%.");
 
             var entity = await _merchantRepo.FindAsync(command.Id);
             if (entity == null)

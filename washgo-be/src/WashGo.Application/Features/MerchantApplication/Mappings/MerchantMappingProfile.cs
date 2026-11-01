@@ -11,9 +11,15 @@ namespace WashGo.Application.Features.MerchantApplication.Mappings
         {
             CreateMap<Merchant, MerchantResultDto>();
             CreateMap<CreateMerchantCommand, Merchant>()
-                .ForMember(dest => dest.Id, opt => opt.MapFrom(src => src.UserId));
+                .ForMember(dest => dest.Id, opt => opt.MapFrom(src => src.UserId))
+                .ForMember(dest => dest.CommissionRate, opt => opt.Ignore());
             CreateMap<UpdateMerchantCommand, Merchant>()
-                .ForMember(dest => dest.Status, opt => opt.Ignore());
+                .ForMember(dest => dest.Status, opt => opt.Ignore())
+                .ForMember(dest => dest.CommissionRate, opt =>
+                {
+                    opt.PreCondition(src => src.CommissionRate.HasValue);
+                    opt.MapFrom(src => src.CommissionRate!.Value);
+                });
         }
     }
 }

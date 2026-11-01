@@ -22,6 +22,7 @@ using WashGo.Domain.Entities.WashService.Interfaces;
 using WashGo.Application.Contracts.Features.PromotionContracts.Results;
 using WashGo.Application.Features.NotificationApplication.Services;
 using WashGo.Application.Features.PaymentApplication.Services;
+using WashGo.Application.Features.SystemSettingApplication.Services;
 using WashGo.Domain.Entities.Promotion;
 using WashGo.Domain.Entities.Promotion.Interfaces;
 using WashGo.Domain.Shared.Constants;
@@ -46,6 +47,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
         private readonly IPromotionRepository _promotionRepo;
         private readonly IRepository<PromotionUsage, Guid> _promotionUsageRepo;
         private readonly NotificationPublisher _notifications;
+        private readonly SystemSettingProvider _settings;
 
         public WashOrderAppService(
             IWashOrderRepository orderRepo,
@@ -60,7 +62,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             IRepository<RefundRequest, Guid> refunds,
             IPromotionRepository promotionRepo,
             IRepository<PromotionUsage, Guid> promotionUsageRepo,
-            NotificationPublisher notifications)
+            NotificationPublisher notifications,
+            SystemSettingProvider settings)
         {
             _orderRepo = orderRepo;
             _lockerRepo = lockerRepo;
@@ -75,6 +78,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             _promotionRepo = promotionRepo;
             _promotionUsageRepo = promotionUsageRepo;
             _notifications = notifications;
+            _settings = settings;
         }
 
         private readonly record struct OrderScope(string Role, Guid Id);
@@ -555,14 +559,15 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             var order = await _orderRepo.FindAsync(orderId);
             if (scope.Role != "Customer" || order == null || order.CustomerId != scope.Id)
                 return NotFound<CancellationQuoteDto>("Không tìm thấy đơn hàng của khách hàng.");
-            var allowed = OrderCancellationPolicy.TryCalculate(order, DateTime.UtcNow,
+            var allowed = OrderCancellationPolicy.TryCalculate(order, DateTime.UtcNow, await _settings.GetAsync(),
                 out var basis, out var percent, out var fee);
             var paid = await GetVerifiedPaidAmountAsync(order);
             allowed = allowed && (order.PaymentStatus != PaymentStatus.Paid || paid > 0m);
             if (order.Status == WashOrderStatus.Cancelled)
             {
                 basis = order.CancellationFromStatus == WashOrderStatus.Collected ? order.FinalAmount : order.TotalAmount - order.DiscountAmount;
-                percent = order.CancellationFromStatus == WashOrderStatus.Collected ? 50 : order.CancelFeeAmount > 0m ? 30 : 0;
+                // Show the percentage actually charged, even if the configured rates changed later.
+                percent = basis > 0m ? (int)decimal.Round(order.CancelFeeAmount * 100m / basis, 0, MidpointRounding.AwayFromZero) : 0;
             }
             return Success(new CancellationQuoteDto
             {
@@ -593,7 +598,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             if (order.Status == WashOrderStatus.Cancelled)
                 return Success(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), "Đơn hàng đã được hủy trước đó.");
             var now = DateTime.UtcNow;
-            if (!OrderCancellationPolicy.TryCalculate(order, now, out _, out var percent, out var fee))
+            if (!OrderCancellationPolicy.TryCalculate(order, now, await _settings.GetAsync(), out _, out var percent, out var fee))
                 return BadRequest<WashOrderDetailDto>("Chỉ được hủy Pending, Deposited hoặc Collected đã cân; không hủy khi đã bắt đầu giặt.");
             var paid = await GetVerifiedPaidAmountAsync(order);
             if (order.PaymentStatus == PaymentStatus.Paid && paid <= 0m)
@@ -818,7 +823,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             order.MovedToStorageAt = now;
             order.StorageLocation = command.StorageLocation.Trim();
             order.StorageReference = command.StorageReference.Trim();
-            order.LockerOverdueFeeAtStorageTransfer = OverdueFeeCalculator.Calculate(order.PickupDeadline, now);
+            order.LockerOverdueFeeAtStorageTransfer = OverdueFeeCalculator.Calculate(order.PickupDeadline, now, await _settings.GetAsync());
             order.OverdueFeeTotal = order.LockerOverdueFeeAtStorageTransfer.Value;
             order.Timeline.Add(new WashOrderTimeline
             {
@@ -971,11 +976,12 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             if (order.Status != WashOrderStatus.Pending)
                 return BadRequest<WashOrderDetailDto>("Đơn hàng không ở trạng thái chờ gửi đồ.");
 
-            // Check 30-minute reservation window
+            // Reservation window comes from the SLA settings (UC 3.9.1).
+            var depositWindow = (await _settings.GetAsync()).DepositWindowMinutes;
             var orderCreatedTime = DateTimeOffset.FromUnixTimeSeconds(order.CreatedOn).UtcDateTime;
-            if (DateTime.UtcNow > orderCreatedTime.AddMinutes(30))
+            if (DateTime.UtcNow > orderCreatedTime.AddMinutes(depositWindow))
             {
-                return BadRequest<WashOrderDetailDto>("Đã quá 30 phút kể từ khi tạo đơn. Ô tủ đã hết thời gian giữ chỗ; vui lòng hủy đơn hoặc tạo đơn mới.");
+                return BadRequest<WashOrderDetailDto>($"Đã quá {depositWindow} phút kể từ khi tạo đơn. Ô tủ đã hết thời gian giữ chỗ; vui lòng hủy đơn hoặc tạo đơn mới.");
             }
 
             // Check lockout
@@ -1096,8 +1102,9 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             // SLA Check: 4 hours from deposited time
             var depositedAt = order.DepositedAt ?? DateTime.UtcNow;
             var elapsed = DateTime.UtcNow - depositedAt;
-            var isOverdueSla = elapsed > TimeSpan.FromHours(4);
-            var slaWarning = isOverdueSla ? $" (Cảnh báo: Trễ SLA lấy đồ {elapsed.TotalHours:0.#} giờ so với cam kết 4 giờ)" : string.Empty;
+            var collectSla = (await _settings.GetAsync()).MerchantCollectSlaHours;
+            var isOverdueSla = elapsed > TimeSpan.FromHours(collectSla);
+            var slaWarning = isOverdueSla ? $" (Cảnh báo: Trễ SLA lấy đồ {elapsed.TotalHours:0.#} giờ so với cam kết {collectSla} giờ)" : string.Empty;
 
             var previousStatus = order.Status;
             order.Status = WashOrderStatus.Collected;
@@ -1228,8 +1235,9 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             // SLA Check: 24 hours from payment time
             var paidAt = order.PaidAt ?? DateTime.UtcNow;
             var elapsedReturn = DateTime.UtcNow - paidAt;
-            var isOverdueReturn = !cancelledReturn && elapsedReturn > TimeSpan.FromHours(24);
-            var slaReturnWarning = isOverdueReturn ? $" (Cảnh báo: Trễ SLA trả đồ {elapsedReturn.TotalHours:0.#} giờ so với cam kết 24 giờ)" : string.Empty;
+            var returnSettings = await _settings.GetAsync();
+            var isOverdueReturn = !cancelledReturn && elapsedReturn > TimeSpan.FromHours(returnSettings.MerchantReturnSlaHours);
+            var slaReturnWarning = isOverdueReturn ? $" (Cảnh báo: Trễ SLA trả đồ {elapsedReturn.TotalHours:0.#} giờ so với cam kết {returnSettings.MerchantReturnSlaHours} giờ)" : string.Empty;
 
             var previousStatus = order.Status;
             order.ReturnLockerId = returnLockerId;
@@ -1237,7 +1245,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             order.ReturnBoxNumber = returnBox.BoxNumber;
             order.Status = cancelledReturn ? WashOrderStatus.Cancelled : WashOrderStatus.ReadyToReturn;
             if (cancelledReturn) order.CancelledGoodsStatus = CancelledGoodsStatus.AtReturnLocker;
-            order.PickupDeadline = cancelledReturn ? null : DateTime.UtcNow.AddHours(24);
+            order.PickupDeadline = cancelledReturn ? null : DateTime.UtcNow.AddHours(returnSettings.FreePickupHours);
             order.TaskPinAttemptCount = 0;
             order.TaskPinLockoutUntil = null;
 
@@ -1250,7 +1258,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 ActorName = CurrentUser.UserName ?? (scope.Role == "Admin" ? "Admin" : order.ShipperName ?? "Shipper"),
                 ActorRole = scope.Role,
                 Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
-                Note = $"Đã trả đồ vào ô số {returnBox.BoxNumber} tại tủ {returnLocker.Name}. {(cancelledReturn ? "Đơn hủy chờ khách nhận lại đồ." : "Khách có 24h để lấy đồ.")}{slaReturnWarning}"
+                Note = $"Đã trả đồ vào ô số {returnBox.BoxNumber} tại tủ {returnLocker.Name}. {(cancelledReturn ? "Đơn hủy chờ khách nhận lại đồ." : $"Khách có {returnSettings.FreePickupHours}h để lấy đồ miễn phí.")}{slaReturnWarning}"
             });
 
             await _orderRepo.UpdateAsync(order, autoSave: true);
@@ -1286,7 +1294,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 return BadRequest<OpenPickupBoxResultDto>("Đơn hàng đã quá hạn 72 giờ và chuyển sang quy trình lưu kho. Vui lòng liên hệ hỗ trợ hoặc nhận đồ tại kho.");
             }
 
-            var overdueFee = cancelledPickup ? 0m : OverdueFeeCalculator.Calculate(order.PickupDeadline, DateTime.UtcNow);
+            var overdueFee = cancelledPickup ? 0m : OverdueFeeCalculator.Calculate(order.PickupDeadline, DateTime.UtcNow, await _settings.GetAsync());
             order.OverdueFeeTotal = overdueFee;
             if (order.StorageFeeTotal < overdueFee)
             {
@@ -1387,7 +1395,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 return BadRequest<WashOrderDetailDto>("Phiên lấy đồ không hợp lệ hoặc đã hết hạn (10 phút). Vui lòng quét mã mở tủ lại.");
             }
 
-            var overdueFee = cancelledPickup ? 0m : OverdueFeeCalculator.Calculate(order.PickupDeadline, DateTime.UtcNow);
+            var overdueFee = cancelledPickup ? 0m : OverdueFeeCalculator.Calculate(order.PickupDeadline, DateTime.UtcNow, await _settings.GetAsync());
             order.OverdueFeeTotal = overdueFee;
             if (order.StorageFeeTotal < overdueFee)
             {
@@ -1480,7 +1488,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 return BadRequest<WashOrderDetailDto>("Đơn hàng không ở trạng thái lưu kho.");
 
             var now = DateTime.UtcNow;
-            var totalDue = OverdueFeeCalculator.GetTotalStorageDue(order, now);
+            var totalDue = OverdueFeeCalculator.GetTotalStorageDue(order, now, await _settings.GetAsync());
             order.OverdueFeeTotal = totalDue;
             if (order.StorageFeeTotal < totalDue)
             {

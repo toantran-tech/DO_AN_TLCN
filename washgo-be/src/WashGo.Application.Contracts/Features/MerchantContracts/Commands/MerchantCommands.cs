@@ -20,7 +20,8 @@ namespace WashGo.Application.Contracts.Features.MerchantContracts.Commands
         public string Phone { get; set; } = string.Empty;
         public string? OpeningHours { get; set; }
         public decimal DepositAmount { get; set; } = 1000000;
-        public decimal CommissionRate { get; set; } = 20;
+        /// <summary>Để trống khi tạo mới thì dùng % hoa hồng mặc định (UC 3.9.2); để trống khi sửa thì giữ nguyên.</summary>
+        public decimal? CommissionRate { get; set; }
         public int ServiceRadiusKm { get; set; } = 5;
         public int MaxCapacity { get; set; } = 50;
         public List<Guid> ServiceAreaIds { get; set; } = [];

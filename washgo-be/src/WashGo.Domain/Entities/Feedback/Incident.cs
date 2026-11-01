@@ -36,16 +36,8 @@ namespace WashGo.Domain.Entities.Feedback
         public Guid? ReviewedBy { get; set; }
         public DateTime? ReviewedAt { get; set; }
 
-        public static decimal CompensationPercent(CompensationLevel level) => level switch
-        {
-            CompensationLevel.Light => 30m,
-            CompensationLevel.Medium => 70m,
-            CompensationLevel.Severe => 100m,
-            CompensationLevel.Lost => 200m,
-            _ => 0m
-        };
-
-        public static decimal CalculateCompensation(CompensationLevel level, decimal itemValue) =>
-            decimal.Round(itemValue * CompensationPercent(level) / 100m, 0, MidpointRounding.AwayFromZero);
+        /// <summary>Tiền bồi thường = giá trị đồ x % theo mức hư hỏng (cấu hình ở UC 3.9.4), làm tròn đến đồng.</summary>
+        public static decimal CalculateCompensation(int percent, decimal itemValue) =>
+            decimal.Round(itemValue * percent / 100m, 0, MidpointRounding.AwayFromZero);
     }
 }
