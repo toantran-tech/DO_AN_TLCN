@@ -46,7 +46,7 @@ Ghi nhận ngày 30/10/2026: PUT /merchant/ giữ trạng thái cũ khi bỏ ho�
 | 3.6.1–3.6.5 Khuyến mãi | Đã có BE + Admin UI | Ngày 01/11: CRUD `/promotion`, lọc theo trạng thái/thời gian, bật/tắt, xóa khi chưa dùng, thống kê + xuất CSV; màn hình Admin "Khuyến mãi". Chi tiết ở mục khuyến mãi bên dưới. |
 | 3.7.1–3.7.3 Khiếu nại và đánh giá | Đã có BE + Admin UI | Ngày 01/11: lọc/xử lý/từ chối khiếu nại, bồi thường 30/70/100/200% do server tính, ghi nhận chi trả; lọc/ẩn đánh giá, cập nhật điểm Merchant. Màn hình Admin "Khiếu nại", "Đánh giá". |
 | 3.8.1–3.8.3 Tài chính | Một phần | Có danh sách/duyệt/xác nhận hoàn tiền thủ công; chưa có báo cáo doanh thu và hoa hồng theo use case. |
-| 3.9.1–3.9.4 Cài đặt hệ thống | Chưa có | Chưa có API cấu hình SLA, hoa hồng và phí phạt/bồi thường động. |
+| 3.9.1–3.9.4 Cài đặt hệ thống | Đã có BE + Admin UI | Ngày 01/11: `/system-setting` cấu hình SLA, % hoa hồng mặc định, phí quá hạn/lưu kho, % phí hủy, % bồi thường; các luồng đơn đọc cấu hình thay cho số viết cứng. Màn hình Admin "Cài đặt hệ thống". |
 
 ### 4. Shipper và 5. Thông báo
 
@@ -72,6 +72,15 @@ Ghi nhận ngày 30/10/2026: PUT /merchant/ giữ trạng thái cũ khi bỏ ho�
 
 **Đồng bộ đặc tả Word ngày 31/10/2026:** Đã cập nhật UC Customer gửi đồ (quá 30 phút chỉ từ chối, không tự hủy), Customer nhận tại locker hai bước và phiên 10 phút, SLA Shipper lấy 4 giờ từ DepositedAt/trả 24 giờ từ PaidAt (trễ vẫn cho giao nhận), mã riêng và khóa 5 lần/5 phút. Bổ sung UC Nhận đồ tại kho với phí locker đã chốt + 100.000đ/mỗi ngày kho bắt đầu, không giải phóng ô lần hai. Giữ yêu cầu thông báo/đánh giá trong đặc tả; đây vẫn là phần chưa triển khai. Đã lưu bản dự phòng `../Đặc tả usecase.backup-20261031-021336.docx`; kiểm tra nội dung và ZIP chỉ đổi `word/document.xml`. Chưa xác minh bố cục trang: không có Python runtime đóng gói để chạy renderer; thử xuất Word sang PDF bị timeout 25 giây.
 **Dọn mục trùng ngày 31/10/2026:** Xóa đúng 3 bảng Hiển thị QR Code giống hệt cùng tiêu đề đi kèm trong bản project; giữ bảng QR còn lại trong nhóm Customer và bảng QR khác nội dung ở mục khác. Nội dung tất cả bảng còn lại được đối chiếu giữ nguyên; đánh lại mục 1.3.1–1.3.4. Bản Downloads không chỉnh sửa. Backup: `../Đặc tả usecase.backup-dedup-20261031-023310.docx`. Chưa render lại bố cục do giới hạn công cụ xem trước đã ghi ở trên.
+
+### Cài đặt hệ thống ngày 01/11/2026 — UC 3.9.1, 3.9.2, 3.9.4
+
+- [x] **Migration `20261101090320_AddSystemSettings`:** bảng `system_settings` một dòng (Id cố định), migration tự chèn giá trị mặc định trùng quy tắc đang chạy: gửi đồ 30 phút, Merchant lấy 4h/trả 24h, lấy đồ miễn phí 24h, hoa hồng mặc định 20%, phí quá hạn 10.000/20.000/50.000đ, lưu kho 100.000đ/ngày (chuyển kho sau 72h, cố định), phí hủy 30%/30%/50%, bồi thường 30/70/100/200%.
+- [x] **API `/system-setting` (AdminOnly):** `GET /`, `PUT /sla` ("Cấu hình SLA thành công!"), `PUT /commission` ("Tỷ lệ phí phải từ 0-100%."), `PUT /penalty` ("Cấu hình thành công!"); sai thông số trả "Thông số không hợp lệ.". Bồi thường phải tăng dần theo mức hư hỏng. Lưu người/thời điểm cập nhật.
+- [x] **Áp dụng cấu hình (thay số viết cứng):** hạn gửi đồ khi deposit, % phí hủy (Pending quá hạn/Deposited/Collected), cảnh báo SLA Shipper lấy/trả, hạn lấy đồ miễn phí khi trả vào locker, phí quá hạn locker và phí kho (Payment + nhận đồ + chuyển kho), % bồi thường khi Admin xử lý khiếu nại, % hoa hồng mặc định khi tạo Merchant không nhập tỷ lệ (sửa Merchant không gửi tỷ lệ thì giữ nguyên; `commissionRate` trong lệnh Merchant nay là tùy chọn).
+- [x] Đơn đã hủy hiển thị % phí theo số tiền đã chốt, không đổi khi Admin sửa cấu hình sau đó. Lưu ý: phí quá hạn/lưu kho của đơn đang chờ lấy tính theo cấu hình tại thời điểm tính, không snapshot theo đơn.
+- [x] **Admin UI:** màn "Cài đặt hệ thống" gồm 3 khối SLA / Phí hoa hồng / Phí phạt & bồi thường, mỗi khối có nút Lưu riêng.
+- [x] `tests/smoke/system-settings.ps1` PASS: quyền 401/403, validation từng nhóm (không làm đổi cấu hình), hạn gửi đồ 10 phút chặn deposit lúc 11 phút và cho phép lúc 5 phút, phí hủy 40% áp dụng và giữ nguyên sau khi trả cấu hình, hoa hồng mặc định 27,5% cho Merchant mới, sửa Merchant giữ/đổi/chặn tỷ lệ > 100%. Script khôi phục cấu hình gốc ở `finally`.
 
 ### Thông báo ngày 01/11/2026 — UC 5.1–5.3 và các thông báo real-time
 
@@ -526,7 +535,7 @@ Ví dụ đã thống nhất: Standard, giá cơ bản 100.000đ, thời gian c�
 - [ ] Nhật ký hệ thống (`AuditLog`, `QrLog`):
   - Ghi lại vết truy cập, thay đổi dữ liệu nhạy cảm của các tài khoản Admin/Merchant.
   - Lịch sử quét mã QR mở tủ tại các điểm đặt tủ.
-- [ ] Cấu hình hệ thống động (`SystemConfig`):
+- [x] Cấu hình hệ thống động (`SystemSetting`, 01/11/2026 — xem mục Cài đặt hệ thống):
   - Cấu hình phí giặt mặc định, thời gian giữ đồ miễn phí tại tủ, phí phạt quá hạn.
 - [ ] Quản lý duyệt thay đổi dịch vụ (`ServiceChangeRequest`):
   - Luồng đối tác đề xuất tăng giá/thay đổi mô tả và Admin duyệt trước khi áp dụng ra thị trường.

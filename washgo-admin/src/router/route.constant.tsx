@@ -8,6 +8,7 @@ import StorefrontIcon from '@mui/icons-material/Storefront';
 import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 import ReportProblemIcon from '@mui/icons-material/ReportProblem';
 import StarRateIcon from '@mui/icons-material/StarRate';
+import SettingsIcon from '@mui/icons-material/Settings';
 
 export interface RouteConfig {
   path: string;
@@ -73,6 +74,13 @@ export const ROUTE_ITEMS: RouteConfig[] = [
     label: 'Đánh giá',
     icon: <StarRateIcon />,
     permission: 'WashGo.Ratings',
+    role: ['Admin'],
+  },
+  {
+    path: '/system-setting',
+    label: 'Cài đặt hệ thống',
+    icon: <SettingsIcon />,
+    permission: 'WashGo.SystemSettings',
     role: ['Admin'],
   },
 ];

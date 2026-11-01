@@ -11,6 +11,7 @@ using WashGo.Application.Contracts.Features.FeedbackContracts.Results;
 using WashGo.Application.Contracts.Features.FeedbackContracts.Services;
 using WashGo.Application.Features.FileApplication.Services;
 using WashGo.Application.Features.NotificationApplication.Services;
+using WashGo.Application.Features.SystemSettingApplication.Services;
 using WashGo.Core.Domain.Shared.Bases;
 using WashGo.Domain.Entities.Feedback;
 using WashGo.Domain.Entities.Feedback.Interfaces;
@@ -31,6 +32,7 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
         private readonly IRepository<Merchant, Guid> _merchantRepo;
         private readonly IConfiguration _configuration;
         private readonly NotificationPublisher _notifications;
+        private readonly SystemSettingProvider _settings;
 
         public IncidentAppService(
             IIncidentRepository incidentRepo,
@@ -38,7 +40,8 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
             IRepository<WashOrderTimeline, Guid> timelineRepo,
             IRepository<Merchant, Guid> merchantRepo,
             IConfiguration configuration,
-            NotificationPublisher notifications)
+            NotificationPublisher notifications,
+            SystemSettingProvider settings)
         {
             _incidentRepo = incidentRepo;
             _orderRepo = orderRepo;
@@ -46,6 +49,7 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
             _merchantRepo = merchantRepo;
             _configuration = configuration;
             _notifications = notifications;
+            _settings = settings;
         }
 
         public async Task<BaseResponse<IncidentResultDto>> CreateAsync(CreateIncidentCommand command)
@@ -180,9 +184,9 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
             incident.ResponsibleParty = command.ResponsibleParty;
             incident.CompensationLevel = command.CompensationLevel;
             incident.ItemValue = compensating ? command.ItemValue : 0m;
-            // The amount is computed from the configured percentage, never taken from the client.
-            incident.CompensationAmount = compensating
-                ? Incident.CalculateCompensation(command.CompensationLevel, command.ItemValue) : 0m;
+            // The amount is computed from the configured percentage (UC 3.9.4), never taken from the client.
+            var percent = (await _settings.GetAsync()).CompensationPercent(command.CompensationLevel);
+            incident.CompensationAmount = compensating ? Incident.CalculateCompensation(percent, command.ItemValue) : 0m;
             incident.CompensationStatus = incident.CompensationAmount > 0 ? CompensationStatus.Pending : CompensationStatus.None;
             incident.ReviewedBy = CurrentUser.Id;
             incident.ReviewedAt = DateTime.UtcNow;
