@@ -9,6 +9,7 @@ import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 import ReportProblemIcon from '@mui/icons-material/ReportProblem';
 import StarRateIcon from '@mui/icons-material/StarRate';
 import SettingsIcon from '@mui/icons-material/Settings';
+import DeliveryDiningIcon from '@mui/icons-material/DeliveryDining';
 
 export interface RouteConfig {
   path: string;
@@ -42,6 +43,13 @@ export const ROUTE_ITEMS: RouteConfig[] = [
     label: 'Bảng giá & Dịch vụ',
     icon: <DryCleaningIcon />,
     permission: 'WashGo.Services',
+  },
+  {
+    path: '/shipper',
+    label: 'Quản lý Shipper',
+    icon: <DeliveryDiningIcon />,
+    permission: 'WashGo.Shippers',
+    role: ['Admin', 'Merchant'],
   },
   {
     path: '/service-area',
