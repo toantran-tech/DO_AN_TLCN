@@ -878,6 +878,36 @@ namespace WashGo.EntityFrameworkCore.Migrations
                     b.ToTable("notifications", "washgo");
                 });
 
+            modelBuilder.Entity("WashGo.Domain.Entities.Notification.ReminderLog", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Key")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("key");
+
+                    b.Property<Guid?>("OrderId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("order_id");
+
+                    b.Property<DateTime>("SentAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("sent_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Key")
+                        .IsUnique();
+
+                    b.HasIndex("OrderId");
+
+                    b.ToTable("reminder_logs", "washgo");
+                });
+
             modelBuilder.Entity("WashGo.Domain.Entities.Partner.Customer", b =>
                 {
                     b.Property<Guid>("Id")

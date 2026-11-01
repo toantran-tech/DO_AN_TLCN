@@ -103,7 +103,7 @@ namespace WashGo.Application.Features.NotificationApplication.Services
             await SendAsync(admins, type, title, content, linkType, linkId);
         }
 
-        private async Task<Guid?> ShipperUserIdAsync(Guid? shipperId) =>
+        public async Task<Guid?> ShipperUserIdAsync(Guid? shipperId) =>
             shipperId.HasValue ? (await _shipperRepo.FindAsync(shipperId.Value))?.UserId : null;
 
         private static string Money(decimal amount) => $"{amount:N0}đ";

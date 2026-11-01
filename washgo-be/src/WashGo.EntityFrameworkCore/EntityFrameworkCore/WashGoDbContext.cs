@@ -44,6 +44,7 @@ namespace WashGo.EntityFrameworkCore.EntityFrameworkCore
         public DbSet<Incident> Incidents { get; set; } = null!;
         public DbSet<Notification> Notifications { get; set; } = null!;
         public DbSet<SystemSetting> SystemSettings { get; set; } = null!;
+        public DbSet<ReminderLog> ReminderLogs { get; set; } = null!;
 
         public WashGoDbContext(DbContextOptions<WashGoDbContext> options)
             : base(options)
@@ -81,6 +82,7 @@ namespace WashGo.EntityFrameworkCore.EntityFrameworkCore
             builder.ApplyConfiguration(new IncidentEntityTypeConfiguration());
             builder.ApplyConfiguration(new NotificationEntityTypeConfiguration());
             builder.ApplyConfiguration(new SystemSettingEntityTypeConfiguration());
+            builder.ApplyConfiguration(new ReminderLogEntityTypeConfiguration());
 
             builder.UseWashGoSnakeCaseColumns();
         }
