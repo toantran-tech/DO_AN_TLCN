@@ -19,7 +19,10 @@ using WashGo.Domain.Entities.Partner.Interfaces;
 using WashGo.Domain.Entities.WashOrder;
 using WashGo.Domain.Entities.WashOrder.Interfaces;
 using WashGo.Domain.Entities.WashService.Interfaces;
+using WashGo.Application.Contracts.Features.PromotionContracts.Results;
 using WashGo.Application.Features.PaymentApplication.Services;
+using WashGo.Domain.Entities.Promotion;
+using WashGo.Domain.Entities.Promotion.Interfaces;
 using WashGo.Domain.Shared.Constants;
 using WashGo.Domain.Shared.Enums;
 using WashGo.Domain.Entities.Payment;
@@ -39,6 +42,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
         private readonly IRepository<Role, Guid> _roleRepo;
         private readonly IPaymentTransactionRepository _payments;
         private readonly IRepository<RefundRequest, Guid> _refunds;
+        private readonly IPromotionRepository _promotionRepo;
+        private readonly IRepository<PromotionUsage, Guid> _promotionUsageRepo;
 
         public WashOrderAppService(
             IWashOrderRepository orderRepo,
@@ -50,7 +55,9 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             IShipperRepository shipperRepo,
             IRepository<Role, Guid> roleRepo,
             IPaymentTransactionRepository payments,
-            IRepository<RefundRequest, Guid> refunds)
+            IRepository<RefundRequest, Guid> refunds,
+            IPromotionRepository promotionRepo,
+            IRepository<PromotionUsage, Guid> promotionUsageRepo)
         {
             _orderRepo = orderRepo;
             _lockerRepo = lockerRepo;
@@ -62,6 +69,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             _roleRepo = roleRepo;
             _payments = payments;
             _refunds = refunds;
+            _promotionRepo = promotionRepo;
+            _promotionUsageRepo = promotionUsageRepo;
         }
 
         private readonly record struct OrderScope(string Role, Guid Id);
@@ -227,6 +236,157 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             return Success(RedactStaffData(dto, scope));
         }
 
+        private sealed record PricedOrder(List<WashOrderItem> Items, decimal Total, bool HasWeightService, int BaseProcessingHours);
+
+        private static string? ValidateItems(List<CreateWashOrderItemDto>? items) =>
+            items == null || items.Count is < 1 or > 30 ||
+            items.Any(x => x.ServiceId == Guid.Empty || x.Quantity is < 1 or > 1000 ||
+                (x.WeightKg.HasValue && (x.WeightKg.Value <= 0 || x.WeightKg.Value > 1000 ||
+                    decimal.Round(x.WeightKg.Value, 2) != x.WeightKg.Value))) ||
+            items.Select(x => x.ServiceId).Distinct().Count() != items.Count
+                ? "Cần chọn 1–30 dịch vụ khác nhau; số lượng và khối lượng phải hợp lệ."
+                : null;
+
+        // Prices always come from the server catalog; client prices are never trusted.
+        private async Task<(PricedOrder? Result, string? Error)> PriceItemsAsync(List<CreateWashOrderItemDto> items, Guid merchantId)
+        {
+            var orderItems = new List<WashOrderItem>();
+            decimal total = 0;
+            var hasWeightService = false;
+            var baseProcessingHours = 0;
+            foreach (var item in items)
+            {
+                var service = await _serviceRepo.FindAsync(item.ServiceId);
+                if (service == null || service.IsDeleted || !service.IsActive ||
+                    service.ApprovalStatus != ServiceApprovalStatus.Approved ||
+                    service.MerchantId != merchantId)
+                    return (null, "Dịch vụ đã chọn không còn được bán bởi đối tác của tủ.");
+
+                var isWeightBased = service.Unit.Equals("kg", StringComparison.OrdinalIgnoreCase);
+                if (isWeightBased && item.Quantity != 1)
+                    return (null, "Dịch vụ theo gói kg chỉ chọn một gói cho mỗi loại dịch vụ.");
+                if (!isWeightBased && item.WeightKg.HasValue)
+                    return (null, "Dịch vụ theo chiếc/đôi không nhận khối lượng kg.");
+                if (service.EstimatedDurationHours is < 1 or > 8760)
+                    return (null, "Thời gian xử lý dịch vụ chưa được cấu hình hợp lệ.");
+
+                var unitPrice = isWeightBased ? service.UnitPrice : service.PricePerItem ?? service.UnitPrice;
+                if (unitPrice <= 0)
+                    return (null, "Giá dịch vụ chưa được cấu hình hợp lệ.");
+                var subTotal = isWeightBased ? unitPrice : unitPrice * item.Quantity;
+                total += subTotal;
+                hasWeightService |= isWeightBased;
+                baseProcessingHours = Math.Max(baseProcessingHours, service.EstimatedDurationHours);
+                orderItems.Add(new WashOrderItem
+                {
+                    ServiceId = service.Id,
+                    ServiceName = service.Name,
+                    Quantity = item.Quantity,
+                    WeightKg = item.WeightKg,
+                    IsWeightBased = isWeightBased,
+                    UnitPrice = unitPrice,
+                    SubTotal = subTotal,
+                    Note = item.Note
+                });
+            }
+            return (new PricedOrder(orderItems, total, hasWeightService, baseProcessingHours), null);
+        }
+
+        private Task<int> CountCustomerPromotionUsesAsync(Guid promotionId, Guid customerId) =>
+            _promotionUsageRepo.CountAsync(x => x.PromotionId == promotionId && x.CustomerId == customerId && !x.IsReverted);
+
+        private async Task<(Promotion? Promotion, decimal Discount, string? Error)> ResolvePromotionAsync(
+            string? promotionCode, Guid customerId, decimal orderAmount, DateTime now)
+        {
+            var code = Promotion.NormalizeCode(promotionCode);
+            if (code.Length == 0) return (null, 0m, null);
+            var promotion = await _promotionRepo.FirstOrDefaultAsync(x => x.Code == code);
+            if (promotion == null) return (null, 0m, "Mã giảm giá không tồn tại.");
+            var used = await CountCustomerPromotionUsesAsync(promotion.Id, customerId);
+            var reason = promotion.GetIneligibleReason(now, orderAmount, used);
+            return reason != null ? (null, 0m, reason) : (promotion, promotion.CalculateDiscount(orderAmount), null);
+        }
+
+        private static AvailablePromotionDto ToAvailableDto(Promotion promotion, DateTime now, decimal orderAmount, int customerUsed)
+        {
+            var reason = promotion.GetIneligibleReason(now, orderAmount, customerUsed);
+            return new AvailablePromotionDto
+            {
+                Id = promotion.Id,
+                Code = promotion.Code,
+                Description = promotion.Description,
+                DiscountType = promotion.DiscountType,
+                DiscountValue = promotion.DiscountValue,
+                MinOrderAmount = promotion.MinOrderAmount,
+                MaxDiscountAmount = promotion.MaxDiscountAmount,
+                EndAt = promotion.EndAt,
+                RemainingUsesForCustomer = promotion.UsageLimitPerCustomer.HasValue
+                    ? Math.Max(0, promotion.UsageLimitPerCustomer.Value - customerUsed) : null,
+                IsEligible = reason == null,
+                IneligibleReason = reason,
+                EstimatedDiscountAmount = reason == null ? promotion.CalculateDiscount(orderAmount) : 0m
+            };
+        }
+
+        public async Task<BaseResponse<VoucherQuoteDto>> ApplyVoucherAsync(ApplyVoucherCommand command)
+        {
+            if (!CurrentUser.Id.HasValue)
+                return BadRequest<VoucherQuoteDto>("Không xác định được tài khoản khách hàng.");
+            var itemError = ValidateItems(command.Items);
+            if (itemError != null)
+                return BadRequest<VoucherQuoteDto>(itemError);
+
+            var locker = await _lockerRepo.FindAsync(command.LockerId);
+            if (locker == null || locker.IsDeleted || locker.Status != LockerStatus.Active)
+                return BadRequest<VoucherQuoteDto>("Tủ Locker đã chọn không hoạt động.");
+            var merchant = await _merchantRepo.FindAsync(locker.MerchantId);
+            if (merchant == null || merchant.Status != MerchantStatus.Active)
+                return BadRequest<VoucherQuoteDto>("Đối tác quản lý tủ hiện không hoạt động.");
+
+            var (priced, priceError) = await PriceItemsAsync(command.Items, locker.MerchantId);
+            if (priced == null)
+                return BadRequest<VoucherQuoteDto>(priceError!);
+
+            var customerId = CurrentUser.Id.Value;
+            var now = DateTime.UtcNow;
+            var promotions = await AsyncExecuter.ToListAsync((await _promotionRepo.GetQueryableAsync())
+                .Where(x => x.IsActive && x.StartAt <= now && x.EndAt >= now
+                    && (x.UsageLimit == null || x.UsedCount < x.UsageLimit))
+                .OrderBy(x => x.EndAt));
+            var promotionIds = promotions.Select(x => x.Id).ToList();
+            var usedByPromotion = (await AsyncExecuter.ToListAsync((await _promotionUsageRepo.GetQueryableAsync())
+                    .Where(x => x.CustomerId == customerId && !x.IsReverted && promotionIds.Contains(x.PromotionId))
+                    .GroupBy(x => x.PromotionId)
+                    .Select(g => new { PromotionId = g.Key, Count = g.Count() })))
+                .ToDictionary(x => x.PromotionId, x => x.Count);
+
+            var quote = new VoucherQuoteDto
+            {
+                TotalAmount = priced.Total,
+                FinalAmount = priced.Total,
+                AvailablePromotions = promotions
+                    .Select(p => ToAvailableDto(p, now, priced.Total, usedByPromotion.GetValueOrDefault(p.Id)))
+                    .Where(p => p.RemainingUsesForCustomer != 0)
+                    .OrderByDescending(p => p.IsEligible).ThenByDescending(p => p.EstimatedDiscountAmount)
+                    .ToList()
+            };
+
+            if (!string.IsNullOrWhiteSpace(command.PromotionCode))
+            {
+                var (promotion, discount, error) = await ResolvePromotionAsync(command.PromotionCode, customerId, priced.Total, now);
+                if (promotion == null)
+                    return BadRequest<VoucherQuoteDto>(error!);
+                quote.AppliedPromotion = ToAvailableDto(promotion, now, priced.Total,
+                    usedByPromotion.GetValueOrDefault(promotion.Id));
+                quote.DiscountAmount = discount;
+                quote.FinalAmount = priced.Total - discount;
+                return Success(quote, "Áp dụng mã giảm giá thành công.");
+            }
+
+            return Success(quote, quote.AvailablePromotions.Any(x => x.IsEligible)
+                ? null : "Hiện tại không có mã giảm giá khả dụng cho đơn hàng này.");
+        }
+
         public async Task<BaseResponse<WashOrderDetailDto>> CreateAsync(CreateWashOrderCommand command)
         {
             if (!CurrentUser.Id.HasValue)
@@ -234,12 +394,9 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 return BadRequest<WashOrderDetailDto>("Không xác định được tài khoản khách hàng.");
             }
 
-            if (command.Items == null || command.Items.Count is < 1 or > 30 ||
-                command.Items.Any(x => x.ServiceId == Guid.Empty || x.Quantity is < 1 or > 1000 ||
-                    (x.WeightKg.HasValue && (x.WeightKg.Value <= 0 || x.WeightKg.Value > 1000 ||
-                        decimal.Round(x.WeightKg.Value, 2) != x.WeightKg.Value))) ||
-                command.Items.Select(x => x.ServiceId).Distinct().Count() != command.Items.Count)
-                return BadRequest<WashOrderDetailDto>("Cần chọn 1–30 dịch vụ khác nhau; số lượng và khối lượng phải hợp lệ.");
+            var itemError = ValidateItems(command.Items);
+            if (itemError != null)
+                return BadRequest<WashOrderDetailDto>(itemError);
 
             if (!Enum.IsDefined(command.PaymentMethod))
                 return BadRequest<WashOrderDetailDto>("Phương thức thanh toán không hợp lệ.");
@@ -280,6 +437,18 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 : customerUser.FullName;
             var customerPhone = customerUser.Phone ?? string.Empty;
 
+            var (priced, priceError) = await PriceItemsAsync(command.Items, locker.MerchantId);
+            if (priced == null)
+                return BadRequest<WashOrderDetailDto>(priceError!);
+            if (!Enum.IsDefined(box.Size))
+                return BadRequest<WashOrderDetailDto>("Kích thước ô tủ chưa được cấu hình hợp lệ.");
+
+            var now = DateTime.UtcNow;
+            var (promotion, discount, promotionError) = await ResolvePromotionAsync(
+                command.PromotionCode, customerId, priced.Total, now);
+            if (promotionError != null)
+                return BadRequest<WashOrderDetailDto>(promotionError);
+
             // Locker credentials use cryptographically secure random numbers.
             var depositPin = RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
             var pickupPin = RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
@@ -304,55 +473,17 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 PickupPinCode = pickupPin,
                 QrCodeString = $"WASHGO:DEPOSIT:{orderCode}:{depositPin}",
                 CustomerNote = command.CustomerNote,
-                ExpectedDeliveryTime = DateTimeOffset.UtcNow.AddDays(1).ToUnixTimeSeconds()
+                PromotionId = promotion?.Id,
+                PromotionCode = promotion?.Code,
+                TotalAmount = priced.Total,
+                DiscountAmount = discount,
+                FinalAmount = priced.Total - discount,
+                IncludedWeightKg = priced.HasWeightService ? WashOrderWeightPricing.IncludedWeight(box.Size) : 0m,
+                BaseProcessingHours = priced.BaseProcessingHours,
+                ExpectedDeliveryTime = DateTimeOffset.UtcNow.AddHours(priced.BaseProcessingHours).ToUnixTimeSeconds()
             };
-
-            decimal total = 0;
-            var hasWeightService = false;
-            var baseProcessingHours = 0;
-            foreach (var item in command.Items)
-            {
-                var service = await _serviceRepo.FindAsync(item.ServiceId);
-                if (service == null || service.IsDeleted || !service.IsActive ||
-                    service.ApprovalStatus != ServiceApprovalStatus.Approved ||
-                    service.MerchantId != locker.MerchantId)
-                    return BadRequest<WashOrderDetailDto>("Dịch vụ đã chọn không còn được bán bởi đối tác của tủ.");
-
-                var isWeightBased = service.Unit.Equals("kg", StringComparison.OrdinalIgnoreCase);
-                if (isWeightBased && item.Quantity != 1)
-                    return BadRequest<WashOrderDetailDto>("Dịch vụ theo gói kg chỉ chọn một gói cho mỗi loại dịch vụ.");
-                if (!isWeightBased && item.WeightKg.HasValue)
-                    return BadRequest<WashOrderDetailDto>("Dịch vụ theo chiếc/đôi không nhận khối lượng kg.");
-                if (service.EstimatedDurationHours is < 1 or > 8760)
-                    return BadRequest<WashOrderDetailDto>("Thời gian xử lý dịch vụ chưa được cấu hình hợp lệ.");
-
-                var unitPrice = isWeightBased ? service.UnitPrice : service.PricePerItem ?? service.UnitPrice;
-                if (unitPrice <= 0)
-                    return BadRequest<WashOrderDetailDto>("Giá dịch vụ chưa được cấu hình hợp lệ.");
-                var subTotal = isWeightBased ? unitPrice : unitPrice * item.Quantity;
-                total += subTotal;
-                hasWeightService |= isWeightBased;
-                baseProcessingHours = Math.Max(baseProcessingHours, service.EstimatedDurationHours);
-                order.Items.Add(new WashOrderItem
-                {
-                    ServiceId = service.Id,
-                    ServiceName = service.Name,
-                    Quantity = item.Quantity,
-                    WeightKg = item.WeightKg,
-                    IsWeightBased = isWeightBased,
-                    UnitPrice = unitPrice,
-                    SubTotal = subTotal,
-                    Note = item.Note
-                });
-            }
-
-            order.TotalAmount = total;
-            order.FinalAmount = total;
-            if (!Enum.IsDefined(box.Size))
-                return BadRequest<WashOrderDetailDto>("Kích thước ô tủ chưa được cấu hình hợp lệ.");
-            order.IncludedWeightKg = hasWeightService ? WashOrderWeightPricing.IncludedWeight(box.Size) : 0m;
-            order.BaseProcessingHours = baseProcessingHours;
-            order.ExpectedDeliveryTime = DateTimeOffset.UtcNow.AddHours(baseProcessingHours).ToUnixTimeSeconds();
+            foreach (var item in priced.Items)
+                order.Items.Add(item);
 
             order.Timeline.Add(new WashOrderTimeline
             {
@@ -361,13 +492,42 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 ActorName = customerName,
                 ActorRole = "Customer",
                 Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
-                Note = "Khách hàng khởi tạo đơn qua App/Web"
+                Note = promotion == null
+                    ? "Khách hàng khởi tạo đơn qua App/Web"
+                    : $"Khách hàng khởi tạo đơn qua App/Web; áp dụng mã {promotion.Code} giảm {discount:N0}đ"
             });
 
             using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
             if (!await _lockerRepo.TryReserveBoxAsync(locker.Id, box.Id))
                 return BadRequest<WashOrderDetailDto>("Ô tủ vừa được người khác đặt; vui lòng chọn ô khác.");
+            if (promotion != null)
+            {
+                // The consume UPDATE locks the promotion row, so the per-customer recount below is serialized.
+                if (!await _promotionRepo.TryConsumeAsync(promotion.Id, now))
+                {
+                    await uow.RollbackAsync();
+                    return BadRequest<WashOrderDetailDto>("Mã giảm giá vừa hết lượt hoặc không còn hiệu lực; vui lòng chọn mã khác.");
+                }
+                if (promotion.UsageLimitPerCustomer.HasValue &&
+                    await CountCustomerPromotionUsesAsync(promotion.Id, customerId) >= promotion.UsageLimitPerCustomer.Value)
+                {
+                    await uow.RollbackAsync();
+                    return BadRequest<WashOrderDetailDto>("Bạn đã dùng hết số lượt cho phép của mã này.");
+                }
+            }
             await _orderRepo.InsertAsync(order, autoSave: true);
+            if (promotion != null)
+            {
+                await _promotionUsageRepo.InsertAsync(new PromotionUsage
+                {
+                    PromotionId = promotion.Id,
+                    OrderId = order.Id,
+                    CustomerId = customerId,
+                    OrderAmount = priced.Total,
+                    DiscountAmount = discount,
+                    UsedAt = now
+                }, autoSave: true);
+            }
             await uow.CompleteAsync();
 
             var result = ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order);
@@ -480,6 +640,17 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                     Reason = $"Hoàn tiền sau hủy đơn; phí {percent}%. {reason}",
                     Status = RefundRequestStatus.Pending
                 }, autoSave: true);
+            }
+            // A cancelled order gives the voucher use back to the customer and the global quota.
+            var usage = order.PromotionId.HasValue
+                ? await _promotionUsageRepo.FirstOrDefaultAsync(x => x.OrderId == order.Id && !x.IsReverted)
+                : null;
+            if (usage != null)
+            {
+                usage.IsReverted = true;
+                usage.RevertedAt = now;
+                await _promotionUsageRepo.UpdateAsync(usage, autoSave: true);
+                await _promotionRepo.TryReleaseAsync(usage.PromotionId);
             }
             order.Timeline.Add(new WashOrderTimeline
             {

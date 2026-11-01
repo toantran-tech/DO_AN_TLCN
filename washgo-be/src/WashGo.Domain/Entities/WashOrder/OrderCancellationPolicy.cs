@@ -8,6 +8,7 @@ namespace WashGo.Domain.Entities.WashOrder
         public static bool TryCalculate(WashOrder order, DateTime now,
             out decimal basis, out int percent, out decimal fee)
         {
+            // Spec UC 1.2.7: Pending/Deposited fees use TotalAmount (pre-discount); Collected uses FinalAmount.
             basis = order.TotalAmount;
             percent = 0;
             fee = 0;

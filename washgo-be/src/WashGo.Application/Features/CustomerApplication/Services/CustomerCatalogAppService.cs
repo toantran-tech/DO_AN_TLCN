@@ -37,7 +37,7 @@ public class CustomerCatalogAppService : WashGoAppService, ICustomerCatalogAppSe
         var query = from service in services
                     join merchant in merchants on service.MerchantId equals merchant.Id
                     where !service.IsDeleted && service.IsActive
-                        && service.ApprovalStatus == ServiceApprovalStatus.Approved
+                        && service.ApprovalStatus == ServiceApprovalStatus.Approved && service.UnitPrice > 0
                         && merchant.Status == MerchantStatus.Active
                     select new { service, merchant };
 
@@ -80,7 +80,7 @@ public class CustomerCatalogAppService : WashGoAppService, ICustomerCatalogAppSe
         var query = from service in services
                     join merchant in merchants on service.MerchantId equals merchant.Id
                     where service.Id == id && !service.IsDeleted && service.IsActive
-                        && service.ApprovalStatus == ServiceApprovalStatus.Approved
+                        && service.ApprovalStatus == ServiceApprovalStatus.Approved && service.UnitPrice > 0
                         && merchant.Status == MerchantStatus.Active
                     select new CustomerServiceCatalogDto
                     {

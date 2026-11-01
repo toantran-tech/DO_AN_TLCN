@@ -23,5 +23,7 @@ namespace WashGo.Domain.Shared.Constants
         public const string ServiceChangeRequests = "service_change_requests";
         public const string PaymentTransactions = "payment_transactions";
         public const string RefundRequests = "refund_requests";
+        public const string Promotions = "promotions";
+        public const string PromotionUsages = "promotion_usages";
     }
 }
