@@ -21,6 +21,8 @@ using WashGo.Domain.Entities.Payment.Interfaces;
 using WashGo.Domain.Entities.WashOrder;
 using WashGo.Domain.Entities.WashOrder.Interfaces;
 
+using WashGo.Application.Features.NotificationApplication.Services;
+
 namespace WashGo.Application.Features.PaymentApplication.Services
 {
     public class PaymentAppService : WashGoAppService, IPaymentAppService
@@ -30,19 +32,22 @@ namespace WashGo.Application.Features.PaymentApplication.Services
         private readonly IRepository<RefundRequest, Guid> _refundRequestRepo;
         private readonly IConfiguration _configuration;
         private readonly IWashOrderRepository _orders;
+        private readonly NotificationPublisher _notifications;
 
         public PaymentAppService(
             IWashOrderAppService orderService,
             IPaymentTransactionRepository transactionRepo,
             IConfiguration configuration,
             IWashOrderRepository orders,
-            IRepository<RefundRequest, Guid> refundRequestRepo)
+            IRepository<RefundRequest, Guid> refundRequestRepo,
+            NotificationPublisher notifications)
         {
             _orderService = orderService;
             _transactionRepo = transactionRepo;
             _configuration = configuration;
             _orders = orders;
             _refundRequestRepo = refundRequestRepo;
+            _notifications = notifications;
         }
 
         public async Task<BaseResponse<PaymentResultDto>> CreatePaymentAsync(CreatePaymentCommand command)
@@ -249,6 +254,7 @@ namespace WashGo.Application.Features.PaymentApplication.Services
                 transaction.FailureReason = "Sandbox payment failed or was cancelled.";
                 transaction.CompletedAt = DateTime.UtcNow;
                 await _transactionRepo.UpdateAsync(transaction, autoSave: true);
+                await _notifications.PaymentFailedAsync(order);
                 await uow.CompleteAsync();
                 return BadRequest<PaymentResultDto>("Thanh toán thất bại hoặc bị hủy.");
             }
@@ -382,6 +388,8 @@ namespace WashGo.Application.Features.PaymentApplication.Services
                 transaction.ProviderTransactionId = parameters.GetValueOrDefault("vnp_TransactionNo");
                 transaction.CompletedAt = DateTime.UtcNow;
                 await _transactionRepo.UpdateAsync(transaction, autoSave: true);
+                if (await _orders.FindAsync(transaction.OrderId) is { } failedOrder)
+                    await _notifications.PaymentFailedAsync(failedOrder);
                 await uow.CompleteAsync();
                 return Ip("00", "Confirm Success");
             }
@@ -480,6 +488,7 @@ namespace WashGo.Application.Features.PaymentApplication.Services
                 Note = $"Thanh toán thành công, mã giao dịch: {providerReference ?? transaction.TransactionReference}"
             });
             await _orders.UpdateAsync(order, autoSave: true);
+            await _notifications.PaymentSucceededAsync(order);
             return true;
         }
 
@@ -568,6 +577,7 @@ namespace WashGo.Application.Features.PaymentApplication.Services
                 Status = RefundRequestStatus.Pending
             };
             await _refundRequestRepo.InsertAsync(request, autoSave: true);
+            await _notifications.RefundRequestedAsync(order, request.Amount);
             await uow.CompleteAsync();
             return Success(ToDto(request), "Đã gửi yêu cầu hoàn tiền, chờ Admin duyệt.");
         }

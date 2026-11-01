@@ -56,7 +56,7 @@ Ghi nhận ngày 30/10/2026: PUT /merchant/ giữ trạng thái cũ khi bỏ ho�
 | 4.3.1–4.3.2 Xem đơn được gán/chi tiết | Một phần | Đã tra Shipper qua `UserId`, ép phạm vi theo ID hồ sơ và ẩn thông tin Customer/PIN/QR. DTO nay có `assignedTaskType` (1 lấy/2 trả) và `shipperAssignedAt`; chưa có bộ lọc nhiệm vụ/lịch sử phân công riêng. |
 | 4.3.3–4.3.5 Lấy/trả đồ bằng QR, cập nhật giao nhận | Đã xong BE | Đã hoàn tất 6 endpoint mô phỏng QR/PIN: Customer gửi đồ, Shipper lấy đồ, Shipper trả đồ, Customer nhận đồ tại Locker (2 bước mở tủ + xác nhận), Customer nhận đồ tại kho. Có chống brute-force (sai 5 lần khóa 5 phút), mã nhiệm vụ riêng cho Shipper, SLA warning, idempotency, tự chuyển Returned -> Completed. |
 | 4.3.6 Lịch sử giao nhận | Chưa có | Chưa có API lịch sử giao nhận theo Shipper. |
-| 5.1–5.3 Xem, đánh dấu đã đọc, xóa thông báo | Chưa có | Chưa có module thông báo và API tương ứng. |
+| 5.1–5.3 Xem, đánh dấu đã đọc, xóa thông báo | Đã có BE | Ngày 01/11: `/notification` (xem, đếm chưa đọc, đọc một/tất cả, xóa một/tất cả), SignalR `/hubs/notifications`, thông báo theo sự kiện cho 4 vai trò, chuông trên Admin. Còn nhắc nhở theo thời gian. |
 
 ## II. Thứ tự triển khai tiếp theo theo đặc tả
 
@@ -67,10 +67,21 @@ Ghi nhận ngày 30/10/2026: PUT /merchant/ giữ trạng thái cũ khi bỏ ho�
 
 5. **1.2.7 Hủy đơn — triển khai ngày 31/10/2026:** Một API hủy tính phí 0%/30%/50%, báo phí trước xác nhận, khóa order, giữ ô có đồ, thu phí qua sandbox/VNPay trước khi khách nhận lại. Đồ tại tiệm được phân công Shipper trả về locker. Chỉ giải phóng ô Reserved khi hủy Pending; ô Occupied được giải phóng sau QR/PIN + phiên xác nhận nhận lại. Hoàn tiền tự tạo khi có thanh toán gốc hợp lệ, trừ phí đã giữ lại; còn module thông báo.
 6. **3.6 Voucher — ĐÃ XONG BE ngày 01/11/2026** (xem mục bên dưới).
-7. **1.4.1–1.4.3/3.7 Đánh giá, sự cố–khiếu nại — ĐÃ XONG BE ngày 01/11/2026** (xem mục bên dưới). Tiếp theo: **5.1–5.3 Thông báo** (nhiều UC đang chờ module này), rồi các use case còn lại theo bảng trên.
+7. **1.4.1–1.4.3/3.7 Đánh giá, sự cố–khiếu nại — ĐÃ XONG BE ngày 01/11/2026** (xem mục bên dưới). 
+8. **5.1–5.3 Thông báo — ĐÃ XONG BE ngày 01/11/2026** (xem mục bên dưới). Tiếp theo: **worker nhắc nhở theo thời gian** (gửi đồ 15 phút, lấy đồ 24h/48h, phí phạt, Shipper 30 phút/12h, Merchant trễ trả), rồi **3.9 Cài đặt hệ thống**, **2.4.1–2.4.3 Quản lý Shipper**, **3.8 Báo cáo tài chính**.
 
 **Đồng bộ đặc tả Word ngày 31/10/2026:** Đã cập nhật UC Customer gửi đồ (quá 30 phút chỉ từ chối, không tự hủy), Customer nhận tại locker hai bước và phiên 10 phút, SLA Shipper lấy 4 giờ từ DepositedAt/trả 24 giờ từ PaidAt (trễ vẫn cho giao nhận), mã riêng và khóa 5 lần/5 phút. Bổ sung UC Nhận đồ tại kho với phí locker đã chốt + 100.000đ/mỗi ngày kho bắt đầu, không giải phóng ô lần hai. Giữ yêu cầu thông báo/đánh giá trong đặc tả; đây vẫn là phần chưa triển khai. Đã lưu bản dự phòng `../Đặc tả usecase.backup-20261031-021336.docx`; kiểm tra nội dung và ZIP chỉ đổi `word/document.xml`. Chưa xác minh bố cục trang: không có Python runtime đóng gói để chạy renderer; thử xuất Word sang PDF bị timeout 25 giây.
 **Dọn mục trùng ngày 31/10/2026:** Xóa đúng 3 bảng Hiển thị QR Code giống hệt cùng tiêu đề đi kèm trong bản project; giữ bảng QR còn lại trong nhóm Customer và bảng QR khác nội dung ở mục khác. Nội dung tất cả bảng còn lại được đối chiếu giữ nguyên; đánh lại mục 1.3.1–1.3.4. Bản Downloads không chỉnh sửa. Backup: `../Đặc tả usecase.backup-dedup-20261031-023310.docx`. Chưa render lại bố cục do giới hạn công cụ xem trước đã ghi ở trên.
+
+### Thông báo ngày 01/11/2026 — UC 5.1–5.3 và các thông báo real-time
+
+- [x] **Migration `20261101082042_AddNotifications`:** bảng `notifications` (người nhận, loại, tiêu đề, nội dung, liên kết `order`/`incident`/`rating` + id, đã đọc, thời điểm đọc).
+- [x] **API `/notification` (mọi vai trò đã đăng nhập, chỉ hộp thư của chính mình):** `GET /` mới nhất trước, lọc `unreadOnly` ("Bạn chưa có thông báo nào."); `GET /unread-count`; `POST /{id}/read` (đọc lại không đổi `readAt`); `POST /read-all` ("Đã đánh dấu tất cả là đã đọc."); `DELETE /{id}`; `DELETE /`. Thông báo của người khác trả 404.
+- [x] **Real-time SignalR `/hubs/notifications`:** bắt buộc JWT (WebSocket đọc `access_token` từ query), gửi theo user id, sự kiện `notification`. Thông báo được ghi trong cùng transaction nghiệp vụ (nghiệp vụ lỗi/rollback thì không có thông báo) và chỉ đẩy sau khi commit; lỗi đẩy chỉ ghi log.
+- [x] **Sự kiện đã gắn:** tạo đơn (Customer + Merchant), gửi đồ (Customer + Merchant + Admin), phân công (Shipper), Shipper lấy đồ (Shipper + Customer "đã được tiếp nhận"), giặt/sấy/ủi/gấp, chờ thanh toán kèm số tiền, thanh toán thất bại (sandbox + IPN)/thành công, trả đồ vào locker (Shipper + Customer "đồ đã sẵn sàng" kèm hạn), nhận đồ tại locker/kho (Customer + Admin), hủy đơn (Customer + Merchant), chuyển kho, yêu cầu hoàn tiền (thủ công và tự động khi hủy → Admin), khiếu nại mới (Admin), xử lý/từ chối khiếu nại (Customer + Merchant), đánh giá mới (Admin).
+- [x] **Sửa kèm:** `readAt` trả về giờ cắt về micro giây để khớp giá trị đọc lại từ PostgreSQL. **Lưu ý kỹ thuật:** `ISoftDelete` của `BaseEntity` là interface riêng của dự án, không phải của ABP — ABP không tự lọc `IsDeleted` và `DeleteAsync` xóa cứng. Module Khuyến mãi đã đổi sang xóa mềm thật (đặt `IsDeleted`) và lọc `!IsDeleted` ở mọi truy vấn; thông báo xóa cứng.
+- [x] `tests/smoke/notifications.ps1` PASS: thông báo tới qua SignalR real-time (dùng `tests/smoke/signalr-listen.cjs`, cần `npm install` trong `washgo-be/tests/smoke`), đủ thông báo cho Customer/Merchant/Shipper/Admin theo từng bước đơn, thanh toán lỗi rồi thành công, hủy đơn, nhập sai PIN không sinh thông báo, quyền sở hữu, đọc/đọc tất cả, xóa/xóa tất cả.
+- [ ] Chưa có: nhắc nhở theo thời gian (cần worker định kỳ — `WashGo.Background.Host` hiện là khung rỗng, chưa có trong docker-compose), thông báo duyệt dịch vụ cho Merchant (luồng đề xuất dịch vụ chưa làm), AI phát hiện bất thường, push FCM/SMS/Zalo.
 
 ### Đánh giá, sự cố và khiếu nại ngày 01/11/2026 — UC 1.4.1–1.4.3, 3.7.1–3.7.3
 
@@ -499,6 +510,7 @@ Ví dụ đã thống nhất: Standard, giá cơ bản 100.000đ, thời gian c�
 ---
 
 ### 7. Module Thông báo tự động (Notification System)
+- [x] Thông báo trong ứng dụng + real-time SignalR (01/11/2026) — xem mục Thông báo ở đầu file.
 - [ ] Tích hợp gửi thông báo đa kênh:
   - Thông báo đẩy (Firebase Cloud Messaging - FCM) về ứng dụng khách hàng.
   - Gửi SMS OTP Brandname hoặc Zalo ZNS khi gửi mã PIN mở tủ gửi đồ / nhận đồ.
