@@ -156,7 +156,8 @@ public class CustomerCatalogAppService : WashGoAppService, ICustomerCatalogAppSe
                 Description = x.locker.Description,
                 Images = x.locker.Images
             }));
-        return Success(list, total, page, take);
+        // UC 1.2.1 4a.
+        return Success(list, total, page, take, total == 0 ? "Hiện tại không có locker khả dụng." : null);
     }
 
     public async Task<BaseResponse<CustomerLockerCatalogDto>> GetLockerAsync(Guid id)

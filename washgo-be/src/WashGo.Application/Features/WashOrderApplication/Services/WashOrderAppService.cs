@@ -534,7 +534,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
 
             using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
             if (!await _lockerRepo.TryReserveBoxAsync(locker.Id, box.Id))
-                return BadRequest<WashOrderDetailDto>("Ô tủ vừa được người khác đặt; vui lòng chọn ô khác.");
+                return BadRequest<WashOrderDetailDto>("Ô này vừa được đặt. Vui lòng chọn ô khác.");
             if (promotion != null)
             {
                 // The consume UPDATE locks the promotion row, so the per-customer recount below is serialized.
