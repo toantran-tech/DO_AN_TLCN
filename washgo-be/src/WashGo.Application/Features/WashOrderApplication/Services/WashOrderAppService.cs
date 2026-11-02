@@ -127,6 +127,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 // Customer cannot see Shipper task codes
                 dto.ShipperTaskPinCode = null;
                 dto.ShipperTaskQrString = null;
+                dto.ShipperNote = null;
             }
             else if (scope.Role == "Merchant")
             {
@@ -205,6 +206,10 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                         q = q.Where(x => x.ShipperId == query.ShipperId.Value);
                     if (query.MerchantId.HasValue)
                         q = q.Where(x => x.MerchantId == query.MerchantId.Value);
+                    if (query.TaskType.HasValue)
+                        q = q.Where(x => x.AssignedTaskType == query.TaskType.Value);
+                    if (query.PendingOnly == true)
+                        q = DeliveryTaskRules.ActiveDeliveries(q);
                     if (!string.IsNullOrWhiteSpace(query.Keyword))
                     {
                         var kw = query.Keyword.Trim().ToLower();
@@ -252,6 +257,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
 
             var dto = ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order);
             await _enricher.FillAsync([dto], scope.Role);
+            if (scope.Role is "Shipper" or "Merchant" or "Admin")
+                await _enricher.FillTaskAsync(dto);
             return Success(RedactStaffData(dto, scope));
         }
 
@@ -880,6 +887,9 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             var task = GetAssignableTask(order);
             if (!task.HasValue)
                 return BadRequest<WashOrderDetailDto>("Chỉ phân công khi đơn đã gửi đồ hoặc đã thanh toán và chờ mang đồ về tủ.");
+            var note = string.IsNullOrWhiteSpace(command.Note) ? null : command.Note.Trim();
+            if (note?.Length > 500)
+                return BadRequest<WashOrderDetailDto>("Ghi chú cho Shipper tối đa 500 ký tự.");
 
             // Serialize assignments for the same Shipper, including different orders.
             var shipper = await _shipperRepo.GetForUpdateAsync(command.ShipperId);
@@ -900,12 +910,17 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
 
             if (order.ShipperId == shipper.Id && order.AssignedTaskType == task)
             {
-                if (string.IsNullOrEmpty(order.ShipperTaskPinCode))
+                if (string.IsNullOrEmpty(order.ShipperTaskPinCode) || command.Note != null && order.ShipperNote != note)
                 {
-                    order.ShipperTaskPinCode = taskPin;
-                    order.ShipperTaskQrString = taskQr;
-                    order.TaskPinAttemptCount = 0;
-                    order.TaskPinLockoutUntil = null;
+                    if (string.IsNullOrEmpty(order.ShipperTaskPinCode))
+                    {
+                        order.ShipperTaskPinCode = taskPin;
+                        order.ShipperTaskQrString = taskQr;
+                        order.TaskPinAttemptCount = 0;
+                        order.TaskPinLockoutUntil = null;
+                    }
+                    if (command.Note != null)
+                        order.ShipperNote = note;
                     await _orderRepo.UpdateAsync(order, autoSave: true);
                 }
                 await uow.CompleteAsync();
@@ -917,6 +932,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             order.ShipperName = user.FullName;
             order.AssignedTaskType = task;
             order.ShipperAssignedAt = DateTime.UtcNow;
+            order.ShipperNote = note;
             order.ShipperTaskPinCode = taskPin;
             order.ShipperTaskQrString = taskQr;
             order.TaskPinAttemptCount = 0;

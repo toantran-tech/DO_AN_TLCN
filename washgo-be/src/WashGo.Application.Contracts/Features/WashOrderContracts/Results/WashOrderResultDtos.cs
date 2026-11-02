@@ -22,7 +22,7 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Results
         public LockerBoxSize? BoxSize { get; set; }
         /// <summary>Tên các dịch vụ của đơn (danh sách đơn của Customer/Merchant).</summary>
         public List<string> ServiceNames { get; set; } = [];
-        /// <summary>Đơn mới cần xử lý để highlight: Merchant = đã gửi đồ, chưa phân công Shipper.</summary>
+        /// <summary>Đơn mới cần xử lý để highlight: Merchant = đã gửi đồ, chưa phân công Shipper; Shipper = nhiệm vụ chưa làm.</summary>
         public bool IsNew { get; set; }
         public Guid? ReturnLockerId { get; set; }
         public Guid? ReturnBoxId { get; set; }
@@ -30,6 +30,7 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Results
         public Guid? ShipperId { get; set; }
         public DeliveryTaskType? AssignedTaskType { get; set; }
         public DateTime? ShipperAssignedAt { get; set; }
+        public string? ShipperNote { get; set; }
         public string? ShipperName { get; set; }
         public string? ShipperTaskPinCode { get; set; }
         public string? ShipperTaskQrString { get; set; }
@@ -79,6 +80,12 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Results
     public class WashOrderDetailDto : WashOrderResultDto
     {
         public string? CustomerNote { get; set; }
+        /// <summary>UC 4.3.2: locker/ô của nhiệm vụ hiện tại (lấy đồ: tủ gửi; trả đồ: tủ trả) và nút hành động.</summary>
+        public string? TaskLockerName { get; set; }
+        public string? TaskLockerAddress { get; set; }
+        public string? TaskBoxNumber { get; set; }
+        /// <summary>Collect / Return khi Shipper còn nhiệm vụ chưa làm; null khi không có.</summary>
+        public DeliveryTaskType? NextAction { get; set; }
         public List<WashOrderItemDto> Items { get; set; } = [];
         public List<WashOrderTimelineDto> Timeline { get; set; } = [];
     }

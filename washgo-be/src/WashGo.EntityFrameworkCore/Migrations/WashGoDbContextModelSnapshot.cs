@@ -2382,6 +2382,11 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("text")
                         .HasColumnName("shipper_name");
 
+                    b.Property<string>("ShipperNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("shipper_note");
+
                     b.Property<string>("ShipperTaskPinCode")
                         .HasMaxLength(10)
                         .HasColumnType("character varying(10)")

@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.OpenApi;
 using Microsoft.AspNetCore.Routing;
 using WashGo.Application.Contracts.Features.ShipperContracts.Commands;
+using WashGo.Application.Contracts.Features.ShipperContracts.Queries;
 using WashGo.Application.Contracts.Features.ShipperContracts.Services;
 using WashGo.Core.Endpoint;
 
@@ -26,6 +27,16 @@ namespace WashGo.HttpApi.Endpoints.Shipper
                 (await svc.UpdateMyProfileAsync(command)).CustomResult())
                 .WithName("Shipper cập nhật hồ sơ")
                 .WithSummary("Sửa họ tên, SĐT, avatar, phương tiện, biển số; email và Merchant phụ trách không đổi.")
+                .WithOpenApi();
+
+            var delivery = app.MapGroup("/shipper-delivery")
+                .WithTags("Shipper Delivery - Lịch sử giao nhận")
+                .RequireAuthorization("ShipperOnly");
+
+            delivery.MapPost("/history", async (DeliveryHistoryQuery query, IShipperDeliveryAppService svc) =>
+                (await svc.GetHistoryAsync(query)).CustomResult())
+                .WithName("Lịch sử giao nhận của Shipper")
+                .WithSummary("Các lượt lấy/trả đồ Shipper đã hoàn thành: mã đơn, locker, ô, loại nhiệm vụ, thời gian, trạng thái đơn; lọc thời gian và loại nhiệm vụ.")
                 .WithOpenApi();
         }
     }
