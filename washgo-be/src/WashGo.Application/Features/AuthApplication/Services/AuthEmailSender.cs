@@ -5,12 +5,13 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Volo.Abp.DependencyInjection;
+using WashGo.Application.Features.AuthApplication.Templates;
 using WashGo.Domain.Shared.Enums;
 
 namespace WashGo.Application.Features.AuthApplication.Services
 {
     /// <summary>
-    /// Sends OTP email through SMTP.
+    /// Sends OTP and credential emails through SMTP.
     /// </summary>
     public class AuthEmailSender : IAuthEmailSender, ITransientDependency
     {
@@ -27,14 +28,27 @@ namespace WashGo.Application.Features.AuthApplication.Services
 
         public Task<bool> SendOtpAsync(string email, string code, OtpPurpose purpose)
         {
-            var subject = purpose switch
+            var (subject, title, description) = purpose switch
             {
-                OtpPurpose.Register => "Mã xác thực đăng ký tài khoản WashGo",
-                OtpPurpose.ForgotPassword => "Mã xác thực đặt lại mật khẩu WashGo",
-                _ => "Mã xác thực WashGo"
+                OtpPurpose.Register => (
+                    "Mã xác thực đăng ký tài khoản WashGo",
+                    "Xác thực đăng ký tài khoản",
+                    "Cảm ơn bạn đã lựa chọn WashGo. Vui lòng sử dụng mã OTP dưới đây để hoàn tất quá trình đăng ký tài khoản."
+                ),
+                OtpPurpose.ForgotPassword => (
+                    "Mã xác thực đặt lại mật khẩu WashGo",
+                    "Yêu cầu đặt lại mật khẩu",
+                    "Chúng tôi nhận được yêu cầu đặt lại mật khẩu cho tài khoản WashGo của bạn. Dưới đây là mã OTP xác thực của bạn."
+                ),
+                _ => (
+                    "Mã xác thực WashGo",
+                    "Mã xác thực bảo mật",
+                    "Vui lòng sử dụng mã OTP dưới đây để tiếp tục thao tác trên hệ thống WashGo."
+                )
             };
-            return SendAsync(email, subject,
-                $"Mã xác thực của bạn là: {code}. Mã có hiệu lực trong 5 phút. Vui lòng không chia sẻ mã này cho bất kỳ ai.");
+
+            var htmlBody = AuthEmailTemplates.RenderOtpEmail(title, description, code);
+            return SendAsync(email, subject, htmlBody, isHtml: true);
         }
 
         public Task<bool> SendAccountCredentialsAsync(string email, string fullName, string temporaryPassword) =>
@@ -43,22 +57,23 @@ namespace WashGo.Application.Features.AuthApplication.Services
                 $"Email đăng nhập: {email}\nMật khẩu tạm thời: {temporaryPassword}\n\n" +
                 "Vui lòng đăng nhập và đổi mật khẩu bằng chức năng Quên mật khẩu. Không chia sẻ thông tin này cho bất kỳ ai.");
 
-        private async Task<bool> SendAsync(string email, string subject, string body)
+        private async Task<bool> SendAsync(string email, string subject, string body, bool isHtml = false)
         {
-
-            var host = _configuration["Email:Smtp:Host"];
-            var senderAddress = _configuration["Email:Smtp:SenderAddress"];
-            var senderName = _configuration["Email:Smtp:SenderName"] ?? "WashGo";
-            var username = _configuration["Email:Smtp:Username"];
-            var password = _configuration["Email:Smtp:Password"];
-            var port = int.TryParse(_configuration["Email:Smtp:Port"], out var configuredPort)
+            var host = _configuration["Email:Smtp:Host"] ?? _configuration["SMTP_HOST"] ?? "smtp.gmail.com";
+            var senderAddress = _configuration["Email:Smtp:SenderAddress"] ?? _configuration["SMTP_SENDER_ADDRESS"];
+            var senderName = _configuration["Email:Smtp:SenderName"] ?? _configuration["SMTP_SENDER_NAME"] ?? "Hệ thống WashGo";
+            var username = _configuration["Email:Smtp:Username"] ?? _configuration["SMTP_USERNAME"];
+            var password = _configuration["Email:Smtp:Password"] ?? _configuration["SMTP_PASSWORD"];
+            var portStr = _configuration["Email:Smtp:Port"] ?? _configuration["SMTP_PORT"];
+            var port = int.TryParse(portStr, out var configuredPort)
                 ? configuredPort
                 : 587;
-            var enableSsl = !bool.TryParse(_configuration["Email:Smtp:EnableSsl"], out var configuredSsl) || configuredSsl;
+            var sslStr = _configuration["Email:Smtp:EnableSsl"] ?? _configuration["SMTP_ENABLE_SSL"];
+            var enableSsl = !bool.TryParse(sslStr, out var configuredSsl) || configuredSsl;
 
             if (string.IsNullOrWhiteSpace(host) || string.IsNullOrWhiteSpace(senderAddress))
             {
-                _logger.LogError("SMTP is not configured. Set Email:Smtp:Host and Email:Smtp:SenderAddress.");
+                _logger.LogError("SMTP is not configured. Set Email:Smtp:Host and Email:Smtp:SenderAddress (or SMTP_HOST / SMTP_SENDER_ADDRESS).");
                 return false;
             }
 
@@ -69,7 +84,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
                     From = new MailAddress(senderAddress, senderName),
                     Subject = subject,
                     Body = body,
-                    IsBodyHtml = false
+                    IsBodyHtml = isHtml
                 };
                 message.To.Add(email);
 
