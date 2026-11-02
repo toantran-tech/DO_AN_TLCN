@@ -24,7 +24,19 @@ namespace WashGo.Application.Features.AuthApplication.Templates
         <table role=""presentation"" width=""100%"" cellspacing=""0"" cellpadding=""0"" border=""0"" style=""max-width: 520px; background-color: #ffffff; border-radius: 14px; border: 1px solid #f0eee9; box-shadow: 0 4px 24px rgba(37, 50, 74, 0.06); overflow: hidden;"">
           <!-- Header Banner WashGo (Màu chính: #ff7a45) -->
           <tr>
-            <td style=""background-color: #ff7a45; padding: 26px 32px; text-align: center;"">
+            <td style=""background-color: #ff7a45; padding: 28px 32px 24px 32px; text-align: center;"">
+              <!-- Logo WashGo -->
+              <table role=""presentation"" cellspacing=""0"" cellpadding=""0"" border=""0"" align=""center"" style=""margin: 0 auto 14px auto;"">
+                <tr>
+                  <td align=""center"" valign=""middle"" style=""background-color: #ffffff; width: 68px; height: 68px; border-radius: 22px; text-align: center; box-shadow: 0 4px 12px rgba(0,0,0,0.12);"">
+                    <svg xmlns=""http://www.w3.org/2000/svg"" viewBox=""0 0 100 100"" width=""54"" height=""54"" style=""display: block; margin: 0 auto;"">
+                      <rect x=""0"" y=""0"" width=""100"" height=""100"" rx=""35"" fill=""#FF7A45""/>
+                      <path d=""M 50 20 C 50 20, 75 50, 75 65 A 25 25 0 0 1 25 65 C 25 50, 50 20, 50 20 Z"" fill=""#FFFFFF""/>
+                      <path d=""M 35 65 A 15 15 0 0 0 50 80"" fill=""none"" stroke=""#FF7A45"" stroke-width=""5"" stroke-linecap=""round""/>
+                    </svg>
+                  </td>
+                </tr>
+              </table>
               <span style=""font-size: 26px; font-weight: 800; color: #ffffff; letter-spacing: 1.5px; display: inline-block;"">WASH<span style=""color: #ffe8dc;"">GO</span></span>
               <div style=""font-size: 13px; color: rgba(255, 255, 255, 0.92); margin-top: 4px; font-weight: 500;"">Hệ thống Tủ giặt thông minh</div>
             </td>

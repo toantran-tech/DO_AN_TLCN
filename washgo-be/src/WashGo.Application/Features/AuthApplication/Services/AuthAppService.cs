@@ -482,10 +482,9 @@ namespace WashGo.Application.Features.AuthApplication.Services
             }
             else if (command.Purpose == OtpPurpose.ForgotPassword)
             {
-                // Do not disclose whether an account exists.
                 if (user == null)
                 {
-                    return Success(true, "Nếu email tồn tại, mã OTP đã được gửi. Vui lòng kiểm tra hộp thư.");
+                    return BadRequest<bool>($"Email '{command.Email}' chưa được đăng ký trong hệ thống.");
                 }
             }
 
@@ -532,7 +531,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
 
             var successMsg = command.Purpose == OtpPurpose.Register
                 ? "Mã xác thực OTP đã được gửi về email của bạn. Vui lòng kiểm tra hộp thư."
-                : "Nếu email tồn tại, mã OTP đã được gửi. Vui lòng kiểm tra hộp thư.";
+                : "Mã xác thực đặt lại mật khẩu đã được gửi về email của bạn. Vui lòng kiểm tra hộp thư.";
 
             return Success(true, successMsg);
         }
