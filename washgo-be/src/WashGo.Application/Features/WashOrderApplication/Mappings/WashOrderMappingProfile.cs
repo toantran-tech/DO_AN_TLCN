@@ -8,8 +8,14 @@ namespace WashGo.Application.Features.WashOrderApplication.Mappings
     {
         public WashOrderMappingProfile()
         {
-            CreateMap<WashOrder, WashOrderResultDto>();
-            CreateMap<WashOrder, WashOrderDetailDto>();
+            CreateMap<WashOrder, WashOrderResultDto>()
+                .ForMember(dest => dest.BoxSize, opt => opt.Ignore())
+                .ForMember(dest => dest.ServiceNames, opt => opt.Ignore())
+                .ForMember(dest => dest.IsNew, opt => opt.Ignore());
+            CreateMap<WashOrder, WashOrderDetailDto>()
+                .ForMember(dest => dest.BoxSize, opt => opt.Ignore())
+                .ForMember(dest => dest.ServiceNames, opt => opt.Ignore())
+                .ForMember(dest => dest.IsNew, opt => opt.Ignore());
             CreateMap<WashOrderItem, WashOrderItemDto>();
             CreateMap<WashOrderTimeline, WashOrderTimelineDto>();
         }

@@ -48,6 +48,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
         private readonly IRepository<PromotionUsage, Guid> _promotionUsageRepo;
         private readonly NotificationPublisher _notifications;
         private readonly SystemSettingProvider _settings;
+        private readonly OrderListEnricher _enricher;
 
         public WashOrderAppService(
             IWashOrderRepository orderRepo,
@@ -63,7 +64,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             IPromotionRepository promotionRepo,
             IRepository<PromotionUsage, Guid> promotionUsageRepo,
             NotificationPublisher notifications,
-            SystemSettingProvider settings)
+            SystemSettingProvider settings,
+            OrderListEnricher enricher)
         {
             _orderRepo = orderRepo;
             _lockerRepo = lockerRepo;
@@ -79,6 +81,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             _promotionUsageRepo = promotionUsageRepo;
             _notifications = notifications;
             _settings = settings;
+            _enricher = enricher;
         }
 
         private readonly record struct OrderScope(string Role, Guid Id);
@@ -215,7 +218,14 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 defaultOrder: q => q.OrderByDescending(x => x.CreatedOn)
             );
 
-            return Success(data.Select(x => RedactStaffData(x, scope)).ToList(), total, query.Page, query.Take);
+            var list = data.Select(x => RedactStaffData(x, scope)).ToList();
+            await _enricher.FillAsync(list, scope.Role);
+            return Success(list, total, query.Page, query.Take, total > 0 ? null : scope.Role switch
+            {
+                "Shipper" => "Bạn chưa có đơn hàng nào được phân công.",
+                "Customer" or "Merchant" => "Bạn chưa có đơn hàng nào.",
+                _ => "Chưa có đơn hàng nào."
+            });
         }
 
         public Task<PaginatedResult<WashOrderResultDto>> GetMyOrdersAsync(WashOrderFilterQuery query)
@@ -241,6 +251,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             }
 
             var dto = ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order);
+            await _enricher.FillAsync([dto], scope.Role);
             return Success(RedactStaffData(dto, scope));
         }
 
@@ -471,6 +482,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             var order = new WashOrder
             {
                 OrderCode = orderCode,
+                // Unique because the order code is; short code for the Merchant to tag the laundry bag (UC 2.3.1).
+                MerchantOrderCode = "MC" + orderCode[2..],
                 CustomerId = customerId,
                 CustomerName = customerName,
                 CustomerPhoneNumber = customerPhone,
