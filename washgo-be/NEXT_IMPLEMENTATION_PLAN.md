@@ -15,7 +15,7 @@ Chỉ tính **Backend**; FE chưa làm. Chi tiết từng UC ở bảng mục I 
 
 | Nhóm | Use case |
 | --- | --- |
-| Customer | 1.1.1–1.1.3 Đăng ký, đăng nhập, quên mật khẩu; 1.1.4–1.1.5 Xem/cập nhật hồ sơ (avatar, tổng đơn, tổng chi tiêu); 1.2.1 Tạo đơn; 1.2.6 Theo dõi đơn; 1.2.7 Hủy đơn; 1.2.8 Lịch sử đơn; 1.3 Gửi/nhận đồ bằng QR/PIN; 1.4.1–1.4.3 Đánh giá, báo cáo sự cố, danh sách khiếu nại |
+| Customer | 1.1.1–1.1.3 Đăng ký, đăng nhập, quên mật khẩu; 1.1.4–1.1.5 Xem/cập nhật hồ sơ (avatar, tổng đơn, tổng chi tiêu); 1.2.1 Tạo đơn; 1.2.4 Thanh toán VNPay (đã chạy thật trên VNPay sandbox); 1.2.6 Theo dõi đơn; 1.2.7 Hủy đơn; 1.2.8 Lịch sử đơn; 1.3 Gửi/nhận đồ bằng QR/PIN; 1.4.1–1.4.3 Đánh giá, báo cáo sự cố, danh sách khiếu nại |
 | Merchant | 2.1.1 Đăng nhập; 2.1.2 Cập nhật hồ sơ (chờ Admin duyệt); 2.3.1–2.3.2 Quản lý/chi tiết đơn; 2.3.4 Cập nhật số kg thực tế; 2.4.1–2.4.4 Quản lý và phân công Shipper; 2.5.1–2.5.3 Xem locker/ô/lịch sử; 2.6.1–2.6.3 Dịch vụ và đề xuất |
 | Admin | 3.2.1–3.2.5 Quản lý Merchant + vùng phục vụ; 3.4.1–3.4.5 Quản lý Locker; 3.5.1–3.5.6 Quản lý và duyệt dịch vụ; 3.6.1–3.6.5 Khuyến mãi; 3.7.1–3.7.3 Khiếu nại và đánh giá; 3.8.1–3.8.3 Tài chính; 3.9.1–3.9.4 Cài đặt hệ thống |
 | Shipper | 4.1.1 Đăng nhập; 4.1.3–4.1.4 Xem/cập nhật hồ sơ; 4.3.1–4.3.2 Đơn được gán/chi tiết nhiệm vụ; 4.3.3–4.3.5 Lấy/trả đồ bằng QR; 4.3.6 Lịch sử giao nhận |
@@ -26,7 +26,6 @@ Chỉ tính **Backend**; FE chưa làm. Chi tiết từng UC ở bảng mục I 
 | Use case | Đã có | Còn thiếu |
 | --- | --- | --- |
 | 1.2.2 Xem danh sách locker | API danh sách tủ (tọa độ, số ô trống) và ô trống theo kích thước; "Hiện tại không có locker khả dụng." | Bản đồ/định vị là phần FE |
-| 1.2.4 Thanh toán | Sandbox/IPN nội bộ, đối chiếu số tiền, chống replay | Chưa kiểm thử với VNPay thật (cần tài khoản merchant VNPay) |
 
 ### ❌ Chưa làm
 
@@ -37,7 +36,7 @@ Chỉ tính **Backend**; FE chưa làm. Chi tiết từng UC ở bảng mục I 
 ### Ngoài phạm vi BE / cần lưu ý
 
 - Giao diện (Customer, Merchant, Shipper, Admin) chưa làm; `washgo-admin` đã được gỡ khỏi repo ngày 01/11.
-- Chưa chạy với SMTP thật (email OTP, mật khẩu tạm) và VNPay thật.
+- Chưa chạy với SMTP thật (email OTP, mật khẩu tạm). VNPay đã chạy thật trên **sandbox** (02/11); muốn thu tiền thật cần tài khoản VNPay production (doanh nghiệp ký hợp đồng).
 - API tạo Merchant (`POST /merchant/`) không còn nhận `userId`; FE mới phải gửi `email` để hệ thống tự tạo tài khoản.
 - Đăng nhập có thêm trường tùy chọn `portal` (`Customer`/`Merchant`/`Shipper`/`Admin`): FE từng trang nên gửi để nhận "Bạn không có quyền truy cập trang này." khi sai vai trò.
 - Điểm tích lũy (1.1.4) đang hiển thị giá trị lưu trong DB; đặc tả chưa có quy tắc cộng điểm nên chưa tính.
@@ -54,7 +53,7 @@ Chỉ tính **Backend**; FE chưa làm. Chi tiết từng UC ở bảng mục I 
 | 1.1.4 Xem hồ sơ; 1.1.5 Cập nhật hồ sơ | Đã có BE | Ngày 02/11: `GET/PUT /customer/me` có avatar (ảnh tự upload; bỏ trường = giữ, rỗng = xóa), tổng đơn và tổng chi tiêu tính từ đơn thực tế, bắt buộc địa chỉ ("Vui lòng nhập địa chỉ."), "Số điện thoại không hợp lệ.", "Cập nhật hồ sơ thành công!". |
 | 1.2.1 Tạo đơn | Đã có BE | Tạo đơn, tính giá từ server, giữ ô, QR gửi đồ, hạn gửi 30 phút; báo giá + mã khả dụng (`POST /wash-order/apply-voucher`), áp mã và ghi lượt dùng trong cùng transaction; thông báo "Đơn hàng đã tạo". Ngày 02/11 đối chiếu luồng thay thế: 4a "Hiện tại không có locker khả dụng.", 9a, 11a, 14a "Ô này vừa được đặt. Vui lòng chọn ô khác."; sinh mã đơn Merchant. |
 | 1.2.2 Xem danh sách locker | Một phần | API danh mục tủ/ô trống đã có; bản đồ/định vị là phần client chưa có. |
-| 1.2.4 Thanh toán | Một phần | Đã khóa `Paid` ở API đổi trạng thái ngày 29/10; IPN/sandbox dùng xác nhận nội bộ, khóa giao dịch/đơn và đối chiếu số tiền. Mock và replay đã test; chưa kiểm thử VNPay thật. |
+| 1.2.4 Thanh toán | Đã có BE | Tạo link VNPay 2.1.0 ký HMAC-SHA512, IPN kiểm tra chữ ký/mã website/số tiền, chống xử lý trùng, khóa `Paid` ở API đổi trạng thái. Ngày 02/11 chạy thật trên VNPay sandbox (Terminal mới, IPN qua Cloudflare Tunnel): thanh toán thẻ NCB → VNPay gọi IPN → đơn Paid, timeline + thông báo. Chế độ Mock vẫn dùng cho smoke test. |
 | 1.2.6 Theo dõi đơn; 1.2.8 Lịch sử đơn | Đã có BE | `POST /wash-order/mine` lọc trạng thái + khoảng thời gian (`fromDate`/`toDate`), mỗi đơn có tên dịch vụ, kích thước ô; chi tiết + timeline + QR; rỗng: "Bạn chưa có đơn hàng nào."; cập nhật realtime qua thông báo SignalR (02/11). |
 | 1.2.7 Hủy đơn | Đã có BE | Báo phí + hủy Pending 0%/30%, Deposited 30%, Collected đã cân 50%; thanh toán phí riêng và hoàn tiền có đối chiếu. Giữ ô có đồ, cho khách nhận lại hoặc Shipper trả từ tiệm qua locker. Không đổi đơn hủy sang Completed. Thông báo hủy cho khách, Merchant và Shipper có nhiệm vụ bị hủy đã có từ 01/11. |
 | 1.3 Gửi đồ / nhận đồ bằng QR | BE mô phỏng đã kiểm thử | Có endpoint gửi, mở ô nhận, xác nhận nhận và nhận tại kho. Tách QR gửi/nhận; xác nhận nhận tại locker cần token phiên 10 phút, hoàn tất đơn trong transaction. Không tích hợp phần cứng. |
@@ -110,7 +109,7 @@ Chỉ tính **Backend**; FE chưa làm. Chi tiết từng UC ở bảng mục I 
 10. **3.8 Tài chính, 2.5 Locker theo phạm vi Merchant, 2.6/3.5 Đề xuất – duyệt dịch vụ, 2.1.2 Merchant cập nhật hồ sơ — ĐÃ XONG BE ngày 01/11/2026** (xem các mục bên dưới).
 11. **3.2 Quản lý Merchant + vùng phục vụ, 3.4 Quản lý Locker — ĐÃ XONG BE ngày 01/11/2026** sau khi đối chiếu lại đặc tả (xem các mục bên dưới).
 12. **Ngày 02/11/2026 — ĐÃ XONG BE:** 4.1.3–4.1.4 Hồ sơ Shipper, 4.3.1–4.3.2 nhiệm vụ của Shipper, 4.3.6 Lịch sử giao nhận, 2.3.1–2.3.2 đơn của Merchant, 1.2.6/1.2.8 đơn của Customer, 1.1.4–1.1.5 hồ sơ Customer, đối chiếu 1.2.1 và câu thông báo đăng nhập; tách lại contract hồ sơ Merchant theo cấu trúc chung (xem mục bên dưới).
-13. **Còn lại:** 3.3 Phân công đơn cho Merchant (khi nhóm quyết định làm lại); 1.2.2 bản đồ (FE); 1.2.4 kiểm thử VNPay thật.
+13. **Còn lại:** 3.3 Phân công đơn cho Merchant (khi nhóm quyết định làm lại); 1.2.2 bản đồ (FE).
 
 **Đồng bộ đặc tả Word ngày 31/10/2026:** Đã cập nhật UC Customer gửi đồ (quá 30 phút chỉ từ chối, không tự hủy), Customer nhận tại locker hai bước và phiên 10 phút, SLA Shipper lấy 4 giờ từ DepositedAt/trả 24 giờ từ PaidAt (trễ vẫn cho giao nhận), mã riêng và khóa 5 lần/5 phút. Bổ sung UC Nhận đồ tại kho với phí locker đã chốt + 100.000đ/mỗi ngày kho bắt đầu, không giải phóng ô lần hai. Giữ yêu cầu thông báo/đánh giá trong đặc tả; đây vẫn là phần chưa triển khai. Đã lưu bản dự phòng `../Đặc tả usecase.backup-20261031-021336.docx`; kiểm tra nội dung và ZIP chỉ đổi `word/document.xml`. Chưa xác minh bố cục trang: không có Python runtime đóng gói để chạy renderer; thử xuất Word sang PDF bị timeout 25 giây.
 **Dọn mục trùng ngày 31/10/2026:** Xóa đúng 3 bảng Hiển thị QR Code giống hệt cùng tiêu đề đi kèm trong bản project; giữ bảng QR còn lại trong nhóm Customer và bảng QR khác nội dung ở mục khác. Nội dung tất cả bảng còn lại được đối chiếu giữ nguyên; đánh lại mục 1.3.1–1.3.4. Bản Downloads không chỉnh sửa. Backup: `../Đặc tả usecase.backup-dedup-20261031-023310.docx`. Chưa render lại bố cục do giới hạn công cụ xem trước đã ghi ở trên.
@@ -132,6 +131,7 @@ Chỉ tính **Backend**; FE chưa làm. Chi tiết từng UC ở bảng mục I 
 - [x] **Lịch sử giao nhận (4.3.6):** `POST /shipper-delivery/history` đọc timeline do chính Shipper ghi (lấy đồ = Collected; trả đồ = ReadyToReturn hoặc trả đồ đơn hủy), nên vẫn đúng khi đơn được phân công cho người khác; trả mã đơn, locker, ô, loại nhiệm vụ, thời gian, trạng thái đơn hiện tại.
 - [x] **Hồ sơ Customer (1.1.4–1.1.5):** avatar, tổng đơn/tổng chi tiêu tính từ đơn (các cột lưu sẵn chưa từng được cập nhật), địa chỉ bắt buộc, câu thông báo theo đặc tả.
 - [x] **Câu thông báo theo đặc tả:** đăng nhập sai "Email hoặc mật khẩu không đúng."; kiểm tra mật khẩu trước rồi mới báo khóa (không lộ trạng thái khóa khi sai mật khẩu); khóa "Tài khoản của bạn đã bị khóa. Vui lòng liên hệ Admin." (Shipper: "…liên hệ Merchant."); `portal` sai vai trò "Bạn không có quyền truy cập trang này."; tạo đơn 4a, 14a.
+- [x] **VNPay sandbox (1.2.4):** `tests/smoke/vnpay-sandbox.ps1` (chỉ chạy khi BE bật `Payment__Provider=VnPay`, đọc `HashSecret` từ container) PASS: link dùng đúng Terminal và chữ ký, VNPay sandbox mở trang chọn phương thức, IPN từ chối chữ ký/số tiền sai, ghi nhận một lần, gọi lại trả `02`, chặn callback giả lập. Thanh toán thật bằng thẻ NCB qua trình duyệt: VNPay gọi IPN về qua tunnel, đơn `WG2611026743` chuyển Paid (mã GD VNPay `15723198`). Hai Terminal cũ bị VNPay báo `code=71` (terminal chưa duyệt) nên đăng ký Terminal mới. Cấu hình VNPay chỉ nằm trong `docker-compose.override.yml` local (không commit).
 - [x] Smoke test mới PASS: `shipper-profile.ps1`, `order-list.ps1`, `shipper-tasks.ps1`, `spec-messages.ps1`; cập nhật `customer-profile.ps1`. Hồi quy `shipper-management`, `order-security`, `qr-pin-flow`, `shipper-assignment`, `order-cancellation` PASS; chạy lại toàn bộ 17 bộ còn lại (cân kg, tài chính, thông báo, nhắc nhở, khuyến mãi, phản hồi, cài đặt, locker, Merchant, dịch vụ, vùng phục vụ, hồ sơ, danh sách đơn, Shipper) PASS.
 
 ### Admin quản lý Merchant ngày 01/11/2026 — UC 3.2.1–3.2.5
