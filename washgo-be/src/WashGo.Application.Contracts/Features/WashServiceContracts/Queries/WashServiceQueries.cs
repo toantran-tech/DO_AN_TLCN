@@ -11,6 +11,8 @@ namespace WashGo.Application.Contracts.Features.WashServiceContracts.Queries
     {
         public WashServiceType? ServiceType { get; set; }
         public bool? IsActive { get; set; }
+        public Guid? MerchantId { get; set; }
+        public ServiceApprovalStatus? ApprovalStatus { get; set; }
     }
 }
 

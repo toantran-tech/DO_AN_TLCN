@@ -9,11 +9,11 @@ namespace WashGo.Application.Features.MerchantApplication.Mappings
     {
         public MerchantMappingProfile()
         {
-            CreateMap<Merchant, MerchantResultDto>();
-            CreateMap<CreateMerchantCommand, Merchant>()
-                .ForMember(dest => dest.Id, opt => opt.MapFrom(src => src.UserId));
-            CreateMap<UpdateMerchantCommand, Merchant>()
-                .ForMember(dest => dest.Status, opt => opt.Ignore());
+            CreateMap<Merchant, MerchantResultDto>()
+                .ForMember(dest => dest.Email, opt => opt.Ignore())
+                .ForMember(dest => dest.ImageUrls, opt => opt.Ignore())
+                .ForMember(dest => dest.UnfinishedOrders, opt => opt.Ignore())
+                .ForMember(dest => dest.ServiceAreaIds, opt => opt.Ignore());
         }
     }
 }

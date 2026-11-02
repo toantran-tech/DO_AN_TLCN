@@ -18,6 +18,7 @@ namespace WashGo.Application.Contracts.Features.WashServiceContracts.Services
         Task<BaseResponse<WashServiceResultDto>> CreateAsync(CreateWashServiceCommand command);
         Task<BaseResponse<WashServiceResultDto>> UpdateAsync(UpdateWashServiceCommand command);
         Task<BaseResponse<WashServiceResultDto>> UpdateStatusAsync(UpdateWashServiceStatusCommand command);
+        Task<BaseResponse<bool>> DeleteAsync(Guid id);
         Task<BaseResponse<List<ColumnFilterDistinctValueDto>>> GetColumnDistinctValuesAsync(string fieldName, WashServiceFilterQuery query);
     }
 }

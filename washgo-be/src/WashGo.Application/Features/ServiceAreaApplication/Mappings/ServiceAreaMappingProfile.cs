@@ -9,7 +9,8 @@ namespace WashGo.Application.Features.ServiceAreaApplication.Mappings
     {
         public ServiceAreaMappingProfile()
         {
-            CreateMap<ServiceArea, ServiceAreaResultDto>();
+            CreateMap<ServiceArea, ServiceAreaResultDto>()
+                .ForMember(dest => dest.MerchantCount, opt => opt.Ignore());
             CreateMap<CreateServiceAreaCommand, ServiceArea>();
             CreateMap<UpdateServiceAreaCommand, ServiceArea>();
         }

@@ -1,3 +1,5 @@
+using System;
+using WashGo.Domain.Shared.Enums;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 using Volo.Abp.Application.Services;
@@ -15,7 +17,8 @@ namespace WashGo.Application.Contracts.Features.PaymentContracts.Services
         Task<BaseResponse<PaymentResultDto>> HandleCallbackAsync(PaymentCallbackCommand command);
         Task<VnPayIpnResultDto> HandleVnPayIpnAsync(IReadOnlyDictionary<string, string> parameters);
         Task<BaseResponse<RefundRequestDto>> CreateRefundRequestAsync(CreateRefundRequestCommand command);
-        Task<BaseResponse<System.Collections.Generic.List<RefundRequestDto>>> GetRefundRequestsAsync(bool mineOnly);
+        Task<BaseResponse<System.Collections.Generic.List<RefundRequestDto>>> GetRefundRequestsAsync(bool mineOnly, RefundRequestStatus? status = null);
+        Task<BaseResponse<RefundRequestDto>> GetRefundRequestAsync(Guid id);
         Task<BaseResponse<RefundRequestDto>> ReviewRefundRequestAsync(Guid id, ReviewRefundRequestCommand command);
         Task<BaseResponse<RefundRequestDto>> ConfirmRefundedAsync(Guid id, ConfirmRefundCommand command);
     }

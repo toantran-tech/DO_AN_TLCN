@@ -18,12 +18,19 @@ namespace WashGo.HttpApi.Endpoints.WashService
         {
             var group = app.MapGroup(_endpoint)
             .WithTags("Wash Service - Quản lý dịch vụ")
-            .RequireAuthorization("MerchantOrAdmin");
+            // UC 3.5: only Admin manages services directly; Merchants use /merchant-service proposals (UC 2.6).
+            .RequireAuthorization("AdminOnly");
 
             group.MapPost("/filter", async (WashServiceFilterQuery request, IWashServiceAppService svc) =>
                 (await svc.GetListAsync(request)).CustomResult())
                 .WithName("Lọc danh sách dịch vụ")
-                .WithSummary("Lọc danh sách dịch vụ.")
+                .WithSummary("Admin xem dịch vụ, lọc theo Merchant, danh mục, trạng thái hoạt động và trạng thái duyệt.")
+                .WithOpenApi();
+
+            group.MapDelete("/{id:guid}", async (Guid id, IWashServiceAppService svc) =>
+                (await svc.DeleteAsync(id)).CustomResult())
+                .WithName("Xóa dịch vụ WashGo")
+                .WithSummary("Xóa mềm dịch vụ; từ chối khi dịch vụ đang có đơn hàng chưa hoàn tất.")
                 .WithOpenApi();
 
             group.MapGet("/{id:guid}", async (Guid id, IWashServiceAppService svc) =>

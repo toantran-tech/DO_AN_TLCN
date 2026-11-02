@@ -25,7 +25,25 @@ namespace WashGo.Application.Features.AuthApplication.Services
             _logger = logger;
         }
 
-        public async Task<bool> SendOtpAsync(string email, string code, OtpPurpose purpose)
+        public Task<bool> SendOtpAsync(string email, string code, OtpPurpose purpose)
+        {
+            var subject = purpose switch
+            {
+                OtpPurpose.Register => "Mã xác thực đăng ký tài khoản WashGo",
+                OtpPurpose.ForgotPassword => "Mã xác thực đặt lại mật khẩu WashGo",
+                _ => "Mã xác thực WashGo"
+            };
+            return SendAsync(email, subject,
+                $"Mã xác thực của bạn là: {code}. Mã có hiệu lực trong 5 phút. Vui lòng không chia sẻ mã này cho bất kỳ ai.");
+        }
+
+        public Task<bool> SendAccountCredentialsAsync(string email, string fullName, string temporaryPassword) =>
+            SendAsync(email, "Tài khoản Shipper WashGo của bạn",
+                $"Xin chào {fullName},\n\nTài khoản Shipper WashGo của bạn đã được tạo.\n" +
+                $"Email đăng nhập: {email}\nMật khẩu tạm thời: {temporaryPassword}\n\n" +
+                "Vui lòng đăng nhập và đổi mật khẩu bằng chức năng Quên mật khẩu. Không chia sẻ thông tin này cho bất kỳ ai.");
+
+        private async Task<bool> SendAsync(string email, string subject, string body)
         {
 
             var host = _configuration["Email:Smtp:Host"];
@@ -46,18 +64,11 @@ namespace WashGo.Application.Features.AuthApplication.Services
 
             try
             {
-                var subject = purpose switch
-                {
-                    OtpPurpose.Register => "Mã xác thực đăng ký tài khoản WashGo",
-                    OtpPurpose.ForgotPassword => "Mã xác thực đặt lại mật khẩu WashGo",
-                    _ => "Mã xác thực WashGo"
-                };
-
                 using var message = new MailMessage
                 {
                     From = new MailAddress(senderAddress, senderName),
                     Subject = subject,
-                    Body = $"Mã xác thực của bạn là: {code}. Mã có hiệu lực trong 5 phút. Vui lòng không chia sẻ mã này cho bất kỳ ai.",
+                    Body = body,
                     IsBodyHtml = false
                 };
                 message.To.Add(email);
@@ -78,7 +89,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to send OTP email to {Email}", email);
+                _logger.LogError(ex, "Failed to send email '{Subject}' to {Email}", subject, email);
                 return false;
             }
         }

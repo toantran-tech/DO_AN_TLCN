@@ -1,13 +1,16 @@
 using System;
+using System.IO;
 using System.Linq;
 using System.Security.Claims;
 using System.Text;
 using System.Threading.RateLimiting;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Cors;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.IdentityModel.Tokens;
@@ -22,10 +25,13 @@ using Volo.Abp.Domain.Repositories;
 using Volo.Abp.Swashbuckle;
 using Volo.Abp.Threading;
 using WashGo.Application;
+using WashGo.Application.Features.FileApplication.Services;
 using WashGo.Core.Endpoint;
 using WashGo.EntityFrameworkCore;
 using WashGo.EntityFrameworkCore.EntityFrameworkCore;
 using WashGo.HttpApi;
+using WashGo.HttpApi.Hubs;
+using WashGo.HttpApi.Host.Workers;
 using WashGo.Domain.Entities.Identity;
 
 namespace WashGo.HttpApi.Host
@@ -79,6 +85,15 @@ namespace WashGo.HttpApi.Host
                 };
                 options.Events = new JwtBearerEvents
                 {
+                    // Browsers cannot set headers on WebSocket requests, so the hub reads the token from the query string.
+                    OnMessageReceived = messageContext =>
+                    {
+                        var accessToken = messageContext.Request.Query["access_token"];
+                        if (!string.IsNullOrEmpty(accessToken) &&
+                            messageContext.HttpContext.Request.Path.StartsWithSegments(NotificationHub.Path))
+                            messageContext.Token = accessToken;
+                        return Task.CompletedTask;
+                    },
                     OnTokenValidated = async tokenContext =>
                     {
                         var userIdText = tokenContext.Principal?.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -148,6 +163,8 @@ namespace WashGo.HttpApi.Host
                 });
             });
 
+            context.Services.AddSignalR();
+            context.Services.AddHostedService<ReminderWorker>();
             context.Services.AddEndpointsApiExplorer();
             context.Services.AddSwaggerGen(options =>
             {
@@ -194,6 +211,15 @@ namespace WashGo.HttpApi.Host
             }
 
             app.UseStaticFiles();
+            // Uploaded evidence images live outside wwwroot so a Docker volume can persist them.
+            var uploadRoot = UploadStorage.GetRoot(context.ServiceProvider.GetRequiredService<IConfiguration>());
+            Directory.CreateDirectory(uploadRoot);
+            app.UseStaticFiles(new StaticFileOptions
+            {
+                FileProvider = new PhysicalFileProvider(uploadRoot),
+                RequestPath = UploadStorage.RequestPath,
+                ServeUnknownFileTypes = false
+            });
             app.UseRouting();
             app.UseRateLimiter();
             app.UseCors();
@@ -233,6 +259,7 @@ namespace WashGo.HttpApi.Host
                 {
                     handler.MapEndpoint(endpoints);
                 }
+                endpoints.MapHub<NotificationHub>(NotificationHub.Path);
             });
         }
     }

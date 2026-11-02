@@ -1,0 +1,8 @@
+{
+  "name": "washgo-smoke-tests",
+  "private": true,
+  "description": "Node tooling for WashGo smoke tests (SignalR listener).",
+  "dependencies": {
+    "@microsoft/signalr": "^8.0.7"
+  }
+}

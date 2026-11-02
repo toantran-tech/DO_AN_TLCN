@@ -2,23 +2,33 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Net;
 using Volo.Abp.Domain.Repositories;
+using Volo.Abp.Uow;
 using WashGo.Application.Contracts.Features.ServiceAreaContracts.Commands;
 using WashGo.Application.Contracts.Features.ServiceAreaContracts.Queries;
 using WashGo.Application.Contracts.Features.ServiceAreaContracts.Results;
 using WashGo.Application.Contracts.Features.ServiceAreaContracts.Services;
 using WashGo.Core.Domain.Shared.Bases;
 using WashGo.Domain.Entities.Partner;
+using WashGo.Domain.Shared.Enums;
 
 namespace WashGo.Application.Features.ServiceAreaApplication.Services
 {
     public class ServiceAreaAppService : WashGoAppService, IServiceAreaAppService
     {
         private readonly IRepository<ServiceArea, Guid> _serviceAreaRepo;
+        private readonly IRepository<MerchantServiceArea, Guid> _msaRepo;
+        private readonly IRepository<Merchant, Guid> _merchantRepo;
 
-        public ServiceAreaAppService(IRepository<ServiceArea, Guid> serviceAreaRepo)
+        public ServiceAreaAppService(
+            IRepository<ServiceArea, Guid> serviceAreaRepo,
+            IRepository<MerchantServiceArea, Guid> msaRepo,
+            IRepository<Merchant, Guid> merchantRepo)
         {
             _serviceAreaRepo = serviceAreaRepo;
+            _msaRepo = msaRepo;
+            _merchantRepo = merchantRepo;
         }
 
         public async Task<PaginatedResult<ServiceAreaResultDto>> GetListAsync(ServiceAreaFilterQuery query)
@@ -50,7 +60,8 @@ namespace WashGo.Application.Features.ServiceAreaApplication.Services
             );
 
             var dtos = ObjectMapper.Map<List<ServiceArea>, List<ServiceAreaResultDto>>(items);
-            return Success(dtos, total, query.Page, query.Take);
+            await FillMerchantCountsAsync(dtos);
+            return Success(dtos, total, query.Page, query.Take, total == 0 ? "Chưa có vùng phục vụ nào." : null);
         }
 
         public async Task<BaseResponse<ServiceAreaResultDto>> GetByIdAsync(Guid id)
@@ -62,7 +73,98 @@ namespace WashGo.Application.Features.ServiceAreaApplication.Services
             }
 
             var dto = ObjectMapper.Map<ServiceArea, ServiceAreaResultDto>(entity);
+            await FillMerchantCountsAsync([dto]);
             return Success(dto);
+        }
+
+        // UC 3.2.5 steps 3-6: active Merchants with their current assignment to this area.
+        public async Task<BaseResponse<AreaMerchantsDto>> GetMerchantsAsync(Guid id)
+        {
+            var area = await _serviceAreaRepo.FindAsync(id);
+            if (area == null)
+                return NotFound<AreaMerchantsDto>("Không tìm thấy Vùng phục vụ!");
+            return Success(await AreaMerchantsAsync(area));
+        }
+
+        // UC 3.2.5 steps 7-9: replaces the Merchant list of the area.
+        public async Task<BaseResponse<AreaMerchantsDto>> SetMerchantsAsync(Guid id, SetAreaMerchantsCommand command)
+        {
+            var area = await _serviceAreaRepo.FindAsync(id);
+            if (area == null)
+                return NotFound<AreaMerchantsDto>("Không tìm thấy Vùng phục vụ!");
+            var items = command.Merchants ?? [];
+            if (items.Count == 0 && !command.ConfirmEmpty)
+                return new BaseResponse<AreaMerchantsDto>
+                {
+                    Succeeded = false,
+                    StatusCode = HttpStatusCode.Conflict,
+                    Data = await AreaMerchantsAsync(area),
+                    Message = "Vùng này chưa có Merchant nào phục vụ. Bạn có chắc muốn lưu?"
+                };
+            if (items.Select(x => x.MerchantId).Distinct().Count() != items.Count)
+                return BadRequest<AreaMerchantsDto>("Mỗi Merchant chỉ được chọn một lần.");
+            if (items.Any(x => x.Priority is < 1 or > 100))
+                return BadRequest<AreaMerchantsDto>("Độ ưu tiên phải từ 1 đến 100 (1 là cao nhất).");
+            var ids = items.Select(x => x.MerchantId).ToList();
+            var active = await AsyncExecuter.CountAsync((await _merchantRepo.GetQueryableAsync())
+                .Where(x => ids.Contains(x.Id) && x.Status == MerchantStatus.Active));
+            if (active != ids.Count)
+                return BadRequest<AreaMerchantsDto>("Chỉ được chọn Merchant đang hoạt động.");
+
+            using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            var now = DateTime.UtcNow;
+            var existing = await _msaRepo.GetListAsync(x => x.ServiceAreaId == id);
+            await _msaRepo.DeleteManyAsync(existing, autoSave: true);
+            await _msaRepo.InsertManyAsync(items.Select(x => new MerchantServiceArea(GuidGenerator.Create())
+            {
+                MerchantId = x.MerchantId,
+                ServiceAreaId = id,
+                Priority = x.Priority,
+                IsActive = true,
+                AssignedBy = CurrentUser.Id,
+                AssignedAt = now,
+                CreatedAt = now,
+                UpdatedAt = now
+            }), autoSave: true);
+            await uow.CompleteAsync();
+            return Success(await AreaMerchantsAsync(area), "Thiết lập vùng phục vụ thành công!");
+        }
+
+        private async Task<AreaMerchantsDto> AreaMerchantsAsync(ServiceArea area)
+        {
+            var links = (await _msaRepo.GetListAsync(x => x.ServiceAreaId == area.Id && x.IsActive))
+                .GroupBy(x => x.MerchantId).ToDictionary(g => g.Key, g => g.Min(x => x.Priority));
+            var linkedIds = links.Keys.ToList();
+            // Active Merchants plus any inactive Merchant still linked, so the Admin can see and remove it.
+            var merchants = await _merchantRepo.GetListAsync(x => x.Status == MerchantStatus.Active || linkedIds.Contains(x.Id));
+            var dto = ObjectMapper.Map<ServiceArea, ServiceAreaResultDto>(area);
+            dto.MerchantCount = links.Count;
+            return new AreaMerchantsDto
+            {
+                Area = dto,
+                Merchants = merchants
+                    .Select(m => new AreaMerchantDto
+                    {
+                        MerchantId = m.Id,
+                        BusinessName = m.BusinessName,
+                        District = m.District,
+                        City = m.City,
+                        Rating = m.Rating,
+                        Assigned = links.ContainsKey(m.Id),
+                        Priority = links.TryGetValue(m.Id, out var p) ? p : null
+                    })
+                    .OrderBy(x => x.Assigned ? 0 : 1).ThenBy(x => x.Priority ?? int.MaxValue).ThenBy(x => x.BusinessName)
+                    .ToList()
+            };
+        }
+
+        private async System.Threading.Tasks.Task FillMerchantCountsAsync(List<ServiceAreaResultDto> areas)
+        {
+            var ids = areas.Select(x => x.Id).ToList();
+            var counts = (await _msaRepo.GetListAsync(x => ids.Contains(x.ServiceAreaId) && x.IsActive))
+                .GroupBy(x => x.ServiceAreaId).ToDictionary(g => g.Key, g => g.Select(x => x.MerchantId).Distinct().Count());
+            foreach (var dto in areas)
+                dto.MerchantCount = counts.GetValueOrDefault(dto.Id);
         }
 
         public async Task<BaseResponse<ServiceAreaResultDto>> CreateAsync(CreateServiceAreaCommand command)
