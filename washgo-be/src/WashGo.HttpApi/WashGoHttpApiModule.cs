@@ -47,6 +47,7 @@ namespace WashGo.HttpApi
             context.Services.AddTransient<IEndpointBase, NotificationHandler>();
             context.Services.AddTransient<IEndpointBase, SystemSettingHandler>();
             context.Services.AddTransient<IEndpointBase, ShipperHandler>();
+            context.Services.AddTransient<IEndpointBase, ShipperProfileHandler>();
             context.Services.AddTransient<IEndpointBase, FinanceHandler>();
             context.Services.AddTransient<IEndpointBase, ServiceProposalHandler>();
             context.Services.AddTransient<IEndpointBase, MerchantProfileHandler>();
