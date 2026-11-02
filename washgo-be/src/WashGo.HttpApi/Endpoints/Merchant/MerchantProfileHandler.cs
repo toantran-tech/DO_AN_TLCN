@@ -3,7 +3,10 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.OpenApi;
 using Microsoft.AspNetCore.Routing;
-using WashGo.Application.Contracts.Features.MerchantProfileContracts;
+using WashGo.Application.Contracts.Features.MerchantProfileContracts.Commands;
+using WashGo.Application.Contracts.Features.MerchantProfileContracts.Queries;
+using WashGo.Application.Contracts.Features.MerchantProfileContracts.Results;
+using WashGo.Application.Contracts.Features.MerchantProfileContracts.Services;
 using WashGo.Core.Endpoint;
 
 namespace WashGo.HttpApi.Endpoints.Merchant
