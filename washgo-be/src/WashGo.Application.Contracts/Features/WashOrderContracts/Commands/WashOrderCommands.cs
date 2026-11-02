@@ -6,15 +6,18 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Commands
 {
     public class CreateWashOrderCommand
     {
-        public Guid CustomerId { get; set; }
-        public string CustomerName { get; set; } = string.Empty;
-        public string CustomerPhoneNumber { get; set; } = string.Empty;
         public Guid LockerId { get; set; }
         public Guid BoxId { get; set; }
         public Guid? ReturnLockerId { get; set; }
         public PaymentMethod PaymentMethod { get; set; } = PaymentMethod.Cash;
         public string? CustomerNote { get; set; }
+        public string? PromotionCode { get; set; }
         public List<CreateWashOrderItemDto> Items { get; set; } = [];
+    }
+
+    public class CancelWashOrderCommand
+    {
+        public string Reason { get; set; } = string.Empty;
     }
 
     public class CreateWashOrderItemDto
@@ -42,5 +45,47 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Commands
         public Guid OrderId { get; set; }
         public Guid ShipperId { get; set; }
         public string ShipperName { get; set; } = string.Empty;
+    }
+
+    public class MoveOrderToStorageCommand
+    {
+        public Guid OrderId { get; set; }
+        public string StorageLocation { get; set; } = string.Empty;
+        public string StorageReference { get; set; } = string.Empty;
+        public string? Note { get; set; }
+    }
+
+    public class DepositWashOrderCommand
+    {
+        public string? PinCode { get; set; }
+        public string? QrCode { get; set; }
+    }
+
+    public class ShipperCollectOrderCommand
+    {
+        public string? PinCode { get; set; }
+        public string? QrCode { get; set; }
+    }
+
+    public class ShipperReturnOrderCommand
+    {
+        public string? PinCode { get; set; }
+        public string? QrCode { get; set; }
+    }
+
+    public class OpenPickupBoxCommand
+    {
+        public string? PinCode { get; set; }
+        public string? QrCode { get; set; }
+    }
+
+    public class ConfirmPickupCommand
+    {
+        public string PickupSessionToken { get; set; } = string.Empty;
+    }
+
+    public class PickupFromStorageCommand
+    {
+        public string? Note { get; set; }
     }
 }

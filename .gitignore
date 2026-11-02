@@ -37,3 +37,9 @@ appsettings.Development.json
 # TypeScript build cache
 *.tsbuildinfo
 .vscode/
+
+# Documents, specifications and raw SQL dumps
+*.docx
+*.doc
+*.sql
+extracted_*.txt

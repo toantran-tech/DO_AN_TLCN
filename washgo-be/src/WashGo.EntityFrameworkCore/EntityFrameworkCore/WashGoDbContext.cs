@@ -3,6 +3,12 @@ using Volo.Abp.Data;
 using Volo.Abp.EntityFrameworkCore;
 using WashGo.Domain.Entities.Identity;
 using WashGo.Domain.Entities.Locker;
+using WashGo.Domain.Entities.Feedback;
+using WashGo.Domain.Entities.Finance;
+using WashGo.Domain.Entities.Notification;
+using WashGo.Domain.Entities.Payment;
+using WashGo.Domain.Entities.Promotion;
+using WashGo.Domain.Entities.SystemConfig;
 using WashGo.Domain.Entities.Partner;
 using WashGo.Domain.Entities.WashOrder;
 using WashGo.Domain.Entities.WashService;
@@ -31,6 +37,17 @@ namespace WashGo.EntityFrameworkCore.EntityFrameworkCore
         public DbSet<Locker> Lockers { get; set; } = null!;
         public DbSet<LockerBox> LockerBoxes { get; set; } = null!;
         public DbSet<WashService> WashServices { get; set; } = null!;
+        public DbSet<PaymentTransaction> PaymentTransactions { get; set; } = null!;
+        public DbSet<RefundRequest> RefundRequests { get; set; } = null!;
+        public DbSet<Promotion> Promotions { get; set; } = null!;
+        public DbSet<PromotionUsage> PromotionUsages { get; set; } = null!;
+        public DbSet<OrderRating> OrderRatings { get; set; } = null!;
+        public DbSet<Incident> Incidents { get; set; } = null!;
+        public DbSet<Notification> Notifications { get; set; } = null!;
+        public DbSet<SystemSetting> SystemSettings { get; set; } = null!;
+        public DbSet<ReminderLog> ReminderLogs { get; set; } = null!;
+        public DbSet<MerchantSettlement> MerchantSettlements { get; set; } = null!;
+        public DbSet<MerchantProfileRequest> MerchantProfileRequests { get; set; } = null!;
 
         public WashGoDbContext(DbContextOptions<WashGoDbContext> options)
             : base(options)
@@ -60,6 +77,17 @@ namespace WashGo.EntityFrameworkCore.EntityFrameworkCore
             builder.ApplyConfiguration(new LockerEntityTypeConfiguration());
             builder.ApplyConfiguration(new LockerBoxEntityTypeConfiguration());
             builder.ApplyConfiguration(new WashServiceEntityTypeConfiguration());
+            builder.ApplyConfiguration(new PaymentTransactionEntityTypeConfiguration());
+            builder.ApplyConfiguration(new RefundRequestEntityTypeConfiguration());
+            builder.ApplyConfiguration(new PromotionEntityTypeConfiguration());
+            builder.ApplyConfiguration(new PromotionUsageEntityTypeConfiguration());
+            builder.ApplyConfiguration(new OrderRatingEntityTypeConfiguration());
+            builder.ApplyConfiguration(new IncidentEntityTypeConfiguration());
+            builder.ApplyConfiguration(new NotificationEntityTypeConfiguration());
+            builder.ApplyConfiguration(new SystemSettingEntityTypeConfiguration());
+            builder.ApplyConfiguration(new ReminderLogEntityTypeConfiguration());
+            builder.ApplyConfiguration(new MerchantSettlementEntityTypeConfiguration());
+            builder.ApplyConfiguration(new MerchantProfileRequestEntityTypeConfiguration());
 
             builder.UseWashGoSnakeCaseColumns();
         }

@@ -17,6 +17,7 @@
     <PackageReference Include="Volo.Abp.Ddd.Application" Version="8.2.0" />
     <PackageReference Include="Volo.Abp.AutoMapper" Version="8.2.0" />
     <PackageReference Include="BCrypt.Net-Next" Version="4.0.3" />
+    <PackageReference Include="Google.Apis.Auth" Version="1.77.0" />
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.0.2" />
   </ItemGroup>
 

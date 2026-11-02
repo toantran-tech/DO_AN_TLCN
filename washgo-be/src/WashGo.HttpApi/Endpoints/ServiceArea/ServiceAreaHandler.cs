@@ -16,31 +16,50 @@ namespace WashGo.HttpApi.Endpoints.ServiceArea
 
         public void MapEndpoint(IEndpointRouteBuilder app)
         {
-            var group = app.MapGroup(_endpoint).WithTags("Service Area - Quản lý vùng phục vụ");
+            var group = app.MapGroup(_endpoint)
+            .WithTags("Service Area - Quản lý vùng phục vụ")
+            .RequireAuthorization("AdminOnly");
 
             group.MapPost("/filter", async (ServiceAreaFilterQuery request, IServiceAreaAppService svc) =>
                 (await svc.GetListAsync(request)).CustomResult())
                 .WithName("Lọc danh sách vùng phục vụ")
+                .WithSummary("Lọc danh sách vùng phục vụ.")
                 .WithOpenApi();
 
             group.MapGet("/{id:guid}", async (Guid id, IServiceAreaAppService svc) =>
                 (await svc.GetByIdAsync(id)).CustomResult())
                 .WithName("Xem chi tiết vùng phục vụ")
+                .WithSummary("Xem chi tiết vùng phục vụ.")
                 .WithOpenApi();
 
             group.MapPost("/", async (CreateServiceAreaCommand command, IServiceAreaAppService svc) =>
                 (await svc.CreateAsync(command)).CustomResult())
                 .WithName("Thêm mới vùng phục vụ")
+                .WithSummary("Thêm mới vùng phục vụ.")
                 .WithOpenApi();
 
             group.MapPut("/", async (UpdateServiceAreaCommand command, IServiceAreaAppService svc) =>
                 (await svc.UpdateAsync(command)).CustomResult())
                 .WithName("Cập nhật vùng phục vụ")
+                .WithSummary("Cập nhật vùng phục vụ.")
                 .WithOpenApi();
 
             group.MapPatch("/{id:guid}/toggle-active", async (Guid id, IServiceAreaAppService svc) =>
                 (await svc.ToggleActiveAsync(id)).CustomResult())
                 .WithName("Bật / Tắt trạng thái vùng phục vụ")
+                .WithSummary("Bật / Tắt trạng thái vùng phục vụ.")
+                .WithOpenApi();
+
+            group.MapGet("/{id:guid}/merchants", async (Guid id, IServiceAreaAppService svc) =>
+                (await svc.GetMerchantsAsync(id)).CustomResult())
+                .WithName("Merchant của vùng phục vụ")
+                .WithSummary("Danh sách Merchant đang hoạt động, đánh dấu Merchant đã gán vùng và độ ưu tiên (UC 3.2.5).")
+                .WithOpenApi();
+
+            group.MapPut("/{id:guid}/merchants", async (Guid id, SetAreaMerchantsCommand command, IServiceAreaAppService svc) =>
+                (await svc.SetMerchantsAsync(id, command)).CustomResult())
+                .WithName("Thiết lập vùng phục vụ")
+                .WithSummary("Gán một hoặc nhiều Merchant cho vùng với độ ưu tiên; bỏ chọn tất cả cần confirmEmpty (409 cảnh báo).")
                 .WithOpenApi();
         }
     }

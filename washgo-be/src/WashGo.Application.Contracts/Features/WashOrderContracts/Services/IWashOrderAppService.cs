@@ -12,10 +12,25 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Services
     public interface IWashOrderAppService : IApplicationService
     {
         Task<PaginatedResult<WashOrderResultDto>> GetListAsync(WashOrderFilterQuery query);
+        Task<PaginatedResult<WashOrderResultDto>> GetMyOrdersAsync(WashOrderFilterQuery query);
         Task<BaseResponse<WashOrderDetailDto>> GetByIdAsync(Guid id);
         Task<BaseResponse<WashOrderDetailDto>> CreateAsync(CreateWashOrderCommand command);
+        Task<BaseResponse<VoucherQuoteDto>> ApplyVoucherAsync(ApplyVoucherCommand command);
+        Task<BaseResponse<WashOrderDetailDto>> CancelAsync(Guid orderId, CancelWashOrderCommand command);
+        Task<BaseResponse<CancellationQuoteDto>> GetCancellationQuoteAsync(Guid orderId);
         Task<BaseResponse<WashOrderDetailDto>> UpdateStatusAsync(UpdateWashOrderStatusCommand command);
+        Task<BaseResponse<WashOrderDetailDto>> UpdateActualWeightAsync(Guid orderId, UpdateActualWeightCommand command);
+        Task<BaseResponse<WashOrderDetailDto>> MoveToStorageAsync(MoveOrderToStorageCommand command);
         Task<BaseResponse<WashOrderDetailDto>> AssignShipperAsync(AssignShipperCommand command);
+        Task<BaseResponse<List<AvailableShipperDto>>> GetAvailableShippersAsync(Guid orderId);
         Task<BaseResponse<List<ColumnFilterDistinctValueDto>>> GetColumnDistinctValuesAsync(string fieldName, WashOrderFilterQuery query);
+
+        // QR/PIN simulation operations
+        Task<BaseResponse<WashOrderDetailDto>> DepositAsync(Guid orderId, DepositWashOrderCommand command);
+        Task<BaseResponse<WashOrderDetailDto>> ShipperCollectAsync(Guid orderId, ShipperCollectOrderCommand command);
+        Task<BaseResponse<WashOrderDetailDto>> ShipperReturnAsync(Guid orderId, ShipperReturnOrderCommand command);
+        Task<BaseResponse<OpenPickupBoxResultDto>> OpenPickupBoxAsync(Guid orderId, OpenPickupBoxCommand command);
+        Task<BaseResponse<WashOrderDetailDto>> ConfirmPickupAsync(Guid orderId, ConfirmPickupCommand command);
+        Task<BaseResponse<WashOrderDetailDto>> PickupFromStorageAsync(Guid orderId, PickupFromStorageCommand command);
     }
 }

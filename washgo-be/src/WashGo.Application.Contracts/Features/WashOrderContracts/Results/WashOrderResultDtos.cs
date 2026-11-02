@@ -15,22 +15,56 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Results
         public string LockerName { get; set; } = string.Empty;
         public Guid BoxId { get; set; }
         public string BoxNumber { get; set; } = string.Empty;
+        public Guid? ReturnLockerId { get; set; }
+        public Guid? ReturnBoxId { get; set; }
         public string? ReturnBoxNumber { get; set; }
         public Guid? ShipperId { get; set; }
+        public DeliveryTaskType? AssignedTaskType { get; set; }
+        public DateTime? ShipperAssignedAt { get; set; }
         public string? ShipperName { get; set; }
+        public string? ShipperTaskPinCode { get; set; }
+        public string? ShipperTaskQrString { get; set; }
         public Guid? MerchantId { get; set; }
         public string? MerchantName { get; set; }
         public decimal TotalAmount { get; set; }
+        public string? PromotionCode { get; set; }
         public decimal DiscountAmount { get; set; }
         public decimal FinalAmount { get; set; }
+        public decimal? ActualWeightKg { get; set; }
+        public decimal? IncludedWeightKg { get; set; }
+        public decimal? ExcessWeightKg => ActualWeightKg.HasValue && IncludedWeightKg.HasValue
+            ? Math.Max(0m, ActualWeightKg.Value - IncludedWeightKg.Value) : null;
+        public decimal WeightSurchargeAmount { get; set; }
+        public int? BaseProcessingHours { get; set; }
+        public DateTime? EstimatedFinishAt { get; set; }
+        public DateTime? EtaUpdatedAt { get; set; }
         public WashOrderStatus Status { get; set; }
         public PaymentStatus PaymentStatus { get; set; }
         public PaymentMethod PaymentMethod { get; set; }
         public string DepositPinCode { get; set; } = string.Empty;
         public string PickupPinCode { get; set; } = string.Empty;
+        public string? PickupQrCodeString => string.IsNullOrEmpty(PickupPinCode)
+            ? null : $"WASHGO:PICKUP:{OrderCode}:{PickupPinCode}";
         public string QrCodeString { get; set; } = string.Empty;
         public long ExpectedDeliveryTime { get; set; }
+        public DateTime? DepositedAt { get; set; }
+        public DateTime? PaidAt { get; set; }
+        public DateTime? PickupDeadline { get; set; }
+        public decimal OverdueFeeTotal { get; set; }
+        public decimal StorageFeeTotal { get; set; }
+        public DateTime? MovedToStorageAt { get; set; }
+        public string? StorageLocation { get; set; }
+        public string? StorageReference { get; set; }
         public long CreatedOn { get; set; }
+        public decimal CancelFeeAmount { get; set; }
+        public decimal CancelFeePaidAmount { get; set; }
+        public decimal CancellationFeeOutstanding => Math.Max(0m, CancelFeeAmount - CancelFeePaidAmount);
+        public decimal CancellationRefundAmount { get; set; }
+        public DateTime? CancelledAt { get; set; }
+        public string? CancellationReason { get; set; }
+        public WashOrderStatus? CancellationFromStatus { get; set; }
+        public CancelledGoodsStatus CancelledGoodsStatus { get; set; }
+        public DateTime? CancelledGoodsReturnedAt { get; set; }
     }
 
     public class WashOrderDetailDto : WashOrderResultDto
@@ -48,6 +82,8 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Results
         public int Quantity { get; set; }
         public decimal UnitPrice { get; set; }
         public decimal SubTotal { get; set; }
+        public decimal? WeightKg { get; set; }
+        public bool IsWeightBased { get; set; }
         public string? Note { get; set; }
     }
 
@@ -60,5 +96,17 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Results
         public string? ActorRole { get; set; }
         public long Timestamp { get; set; }
         public string? Note { get; set; }
+    }
+
+    public class OpenPickupBoxResultDto
+    {
+        public Guid OrderId { get; set; }
+        public string OrderCode { get; set; } = string.Empty;
+        public Guid ReturnLockerId { get; set; }
+        public string ReturnLockerName { get; set; } = string.Empty;
+        public Guid ReturnBoxId { get; set; }
+        public string ReturnBoxNumber { get; set; } = string.Empty;
+        public string PickupSessionToken { get; set; } = string.Empty;
+        public DateTime ExpiresAt { get; set; }
     }
 }

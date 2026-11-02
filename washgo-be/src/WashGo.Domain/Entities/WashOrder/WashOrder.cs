@@ -44,15 +44,21 @@ namespace WashGo.Domain.Entities.WashOrder
         public string? MerchantName { get; set; }
 
         public Guid? ShipperId { get; set; }
+        public DeliveryTaskType? AssignedTaskType { get; set; }
+        public DateTime? ShipperAssignedAt { get; set; }
 
         [Filterable(ColumnVariant.Text)]
         public string? ShipperName { get; set; }
 
         public Guid? PromotionId { get; set; }
+        public string? PromotionCode { get; set; }
         public decimal TotalAmount { get; set; }
         public decimal DiscountAmount { get; set; }
         public decimal FinalAmount { get; set; }
         public decimal? ActualWeightKg { get; set; }
+        public decimal? IncludedWeightKg { get; set; }
+        public decimal WeightSurchargeAmount { get; set; }
+        public int? BaseProcessingHours { get; set; }
         public int? ActualItemCount { get; set; }
 
         [Filterable(ColumnVariant.MultiSelect)]
@@ -66,6 +72,25 @@ namespace WashGo.Domain.Entities.WashOrder
         public string PickupPinCode { get; set; } = string.Empty;
         public string QrCodeString { get; set; } = string.Empty;
 
+        public DateTime? DepositedAt { get; set; }
+        public DateTime? PaidAt { get; set; }
+
+        public string? ShipperTaskPinCode { get; set; }
+        public string? ShipperTaskQrString { get; set; }
+        public int TaskPinAttemptCount { get; set; }
+        public DateTime? TaskPinLockoutUntil { get; set; }
+
+        public int CustomerDepositPinAttemptCount { get; set; }
+        public DateTime? CustomerDepositLockoutUntil { get; set; }
+
+        public int CustomerPickupPinAttemptCount { get; set; }
+        public DateTime? CustomerPickupLockoutUntil { get; set; }
+
+        public string? PickupSessionTokenHash { get; set; }
+        public DateTime? PickupSessionExpiresAt { get; set; }
+
+        public decimal? LockerOverdueFeeAtStorageTransfer { get; set; }
+
         [Filterable(ColumnVariant.DateRange, UnixUnit = UnixTimestampUnit.Seconds)]
         public long ExpectedDeliveryTime { get; set; }
 
@@ -75,6 +100,9 @@ namespace WashGo.Domain.Entities.WashOrder
         public DateTime? DepositDeadline { get; set; }
         public DateTime? ReturnDeadline { get; set; }
         public DateTime? PickupDeadline { get; set; }
+        public DateTime? MovedToStorageAt { get; set; }
+        public string? StorageLocation { get; set; }
+        public string? StorageReference { get; set; }
         public DateTime? PaymentDeadline { get; set; }
         public decimal OverdueFeeTotal { get; set; }
         public decimal StorageFeeTotal { get; set; }
@@ -83,6 +111,11 @@ namespace WashGo.Domain.Entities.WashOrder
         public OrderActorType? CancelledByType { get; set; }
         public string? CancellationReason { get; set; }
         public decimal CancelFeeAmount { get; set; }
+        public decimal CancelFeePaidAmount { get; set; }
+        public decimal CancellationRefundAmount { get; set; }
+        public WashOrderStatus? CancellationFromStatus { get; set; }
+        public CancelledGoodsStatus CancelledGoodsStatus { get; set; }
+        public DateTime? CancelledGoodsReturnedAt { get; set; }
         public string? CustomerNote { get; set; }
 
         public virtual ICollection<WashOrderItem> Items { get; set; }

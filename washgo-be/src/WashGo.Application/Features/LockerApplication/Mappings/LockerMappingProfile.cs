@@ -12,7 +12,10 @@ namespace WashGo.Application.Features.LockerApplication.Mappings
         {
             CreateMap<Locker, LockerResultDto>()
                 .ForMember(dest => dest.EmptyBoxesCount,
-                    opt => opt.MapFrom(src => src.Boxes.Count(b => b.Status == LockerBoxStatus.Available)));
+                    opt => opt.MapFrom(src => src.Boxes.Count(b => b.Status == LockerBoxStatus.Available)))
+                .ForMember(dest => dest.MerchantName, opt => opt.Ignore())
+                .ForMember(dest => dest.ServiceAreaName, opt => opt.Ignore())
+                .ForMember(dest => dest.ImageUrls, opt => opt.Ignore());
             CreateMap<LockerBox, LockerBoxResultDto>();
         }
     }
