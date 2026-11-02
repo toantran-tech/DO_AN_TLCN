@@ -1,4 +1,4 @@
-param([string]$BaseUrl = 'http://localhost:5000')
+param([string]$BaseUrl = 'http://localhost:5000', [string]$PostgresContainer = 'washgo_postgres')
 $ErrorActionPreference = 'Stop'
 
 function Call-Api($Method, $Path, $Body, $Token) {
@@ -20,12 +20,29 @@ function Assert-Status($Expected, $Method, $Path, $Body, $Token) {
     throw "Expected HTTP $Expected for $Method $Path"
 }
 
+function Sql($Statement) {
+    $result = $Statement | docker exec -i $PostgresContainer psql -U postgres -d washgo_db -v ON_ERROR_STOP=1 -At
+    if ($LASTEXITCODE -ne 0) { throw 'Development fixture SQL failed.' }
+    $result
+}
+
 # Run against a local development DB. Retains one identifiable test account.
+# Public registration now needs an emailed OTP, so the fixture Customer is cloned
+# from the seed account (same password) with a clean profile instead.
 $email = "profile-smoke-$([Guid]::NewGuid().ToString('N'))@example.com"
-$password = "Smoke@$([Guid]::NewGuid().ToString('N'))1aA"
-$account = Call-Api Post '/auth/register' @{ email = $email; password = $password; fullName = 'Profile Smoke Test' } $null
+$fixtureId = [Guid]::NewGuid()
+$seedLogin = Call-Api Post '/auth/login' @{ email = 'customer@washgo.vn'; password = 'Customer@123' } $null
+$seedId = $seedLogin.data.user.id
+Call-Api Post '/auth/logout' @{ refreshToken = $seedLogin.data.refreshToken } $seedLogin.data.accessToken | Out-Null
+Sql @"
+INSERT INTO washgo.users SELECT (jsonb_populate_record(NULL::washgo.users,to_jsonb(u)||jsonb_build_object(
+'id','$fixtureId','email','$email','full_name','Profile Smoke Test','phone',NULL,'auth_provider',1,'provider_id',NULL,'is_active',true))).* FROM washgo.users u WHERE id='$seedId';
+INSERT INTO washgo.customers SELECT (jsonb_populate_record(NULL::washgo.customers,to_jsonb(c)||jsonb_build_object(
+'user_id','$fixtureId','address',NULL,'district',NULL,'city',NULL,'total_spent',0,'loyalty_points',0))).* FROM washgo.customers c WHERE user_id='$seedId';
+"@ | Out-Null
+$account = Call-Api Post '/auth/login' @{ email = $email; password = 'Customer@123' } $null
 $token = $account.data.accessToken
-if (!$token) { throw 'Could not register the test Customer.' }
+if (!$token) { throw 'Could not sign in the test Customer.' }
 
 try {
     Assert-Status 401 Get '/customer/me' $null $null

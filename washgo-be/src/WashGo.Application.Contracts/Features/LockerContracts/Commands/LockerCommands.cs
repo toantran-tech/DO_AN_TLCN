@@ -20,7 +20,12 @@ namespace WashGo.Application.Contracts.Features.LockerContracts.Commands
         public double Longitude { get; set; }
         public LockerType LockerType { get; set; } = LockerType.Normal;
         public string? Description { get; set; }
+        /// <summary>Ảnh đã upload qua /files/images; khi sửa, null = giữ nguyên ảnh hiện tại.</summary>
+        public List<string>? ImageUrls { get; set; }
+        /// <summary>Danh sách ô cụ thể; để trống thì tạo BoxCount ô đánh số 1..N với kích thước DefaultBoxSize (chỉ khi tạo mới).</summary>
         public List<CreateLockerBoxDto> Boxes { get; set; } = [];
+        public int? BoxCount { get; set; }
+        public LockerBoxSize DefaultBoxSize { get; set; } = LockerBoxSize.Standard;
     }
 
     public class UpdateLockerCommand : CreateLockerCommand

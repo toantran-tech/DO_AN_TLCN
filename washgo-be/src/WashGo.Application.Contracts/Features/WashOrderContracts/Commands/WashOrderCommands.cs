@@ -11,6 +11,7 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Commands
         public Guid? ReturnLockerId { get; set; }
         public PaymentMethod PaymentMethod { get; set; } = PaymentMethod.Cash;
         public string? CustomerNote { get; set; }
+        public string? PromotionCode { get; set; }
         public List<CreateWashOrderItemDto> Items { get; set; } = [];
     }
 

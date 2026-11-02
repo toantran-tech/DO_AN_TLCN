@@ -1,3 +1,4 @@
+using System;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.OpenApi;
@@ -7,6 +8,7 @@ using System.Net;
 using WashGo.Application.Contracts.Features.PaymentContracts.Commands;
 using WashGo.Application.Contracts.Features.PaymentContracts.Services;
 using WashGo.Core.Endpoint;
+using WashGo.Domain.Shared.Enums;
 
 namespace WashGo.HttpApi.Endpoints.Payment
 {
@@ -80,11 +82,18 @@ namespace WashGo.HttpApi.Endpoints.Payment
                 .WithSummary("Xem yêu cầu hoàn tiền của tôi.")
                 .WithOpenApi();
 
-            group.MapGet("/refund-requests", async (IPaymentAppService service) =>
-                (await service.GetRefundRequestsAsync(mineOnly: false)).CustomResult())
+            group.MapGet("/refund-requests", async (RefundRequestStatus? status, IPaymentAppService service) =>
+                (await service.GetRefundRequestsAsync(mineOnly: false, status)).CustomResult())
                 .RequireAuthorization("AdminOnly")
                 .WithName("Admin xem danh sách yêu cầu hoàn tiền")
-                .WithSummary("Admin xem danh sách yêu cầu hoàn tiền.")
+                .WithSummary("Admin xem yêu cầu hoàn tiền (mã đơn, khách hàng, số tiền, lý do, ngày, trạng thái), lọc theo trạng thái 1-4.")
+                .WithOpenApi();
+
+            group.MapGet("/refund-requests/{id:guid}", async (Guid id, IPaymentAppService service) =>
+                (await service.GetRefundRequestAsync(id)).CustomResult())
+                .RequireAuthorization()
+                .WithName("Xem chi tiết yêu cầu hoàn tiền")
+                .WithSummary("Admin xem mọi yêu cầu; Customer chỉ xem yêu cầu của mình.")
                 .WithOpenApi();
 
             group.MapPost("/refund-requests/{id:guid}/review", async (Guid id, ReviewRefundRequestCommand command, IPaymentAppService service) =>

@@ -14,9 +14,11 @@ namespace WashGo.Application.Contracts.Features.LockerContracts.Services
     {
         System.Threading.Tasks.Task<PaginatedResult<LockerResultDto>> GetListAsync(LockerFilterQuery query);
         System.Threading.Tasks.Task<BaseResponse<LockerResultDto>> GetByIdAsync(Guid id);
+        System.Threading.Tasks.Task<PaginatedResult<LockerUsageDto>> GetUsageHistoryAsync(Guid id, LockerUsageQuery query);
         System.Threading.Tasks.Task<BaseResponse<LockerResultDto>> CreateAsync(CreateLockerCommand command);
         System.Threading.Tasks.Task<BaseResponse<LockerResultDto>> UpdateAsync(UpdateLockerCommand command);
         System.Threading.Tasks.Task<BaseResponse<bool>> UpdateBoxStatusAsync(UpdateLockerBoxStatusCommand command);
+        System.Threading.Tasks.Task<BaseResponse<bool>> DeleteAsync(Guid id);
         System.Threading.Tasks.Task<BaseResponse<List<ColumnFilterDistinctValueDto>>> GetColumnDistinctValuesAsync(string fieldName, LockerFilterQuery query);
     }
 }

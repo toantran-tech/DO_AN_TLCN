@@ -11,7 +11,9 @@ namespace WashGo.Application.Contracts.Features.MerchantContracts.Results
     {
         public Guid Id { get; set; }
         public string BusinessName { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
         public string? TaxCode { get; set; }
+        public string? BusinessLicense { get; set; }
         public string Address { get; set; } = string.Empty;
         public string District { get; set; } = string.Empty;
         public string City { get; set; } = string.Empty;
@@ -29,6 +31,12 @@ namespace WashGo.Application.Contracts.Features.MerchantContracts.Results
         public int ServiceRadiusKm { get; set; }
         public int CurrentWorkload { get; set; }
         public int MaxCapacity { get; set; }
+        public DateTime? ContractStartDate { get; set; }
+        public DateTime? ContractEndDate { get; set; }
+        public string? SlaDocUrl { get; set; }
+        public List<string> ImageUrls { get; set; } = [];
+        /// <summary>Số đơn chưa xử lý xong (từ Chờ gửi đồ đến Sẵn sàng trả).</summary>
+        public int UnfinishedOrders { get; set; }
         public long CreatedOn { get; set; }
         public List<Guid> ServiceAreaIds { get; set; } = [];
     }

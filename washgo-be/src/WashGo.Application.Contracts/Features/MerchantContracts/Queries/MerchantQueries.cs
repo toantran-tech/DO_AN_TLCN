@@ -12,6 +12,7 @@ namespace WashGo.Application.Contracts.Features.MerchantContracts.Queries
         public MerchantStatus? Status { get; set; }
         public string? City { get; set; }
         public string? District { get; set; }
+        public Guid? ServiceAreaId { get; set; }
     }
 }
 

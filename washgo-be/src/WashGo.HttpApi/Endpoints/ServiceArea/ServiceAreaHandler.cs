@@ -49,6 +49,18 @@ namespace WashGo.HttpApi.Endpoints.ServiceArea
                 .WithName("Bật / Tắt trạng thái vùng phục vụ")
                 .WithSummary("Bật / Tắt trạng thái vùng phục vụ.")
                 .WithOpenApi();
+
+            group.MapGet("/{id:guid}/merchants", async (Guid id, IServiceAreaAppService svc) =>
+                (await svc.GetMerchantsAsync(id)).CustomResult())
+                .WithName("Merchant của vùng phục vụ")
+                .WithSummary("Danh sách Merchant đang hoạt động, đánh dấu Merchant đã gán vùng và độ ưu tiên (UC 3.2.5).")
+                .WithOpenApi();
+
+            group.MapPut("/{id:guid}/merchants", async (Guid id, SetAreaMerchantsCommand command, IServiceAreaAppService svc) =>
+                (await svc.SetMerchantsAsync(id, command)).CustomResult())
+                .WithName("Thiết lập vùng phục vụ")
+                .WithSummary("Gán một hoặc nhiều Merchant cho vùng với độ ưu tiên; bỏ chọn tất cả cần confirmEmpty (409 cảnh báo).")
+                .WithOpenApi();
         }
     }
 }

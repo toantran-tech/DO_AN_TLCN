@@ -51,6 +51,7 @@ namespace WashGo.Domain.Entities.WashOrder
         public string? ShipperName { get; set; }
 
         public Guid? PromotionId { get; set; }
+        public string? PromotionCode { get; set; }
         public decimal TotalAmount { get; set; }
         public decimal DiscountAmount { get; set; }
         public decimal FinalAmount { get; set; }

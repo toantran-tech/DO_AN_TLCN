@@ -24,5 +24,18 @@ namespace WashGo.Application.Contracts.Features.ServiceAreaContracts.Commands
     {
         public Guid Id { get; set; }
     }
-}
 
+    /// <summary>UC 3.2.5: danh sách Merchant phục vụ vùng kèm độ ưu tiên (1 = cao nhất).</summary>
+    public class SetAreaMerchantsCommand
+    {
+        public List<AreaMerchantItem> Merchants { get; set; } = [];
+        /// <summary>Xác nhận lưu khi bỏ chọn tất cả Merchant (UC 3.2.5 5a).</summary>
+        public bool ConfirmEmpty { get; set; }
+    }
+
+    public class AreaMerchantItem
+    {
+        public Guid MerchantId { get; set; }
+        public int Priority { get; set; } = 1;
+    }
+}

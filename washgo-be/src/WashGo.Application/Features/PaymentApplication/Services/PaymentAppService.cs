@@ -21,6 +21,9 @@ using WashGo.Domain.Entities.Payment.Interfaces;
 using WashGo.Domain.Entities.WashOrder;
 using WashGo.Domain.Entities.WashOrder.Interfaces;
 
+using WashGo.Application.Features.NotificationApplication.Services;
+using WashGo.Application.Features.SystemSettingApplication.Services;
+
 namespace WashGo.Application.Features.PaymentApplication.Services
 {
     public class PaymentAppService : WashGoAppService, IPaymentAppService
@@ -30,19 +33,25 @@ namespace WashGo.Application.Features.PaymentApplication.Services
         private readonly IRepository<RefundRequest, Guid> _refundRequestRepo;
         private readonly IConfiguration _configuration;
         private readonly IWashOrderRepository _orders;
+        private readonly NotificationPublisher _notifications;
+        private readonly SystemSettingProvider _settings;
 
         public PaymentAppService(
             IWashOrderAppService orderService,
             IPaymentTransactionRepository transactionRepo,
             IConfiguration configuration,
             IWashOrderRepository orders,
-            IRepository<RefundRequest, Guid> refundRequestRepo)
+            IRepository<RefundRequest, Guid> refundRequestRepo,
+            NotificationPublisher notifications,
+            SystemSettingProvider settings)
         {
             _orderService = orderService;
             _transactionRepo = transactionRepo;
             _configuration = configuration;
             _orders = orders;
             _refundRequestRepo = refundRequestRepo;
+            _notifications = notifications;
+            _settings = settings;
         }
 
         public async Task<BaseResponse<PaymentResultDto>> CreatePaymentAsync(CreatePaymentCommand command)
@@ -111,7 +120,7 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             if (command.PaymentMethod != PaymentMethod.VnPay)
                 return BadRequest<PaymentResultDto>("Hiện chỉ hỗ trợ thanh toán phí lưu kho qua VNPay.");
 
-            var overdueTotal = OverdueFeeCalculator.GetTotalStorageDue(order, DateTime.UtcNow);
+            var overdueTotal = OverdueFeeCalculator.GetTotalStorageDue(order, DateTime.UtcNow, await _settings.GetAsync());
             order.OverdueFeeTotal = overdueTotal;
             var outstanding = overdueTotal - order.StorageFeeTotal;
             if (outstanding <= 0m)
@@ -249,6 +258,7 @@ namespace WashGo.Application.Features.PaymentApplication.Services
                 transaction.FailureReason = "Sandbox payment failed or was cancelled.";
                 transaction.CompletedAt = DateTime.UtcNow;
                 await _transactionRepo.UpdateAsync(transaction, autoSave: true);
+                await _notifications.PaymentFailedAsync(order);
                 await uow.CompleteAsync();
                 return BadRequest<PaymentResultDto>("Thanh toán thất bại hoặc bị hủy.");
             }
@@ -290,7 +300,7 @@ namespace WashGo.Application.Features.PaymentApplication.Services
                     orderEntity.Status is not (WashOrderStatus.ReadyToReturn or WashOrderStatus.MovedToStorage))
                     return BadRequest<PaymentResultDto>("Đơn không còn chờ khách nhận tại locker.");
 
-                var due = OverdueFeeCalculator.GetTotalStorageDue(orderEntity, DateTime.UtcNow);
+                var due = OverdueFeeCalculator.GetTotalStorageDue(orderEntity, DateTime.UtcNow, await _settings.GetAsync());
                 if (transaction.Amount > due - orderEntity.StorageFeeTotal)
                     return BadRequest<PaymentResultDto>("Giao dịch phí lưu kho lớn hơn số tiền còn phải trả.");
 
@@ -382,6 +392,8 @@ namespace WashGo.Application.Features.PaymentApplication.Services
                 transaction.ProviderTransactionId = parameters.GetValueOrDefault("vnp_TransactionNo");
                 transaction.CompletedAt = DateTime.UtcNow;
                 await _transactionRepo.UpdateAsync(transaction, autoSave: true);
+                if (await _orders.FindAsync(transaction.OrderId) is { } failedOrder)
+                    await _notifications.PaymentFailedAsync(failedOrder);
                 await uow.CompleteAsync();
                 return Ip("00", "Confirm Success");
             }
@@ -409,7 +421,7 @@ namespace WashGo.Application.Features.PaymentApplication.Services
                 if (orderEntity.PaymentStatus != PaymentStatus.Paid ||
                     orderEntity.Status is not (WashOrderStatus.ReadyToReturn or WashOrderStatus.MovedToStorage))
                     return Ip("04", "Invalid order state");
-                var due = OverdueFeeCalculator.GetTotalStorageDue(orderEntity, DateTime.UtcNow);
+                var due = OverdueFeeCalculator.GetTotalStorageDue(orderEntity, DateTime.UtcNow, await _settings.GetAsync());
                 if (transaction.Amount > due - orderEntity.StorageFeeTotal)
                     return Ip("04", "Invalid amount");
                 orderEntity.OverdueFeeTotal = due;
@@ -480,6 +492,7 @@ namespace WashGo.Application.Features.PaymentApplication.Services
                 Note = $"Thanh toán thành công, mã giao dịch: {providerReference ?? transaction.TransactionReference}"
             });
             await _orders.UpdateAsync(order, autoSave: true);
+            await _notifications.PaymentSucceededAsync(order);
             return true;
         }
 
@@ -568,16 +581,46 @@ namespace WashGo.Application.Features.PaymentApplication.Services
                 Status = RefundRequestStatus.Pending
             };
             await _refundRequestRepo.InsertAsync(request, autoSave: true);
+            await _notifications.RefundRequestedAsync(order, request.Amount);
             await uow.CompleteAsync();
             return Success(ToDto(request), "Đã gửi yêu cầu hoàn tiền, chờ Admin duyệt.");
         }
 
-        public async Task<BaseResponse<List<RefundRequestDto>>> GetRefundRequestsAsync(bool mineOnly)
+        // UC 3.8.3: newest first, optional status filter, enriched with order code and customer name.
+        public async Task<BaseResponse<List<RefundRequestDto>>> GetRefundRequestsAsync(bool mineOnly, RefundRequestStatus? status = null)
         {
-            var items = mineOnly
-                ? await _refundRequestRepo.GetListAsync(x => x.CustomerId == CurrentUser.Id)
-                : await _refundRequestRepo.GetListAsync();
-            return Success(items.OrderByDescending(x => x.CreatedOn).Select(ToDto).ToList());
+            var requests = await _refundRequestRepo.GetQueryableAsync();
+            if (mineOnly)
+                requests = requests.Where(x => x.CustomerId == CurrentUser.Id);
+            if (status.HasValue)
+                requests = requests.Where(x => x.Status == status.Value);
+            var orders = await _orders.GetQueryableAsync();
+            var rows = await AsyncExecuter.ToListAsync(
+                from r in requests
+                join o in orders on r.OrderId equals o.Id into joined
+                from o in joined.DefaultIfEmpty()
+                orderby r.CreatedOn descending
+                select new { r, OrderCode = o != null ? o.OrderCode : null, CustomerName = o != null ? o.CustomerName : null });
+            var dtos = rows.Select(x =>
+            {
+                var dto = ToDto(x.r);
+                dto.OrderCode = x.OrderCode;
+                dto.CustomerName = x.CustomerName;
+                return dto;
+            }).ToList();
+            return Success(dtos, dtos.Count == 0 ? "Chưa có yêu cầu hoàn tiền nào." : null);
+        }
+
+        public async Task<BaseResponse<RefundRequestDto>> GetRefundRequestAsync(Guid id)
+        {
+            var request = await _refundRequestRepo.FindAsync(id);
+            if (request == null || (!CurrentUser.IsInRole("Admin") && request.CustomerId != CurrentUser.Id))
+                return NotFound<RefundRequestDto>("Không tìm thấy yêu cầu hoàn tiền.");
+            var order = await _orders.FindAsync(request.OrderId);
+            var dto = ToDto(request);
+            dto.OrderCode = order?.OrderCode;
+            dto.CustomerName = order?.CustomerName;
+            return Success(dto);
         }
 
         public async Task<BaseResponse<RefundRequestDto>> ReviewRefundRequestAsync(Guid id, ReviewRefundRequestCommand command)
