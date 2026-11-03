@@ -30,12 +30,11 @@ namespace WashGo.Application.Features.WashServiceApplication.Services
             return null;
         }
 
-        /// <summary>Tên dịch vụ không trùng trong cùng một Merchant (không phân biệt hoa thường, bỏ qua dịch vụ đã xóa).</summary>
-        public static Task<bool> NameTakenAsync(IWashServiceRepository repo, Guid merchantId, string name, Guid? exceptId)
+        /// <summary>Tên dịch vụ không trùng trong bảng dịch vụ chung (không phân biệt hoa thường, bỏ qua dịch vụ đã xóa).</summary>
+        public static Task<bool> NameTakenAsync(IWashServiceRepository repo, string name, Guid? exceptId)
         {
             var normalized = name.Trim().ToLower();
-            return repo.AnyAsync(x => x.MerchantId == merchantId && !x.IsDeleted && x.Id != exceptId &&
-                                      x.Name.ToLower() == normalized);
+            return repo.AnyAsync(x => !x.IsDeleted && x.Id != exceptId && x.Name.ToLower() == normalized);
         }
     }
 }

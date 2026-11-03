@@ -56,8 +56,9 @@ namespace WashGo.Application.Features.ServiceProposalApplication.Services
 
         public async Task<PaginatedResult<WashServiceResultDto>> GetMyServicesAsync(WashServiceFilterQuery query)
         {
+            // The catalog is shared: every Merchant processes the same approved services at the same prices.
             var queryable = (await _serviceRepo.GetQueryableAsync())
-                .Where(x => x.MerchantId == MerchantId && !x.IsDeleted && x.ApprovalStatus == ServiceApprovalStatus.Approved);
+                .Where(x => !x.IsDeleted && x.ApprovalStatus == ServiceApprovalStatus.Approved);
             if (query.ServiceType.HasValue)
                 queryable = queryable.Where(x => x.ServiceType == query.ServiceType.Value);
             if (query.IsActive.HasValue)
@@ -91,8 +92,8 @@ namespace WashGo.Application.Features.ServiceProposalApplication.Services
             if (serviceId.HasValue)
             {
                 service = await _serviceRepo.FindAsync(serviceId.Value);
-                if (service == null || service.IsDeleted || service.MerchantId != merchant.Id)
-                    return NotFound<ServiceProposalDto>("Không tìm thấy dịch vụ của tiệm!");
+                if (service == null || service.IsDeleted)
+                    return NotFound<ServiceProposalDto>("Không tìm thấy dịch vụ!");
                 // Edits keep the service's category and unit; only name, description, prices and duration change.
                 command.ServiceType = service.ServiceType;
                 command.Unit = service.Unit;
@@ -110,8 +111,8 @@ namespace WashGo.Application.Features.ServiceProposalApplication.Services
                 return BadRequest<ServiceProposalDto>(imageError);
 
             var name = command.Name.Trim();
-            if (await WashServiceRules.NameTakenAsync(_serviceRepo, merchant.Id, name, serviceId) ||
-                await PendingNameTakenAsync(merchant.Id, name, serviceId))
+            if (await WashServiceRules.NameTakenAsync(_serviceRepo, name, serviceId) ||
+                await PendingNameTakenAsync(name, serviceId))
                 return BadRequest<ServiceProposalDto>(WashServiceRules.DuplicateName);
             if (serviceId.HasValue && await _requestRepo.AnyAsync(x => x.ServiceId == serviceId && x.Status == ServiceApprovalStatus.Pending))
                 return BadRequest<ServiceProposalDto>("Dịch vụ đang có đề xuất chờ duyệt.");
@@ -147,9 +148,9 @@ namespace WashGo.Application.Features.ServiceProposalApplication.Services
             return Created(ToDto(request, merchant.BusinessName), "Đề xuất đã được gửi. Vui lòng chờ Admin phê duyệt.");
         }
 
-        private async Task<bool> PendingNameTakenAsync(Guid merchantId, string name, Guid? exceptServiceId)
+        private async Task<bool> PendingNameTakenAsync(string name, Guid? exceptServiceId)
         {
-            var pending = await _requestRepo.GetListAsync(x => x.MerchantId == merchantId && x.Status == ServiceApprovalStatus.Pending);
+            var pending = await _requestRepo.GetListAsync(x => x.Status == ServiceApprovalStatus.Pending);
             return pending.Any(x => (exceptServiceId == null || x.ServiceId != exceptServiceId) && string.Equals(Read(x.ProposedData)?.Name, name, StringComparison.OrdinalIgnoreCase));
         }
 
@@ -205,7 +206,7 @@ namespace WashGo.Application.Features.ServiceProposalApplication.Services
                 data.EstimatedDurationHours, data.ServiceType, data.Unit);
             if (error != null)
                 return BadRequest<ServiceProposalDto>(error);
-            if (await WashServiceRules.NameTakenAsync(_serviceRepo, merchant.Id, data.Name, request.ServiceId))
+            if (await WashServiceRules.NameTakenAsync(_serviceRepo, data.Name, request.ServiceId))
                 return BadRequest<ServiceProposalDto>(WashServiceRules.DuplicateName);
 
             var now = DateTime.UtcNow;

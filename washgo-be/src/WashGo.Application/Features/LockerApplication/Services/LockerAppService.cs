@@ -30,6 +30,7 @@ namespace WashGo.Application.Features.LockerApplication.Services
         private readonly IRepository<WashOrderTimeline, Guid> _timelineRepo;
         private readonly IRepository<LockerBox, Guid> _boxRepo;
         private readonly IRepository<Merchant, Guid> _merchantRepo;
+        private readonly IRepository<LockerMerchant, Guid> _linkRepo;
         private readonly IRepository<ServiceArea, Guid> _areaRepo;
         private readonly IConfiguration _configuration;
 
@@ -39,6 +40,7 @@ namespace WashGo.Application.Features.LockerApplication.Services
             IRepository<WashOrderTimeline, Guid> timelineRepo,
             IRepository<LockerBox, Guid> boxRepo,
             IRepository<Merchant, Guid> merchantRepo,
+            IRepository<LockerMerchant, Guid> linkRepo,
             IRepository<ServiceArea, Guid> areaRepo,
             IConfiguration configuration)
         {
@@ -47,6 +49,7 @@ namespace WashGo.Application.Features.LockerApplication.Services
             _timelineRepo = timelineRepo;
             _boxRepo = boxRepo;
             _merchantRepo = merchantRepo;
+            _linkRepo = linkRepo;
             _areaRepo = areaRepo;
             _configuration = configuration;
         }
@@ -56,12 +59,13 @@ namespace WashGo.Application.Features.LockerApplication.Services
 
         public async Task<PaginatedResult<LockerResultDto>> GetListAsync(LockerFilterQuery query)
         {
+            var links = await _linkRepo.GetQueryableAsync();
             var (data, total) = await _lockerRepo.FilterProjectedDataAsync<LockerResultDto>(
                 filterFunc: q =>
                 {
                     q = q.Where(x => !x.IsDeleted);
                     if (ScopeMerchantId.HasValue)
-                        q = q.Where(x => x.MerchantId == ScopeMerchantId.Value);
+                        q = q.Where(x => links.Any(l => l.LockerId == x.Id && l.MerchantId == ScopeMerchantId.Value));
                     if (query.Status.HasValue)
                         q = q.Where(x => x.Status == query.Status.Value);
                     if (!string.IsNullOrWhiteSpace(query.City))
@@ -71,7 +75,7 @@ namespace WashGo.Application.Features.LockerApplication.Services
                     if (query.ServiceAreaId.HasValue)
                         q = q.Where(x => x.ServiceAreaId == query.ServiceAreaId.Value);
                     if (query.MerchantId.HasValue)
-                        q = q.Where(x => x.MerchantId == query.MerchantId.Value);
+                        q = q.Where(x => links.Any(l => l.LockerId == x.Id && l.MerchantId == query.MerchantId.Value));
                     if (!string.IsNullOrWhiteSpace(query.Keyword))
                     {
                         var kw = query.Keyword.Trim().ToLower();
@@ -93,7 +97,7 @@ namespace WashGo.Application.Features.LockerApplication.Services
         public async Task<BaseResponse<LockerResultDto>> GetByIdAsync(Guid id)
         {
             var locker = await _lockerRepo.GetWithBoxesAsync(id);
-            if (locker == null || (ScopeMerchantId.HasValue && locker.MerchantId != ScopeMerchantId.Value))
+            if (locker == null || !await InScopeAsync(locker.Id))
             {
                 return NotFound<LockerResultDto>("Không tìm thấy thông tin tủ Locker!");
             }
@@ -134,7 +138,6 @@ namespace WashGo.Application.Features.LockerApplication.Services
 
             var locker = new Locker
             {
-                MerchantId = command.MerchantId,
                 ServiceAreaId = command.ServiceAreaId,
                 Code = code,
                 Name = command.Name.Trim(),
@@ -162,7 +165,10 @@ namespace WashGo.Application.Features.LockerApplication.Services
                 });
             }
 
+            using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
             await _lockerRepo.InsertAsync(locker, autoSave: true);
+            await ReplaceMerchantsAsync(locker.Id, MerchantIdsOf(command));
+            await uow.CompleteAsync();
             var dto = ObjectMapper.Map<Locker, LockerResultDto>(locker);
             await FillNamesAsync([dto]);
             dto.ImageUrls = images;
@@ -181,8 +187,6 @@ namespace WashGo.Application.Features.LockerApplication.Services
             {
                 return NotFound<LockerResultDto>("Không tìm thấy trạm Locker để cập nhật!");
             }
-            // Merchant phụ trách is not part of the edit form; keep the current one.
-            command.MerchantId = locker.MerchantId;
             var error = await ValidateAsync(command, locker.Id);
             if (error != null)
                 return BadRequest<LockerResultDto>(error);
@@ -216,6 +220,8 @@ namespace WashGo.Application.Features.LockerApplication.Services
             if (!await _lockerRepo.TryUpdateDetailsAsync(locker, expectedStatus))
                 return BadRequest<LockerResultDto>(
                     "Tủ đang có ô/đơn cần xử lý hoặc vừa đổi trạng thái; không thể cập nhật trạng thái tủ.");
+            if (MerchantIdsOf(command) is { Count: > 0 } newMerchants)
+                await ReplaceMerchantsAsync(locker.Id, newMerchants);
             await uow.CompleteAsync();
             var dto = ObjectMapper.Map<Locker, LockerResultDto>(locker);
             await FillNamesAsync([dto]);
@@ -300,9 +306,19 @@ namespace WashGo.Application.Features.LockerApplication.Services
                 return "Tọa độ không hợp lệ.";
             if (!Enum.IsDefined(command.LockerType))
                 return "Loại locker không hợp lệ.";
-            var merchant = await _merchantRepo.FindAsync(command.MerchantId);
-            if (merchant == null || (currentId == null && merchant.Status != MerchantStatus.Active))
-                return "Merchant phụ trách không tồn tại hoặc không hoạt động.";
+            // Several Merchants may share a locker; the Admin picks one per order (UC 3.3).
+            var merchantIds = MerchantIdsOf(command);
+            if (currentId == null || merchantIds.Count > 0 || command.MerchantIds != null)
+            {
+                if (merchantIds.Count == 0)
+                    return "Vui lòng chọn ít nhất một Merchant phụ trách locker.";
+                if (merchantIds.Distinct().Count() != merchantIds.Count)
+                    return "Mỗi Merchant chỉ được chọn một lần.";
+                var active = await AsyncExecuter.CountAsync((await _merchantRepo.GetQueryableAsync())
+                    .Where(x => merchantIds.Contains(x.Id) && x.Status == MerchantStatus.Active));
+                if (active != merchantIds.Count)
+                    return "Merchant phụ trách không tồn tại hoặc không hoạt động.";
+            }
             if (command.ServiceAreaId.HasValue && !await _areaRepo.AnyAsync(x => x.Id == command.ServiceAreaId.Value && x.IsActive))
                 return "Khu vực không tồn tại hoặc đã ngừng hoạt động.";
             var normalized = name.ToLower();
@@ -311,9 +327,32 @@ namespace WashGo.Application.Features.LockerApplication.Services
             return null;
         }
 
+        private static List<Guid> MerchantIdsOf(CreateLockerCommand command) =>
+            command.MerchantIds is { Count: > 0 } ids ? ids
+            : command.MerchantId.HasValue ? [command.MerchantId.Value] : [];
+
+        // Merchants only see lockers they are assigned to (UC 2.5); Admin sees all.
+        private async Task<bool> InScopeAsync(Guid lockerId) =>
+            !ScopeMerchantId.HasValue ||
+            await _linkRepo.AnyAsync(x => x.LockerId == lockerId && x.MerchantId == ScopeMerchantId.Value);
+
+        private async System.Threading.Tasks.Task ReplaceMerchantsAsync(Guid lockerId, List<Guid> merchantIds)
+        {
+            var existing = await _linkRepo.GetListAsync(x => x.LockerId == lockerId);
+            await _linkRepo.DeleteManyAsync(existing, autoSave: true);
+            await _linkRepo.InsertManyAsync(merchantIds.Select((id, i) => new LockerMerchant(GuidGenerator.Create())
+            {
+                LockerId = lockerId,
+                MerchantId = id,
+                Priority = i + 1
+            }), autoSave: true);
+        }
+
         private async System.Threading.Tasks.Task FillNamesAsync(List<LockerResultDto> lockers)
         {
-            var merchantIds = lockers.Select(x => x.MerchantId).Distinct().ToList();
+            var lockerIdsForLinks = lockers.Select(x => x.Id).ToList();
+            var links = await _linkRepo.GetListAsync(x => lockerIdsForLinks.Contains(x.LockerId));
+            var merchantIds = links.Select(x => x.MerchantId).Distinct().ToList();
             var areaIds = lockers.Where(x => x.ServiceAreaId.HasValue).Select(x => x.ServiceAreaId!.Value).Distinct().ToList();
             var merchants = (await _merchantRepo.GetListAsync(x => merchantIds.Contains(x.Id))).ToDictionary(x => x.Id, x => x.BusinessName);
             var areas = (await _areaRepo.GetListAsync(x => areaIds.Contains(x.Id))).ToDictionary(x => x.Id, x => x.Name);
@@ -326,7 +365,13 @@ namespace WashGo.Application.Features.LockerApplication.Services
             foreach (var dto in lockers)
             {
                 dto.EmptyBoxesCount = empty.GetValueOrDefault(dto.Id);
-                dto.MerchantName = merchants.GetValueOrDefault(dto.MerchantId);
+                dto.Merchants = links.Where(x => x.LockerId == dto.Id).OrderBy(x => x.Priority)
+                    .Select(x => new LockerMerchantDto
+                    {
+                        MerchantId = x.MerchantId,
+                        BusinessName = merchants.GetValueOrDefault(x.MerchantId, string.Empty),
+                        Priority = x.Priority
+                    }).ToList();
                 dto.ServiceAreaName = dto.ServiceAreaId.HasValue ? areas.GetValueOrDefault(dto.ServiceAreaId.Value) : null;
             }
         }
@@ -348,7 +393,7 @@ namespace WashGo.Application.Features.LockerApplication.Services
         public async Task<PaginatedResult<LockerUsageDto>> GetUsageHistoryAsync(Guid id, LockerUsageQuery query)
         {
             var locker = await _lockerRepo.FindAsync(id);
-            if (locker == null || locker.IsDeleted || (ScopeMerchantId.HasValue && locker.MerchantId != ScopeMerchantId.Value))
+            if (locker == null || locker.IsDeleted || !await InScopeAsync(locker.Id))
                 return new PaginatedResult<LockerUsageDto>
                 {
                     Succeeded = false,
@@ -429,8 +474,9 @@ namespace WashGo.Application.Features.LockerApplication.Services
         public async Task<BaseResponse<List<ColumnFilterDistinctValueDto>>> GetColumnDistinctValuesAsync(string fieldName, LockerFilterQuery query)
         {
             var merchantId = ScopeMerchantId;
+            var links = await _linkRepo.GetQueryableAsync();
             var result = await _lockerRepo.GetColumnDistinctValuesAsync(fieldName, query,
-                merchantId.HasValue ? q => q.Where(x => x.MerchantId == merchantId.Value) : null);
+                merchantId.HasValue ? q => q.Where(x => links.Any(l => l.LockerId == x.Id && l.MerchantId == merchantId.Value)) : null);
             return Success(result);
         }
     }

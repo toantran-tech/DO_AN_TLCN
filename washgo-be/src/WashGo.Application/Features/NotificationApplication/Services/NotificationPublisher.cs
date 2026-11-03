@@ -125,8 +125,11 @@ namespace WashGo.Application.Features.NotificationApplication.Services
                 $"Bạn đã gửi đồ thành công cho đơn #{o.OrderCode}!", "order", o.Id);
             await SendAsync([o.MerchantId], NotificationType.CustomerDeposited, "Khách hàng đã gửi đồ",
                 $"Khách hàng đã gửi đồ #{o.OrderCode} vào {o.LockerName}, ô số {o.BoxNumber}. Vui lòng phân công Shipper.", "order", o.Id);
-            await SendToAdminsAsync(NotificationType.CustomerDeposited, "Khách hàng đã gửi đồ",
-                $"Khách hàng đã gửi đồ #{o.OrderCode} vào {o.LockerName}, ô số {o.BoxNumber}.", "order", o.Id);
+            // Orders get their Merchant from the Admin after deposit (UC 3.3).
+            await SendToAdminsAsync(NotificationType.CustomerDeposited, "Đơn mới chờ phân công",
+                o.MerchantId == null
+                    ? $"Khách hàng đã gửi đồ #{o.OrderCode} vào {o.LockerName}, ô số {o.BoxNumber}. Vui lòng phân công Merchant."
+                    : $"Khách hàng đã gửi đồ #{o.OrderCode} vào {o.LockerName}, ô số {o.BoxNumber}.", "order", o.Id);
         }
 
         public async Task ShipperAssignedAsync(WashOrder o, DeliveryTaskType task)
@@ -165,13 +168,28 @@ namespace WashGo.Application.Features.NotificationApplication.Services
                     $"Đơn hàng #{o.OrderCode} đang được {step}.", "order", o.Id);
         }
 
-        public Task PaymentSucceededAsync(WashOrder o) =>
-            SendAsync([o.CustomerId], NotificationType.PaymentSucceeded, "Thanh toán thành công",
+        public async Task PaymentSucceededAsync(WashOrder o)
+        {
+            if (o.Status == WashOrderStatus.MovedToStorage)
+            {
+                // UC 1.2.4 7b: paid after the move to storage; the customer collects at the storage.
+                await SendAsync([o.CustomerId], NotificationType.PaymentSucceeded, "Thanh toán thành công",
+                    $"Thanh toán thành công! Đồ của đơn #{o.OrderCode} đang được lưu tại {o.StorageLocation} (mã {o.StorageReference}). Vui lòng thanh toán phí lưu kho (nếu có) và đến nhận đồ.", "order", o.Id);
+                await SendAsync([o.MerchantId], NotificationType.PaymentSucceeded, "Khách đã thanh toán",
+                    $"Khách đã thanh toán đơn #{o.OrderCode} đang lưu kho (mã {o.StorageReference}). Khách sẽ đến nhận đồ tại kho.", "order", o.Id);
+                return;
+            }
+            await SendAsync([o.CustomerId], NotificationType.PaymentSucceeded, "Thanh toán thành công",
                 $"Thanh toán thành công! Đơn hàng #{o.OrderCode} sẽ được trả vào locker trong thời gian sớm nhất.", "order", o.Id);
+            // UC 1.2.4 step 9: the Merchant can now send the clean laundry back.
+            await SendAsync([o.MerchantId], NotificationType.PaymentSucceeded, "Khách đã thanh toán",
+                $"Khách đã thanh toán đơn #{o.OrderCode}. Vui lòng phân công Shipper trả đồ về locker.", "order", o.Id);
+        }
 
+        // UC 1.2.4 7a.
         public Task PaymentFailedAsync(WashOrder o) =>
             SendAsync([o.CustomerId], NotificationType.PaymentFailed, "Thanh toán thất bại",
-                $"Thanh toán đơn #{o.OrderCode} thất bại. Vui lòng thử lại để nhận đồ.", "order", o.Id);
+                $"Thanh toán thất bại. Vui lòng thử lại. (Đơn #{o.OrderCode})", "order", o.Id);
 
         public async Task ReturnedToLockerAsync(WashOrder o)
         {
@@ -212,6 +230,15 @@ namespace WashGo.Application.Features.NotificationApplication.Services
                 $"Bạn đã nhận lại đồ của đơn đã hủy #{o.OrderCode}.", "order", o.Id);
             await SendAsync([o.MerchantId], NotificationType.PickedUp, "Khách đã nhận lại đồ",
                 $"Khách hàng đã nhận lại đồ của đơn đã hủy #{o.OrderCode}.", "order", o.Id);
+        }
+
+        // UC 1.2.4 7b.
+        public async Task UnpaidMovedToStorageAsync(WashOrder o)
+        {
+            await SendAsync([o.CustomerId], NotificationType.MovedToStorage, "Thông báo chuyển kho",
+                $"Đơn #{o.OrderCode} đã quá hạn thanh toán 7 ngày nên đồ được chuyển sang lưu kho tại {o.StorageLocation}. Vui lòng thanh toán tiền giặt và phí lưu kho để nhận đồ.", "order", o.Id);
+            await SendAsync([o.MerchantId], NotificationType.MovedToStorage, "Đơn chuyển lưu kho",
+                $"Đơn #{o.OrderCode} quá hạn thanh toán đã chuyển sang lưu kho (mã {o.StorageReference}). Vui lòng giữ đồ đến khi khách thanh toán và đến nhận.", "order", o.Id);
         }
 
         public Task MovedToStorageAsync(WashOrder o) =>

@@ -7,4 +7,6 @@ public class UpdateCustomerProfileCommand
     public string? Address { get; set; }
     public string? District { get; set; }
     public string? City { get; set; }
+    /// <summary>Ảnh đã upload qua /files/images; null = giữ nguyên, chuỗi rỗng = xóa avatar.</summary>
+    public string? AvatarUrl { get; set; }
 }

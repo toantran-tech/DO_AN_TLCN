@@ -26,6 +26,21 @@ function Sql($Statement) {
     $result
 }
 
+Add-Type -AssemblyName System.Net.Http
+function Upload-Image($Token) {
+    $client=New-Object System.Net.Http.HttpClient
+    try {
+        $client.DefaultRequestHeaders.Authorization=New-Object System.Net.Http.Headers.AuthenticationHeaderValue('Bearer',$Token)
+        $bytes=New-Object byte[] 64
+        [byte[]](0x89,0x50,0x4E,0x47,0x0D,0x0A,0x1A,0x0A) | ForEach-Object -Begin {$i=0} -Process {$bytes[$i]=$_;$i++}
+        $form=New-Object System.Net.Http.MultipartFormDataContent
+        $content=New-Object System.Net.Http.ByteArrayContent(,$bytes)
+        $content.Headers.ContentType=[System.Net.Http.Headers.MediaTypeHeaderValue]::Parse('image/png')
+        $form.Add($content,'file','avatar.png')
+        return ($client.PostAsync("$BaseUrl/files/images",$form).Result.Content.ReadAsStringAsync().Result|ConvertFrom-Json).data.url
+    } finally {$client.Dispose()}
+}
+
 # Run against a local development DB. Retains one identifiable test account.
 # Public registration now needs an emailed OTP, so the fixture Customer is cloned
 # from the seed account (same password) with a clean profile instead.
@@ -74,20 +89,36 @@ try {
         }
 
         foreach ($invalid in @(
-            @{ fullName = 'x' }, @{ fullName = 'Valid Name'; phone = 'abc123456789' },
+            @{ fullName = 'x'; address = 'A' }, @{ fullName = 'Valid Name'; phone = 'abc123456789'; address = 'A' },
             @{ fullName = 'Valid Name'; address = ('x' * 501) },
-            @{ fullName = 'Valid Name'; district = ('x' * 101) },
-            @{ fullName = 'Valid Name'; city = ('x' * 101) }
+            @{ fullName = 'Valid Name'; address = '   ' },
+            @{ fullName = 'Valid Name'; address = 'A'; district = ('x' * 101) },
+            @{ fullName = 'Valid Name'; address = 'A'; city = ('x' * 101) },
+            @{ fullName = 'Valid Name'; address = 'A'; avatarUrl = (Upload-Image $seed.data.accessToken) },
+            @{ fullName = 'Valid Name'; address = 'A'; avatarUrl = '/uploads/../appsettings.json' }
         )) { Assert-Status 400 Put '/customer/me' $invalid $token }
 
         $afterInvalid = Call-Api Get '/customer/me' $null $token
         if (($persisted.data | ConvertTo-Json -Compress) -ne ($afterInvalid.data | ConvertTo-Json -Compress)) {
             throw 'Invalid update changed the profile.'
         }
-        Call-Api Put '/customer/me' @{ fullName = 'Profile Smoke Test'; phone = ''; address = ''; district = ''; city = '' } $token | Out-Null
+        # Avatar (UC 1.1.5): own upload saved, omitted keeps it, empty string clears it.
+        $avatar = Upload-Image $token
+        Call-Api Put '/customer/me' @{ fullName = 'Profile Smoke Test'; address = '1 Kept Street'; avatarUrl = $avatar } $token | Out-Null
+        if ((Call-Api Get '/customer/me' $null $token).data.avatarUrl -ne $avatar) { throw 'Avatar not saved.' }
+        $saved = Call-Api Put '/customer/me' @{ fullName = 'Profile Smoke Test'; phone = ''; address = '1 Kept Street'; district = ''; city = '' } $token
+        if (!$saved.message) { throw 'Update message missing.' }
         $cleared = Call-Api Get '/customer/me' $null $token
-        if ($null -ne $cleared.data.phone -or $null -ne $cleared.data.address -or
+        if ($null -ne $cleared.data.phone -or $cleared.data.address -ne '1 Kept Street' -or $cleared.data.avatarUrl -ne $avatar -or
             $null -ne $cleared.data.district -or $null -ne $cleared.data.city) { throw 'Optional field clearing failed.' }
+        Call-Api Put '/customer/me' @{ fullName = 'Profile Smoke Test'; address = '1 Kept Street'; avatarUrl = '' } $token | Out-Null
+        if ($null -ne (Call-Api Get '/customer/me' $null $token).data.avatarUrl) { throw 'Avatar not cleared.' }
+
+        # Totals come from real orders (UC 1.1.4).
+        $seedNow = (Call-Api Get '/customer/me' $null $seed.data.accessToken).data
+        $dbOrders = Sql "SELECT count(*) FROM washgo.orders WHERE customer_id='$seedId' AND NOT is_deleted AND status<>99;"
+        $dbSpent = Sql "SELECT COALESCE(SUM(final_amount),0) FROM washgo.orders WHERE customer_id='$seedId' AND NOT is_deleted AND payment_status=2;"
+        if ([int]$dbOrders -lt 1 -or $seedNow.totalOrders -ne [int]$dbOrders -or [decimal]$seedNow.totalSpent -ne [decimal]$dbSpent) { throw "Totals wrong: $($seedNow.totalOrders)/$dbOrders, $($seedNow.totalSpent)/$dbSpent" }
     }
     finally {
         Call-Api Post '/auth/logout' @{ refreshToken = $seed.data.refreshToken } $seed.data.accessToken | Out-Null
@@ -101,7 +132,7 @@ try {
     finally {
         Call-Api Post '/auth/logout' @{ refreshToken = $admin.data.refreshToken } $admin.data.accessToken | Out-Null
     }
-    Write-Output 'PASS: Customer profile persistence, User synchronization, normalization, validation, ownership, protected fields, and 401/403 authorization.'
+    Write-Output 'PASS: Customer profile persistence, User synchronization, normalization, validation (phone, required address, avatar ownership), avatar save/keep/clear, totals from real orders, ownership, protected fields, and 401/403 authorization.'
     Write-Output "Development test account retained: $email"
 }
 finally {

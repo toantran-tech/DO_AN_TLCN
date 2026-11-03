@@ -7,6 +7,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using Volo.Abp.Domain.Repositories;
 using Volo.Abp.Uow;
 using WashGo.Application.Contracts.Features.PaymentContracts.Commands;
@@ -35,6 +36,7 @@ namespace WashGo.Application.Features.PaymentApplication.Services
         private readonly IWashOrderRepository _orders;
         private readonly NotificationPublisher _notifications;
         private readonly SystemSettingProvider _settings;
+        private readonly MomoGateway _momo;
 
         public PaymentAppService(
             IWashOrderAppService orderService,
@@ -43,7 +45,8 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             IWashOrderRepository orders,
             IRepository<RefundRequest, Guid> refundRequestRepo,
             NotificationPublisher notifications,
-            SystemSettingProvider settings)
+            SystemSettingProvider settings,
+            MomoGateway momo)
         {
             _orderService = orderService;
             _transactionRepo = transactionRepo;
@@ -52,6 +55,7 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             _refundRequestRepo = refundRequestRepo;
             _notifications = notifications;
             _settings = settings;
+            _momo = momo;
         }
 
         public async Task<BaseResponse<PaymentResultDto>> CreatePaymentAsync(CreatePaymentCommand command)
@@ -64,7 +68,8 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             if (order.PaymentStatus == PaymentStatus.Paid)
                 return BadRequest<PaymentResultDto>("Đơn hàng đã được thanh toán.");
 
-            if (order.Status != WashOrderStatus.AwaitingPayment)
+            // UC 1.2.4 7b: an order moved to storage for non-payment can still be paid, then picked up at the storage.
+            if (order.Status is not (WashOrderStatus.AwaitingPayment or WashOrderStatus.MovedToStorage))
                 return BadRequest<PaymentResultDto>("Đơn hàng chưa ở trạng thái chờ thanh toán.");
             if (order.IncludedWeightKg > 0 && !order.ActualWeightKg.HasValue)
                 return BadRequest<PaymentResultDto>("Đơn chưa được Merchant cân thực tế và chốt giá.");
@@ -72,16 +77,11 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             if (command.PaymentMethod == PaymentMethod.Cash)
                 return BadRequest<PaymentResultDto>("Payment URL chỉ áp dụng cho phương thức thanh toán trực tuyến.");
 
-            if (command.PaymentMethod != PaymentMethod.VnPay)
-                return BadRequest<PaymentResultDto>("Hiện chỉ hỗ trợ tạo URL cho phương thức VNPay.");
-
-            var transactionReference = $"WG-PAY-{order.OrderCode}-{Guid.NewGuid():N}";
-            var useVnPay = string.Equals(_configuration["Payment:Provider"], "VnPay", StringComparison.OrdinalIgnoreCase);
-            var paymentUrl = useVnPay
-                ? BuildVnPayUrl(order.OrderCode, transactionReference, order.FinalAmount, command.ClientIpAddress)
-                : $"http://localhost:5000/payment/mock-checkout?orderId={order.Id}&reference={transactionReference}";
-            if (string.IsNullOrWhiteSpace(paymentUrl))
-                return BadRequest<PaymentResultDto>("Chưa cấu hình đầy đủ thông tin kết nối VNPay.");
+            var transactionReference = NewReference("PAY", order.OrderCode, command.PaymentMethod);
+            var (paymentUrl, gatewayError) = await GatewayUrlAsync(order.Id, command.PaymentMethod, transactionReference,
+                order.OrderCode, order.FinalAmount, command.ClientIpAddress);
+            if (paymentUrl == null)
+                return BadRequest<PaymentResultDto>(gatewayError!);
 
             await _transactionRepo.InsertAsync(new PaymentTransaction
             {
@@ -103,7 +103,7 @@ namespace WashGo.Application.Features.PaymentApplication.Services
                 PaymentStatus = order.PaymentStatus,
                 TransactionReference = transactionReference,
                 PaymentUrl = paymentUrl
-            }, useVnPay ? "Tạo URL thanh toán VNPay thành công." : "Tạo payment URL sandbox thành công.");
+            }, UseLiveGateway ? $"Tạo URL thanh toán {GatewayName(command.PaymentMethod)} thành công." : "Tạo payment URL sandbox thành công.");
         }
 
         public async Task<BaseResponse<PaymentResultDto>> CreateOverdueFeePaymentAsync(CreateOverdueFeePaymentCommand command)
@@ -114,11 +114,11 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             var order = await _orders.GetForUpdateAsync(command.OrderId);
             if (order == null || order.CustomerId != CurrentUser.Id.Value)
                 return NotFound<PaymentResultDto>("Không tìm thấy đơn hàng của khách hàng.");
+            if (order.Status == WashOrderStatus.MovedToStorage && order.PaymentStatus != PaymentStatus.Paid)
+                return BadRequest<PaymentResultDto>("Vui lòng thanh toán tiền giặt trước khi thanh toán phí lưu kho.");
             if (order.PaymentStatus != PaymentStatus.Paid ||
                 order.Status is not (WashOrderStatus.ReadyToReturn or WashOrderStatus.MovedToStorage))
                 return BadRequest<PaymentResultDto>("Phí lưu kho chỉ thanh toán khi đồ đã được bỏ vào locker chờ nhận.");
-            if (command.PaymentMethod != PaymentMethod.VnPay)
-                return BadRequest<PaymentResultDto>("Hiện chỉ hỗ trợ thanh toán phí lưu kho qua VNPay.");
 
             var overdueTotal = OverdueFeeCalculator.GetTotalStorageDue(order, DateTime.UtcNow, await _settings.GetAsync());
             order.OverdueFeeTotal = overdueTotal;
@@ -136,14 +136,11 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             if (pending != null)
                 return BadRequest<PaymentResultDto>("Đơn đã có giao dịch phí lưu kho đang chờ xác nhận. Vui lòng chờ kết quả trước khi tạo giao dịch mới.");
 
-            var useVnPay = string.Equals(_configuration["Payment:Provider"], "VnPay", StringComparison.OrdinalIgnoreCase);
-            var reference = $"WG-FEE-{order.OrderCode}-{Guid.NewGuid():N}";
-            var paymentUrl = useVnPay
-                ? BuildVnPayUrl(order.OrderCode, reference, outstanding, command.ClientIpAddress,
-                    $"Overdue storage fee {order.OrderCode}")
-                : $"http://localhost:5000/payment/mock-checkout?orderId={order.Id}&reference={reference}";
-            if (string.IsNullOrWhiteSpace(paymentUrl))
-                return BadRequest<PaymentResultDto>("Chưa cấu hình đầy đủ thông tin kết nối VNPay.");
+            var reference = NewReference("FEE", order.OrderCode, command.PaymentMethod);
+            var (paymentUrl, gatewayError) = await GatewayUrlAsync(order.Id, command.PaymentMethod, reference,
+                order.OrderCode, outstanding, command.ClientIpAddress, $"Overdue storage fee {order.OrderCode}");
+            if (paymentUrl == null)
+                return BadRequest<PaymentResultDto>(gatewayError!);
 
             await _orders.UpdateAsync(order, autoSave: true);
             await _transactionRepo.InsertAsync(new PaymentTransaction
@@ -180,8 +177,6 @@ namespace WashGo.Application.Features.PaymentApplication.Services
                 return NotFound<PaymentResultDto>("Không tìm thấy đơn hàng của khách hàng.");
             if (order.Status != WashOrderStatus.Cancelled)
                 return BadRequest<PaymentResultDto>("Chỉ thanh toán phí hủy cho đơn đã hủy.");
-            if (command.PaymentMethod != PaymentMethod.VnPay)
-                return BadRequest<PaymentResultDto>("Hiện chỉ hỗ trợ thanh toán phí hủy qua VNPay.");
 
             var overdueTotal = order.CancelFeeAmount;
 
@@ -199,14 +194,11 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             if (pending != null)
                 return BadRequest<PaymentResultDto>("Đơn đã có giao dịch phí hủy đang chờ xác nhận. Vui lòng chờ kết quả trước khi tạo giao dịch mới.");
 
-            var useVnPay = string.Equals(_configuration["Payment:Provider"], "VnPay", StringComparison.OrdinalIgnoreCase);
-            var reference = $"WG-CANCEL-{order.OrderCode}-{Guid.NewGuid():N}";
-            var paymentUrl = useVnPay
-                ? BuildVnPayUrl(order.OrderCode, reference, outstanding, command.ClientIpAddress,
-                    $"Cancellation fee {order.OrderCode}")
-                : $"http://localhost:5000/payment/mock-checkout?orderId={order.Id}&reference={reference}";
-            if (string.IsNullOrWhiteSpace(paymentUrl))
-                return BadRequest<PaymentResultDto>("Chưa cấu hình đầy đủ thông tin kết nối VNPay.");
+            var reference = NewReference("CANCEL", order.OrderCode, command.PaymentMethod);
+            var (paymentUrl, gatewayError) = await GatewayUrlAsync(order.Id, command.PaymentMethod, reference,
+                order.OrderCode, outstanding, command.ClientIpAddress, $"Cancellation fee {order.OrderCode}");
+            if (paymentUrl == null)
+                return BadRequest<PaymentResultDto>(gatewayError!);
 
             await _orders.UpdateAsync(order, autoSave: true);
             await _transactionRepo.InsertAsync(new PaymentTransaction
@@ -243,9 +235,8 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             var transaction = await _transactionRepo.GetForUpdateByReferenceAsync(command.TransactionReference);
             if (transaction == null || transaction.OrderId != command.OrderId)
                 return BadRequest<PaymentResultDto>("Mã giao dịch không hợp lệ.");
-            if (transaction.PaymentMethod != PaymentMethod.VnPay ||
-                string.Equals(_configuration["Payment:Provider"], "VnPay", StringComparison.OrdinalIgnoreCase))
-                return BadRequest<PaymentResultDto>("Callback sandbox không được phép xác nhận giao dịch VNPay.");
+            if (transaction.PaymentMethod is not (PaymentMethod.VnPay or PaymentMethod.Momo) || UseLiveGateway)
+                return BadRequest<PaymentResultDto>("Callback sandbox không được phép xác nhận giao dịch của cổng thanh toán thật.");
 
             var order = await _orders.GetForUpdateAsync(command.OrderId);
             if (order == null)
@@ -385,69 +376,111 @@ namespace WashGo.Application.Features.PaymentApplication.Services
 
             var responseCode = parameters.GetValueOrDefault("vnp_ResponseCode", "");
             var transactionStatus = parameters.GetValueOrDefault("vnp_TransactionStatus", "");
-            if (responseCode != "00" || transactionStatus != "00")
+            var outcome = await ApplyGatewayResultAsync(transaction, responseCode == "00" && transactionStatus == "00",
+                parameters.GetValueOrDefault("vnp_TransactionNo"),
+                $"VNPay response={responseCode}, status={transactionStatus}", "VNPay");
+            if (outcome != GatewayOutcome.Confirmed)
+                return outcome switch
+                {
+                    GatewayOutcome.NotFound => Ip("01", "Order not found"),
+                    GatewayOutcome.AlreadyPaid => Ip("02", "Order already confirmed"),
+                    GatewayOutcome.InvalidAmount => Ip("04", "Invalid amount"),
+                    _ => Ip("04", "Invalid order state or amount")
+                };
+            await uow.CompleteAsync();
+            return Ip("00", "Confirm Success");
+        }
+
+        public async Task<bool> HandleMomoIpnAsync(MomoIpnCommand ipn)
+        {
+            if (!_momo.VerifyIpn(ipn))
+            {
+                Logger.LogWarning("MoMo IPN {OrderId} rejected: invalid signature or partner.", ipn.OrderId);
+                return false;
+            }
+
+            using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            var transaction = await _transactionRepo.GetForUpdateByReferenceAsync(ipn.OrderId);
+            // MoMo retries until it gets 204, so already-handled or unknown IPNs are acknowledged without changes.
+            if (transaction == null || transaction.PaymentMethod != PaymentMethod.Momo ||
+                transaction.Status != PaymentTransactionStatus.Pending)
+            {
+                Logger.LogInformation("MoMo IPN {OrderId} ignored: unknown or already processed.", ipn.OrderId);
+                return true;
+            }
+            if (ipn.Amount != decimal.ToInt64(decimal.Round(transaction.Amount, 0, MidpointRounding.AwayFromZero)))
+            {
+                // UC 1.2.4 exception 7a: an invalid gateway result is logged and the order is not updated.
+                Logger.LogError("MoMo IPN {OrderId} amount {Amount} does not match {Expected}.", ipn.OrderId, ipn.Amount, transaction.Amount);
+                return true;
+            }
+
+            var outcome = await ApplyGatewayResultAsync(transaction, ipn.ResultCode == 0,
+                ipn.TransId.ToString(CultureInfo.InvariantCulture), $"MoMo resultCode={ipn.ResultCode}: {ipn.Message}", "MoMo");
+            if (outcome == GatewayOutcome.Confirmed)
+                await uow.CompleteAsync();
+            else
+                Logger.LogError("MoMo IPN {OrderId} not applied: {Outcome}.", ipn.OrderId, outcome);
+            return true;
+        }
+
+        private enum GatewayOutcome { Confirmed, NotFound, AlreadyPaid, InvalidAmount, InvalidState }
+
+        /// <summary>
+        /// Applies a verified gateway result (VNPay or MoMo IPN) to a pending transaction. The caller owns the
+        /// unit of work and commits only when the outcome is Confirmed.
+        /// </summary>
+        private async Task<GatewayOutcome> ApplyGatewayResultAsync(PaymentTransaction transaction, bool success,
+            string? providerTransactionId, string failureReason, string provider)
+        {
+            if (!success)
             {
                 transaction.Status = PaymentTransactionStatus.Failed;
-                transaction.FailureReason = $"VNPay response={responseCode}, status={transactionStatus}";
-                transaction.ProviderTransactionId = parameters.GetValueOrDefault("vnp_TransactionNo");
+                transaction.FailureReason = failureReason;
+                transaction.ProviderTransactionId = providerTransactionId;
                 transaction.CompletedAt = DateTime.UtcNow;
                 await _transactionRepo.UpdateAsync(transaction, autoSave: true);
                 if (await _orders.FindAsync(transaction.OrderId) is { } failedOrder)
                     await _notifications.PaymentFailedAsync(failedOrder);
-                await uow.CompleteAsync();
-                return Ip("00", "Confirm Success");
+                return GatewayOutcome.Confirmed;
             }
 
             var order = await _orders.GetForUpdateAsync(transaction.OrderId);
             if (order == null)
-                return Ip("01", "Order not found");
+                return GatewayOutcome.NotFound;
 
-            if (transaction.Purpose == PaymentPurpose.CancellationFee)
+            switch (transaction.Purpose)
             {
-                if (!await MarkCancellationFeePaidAsync(order, transaction, "VNPay"))
-                    return Ip("04", "Invalid cancellation fee");
-                transaction.Status = PaymentTransactionStatus.Succeeded;
-                transaction.ProviderTransactionId = parameters.GetValueOrDefault("vnp_TransactionNo");
-                transaction.CompletedAt = DateTime.UtcNow;
-                await _transactionRepo.UpdateAsync(transaction, autoSave: true);
-                await uow.CompleteAsync();
-                return Ip("00", "Confirm Success");
+                case PaymentPurpose.CancellationFee:
+                    if (!await MarkCancellationFeePaidAsync(order, transaction, provider))
+                        return GatewayOutcome.InvalidAmount;
+                    break;
+                case PaymentPurpose.OverdueStorageFee:
+                    if (order.PaymentStatus != PaymentStatus.Paid ||
+                        order.Status is not (WashOrderStatus.ReadyToReturn or WashOrderStatus.MovedToStorage))
+                        return GatewayOutcome.InvalidState;
+                    var due = OverdueFeeCalculator.GetTotalStorageDue(order, DateTime.UtcNow, await _settings.GetAsync());
+                    if (transaction.Amount > due - order.StorageFeeTotal)
+                        return GatewayOutcome.InvalidAmount;
+                    order.OverdueFeeTotal = due;
+                    order.StorageFeeTotal += transaction.Amount;
+                    await _orders.UpdateAsync(order, autoSave: true);
+                    break;
+                case PaymentPurpose.Order:
+                    if (order.PaymentStatus == PaymentStatus.Paid)
+                        return GatewayOutcome.AlreadyPaid;
+                    if (!await MarkOrderPaidAsync(order, transaction, provider, providerTransactionId))
+                        return GatewayOutcome.InvalidState;
+                    break;
+                default:
+                    return GatewayOutcome.InvalidState;
             }
-            if (transaction.Purpose == PaymentPurpose.OverdueStorageFee)
-            {
-                var orderEntity = await _orders.GetForUpdateAsync(transaction.OrderId);
-                if (orderEntity == null)
-                    return Ip("01", "Order not found");
-                if (orderEntity.PaymentStatus != PaymentStatus.Paid ||
-                    orderEntity.Status is not (WashOrderStatus.ReadyToReturn or WashOrderStatus.MovedToStorage))
-                    return Ip("04", "Invalid order state");
-                var due = OverdueFeeCalculator.GetTotalStorageDue(orderEntity, DateTime.UtcNow, await _settings.GetAsync());
-                if (transaction.Amount > due - orderEntity.StorageFeeTotal)
-                    return Ip("04", "Invalid amount");
-                orderEntity.OverdueFeeTotal = due;
-                orderEntity.StorageFeeTotal += transaction.Amount;
-                await _orders.UpdateAsync(orderEntity, autoSave: true);
-                transaction.Status = PaymentTransactionStatus.Succeeded;
-                transaction.ProviderTransactionId = parameters.GetValueOrDefault("vnp_TransactionNo");
-                transaction.CompletedAt = DateTime.UtcNow;
-                await _transactionRepo.UpdateAsync(transaction, autoSave: true);
-                await uow.CompleteAsync();
-                return Ip("00", "Confirm Success");
-            }
-            if (transaction.Purpose != PaymentPurpose.Order)
-                return Ip("04", "Invalid payment purpose");
-            if (order.PaymentStatus == PaymentStatus.Paid)
-                return Ip("02", "Order already confirmed");
-            if (!await MarkOrderPaidAsync(order, transaction, "VNPay",
-                    parameters.GetValueOrDefault("vnp_TransactionNo")))
-                return Ip("04", "Invalid order state or amount");
 
             transaction.Status = PaymentTransactionStatus.Succeeded;
-            transaction.ProviderTransactionId = parameters.GetValueOrDefault("vnp_TransactionNo");
+            transaction.ProviderTransactionId = providerTransactionId;
             transaction.CompletedAt = DateTime.UtcNow;
             await _transactionRepo.UpdateAsync(transaction, autoSave: true);
-            await uow.CompleteAsync();
-            return Ip("00", "Confirm Success");
+            return GatewayOutcome.Confirmed;
         }
 
         private async Task<bool> MarkCancellationFeePaidAsync(WashOrder order, PaymentTransaction transaction, string provider)
@@ -474,18 +507,22 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             if (transaction.OrderId != order.Id || transaction.Purpose != PaymentPurpose.Order ||
                 transaction.Status != PaymentTransactionStatus.Pending ||
                 transaction.Amount != order.FinalAmount ||
-                order.Status != WashOrderStatus.AwaitingPayment || order.PaymentStatus != PaymentStatus.Unpaid ||
+                order.Status is not (WashOrderStatus.AwaitingPayment or WashOrderStatus.MovedToStorage) ||
+                order.PaymentStatus != PaymentStatus.Unpaid ||
                 order.IncludedWeightKg > 0 && !order.ActualWeightKg.HasValue)
                 return false;
 
-            order.Status = WashOrderStatus.Paid;
+            // UC 1.2.4 7b: laundry paid after the move to storage stays in storage until the customer picks it up.
+            var fromStatus = order.Status;
+            if (fromStatus == WashOrderStatus.AwaitingPayment)
+                order.Status = WashOrderStatus.Paid;
             order.PaymentStatus = PaymentStatus.Paid;
             order.PaidAt = DateTime.UtcNow;
             order.Timeline.Add(new WashOrderTimeline
             {
                 WashOrderId = order.Id,
-                FromStatus = WashOrderStatus.AwaitingPayment,
-                Status = WashOrderStatus.Paid,
+                FromStatus = fromStatus,
+                Status = order.Status,
                 ActorName = provider,
                 ActorRole = "PaymentGateway",
                 Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
@@ -494,6 +531,33 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             await _orders.UpdateAsync(order, autoSave: true);
             await _notifications.PaymentSucceededAsync(order);
             return true;
+        }
+
+        /// <summary>Payment:Provider = Mock (default, local mock checkout) or Live (real VNPay/MoMo sandbox); "VnPay" is the old name of Live.</summary>
+        private bool UseLiveGateway =>
+            _configuration["Payment:Provider"] is { Length: > 0 } provider &&
+            !string.Equals(provider, "Mock", StringComparison.OrdinalIgnoreCase);
+
+        private static string GatewayName(PaymentMethod method) => method == PaymentMethod.Momo ? "MoMo" : "VNPay";
+
+        // MoMo limits orderId to 50 characters, so its references use a 16-character random suffix.
+        private static string NewReference(string kind, string orderCode, PaymentMethod method) =>
+            method == PaymentMethod.Momo
+                ? $"WG-{kind}-{orderCode}-{Guid.NewGuid():N}"[..(kind.Length + orderCode.Length + 21)]
+                : $"WG-{kind}-{orderCode}-{Guid.NewGuid():N}";
+
+        private async Task<(string? Url, string? Error)> GatewayUrlAsync(Guid orderId, PaymentMethod method, string reference,
+            string orderCode, decimal amount, string clientIpAddress, string orderInfo = "")
+        {
+            if (method is not (PaymentMethod.VnPay or PaymentMethod.Momo))
+                return (null, "Hiện chỉ hỗ trợ thanh toán trực tuyến qua VNPay hoặc MoMo.");
+            if (!UseLiveGateway)
+                return ($"http://localhost:5000/payment/mock-checkout?orderId={orderId}&reference={reference}", null);
+            if (method == PaymentMethod.Momo)
+                return await _momo.CreatePayUrlAsync(reference, amount,
+                    string.IsNullOrWhiteSpace(orderInfo) ? $"Thanh toan don WashGo {orderCode}" : orderInfo);
+            var url = BuildVnPayUrl(orderCode, reference, amount, clientIpAddress, orderInfo);
+            return url == null ? (null, "Chưa cấu hình đầy đủ thông tin kết nối VNPay.") : (url, null);
         }
 
         private string? BuildVnPayUrl(string orderCode, string reference, decimal amount, string clientIpAddress,

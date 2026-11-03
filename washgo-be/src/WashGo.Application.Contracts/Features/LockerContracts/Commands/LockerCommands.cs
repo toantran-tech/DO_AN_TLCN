@@ -8,7 +8,10 @@ namespace WashGo.Application.Contracts.Features.LockerContracts.Commands
 {
     public class CreateLockerCommand
     {
-        public Guid MerchantId { get; set; }
+        /// <summary>Merchant phụ trách locker theo thứ tự ưu tiên (phần tử đầu = ưu tiên 1). Khi sửa: null = giữ nguyên.</summary>
+        public List<Guid>? MerchantIds { get; set; }
+        /// <summary>Cách viết ngắn khi locker chỉ có một Merchant phụ trách (dùng khi không gửi MerchantIds).</summary>
+        public Guid? MerchantId { get; set; }
         public Guid? ServiceAreaId { get; set; }
         public string Code { get; set; } = string.Empty;
         public string Name { get; set; } = string.Empty;

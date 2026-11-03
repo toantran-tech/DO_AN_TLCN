@@ -19,4 +19,21 @@ namespace WashGo.Application.Contracts.Features.PaymentContracts.Commands
         public bool Success { get; set; }
     }
 
+    /// <summary>IPN body MoMo posts to /payment/momo-ipn (field names as MoMo sends them).</summary>
+    public class MomoIpnCommand
+    {
+        public string PartnerCode { get; set; } = string.Empty;
+        public string OrderId { get; set; } = string.Empty;
+        public string RequestId { get; set; } = string.Empty;
+        public long Amount { get; set; }
+        public string OrderInfo { get; set; } = string.Empty;
+        public string OrderType { get; set; } = string.Empty;
+        public long TransId { get; set; }
+        public int ResultCode { get; set; }
+        public string Message { get; set; } = string.Empty;
+        public string PayType { get; set; } = string.Empty;
+        public long ResponseTime { get; set; }
+        public string ExtraData { get; set; } = string.Empty;
+        public string Signature { get; set; } = string.Empty;
+    }
 }

@@ -19,6 +19,7 @@ namespace WashGo.EntityFrameworkCore.BuilderConfiguration
             builder.Property(x => x.OrderCode).HasMaxLength(50).IsRequired();
             builder.HasIndex(x => x.OrderCode).IsUnique();
             builder.Property(x => x.MerchantOrderCode).HasMaxLength(50);
+            builder.Property(x => x.ShipperNote).HasMaxLength(500);
             builder.HasIndex(x => x.MerchantOrderCode).IsUnique();
             builder.Property(x => x.CustomerName).HasMaxLength(150).IsRequired();
             builder.Property(x => x.CustomerPhoneNumber).HasMaxLength(20).IsRequired();

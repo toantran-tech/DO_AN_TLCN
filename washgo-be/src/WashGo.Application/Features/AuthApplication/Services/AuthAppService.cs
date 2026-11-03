@@ -55,19 +55,14 @@ namespace WashGo.Application.Features.AuthApplication.Services
         {
             if (!IsValidEmail(command.Email) || string.IsNullOrWhiteSpace(command.Password))
             {
-                return BadRequest<AuthResponseDto>("Email hoặc mật khẩu không chính xác.");
+                return BadRequest<AuthResponseDto>(InvalidCredentials);
             }
 
             var email = command.Email.Trim().ToLowerInvariant();
             var user = await _userRepo.FirstOrDefaultAsync(u => u.Email.ToLower() == email);
             if (user == null)
             {
-                return BadRequest<AuthResponseDto>("Email hoặc mật khẩu không chính xác.");
-            }
-
-            if (!user.IsActive)
-            {
-                return BadRequest<AuthResponseDto>("Tài khoản đã bị tạm khóa. Vui lòng liên hệ quản trị viên.");
+                return BadRequest<AuthResponseDto>(InvalidCredentials);
             }
 
             bool isPasswordValid = false;
@@ -76,13 +71,25 @@ namespace WashGo.Application.Features.AuthApplication.Services
                 isPasswordValid = BCrypt.Net.BCrypt.Verify(command.Password, user.PasswordHash);
             }
 
+            // Spec order: credentials (4a), then locked account (5a), then role of the portal (6a).
             if (!isPasswordValid)
             {
-                return BadRequest<AuthResponseDto>("Email hoặc mật khẩu không chính xác.");
+                return BadRequest<AuthResponseDto>(InvalidCredentials);
             }
 
             var role = await _roleRepo.FindAsync(user.RoleId);
             var roleName = role?.Name ?? "Customer";
+
+            if (!user.IsActive)
+            {
+                return BadRequest<AuthResponseDto>(LockedMessage(roleName));
+            }
+
+            if (!string.IsNullOrWhiteSpace(command.Portal) &&
+                !string.Equals(command.Portal.Trim(), roleName, StringComparison.OrdinalIgnoreCase))
+            {
+                return BadRequest<AuthResponseDto>("Bạn không có quyền truy cập trang này.");
+            }
 
             // Update last login
             user.LastLoginAt = DateTime.UtcNow;
@@ -109,6 +116,13 @@ namespace WashGo.Application.Features.AuthApplication.Services
 
             return Success(result, "Đăng nhập thành công!");
         }
+
+        private const string InvalidCredentials = "Email hoặc mật khẩu không đúng.";
+
+        // Shippers are managed by their Merchant, everyone else by the Admin (UC 1.1.2, 2.1.1, 4.1.1 5a).
+        private static string LockedMessage(string roleName) => roleName == "Shipper"
+            ? "Tài khoản của bạn đã bị khóa. Vui lòng liên hệ Merchant."
+            : "Tài khoản của bạn đã bị khóa. Vui lòng liên hệ Admin.";
 
         public Task<BaseResponse<AuthResponseDto>> GoogleLoginAsync(GoogleLoginCommand command)
         {
@@ -149,7 +163,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
                     if (!string.Equals(existingRole?.Name, "Customer", StringComparison.OrdinalIgnoreCase))
                         return BadRequest<AuthResponseDto>("Tài khoản này không thuộc Customer. Vui lòng dùng cổng quản trị.");
                     if (!existingEmailUser.IsActive)
-                        return BadRequest<AuthResponseDto>("Tài khoản đã bị tạm khóa. Vui lòng liên hệ quản trị viên.");
+                        return BadRequest<AuthResponseDto>(LockedMessage("Customer"));
                     if (existingEmailUser.AuthProvider == AuthProvider.Google &&
                         existingEmailUser.ProviderId != payload.Subject)
                         return BadRequest<AuthResponseDto>("Email này đã liên kết với tài khoản Google khác.");
@@ -195,7 +209,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
 
             if (!user.IsActive)
             {
-                return BadRequest<AuthResponseDto>("Tài khoản đã bị tạm khóa. Vui lòng liên hệ quản trị viên.");
+                return BadRequest<AuthResponseDto>(LockedMessage("Customer"));
             }
 
             var role = await _roleRepo.FindAsync(user.RoleId);

@@ -32,7 +32,6 @@ namespace WashGo.Application.Features.ShipperApplication.Services
     /// </summary>
     public class ShipperManagementAppService : WashGoAppService, IShipperManagementAppService
     {
-        private static readonly Regex PlatePattern = new(@"^[0-9A-Z][0-9A-Z.\- ]{3,19}$", RegexOptions.Compiled);
         private static readonly Regex IdentityPattern = new(@"^(\d{9}|\d{12})$", RegexOptions.Compiled);
 
         private readonly IShipperRepository _shipperRepo;
@@ -119,7 +118,7 @@ namespace WashGo.Application.Features.ShipperApplication.Services
             if (merchant == null || merchant.Status != MerchantStatus.Active)
                 return BadRequest<ShipperDto>("Merchant không tồn tại hoặc không hoạt động.");
 
-            var (error, fullName, phone, email, plate) = Validate(command.FullName, command.Phone, command.Email,
+            var (error, fullName, phone, email, plate) = ShipperRules.Validate(command.FullName, command.Phone, command.Email,
                 command.VehicleType, command.VehiclePlate);
             if (error != null)
                 return BadRequest<ShipperDto>(error);
@@ -182,7 +181,7 @@ namespace WashGo.Application.Features.ShipperApplication.Services
             if (shipper == null || user == null)
                 return NotFound<ShipperDto>("Không tìm thấy Shipper!");
 
-            var (error, fullName, phone, email, plate) = Validate(command.FullName, command.Phone, command.Email,
+            var (error, fullName, phone, email, plate) = ShipperRules.Validate(command.FullName, command.Phone, command.Email,
                 command.VehicleType, command.VehiclePlate);
             if (error != null)
                 return BadRequest<ShipperDto>(error);
@@ -212,43 +211,6 @@ namespace WashGo.Application.Features.ShipperApplication.Services
             if (shipper == null || (!IsAdmin && shipper.MerchantId != CurrentUser.Id))
                 return (null, null);
             return (shipper, await _userRepo.FindAsync(shipper.UserId));
-        }
-
-        private static (string? Error, string FullName, string Phone, string Email, string? Plate) Validate(
-            string? fullName, string? phone, string? email, VehicleType vehicleType, string? plate)
-        {
-            var name = fullName?.Trim() ?? string.Empty;
-            var digits = new string((phone ?? string.Empty).Where(char.IsDigit).ToArray());
-            var mail = email?.Trim().ToLowerInvariant() ?? string.Empty;
-            var normalizedPlate = string.IsNullOrWhiteSpace(plate) ? null : plate.Trim().ToUpperInvariant();
-            string? error = null;
-            if (name.Length == 0)
-                error = "Vui lòng nhập họ tên Shipper.";
-            else if (name.Length > 100)
-                error = "Họ tên tối đa 100 ký tự.";
-            else if (string.IsNullOrWhiteSpace(phone) || phone.Length > 20 || !Regex.IsMatch(phone, @"^\+?[0-9 ()\-.]+$") ||
-                     digits.Length is < 9 or > 11)
-                error = "Số điện thoại không hợp lệ.";
-            else if (!IsValidEmail(mail))
-                error = "Email không hợp lệ.";
-            else if (!Enum.IsDefined(vehicleType))
-                error = "Phương tiện không hợp lệ.";
-            else if (vehicleType != VehicleType.Bicycle && (normalizedPlate == null || !PlatePattern.IsMatch(normalizedPlate)))
-                error = "Biển số xe không hợp lệ.";
-            return (error, name, digits, mail, normalizedPlate);
-        }
-
-        private static bool IsValidEmail(string email)
-        {
-            if (email.Length is 0 or > 100) return false;
-            try
-            {
-                return string.Equals(new MailAddress(email).Address, email, StringComparison.OrdinalIgnoreCase);
-            }
-            catch (FormatException)
-            {
-                return false;
-            }
         }
 
         private async Task<string?> DuplicateErrorAsync(string phone, string email, Guid? exceptUserId)

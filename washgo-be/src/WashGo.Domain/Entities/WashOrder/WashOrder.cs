@@ -46,6 +46,8 @@ namespace WashGo.Domain.Entities.WashOrder
         public Guid? ShipperId { get; set; }
         public DeliveryTaskType? AssignedTaskType { get; set; }
         public DateTime? ShipperAssignedAt { get; set; }
+        /// <summary>Ghi chú của Merchant cho Shipper ở lần phân công gần nhất (UC 4.3.2).</summary>
+        public string? ShipperNote { get; set; }
 
         [Filterable(ColumnVariant.Text)]
         public string? ShipperName { get; set; }
