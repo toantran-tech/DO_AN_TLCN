@@ -4,6 +4,7 @@ using Volo.Abp.Modularity;
 using WashGo.Core;
 using WashGo.Domain;
 using WashGo.Domain.Entities.Feedback.Interfaces;
+using WashGo.Domain.Entities.Identity.Interfaces;
 using WashGo.Domain.Entities.Locker.Interfaces;
 using WashGo.Domain.Entities.Notification.Interfaces;
 using WashGo.Domain.Entities.Payment.Interfaces;
@@ -28,6 +29,7 @@ namespace WashGo.EntityFrameworkCore
             context.Services.AddAbpDbContext<WashGoDbContext>(options =>
             {
                 options.AddDefaultRepositories(includeAllEntities: true);
+                options.AddRepository<WashGo.Domain.Entities.Identity.OtpCode, OtpCodeRepository>();
                 options.AddRepository<WashGo.Domain.Entities.WashOrder.WashOrder, WashOrderRepository>();
                 options.AddRepository<WashGo.Domain.Entities.Locker.Locker, LockerRepository>();
                 options.AddRepository<WashGo.Domain.Entities.Payment.PaymentTransaction, PaymentTransactionRepository>();
@@ -39,6 +41,7 @@ namespace WashGo.EntityFrameworkCore
             });
 
             context.Services.AddTransient<IWashOrderRepository, WashOrderRepository>();
+            context.Services.AddTransient<IOtpCodeRepository, OtpCodeRepository>();
             context.Services.AddTransient<ILockerRepository, LockerRepository>();
             context.Services.AddTransient<IPaymentTransactionRepository, PaymentTransactionRepository>();
             context.Services.AddTransient<IShipperRepository, ShipperRepository>();

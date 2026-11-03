@@ -66,7 +66,8 @@ namespace WashGo.Application.Contracts.Features.AuthContracts.Commands
     public class ResetPasswordCommand
     {
         public string Email { get; set; } = string.Empty;
-        public string Code { get; set; } = string.Empty;
+        /// <summary>Single-use token returned by verify-otp with purpose ForgotPassword.</summary>
+        public string VerificationToken { get; set; } = string.Empty;
         public string NewPassword { get; set; } = string.Empty;
         public string ConfirmNewPassword { get; set; } = string.Empty;
     }
