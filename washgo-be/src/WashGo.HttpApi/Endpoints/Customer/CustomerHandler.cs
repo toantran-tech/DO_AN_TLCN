@@ -27,11 +27,11 @@ public class CustomerHandler : IEndpointBase
             .WithSummary("Cập nhật hồ sơ Customer của tôi.")
             .WithOpenApi();
 
-        group.MapGet("/services", async (Guid? merchantId, WashServiceType? serviceType, string? keyword,
+        group.MapGet("/services", async (WashServiceType? serviceType, string? keyword,
             int? page, int? take, ICustomerCatalogAppService catalog) =>
-            (await catalog.GetServicesAsync(merchantId, serviceType, keyword, page ?? 1, take ?? 20)).CustomResult())
+            (await catalog.GetServicesAsync(serviceType, keyword, page ?? 1, take ?? 20)).CustomResult())
             .WithName("Customer xem dịch vụ đang bán")
-            .WithSummary("Customer xem dịch vụ đang bán.")
+            .WithSummary("Customer xem bảng dịch vụ chung đang bán (giá giống nhau cho mọi Merchant).")
             .WithOpenApi();
 
         group.MapGet("/services/{id:guid}", async (Guid id, ICustomerCatalogAppService catalog) =>

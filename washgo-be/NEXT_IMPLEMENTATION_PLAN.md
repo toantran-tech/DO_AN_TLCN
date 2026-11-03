@@ -69,7 +69,7 @@ Chỉ tính **Backend**; FE chưa làm. Chi tiết từng UC ở bảng mục I 
 | 2.4.1–2.4.3 Quản lý Shipper | Đã có BE | Ngày 01/11: `/shipper` cho Merchant (tiệm của mình) và Admin: danh sách/lọc, thêm (tạo tài khoản Shipper, gửi mật khẩu tạm qua email), sửa, Đang làm việc/Tạm nghỉ; đếm số đơn đã giao. |
 | 2.4.4 Phân công Shipper | Đã có BE | Ngày 29/10: Merchant/Admin xem Shipper khả dụng theo đơn và phân công đúng tiệm, đúng giai đoạn, tài khoản đang hoạt động/khả dụng. Lưu riêng nhiệm vụ lấy/trả và thời điểm; chống phân công đồng thời. Shipper nhận thông báo nhiệm vụ mới (module 5, 01/11). |
 | 2.5.1–2.5.3 Xem locker/ô/lịch sử | Đã có BE | Ngày 01/11: Merchant chỉ xem locker được gán (danh sách, chi tiết ô có cờ `hasItems`), tạo/sửa locker và đổi trạng thái ô chỉ Admin; `GET /locker/{id}/usage-history` lịch sử từng lượt dùng ô. |
-| 2.6.1–2.6.3 Dịch vụ và đề xuất thay đổi | Đã có BE | Ngày 01/11: `/merchant-service` Merchant xem dịch vụ đã duyệt của tiệm, đề xuất thêm mới/chỉnh sửa (chờ Admin duyệt, báo Admin); không còn gọi trực tiếp `/wash-service`. |
+| 2.6.1–2.6.3 Dịch vụ và đề xuất thay đổi | Đã có BE | `/merchant-service` Merchant xem **bảng dịch vụ chung** (03/11: dịch vụ và giá dùng chung cho mọi Merchant), đề xuất thêm dịch vụ / sửa giá; Admin duyệt thì áp dụng chung cho cả hệ thống. Tên dịch vụ không trùng trong toàn bảng (kể cả đề xuất đang chờ), mỗi dịch vụ một đề xuất chờ duyệt. |
 
 ### 3. Admin
 
@@ -78,7 +78,7 @@ Chỉ tính **Backend**; FE chưa làm. Chi tiết từng UC ở bảng mục I 
 | 3.2.1–3.2.5 Quản lý Merchant | Đã có BE | Ngày 01/11: tạo Merchant kèm tài khoản + email mật khẩu tạm, kiểm tra email/MST/tọa độ/SĐT/chiết khấu; sửa đủ trường hợp đồng/SLA/ảnh; khóa cần lý do + xác nhận khi còn đơn, chặn đăng nhập; thiết lập vùng phục vụ với độ ưu tiên. |
 | 3.3.1–3.3.3 Phân công đơn cho Merchant | Chưa làm | Ngày 01/11 đã làm thử rồi gỡ ra theo quyết định của nhóm; hiện đơn vẫn tự lấy Merchant theo locker khi tạo. Chưa có danh sách đơn chờ phân công, gán thủ công, gán tự động (AI). |
 | 3.4.1–3.4.5 Quản lý locker | Đã có BE | Ngày 01/11: danh sách có tên Merchant/khu vực/số ô trống, lọc khu vực; tạo/sửa kiểm tra tên trùng, tọa độ, khu vực, ảnh; xóa mềm khi không còn đơn; ô tủ chỉ chuyển Trống ↔ Bảo trì; lịch sử theo từng ô. |
-| 3.5.1–3.5.6 Quản lý và duyệt dịch vụ | Đã có BE | Ngày 01/11: `/wash-service` chỉ Admin, lọc theo Merchant/trạng thái duyệt, chặn tên trùng trong tiệm, xóa mềm (chặn khi còn đơn chưa xong); `/service-proposal` duyệt (tạo/cập nhật dịch vụ) hoặc từ chối có lý do, báo Merchant. |
+| 3.5.1–3.5.6 Quản lý và duyệt dịch vụ | Đã có BE | `/wash-service` chỉ Admin, quản lý bảng dịch vụ chung (`merchantId` chỉ ghi Merchant đã đề xuất, không bắt buộc), chặn tên trùng toàn bảng, xóa mềm (chặn khi còn đơn chưa xong); `/service-proposal` duyệt (tạo/cập nhật dịch vụ chung) hoặc từ chối có lý do, báo Merchant. |
 | 3.6.1–3.6.5 Khuyến mãi | Đã có BE | Ngày 01/11: CRUD `/promotion`, lọc theo trạng thái/thời gian, bật/tắt, xóa khi chưa dùng, thống kê + xuất CSV. Chi tiết ở mục khuyến mãi bên dưới. |
 | 3.7.1–3.7.3 Khiếu nại và đánh giá | Đã có BE | Ngày 01/11: lọc/xử lý/từ chối khiếu nại, bồi thường 30/70/100/200% do server tính, ghi nhận chi trả; lọc/ẩn đánh giá, cập nhật điểm Merchant. |
 | 3.8.1–3.8.3 Tài chính | Đã có BE | Ngày 01/11: `/finance` báo cáo doanh thu (tổng, theo Merchant, theo dịch vụ, theo ngày, xuất CSV), hoa hồng theo kỳ, kỳ đối soát + xác nhận chi trả; danh sách hoàn tiền lọc trạng thái, có mã đơn/tên khách và chi tiết. |
@@ -121,6 +121,12 @@ Chỉ tính **Backend**; FE chưa làm. Chi tiết từng UC ở bảng mục I 
 - [x] **Trạng thái ô (2.5.2):** chi tiết locker trả từng ô với trạng thái Trống/Đang có đồ/Đang giữ chỗ/Bảo trì và cờ `hasItems` cho ô đang có đồ.
 - [x] **Lịch sử sử dụng (2.5.3):** `GET /locker/{id}/usage-history?fromDate&toDate&page&take` — mỗi lượt dùng ô: mã đơn, số ô, loại (1 = khách gửi, 2 = Shipper trả), thời gian đặt vào, thời gian lấy ra (null nếu đồ còn trong ô), trạng thái đơn; mốc thời gian lấy từ lịch sử trạng thái đơn (gửi/thu gom/trả/nhận), có nhánh đơn hủy và chuyển kho; không lộ thông tin khách. Chưa dùng: "Locker này chưa được sử dụng."
 - [x] `tests/smoke/locker-scope.ps1` PASS: thông báo Merchant chưa có locker, phạm vi danh sách/chi tiết/lịch sử, Merchant bị chặn 403 khi tạo/sửa/đổi trạng thái ô, ô giữ chỗ và ô có đồ, lịch sử đầy đủ thời gian sau một vòng đơn, đơn chưa gửi không xuất hiện, lọc theo thời gian.
+
+### Đợt 03/11/2026 — nhóm chốt mô hình mới cho UC 3.3
+
+Quyết định của nhóm: đơn luôn có Merchant; một locker có thể có nhiều Merchant phụ trách; Admin chọn Merchant cho từng đơn sau khi khách gửi đồ; **giá là bảng giá chung**, Merchant đề xuất giá thì Admin duyệt.
+
+- [x] **Bảng dịch vụ chung:** `services.merchant_id` thành không bắt buộc, chỉ ghi Merchant đã đề xuất (migration `ShareWashServiceCatalog`, khóa ngoại SET NULL). Tính giá đơn không còn kiểm tra dịch vụ thuộc Merchant của tủ ("Dịch vụ đã chọn không còn được cung cấp."). `GET /customer/services` trả bảng chung (bỏ tham số `merchantId`, bỏ `merchantName`). `/merchant-service/filter` trả bảng chung cho mọi Merchant; đề xuất sửa được gửi cho bất kỳ dịch vụ chung nào; tên không trùng toàn bảng kể cả đề xuất chờ của Merchant khác; mỗi dịch vụ chỉ một đề xuất chờ. Admin tạo dịch vụ không cần chọn Merchant. Test `service-proposals.ps1` cập nhật PASS; hồi quy `qr-pin-flow`, `finance` PASS.
 
 ### Đợt 02/11/2026 — hoàn thiện các UC "một phần"
 

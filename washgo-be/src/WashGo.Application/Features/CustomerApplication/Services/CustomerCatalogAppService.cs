@@ -28,21 +28,17 @@ public class CustomerCatalogAppService : WashGoAppService, ICustomerCatalogAppSe
         _merchants = merchants;
     }
 
+    // Shared catalog: one price per service for every Merchant (Admin approves Merchant proposals).
     public async Task<PaginatedResult<CustomerServiceCatalogDto>> GetServicesAsync(
-        Guid? merchantId, WashServiceType? serviceType, string? keyword, int page, int take)
+        WashServiceType? serviceType, string? keyword, int page, int take)
     {
         (page, take) = NormalizePaging(page, take);
         var services = await _services.GetQueryableAsync();
-        var merchants = await _merchants.GetQueryableAsync();
         var query = from service in services
-                    join merchant in merchants on service.MerchantId equals merchant.Id
                     where !service.IsDeleted && service.IsActive
                         && service.ApprovalStatus == ServiceApprovalStatus.Approved && service.UnitPrice > 0
-                        && merchant.Status == MerchantStatus.Active
-                    select new { service, merchant };
+                    select new { service };
 
-        if (merchantId.HasValue)
-            query = query.Where(x => x.service.MerchantId == merchantId.Value);
         if (serviceType.HasValue)
             query = query.Where(x => x.service.ServiceType == serviceType.Value);
         if (!string.IsNullOrWhiteSpace(keyword))
@@ -57,8 +53,6 @@ public class CustomerCatalogAppService : WashGoAppService, ICustomerCatalogAppSe
             .Select(x => new CustomerServiceCatalogDto
             {
                 Id = x.service.Id,
-                MerchantId = x.service.MerchantId,
-                MerchantName = x.merchant.BusinessName,
                 Code = x.service.Code,
                 Name = x.service.Name,
                 Description = x.service.Description,
@@ -76,17 +70,12 @@ public class CustomerCatalogAppService : WashGoAppService, ICustomerCatalogAppSe
     public async Task<BaseResponse<CustomerServiceCatalogDto>> GetServiceAsync(Guid id)
     {
         var services = await _services.GetQueryableAsync();
-        var merchants = await _merchants.GetQueryableAsync();
         var query = from service in services
-                    join merchant in merchants on service.MerchantId equals merchant.Id
                     where service.Id == id && !service.IsDeleted && service.IsActive
                         && service.ApprovalStatus == ServiceApprovalStatus.Approved && service.UnitPrice > 0
-                        && merchant.Status == MerchantStatus.Active
                     select new CustomerServiceCatalogDto
                     {
                         Id = service.Id,
-                        MerchantId = service.MerchantId,
-                        MerchantName = merchant.BusinessName,
                         Code = service.Code,
                         Name = service.Name,
                         Description = service.Description,

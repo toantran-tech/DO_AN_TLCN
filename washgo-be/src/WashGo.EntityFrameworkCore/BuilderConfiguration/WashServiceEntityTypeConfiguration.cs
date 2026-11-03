@@ -29,7 +29,7 @@ namespace WashGo.EntityFrameworkCore.BuilderConfiguration
             builder.Property(x => x.ApprovalStatus).HasColumnName("status");
             builder.HasIndex(x => x.MerchantId);
             builder.HasIndex(x => x.ApprovalStatus);
-            builder.HasOne<Merchant>().WithMany().HasForeignKey(x => x.MerchantId).OnDelete(DeleteBehavior.Cascade);
+            builder.HasOne<Merchant>().WithMany().HasForeignKey(x => x.MerchantId).OnDelete(DeleteBehavior.SetNull);
             builder.HasOne<User>().WithMany().HasForeignKey(x => x.ApprovedBy).OnDelete(DeleteBehavior.SetNull);
         }
     }

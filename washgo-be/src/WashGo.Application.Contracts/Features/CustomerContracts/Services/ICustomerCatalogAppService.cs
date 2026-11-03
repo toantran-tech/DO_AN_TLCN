@@ -7,7 +7,7 @@ namespace WashGo.Application.Contracts.Features.CustomerContracts.Services;
 
 public interface ICustomerCatalogAppService : IApplicationService
 {
-    Task<PaginatedResult<CustomerServiceCatalogDto>> GetServicesAsync(Guid? merchantId, WashServiceType? serviceType, string? keyword, int page, int take);
+    Task<PaginatedResult<CustomerServiceCatalogDto>> GetServicesAsync(WashServiceType? serviceType, string? keyword, int page, int take);
     Task<BaseResponse<CustomerServiceCatalogDto>> GetServiceAsync(Guid id);
     Task<PaginatedResult<CustomerLockerCatalogDto>> GetLockersAsync(
         string? city, string? district, string? keyword, int page, int take,

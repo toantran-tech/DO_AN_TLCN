@@ -5,8 +5,6 @@ namespace WashGo.Application.Contracts.Features.CustomerContracts.Results;
 public class CustomerServiceCatalogDto
 {
     public Guid Id { get; set; }
-    public Guid MerchantId { get; set; }
-    public string MerchantName { get; set; } = string.Empty;
     public string Code { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public string? Description { get; set; }

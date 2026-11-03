@@ -109,12 +109,11 @@ namespace WashGo.Application.Features.WashServiceApplication.Services
                 command.EstimatedDurationHours, command.ServiceType, command.Unit);
             if (error != null)
                 return error;
-            var merchant = await _merchantRepo.FindAsync(command.MerchantId);
-            if (merchant == null)
-                return "Merchant áp dụng không tồn tại.";
+            if (command.MerchantId.HasValue && await _merchantRepo.FindAsync(command.MerchantId.Value) == null)
+                return "Merchant đề xuất không tồn tại.";
             if (await _serviceRepo.AnyAsync(x => x.Code == command.Code && x.Id != currentId))
                 return $"Mã dịch vụ '{command.Code}' đã tồn tại.";
-            if (await WashServiceRules.NameTakenAsync(_serviceRepo, command.MerchantId, command.Name, currentId))
+            if (await WashServiceRules.NameTakenAsync(_serviceRepo, command.Name, currentId))
                 return WashServiceRules.DuplicateName;
             return null;
         }

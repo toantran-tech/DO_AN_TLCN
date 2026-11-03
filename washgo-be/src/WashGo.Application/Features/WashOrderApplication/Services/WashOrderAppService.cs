@@ -274,7 +274,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 : null;
 
         // Prices always come from the server catalog; client prices are never trusted.
-        private async Task<(PricedOrder? Result, string? Error)> PriceItemsAsync(List<CreateWashOrderItemDto> items, Guid merchantId)
+        private async Task<(PricedOrder? Result, string? Error)> PriceItemsAsync(List<CreateWashOrderItemDto> items)
         {
             var orderItems = new List<WashOrderItem>();
             decimal total = 0;
@@ -284,9 +284,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             {
                 var service = await _serviceRepo.FindAsync(item.ServiceId);
                 if (service == null || service.IsDeleted || !service.IsActive ||
-                    service.ApprovalStatus != ServiceApprovalStatus.Approved ||
-                    service.MerchantId != merchantId)
-                    return (null, "Dịch vụ đã chọn không còn được bán bởi đối tác của tủ.");
+                    service.ApprovalStatus != ServiceApprovalStatus.Approved)
+                    return (null, "Dịch vụ đã chọn không còn được cung cấp.");
 
                 var isWeightBased = service.Unit.Equals("kg", StringComparison.OrdinalIgnoreCase);
                 if (isWeightBased && item.Quantity != 1)
@@ -369,7 +368,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             if (merchant == null || merchant.Status != MerchantStatus.Active)
                 return BadRequest<VoucherQuoteDto>("Đối tác quản lý tủ hiện không hoạt động.");
 
-            var (priced, priceError) = await PriceItemsAsync(command.Items, locker.MerchantId);
+            var (priced, priceError) = await PriceItemsAsync(command.Items);
             if (priced == null)
                 return BadRequest<VoucherQuoteDto>(priceError!);
 
@@ -463,7 +462,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 : customerUser.FullName;
             var customerPhone = customerUser.Phone ?? string.Empty;
 
-            var (priced, priceError) = await PriceItemsAsync(command.Items, locker.MerchantId);
+            var (priced, priceError) = await PriceItemsAsync(command.Items);
             if (priced == null)
                 return BadRequest<WashOrderDetailDto>(priceError!);
             if (!Enum.IsDefined(box.Size))

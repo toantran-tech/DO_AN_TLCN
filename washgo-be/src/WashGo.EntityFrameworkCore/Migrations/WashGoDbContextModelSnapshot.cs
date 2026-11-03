@@ -2718,7 +2718,7 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasDefaultValue(false)
                         .HasColumnName("is_deleted");
 
-                    b.Property<Guid>("MerchantId")
+                    b.Property<Guid?>("MerchantId")
                         .HasColumnType("uuid")
                         .HasColumnName("merchant_id");
 
@@ -3101,8 +3101,7 @@ namespace WashGo.EntityFrameworkCore.Migrations
                     b.HasOne("WashGo.Domain.Entities.Partner.Merchant", null)
                         .WithMany()
                         .HasForeignKey("MerchantId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.SetNull);
                 });
 
             modelBuilder.Entity("WashGo.Domain.Entities.Locker.Locker", b =>

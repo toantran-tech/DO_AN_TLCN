@@ -18,6 +18,8 @@ function Proposal([hashtable]$Extra=@{}) {
     foreach($k in $Extra.Keys){$b[$k]=$Extra[$k]}
     return $b
 }
+# The catalog is shared, so this run's service is found by its unique name.
+function Mine($Token) { Call-Api Post '/merchant-service/filter' @{keyword=$run;page=1;take=20} $Token }
 function Notes($Token,$Type) { @((Call-Api Get '/notification?take=100' $null $Token).list | Where-Object { $_.type -eq $Type }) }
 
 try {
@@ -34,8 +36,10 @@ INSERT INTO washgo.merchants SELECT (jsonb_populate_record(NULL::washgo.merchant
 "@ | Out-Null
     $sessions.B=(Call-Api Post '/auth/login' @{email="svc-b-$run@example.com";password='Merchant@123'} $null).data;$merchant=$sessions.B.accessToken
 
-    Write-Output '1. Merchant service list and direct writes blocked (UC 2.6.1)'
-    $empty=Call-Api Post '/merchant-service/filter' @{page=1;take=20} $merchant
+    Write-Output '1. Shared service list and direct writes blocked (UC 2.6.1)'
+    $all=Call-Api Post '/merchant-service/filter' @{page=1;take=100} $merchant
+    if($all.total -lt 1){throw 'Shared catalog not visible to a new Merchant.'}
+    $empty=Mine $merchant
     if($empty.total -ne 0 -or !$empty.message){throw 'Empty service message missing.'}
     Assert-Status 403 Post '/merchant-service/filter' @{} $admin
     Assert-Status 403 Post '/wash-service/filter' @{} $merchant
@@ -48,8 +52,10 @@ INSERT INTO washgo.merchants SELECT (jsonb_populate_record(NULL::washgo.merchant
     $p1=Call-Api Post '/merchant-service/proposals' (Proposal) $merchant
     if($p1.data.status -ne 1 -or $p1.data.requestType -ne 1 -or $p1.data.proposed.name -ne $name){throw 'Proposal not pending.'}
     Assert-Status 400 Post '/merchant-service/proposals' (Proposal @{name=$name.ToUpper()}) $merchant
+    # Names are unique across the shared catalog, including other Merchants' pending proposals.
+    Assert-Status 400 Post '/merchant-service/proposals' (Proposal) $seedMerchant
     if(@(Notes $admin 46 | Where-Object { $_.linkId -eq $p1.data.id }).Count -ne 1){throw 'Admin not notified.'}
-    if((Call-Api Post '/merchant-service/filter' @{} $merchant).total -ne 0){throw 'Pending proposal already listed as a service.'}
+    if((Mine $merchant).total -ne 0){throw 'Pending proposal already listed as a service.'}
 
     Write-Output '3. Proposal lists and scope'
     $adminList=Call-Api Post '/service-proposal/filter' @{status=1;merchantId="$merchantB"} $admin
@@ -64,22 +70,25 @@ INSERT INTO washgo.merchants SELECT (jsonb_populate_record(NULL::washgo.merchant
     if($ok.data.status -ne 2 -or !$ok.data.serviceId){throw 'Approve failed.'}
     $serviceId=$ok.data.serviceId
     Assert-Status 400 Post "/service-proposal/$($p1.data.id)/approve" $null $admin
-    $services=(Call-Api Post '/merchant-service/filter' @{} $merchant)
+    $services=Mine $merchant
     if($services.total -ne 1 -or $services.list[0].id -ne $serviceId -or $services.list[0].unitPrice -ne 100000 -or $services.list[0].approvalStatus -ne 2){throw 'Approved service not listed.'}
+    if((Mine $seedMerchant).list[0].id -ne $serviceId){throw 'Approved service not shared with other Merchants.'}
     if(@(Notes $merchant 26).Count -ne 1){throw 'Merchant not notified of approval.'}
     Assert-Status 400 Post '/merchant-service/proposals' (Proposal) $merchant
 
     Write-Output '5. Propose edit, reject with reason (UC 2.6.3, 3.5.6)'
     $edit=@{name=$name;description='Giat hap moi';unitPrice=120000;estimatedDurationHours=20;reason='Tang gia nguyen lieu'}
     Assert-Status 400 Post "/merchant-service/$serviceId/proposals" (@{name=$name;unitPrice=-1;estimatedDurationHours=20}) $merchant
-    Assert-Status 404 Post "/merchant-service/$serviceId/proposals" $edit $seedMerchant
+    Assert-Status 404 Post "/merchant-service/$([Guid]::NewGuid())/proposals" $edit $merchant
     $p2=(Call-Api Post "/merchant-service/$serviceId/proposals" $edit $merchant).data
     if($p2.requestType -ne 2 -or $p2.current.unitPrice -ne 100000 -or $p2.proposed.unitPrice -ne 120000){throw 'Edit proposal snapshot wrong.'}
     Assert-Status 400 Post "/merchant-service/$serviceId/proposals" $edit $merchant
+    # One pending proposal per shared service, whichever Merchant sent it.
+    Assert-Status 400 Post "/merchant-service/$serviceId/proposals" $edit $seedMerchant
     Assert-Status 400 Post "/service-proposal/$($p2.id)/reject" @{reason=' '} $admin
     $rej=(Call-Api Post "/service-proposal/$($p2.id)/reject" @{reason='Gia chua hop ly'} $admin).data
     if($rej.status -ne 3 -or $rej.rejectionReason -ne 'Gia chua hop ly'){throw 'Reject failed.'}
-    if((Call-Api Post '/merchant-service/filter' @{} $merchant).list[0].unitPrice -ne 100000){throw 'Rejected edit changed the service.'}
+    if((Mine $merchant).list[0].unitPrice -ne 100000){throw 'Rejected edit changed the service.'}
     $rejNote=@(Notes $merchant 26 | Where-Object { $_.content -match 'Gia chua hop ly' })
     if($rejNote.Count -ne 1){throw 'Merchant not told the rejection reason.'}
 
@@ -88,6 +97,7 @@ INSERT INTO washgo.merchants SELECT (jsonb_populate_record(NULL::washgo.merchant
     Call-Api Post "/service-proposal/$($p3.id)/approve" $null $admin | Out-Null
     $updated=(Call-Api Get "/wash-service/$serviceId" $null $admin).data
     if($updated.unitPrice -ne 120000 -or $updated.estimatedDurationHours -ne 20 -or $updated.description -ne 'Giat hap moi'){throw 'Approved edit not applied.'}
+    if((Call-Api Get "/customer/services/$serviceId" $null $customer).data.unitPrice -ne 120000){throw 'Customers do not see the shared new price.'}
 
     Write-Output '7. Admin service management (UC 3.5.1-3.5.4)'
     $list=Call-Api Post '/wash-service/filter' @{merchantId="$merchantB";approvalStatus=2} $admin
@@ -102,10 +112,10 @@ INSERT INTO washgo.merchants SELECT (jsonb_populate_record(NULL::washgo.merchant
     Call-Api Post "/wash-order/$($o.id)/cancel" @{reason='Service smoke'} $customer | Out-Null
     Call-Api Delete "/wash-service/$serviceId" $null $admin | Out-Null
     Assert-Status 404 Get "/wash-service/$serviceId" $null $admin
-    if((Call-Api Post '/merchant-service/filter' @{} $merchant).total -ne 0){throw 'Deleted service still listed.'}
+    if((Mine $merchant).total -ne 0){throw 'Deleted service still listed.'}
     Assert-Status 404 Get "/customer/services/$serviceId" $null $customer
 
-    Write-Output 'PASS: merchant service list, direct writes blocked, propose/validate/duplicate, admin notified, scope, approve creates/updates service, reject with reason, admin filters/duplicate name/merchant check, delete blocked while order unfinished.'
+    Write-Output 'PASS: shared service list for every Merchant, global name/pending uniqueness, direct writes blocked, propose/validate/duplicate, admin notified, scope, approve creates/updates service, reject with reason, admin filters/duplicate name/merchant check, delete blocked while order unfinished.'
 }
 finally {
     foreach($session in $sessions.Values){try{Call-Api Post '/auth/logout' @{refreshToken=$session.refreshToken} $session.accessToken|Out-Null}catch{Write-Warning 'Smoke session logout failed.'}}
