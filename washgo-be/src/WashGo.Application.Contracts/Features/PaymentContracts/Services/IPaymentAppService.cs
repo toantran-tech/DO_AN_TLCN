@@ -16,6 +16,8 @@ namespace WashGo.Application.Contracts.Features.PaymentContracts.Services
         Task<BaseResponse<PaymentResultDto>> CreateOverdueFeePaymentAsync(CreateOverdueFeePaymentCommand command);
         Task<BaseResponse<PaymentResultDto>> HandleCallbackAsync(PaymentCallbackCommand command);
         Task<VnPayIpnResultDto> HandleVnPayIpnAsync(IReadOnlyDictionary<string, string> parameters);
+        /// <summary>False when the IPN signature/partner is invalid (the endpoint answers 400).</summary>
+        Task<bool> HandleMomoIpnAsync(MomoIpnCommand ipn);
         Task<BaseResponse<RefundRequestDto>> CreateRefundRequestAsync(CreateRefundRequestCommand command);
         Task<BaseResponse<System.Collections.Generic.List<RefundRequestDto>>> GetRefundRequestsAsync(bool mineOnly, RefundRequestStatus? status = null);
         Task<BaseResponse<RefundRequestDto>> GetRefundRequestAsync(Guid id);

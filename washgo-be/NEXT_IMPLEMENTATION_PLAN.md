@@ -7,7 +7,7 @@ Ghi nhận ngày 30/10/2026: bổ sung .WithSummary(...) tiếng Việt cho toà
 
 Ghi nhận ngày 30/10/2026: PUT /merchant/ giữ trạng thái cũ khi bỏ hoặc gửi null cho status; hai API cập nhật hồ sơ/trạng thái Merchant chặn giá trị enum ngoài 1–3.
 
-## 0. Tổng kết nhanh (cập nhật 02/11/2026)
+## 0. Tổng kết nhanh (cập nhật 03/11/2026)
 
 Chỉ tính **Backend**; FE chưa làm. Chi tiết từng UC ở bảng mục I và các mục nhật ký bên dưới.
 
@@ -15,7 +15,7 @@ Chỉ tính **Backend**; FE chưa làm. Chi tiết từng UC ở bảng mục I 
 
 | Nhóm | Use case |
 | --- | --- |
-| Customer | 1.1.1–1.1.3 Đăng ký, đăng nhập, quên mật khẩu; 1.1.4–1.1.5 Xem/cập nhật hồ sơ (avatar, tổng đơn, tổng chi tiêu); 1.2.1 Tạo đơn; 1.2.2 Xem danh sách locker (khoảng cách, gần nhất trước); 1.2.4 Thanh toán VNPay (đã chạy thật trên VNPay sandbox; còn MoMo, 7b); 1.2.6 Theo dõi đơn; 1.2.7 Hủy đơn; 1.2.8 Lịch sử đơn; 1.3 Gửi/nhận đồ bằng QR/PIN; 1.4.1–1.4.3 Đánh giá, báo cáo sự cố, danh sách khiếu nại |
+| Customer | 1.1.1–1.1.3 Đăng ký, đăng nhập, quên mật khẩu; 1.1.4–1.1.5 Xem/cập nhật hồ sơ (avatar, tổng đơn, tổng chi tiêu); 1.2.1 Tạo đơn; 1.2.2 Xem danh sách locker (khoảng cách, gần nhất trước); 1.2.4 Thanh toán VNPay (chạy thật trên sandbox) + MoMo (đã tích hợp, chờ khóa test riêng để chạy thật), quá hạn 7 ngày chuyển lưu kho; 1.2.6 Theo dõi đơn; 1.2.7 Hủy đơn; 1.2.8 Lịch sử đơn; 1.3 Gửi/nhận đồ bằng QR/PIN; 1.4.1–1.4.3 Đánh giá, báo cáo sự cố, danh sách khiếu nại |
 | Merchant | 2.1.1 Đăng nhập; 2.1.2 Cập nhật hồ sơ (chờ Admin duyệt); 2.3.1–2.3.2 Quản lý/chi tiết đơn; 2.3.4 Cập nhật số kg thực tế; 2.4.1–2.4.4 Quản lý và phân công Shipper; 2.5.1–2.5.3 Xem locker/ô/lịch sử; 2.6.1–2.6.3 Dịch vụ và đề xuất |
 | Admin | 3.2.1–3.2.5 Quản lý Merchant + vùng phục vụ; 3.3.1–3.3.3 Phân công đơn cho Merchant (thủ công + gợi ý tự động); 3.4.1–3.4.5 Quản lý Locker (nhiều Merchant phụ trách); 3.5.1–3.5.6 Quản lý và duyệt dịch vụ; 3.6.1–3.6.5 Khuyến mãi; 3.7.1–3.7.3 Khiếu nại và đánh giá; 3.8.1–3.8.3 Tài chính; 3.9.1–3.9.4 Cài đặt hệ thống |
 | Shipper | 4.1.1 Đăng nhập; 4.1.3–4.1.4 Xem/cập nhật hồ sơ; 4.3.1–4.3.2 Đơn được gán/chi tiết nhiệm vụ; 4.3.3–4.3.5 Lấy/trả đồ bằng QR; 4.3.6 Lịch sử giao nhận |
@@ -23,9 +23,7 @@ Chỉ tính **Backend**; FE chưa làm. Chi tiết từng UC ở bảng mục I 
 
 ### 🟡 Một phần
 
-| Use case | Đã có | Còn thiếu |
-| --- | --- | --- |
-| 1.2.4 Thanh toán | VNPay (đã chạy thật trên sandbox), IPN, chống trùng | Bước 3 có **MoMo** — chưa tích hợp. Luồng 7b "quá hạn thanh toán → chuyển lưu kho sau 7 ngày" — chưa xử lý (cột `payment_deadline` có nhưng chưa dùng). Chờ nhóm xác nhận cách làm. |
+Không còn UC "một phần" ở phía BE (03/11/2026).
 
 ### ❌ Chưa làm
 
@@ -35,7 +33,8 @@ Không còn UC nào chưa làm ở phía BE (03/11/2026).
 ### Ngoài phạm vi BE / cần lưu ý
 
 - Giao diện (Customer, Merchant, Shipper, Admin) chưa làm; `washgo-admin` đã được gỡ khỏi repo ngày 01/11.
-- Chưa chạy với SMTP thật (email OTP, mật khẩu tạm). VNPay đã chạy thật trên **sandbox** (02/11); muốn thu tiền thật cần tài khoản VNPay production (doanh nghiệp ký hợp đồng).
+- Chưa chạy với SMTP thật (email OTP, mật khẩu tạm). VNPay đã chạy thật trên **sandbox** (02/11), MoMo đã tích hợp API sandbox `test-payment.momo.vn` (03/11, chưa chạy thật vì khóa test công khai bị từ chối); muốn thu tiền thật cần tài khoản production (doanh nghiệp ký hợp đồng).
+- Từ 03/11: `Payment:Provider` = `Mock` (mặc định, smoke test) hoặc `Live` (VNPay/MoMo sandbox thật; giá trị cũ `VnPay` vẫn hiểu là `Live`). Khách chọn `paymentMethod` 2 = VNPay, 3 = MoMo cho tiền giặt, phí lưu kho và phí hủy.
 - API tạo Merchant (`POST /merchant/`) không còn nhận `userId`; FE mới phải gửi `email` để hệ thống tự tạo tài khoản.
 - Từ 03/11: locker gửi `merchantIds` (nhiều Merchant, theo thứ tự ưu tiên) và trả `merchants` thay cho `merchantId`/`merchantName`; dịch vụ là bảng chung (`GET /customer/services` không còn `merchantId`/`merchantName`); đơn mới có `merchantId = null` cho tới khi Admin phân công qua `/order-assignment`.
 - Đăng nhập có thêm trường tùy chọn `portal` (`Customer`/`Merchant`/`Shipper`/`Admin`): FE từng trang nên gửi để nhận "Bạn không có quyền truy cập trang này." khi sai vai trò.
@@ -53,7 +52,7 @@ Không còn UC nào chưa làm ở phía BE (03/11/2026).
 | 1.1.4 Xem hồ sơ; 1.1.5 Cập nhật hồ sơ | Đã có BE | Ngày 02/11: `GET/PUT /customer/me` có avatar (ảnh tự upload; bỏ trường = giữ, rỗng = xóa), tổng đơn và tổng chi tiêu tính từ đơn thực tế, bắt buộc địa chỉ ("Vui lòng nhập địa chỉ."), "Số điện thoại không hợp lệ.", "Cập nhật hồ sơ thành công!". |
 | 1.2.1 Tạo đơn | Đã có BE | Tạo đơn, tính giá từ server, giữ ô, QR gửi đồ, hạn gửi 30 phút; báo giá + mã khả dụng (`POST /wash-order/apply-voucher`), áp mã và ghi lượt dùng trong cùng transaction; thông báo "Đơn hàng đã tạo". Ngày 02/11 đối chiếu luồng thay thế: 4a "Hiện tại không có locker khả dụng.", 9a, 11a, 14a "Ô này vừa được đặt. Vui lòng chọn ô khác."; sinh mã đơn Merchant. |
 | 1.2.2 Xem danh sách locker | Đã có BE | `GET /customer/lockers` trả tọa độ, địa chỉ, số ô trống; ngày 03/11 thêm `latitude`/`longitude` của khách → `distanceKm` (Haversine tính trong SQL) và sắp xếp gần nhất trước, kể cả khi phân trang; rỗng: "Hiện tại không có locker khả dụng.". Vẽ bản đồ/định vị là phần FE. |
-| 1.2.4 Thanh toán | Đã có BE | Tạo link VNPay 2.1.0 ký HMAC-SHA512, IPN kiểm tra chữ ký/mã website/số tiền, chống xử lý trùng, khóa `Paid` ở API đổi trạng thái. Ngày 02/11 chạy thật trên VNPay sandbox (Terminal mới, IPN qua Cloudflare Tunnel): thanh toán thẻ NCB → VNPay gọi IPN → đơn Paid, timeline + thông báo. Chế độ Mock vẫn dùng cho smoke test. |
+| 1.2.4 Thanh toán | Đã có BE | Tạo link VNPay 2.1.0 ký HMAC-SHA512, IPN kiểm tra chữ ký/mã website/số tiền, chống xử lý trùng, khóa `Paid` ở API đổi trạng thái. Ngày 02/11 chạy thật trên VNPay sandbox (Terminal mới, IPN qua Cloudflare Tunnel): thanh toán thẻ NCB → VNPay gọi IPN → đơn Paid, timeline + thông báo. Ngày 03/11: **MoMo** (API v2, ký HMAC-SHA256, `POST /payment/momo-ipn`), bước 9 báo Merchant khi khách thanh toán, câu 7a theo đặc tả, **luồng 7b** quá hạn thanh toán 7 ngày → lưu kho tại tiệm. Chế độ Mock vẫn dùng cho smoke test. |
 | 1.2.6 Theo dõi đơn; 1.2.8 Lịch sử đơn | Đã có BE | `POST /wash-order/mine` lọc trạng thái + khoảng thời gian (`fromDate`/`toDate`), mỗi đơn có tên dịch vụ, kích thước ô; chi tiết + timeline + QR; rỗng: "Bạn chưa có đơn hàng nào."; cập nhật realtime qua thông báo SignalR (02/11). |
 | 1.2.7 Hủy đơn | Đã có BE | Báo phí + hủy Pending 0%/30%, Deposited 30%, Collected đã cân 50%; thanh toán phí riêng và hoàn tiền có đối chiếu. Giữ ô có đồ, cho khách nhận lại hoặc Shipper trả từ tiệm qua locker. Không đổi đơn hủy sang Completed. Thông báo hủy cho khách, Merchant và Shipper có nhiệm vụ bị hủy đã có từ 01/11. |
 | 1.3 Gửi đồ / nhận đồ bằng QR | BE mô phỏng đã kiểm thử | Có endpoint gửi, mở ô nhận, xác nhận nhận và nhận tại kho. Tách QR gửi/nhận; xác nhận nhận tại locker cần token phiên 10 phút, hoàn tất đơn trong transaction. Không tích hợp phần cứng. |
@@ -110,7 +109,7 @@ Không còn UC nào chưa làm ở phía BE (03/11/2026).
 11. **3.2 Quản lý Merchant + vùng phục vụ, 3.4 Quản lý Locker — ĐÃ XONG BE ngày 01/11/2026** sau khi đối chiếu lại đặc tả (xem các mục bên dưới).
 12. **Ngày 02/11/2026 — ĐÃ XONG BE:** 4.1.3–4.1.4 Hồ sơ Shipper, 4.3.1–4.3.2 nhiệm vụ của Shipper, 4.3.6 Lịch sử giao nhận, 2.3.1–2.3.2 đơn của Merchant, 1.2.6/1.2.8 đơn của Customer, 1.1.4–1.1.5 hồ sơ Customer, đối chiếu 1.2.1 và câu thông báo đăng nhập; tách lại contract hồ sơ Merchant theo cấu trúc chung (xem mục bên dưới).
 13. **Ngày 03/11/2026 — ĐÃ XONG BE:** 1.2.2 khoảng cách locker; bảng dịch vụ chung; locker nhiều Merchant + 3.3 Phân công đơn cho Merchant (xem mục bên dưới).
-14. **Còn lại:** 1.2.4 MoMo và luồng 7b quá hạn thanh toán 7 ngày (nhóm để sau).
+14. **Ngày 03/11/2026 — ĐÃ XONG BE:** 1.2.4 MoMo, luồng 7b quá hạn thanh toán 7 ngày, báo Merchant khi khách thanh toán (xem mục bên dưới). Không còn UC BE nào chưa làm.
 
 **Đồng bộ đặc tả Word ngày 31/10/2026:** Đã cập nhật UC Customer gửi đồ (quá 30 phút chỉ từ chối, không tự hủy), Customer nhận tại locker hai bước và phiên 10 phút, SLA Shipper lấy 4 giờ từ DepositedAt/trả 24 giờ từ PaidAt (trễ vẫn cho giao nhận), mã riêng và khóa 5 lần/5 phút. Bổ sung UC Nhận đồ tại kho với phí locker đã chốt + 100.000đ/mỗi ngày kho bắt đầu, không giải phóng ô lần hai. Giữ yêu cầu thông báo/đánh giá trong đặc tả; đây vẫn là phần chưa triển khai. Đã lưu bản dự phòng `../Đặc tả usecase.backup-20261031-021336.docx`; kiểm tra nội dung và ZIP chỉ đổi `word/document.xml`. Chưa xác minh bố cục trang: không có Python runtime đóng gói để chạy renderer; thử xuất Word sang PDF bị timeout 25 giây.
 **Dọn mục trùng ngày 31/10/2026:** Xóa đúng 3 bảng Hiển thị QR Code giống hệt cùng tiêu đề đi kèm trong bản project; giữ bảng QR còn lại trong nhóm Customer và bảng QR khác nội dung ở mục khác. Nội dung tất cả bảng còn lại được đối chiếu giữ nguyên; đánh lại mục 1.3.1–1.3.4. Bản Downloads không chỉnh sửa. Backup: `../Đặc tả usecase.backup-dedup-20261031-023310.docx`. Chưa render lại bố cục do giới hạn công cụ xem trước đã ghi ở trên.
@@ -122,6 +121,13 @@ Không còn UC nào chưa làm ở phía BE (03/11/2026).
 - [x] **Trạng thái ô (2.5.2):** chi tiết locker trả từng ô với trạng thái Trống/Đang có đồ/Đang giữ chỗ/Bảo trì và cờ `hasItems` cho ô đang có đồ.
 - [x] **Lịch sử sử dụng (2.5.3):** `GET /locker/{id}/usage-history?fromDate&toDate&page&take` — mỗi lượt dùng ô: mã đơn, số ô, loại (1 = khách gửi, 2 = Shipper trả), thời gian đặt vào, thời gian lấy ra (null nếu đồ còn trong ô), trạng thái đơn; mốc thời gian lấy từ lịch sử trạng thái đơn (gửi/thu gom/trả/nhận), có nhánh đơn hủy và chuyển kho; không lộ thông tin khách. Chưa dùng: "Locker này chưa được sử dụng."
 - [x] `tests/smoke/locker-scope.ps1` PASS: thông báo Merchant chưa có locker, phạm vi danh sách/chi tiết/lịch sử, Merchant bị chặn 403 khi tạo/sửa/đổi trạng thái ô, ô giữ chỗ và ô có đồ, lịch sử đầy đủ thời gian sau một vòng đơn, đơn chưa gửi không xuất hiện, lọc theo thời gian.
+
+### Đợt 03/11/2026 — hoàn thiện UC 1.2.4 Thanh toán
+
+- [x] **MoMo (bước 3–7):** `MomoGateway` gọi API v2 `test-payment.momo.vn/v2/gateway/api/create` (ký HMAC-SHA256 theo thứ tự trường của MoMo, `requestType` mặc định `payWithMethod`), lưu `payUrl` vào giao dịch. `paymentMethod = 3` dùng được cho tiền giặt, phí lưu kho, phí hủy (mã giao dịch MoMo ≤ 50 ký tự). `POST /payment/momo-ipn` (ẩn danh): sai chữ ký/partner → 400; số tiền sai → ghi log, không cập nhật đơn (ngoại lệ 7a); kết quả lỗi → giao dịch Failed + "Thanh toán thất bại. Vui lòng thử lại."; thành công → đơn Paid, lưu `transId`; gọi lại → 204 không đổi gì. Phần ghi nhận kết quả dùng chung với VNPay IPN (`ApplyGatewayResultAsync`). Cấu hình `Payment:Momo:{PartnerCode, AccessKey, SecretKey, Endpoint, RequestType, RedirectUrl, IpnUrl}` chỉ để trong `docker-compose.override.yml` local; MoMo gọi IPN theo `IpnUrl` gửi kèm từng giao dịch (không phải khai trên portal).
+- [x] **Bước 9:** khách thanh toán xong, Merchant nhận "Khách đã thanh toán đơn #… Vui lòng phân công Shipper trả đồ về locker."; câu 7a đổi thành "Thanh toán thất bại. Vui lòng thử lại."
+- [x] **Luồng 7b:** Merchant chuyển đơn sang Chờ thanh toán → `payment_deadline` = +7 ngày (migration `BackfillPaymentDeadlines` đặt hạn cho đơn cũ đang chờ). Worker nhắc khách 24 giờ trước hạn (một lần); quá hạn chưa thanh toán → đơn `MovedToStorage`, lưu tại "Kho tiệm <tên Merchant>", mã lưu kho = mã đơn Merchant, không tính phí locker, ghi lịch sử, báo khách + Merchant. Khách vẫn thanh toán tiền giặt được (đơn giữ trạng thái lưu kho, thông báo nhận tại kho), sau đó trả phí lưu kho ("Vui lòng thanh toán tiền giặt trước khi thanh toán phí lưu kho.") và nhận đồ tại kho bằng `POST /wash-order/{id}/pickup-storage` như luồng chuyển kho cũ. Đơn đã thanh toán không bị chuyển.
+- [x] Test mới `payment-overdue-storage.ps1` (Mock) PASS; `momo-sandbox.ps1` PASS ở chế độ Mock: IPN ký đúng thuật toán MoMo, từ chối chữ ký sai (400), bỏ qua số tiền sai, ghi nhận một lần và lưu `transId`. **Chưa thanh toán MoMo thật được:** bộ khóa test công khai (`MOMO`) bị MoMo sandbox từ chối mọi yêu cầu (`resultCode=99`, kể cả khi cố tình ký sai) — cần đăng ký khóa test riêng tại business.momo.vn rồi đặt `MOMO_PARTNER_CODE/MOMO_ACCESS_KEY/MOMO_SECRET_KEY`, chạy lại test ở chế độ `Live`. `vnpay-sandbox.ps1` chạy lại PASS sau khi gom code IPN. `notifications.ps1` kiểm tra thêm Merchant nhận thông báo thanh toán.
 
 ### Đợt 03/11/2026 — nhóm chốt mô hình mới cho UC 3.3
 

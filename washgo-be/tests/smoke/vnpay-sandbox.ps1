@@ -13,7 +13,7 @@ param(
 $secret=(docker exec $BackendContainer printenv Payment__VnPay__HashSecret 2>$null)
 $tmn=(docker exec $BackendContainer printenv Payment__VnPay__TmnCode 2>$null)
 $provider=(docker exec $BackendContainer printenv Payment__Provider 2>$null)
-if($provider -ne 'VnPay' -or !$secret -or !$tmn){ Write-Output 'SKIP: backend is not running with Payment__Provider=VnPay.'; return }
+if($provider -notin @('VnPay','Live') -or !$secret -or !$tmn){ Write-Output 'SKIP: backend is not running with Payment__Provider=Live.'; return }
 
 $sessions=@{}; $lockerId=$null
 $run=[Guid]::NewGuid().ToString('N').Substring(0,8)

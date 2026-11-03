@@ -801,6 +801,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 return BadRequest<WashOrderDetailDto>("Đơn hàng vừa đổi trạng thái; vui lòng tải lại trước khi cập nhật.");
 
             order.Status = command.NewStatus;
+            if (command.NewStatus == WashOrderStatus.AwaitingPayment)
+                order.PaymentDeadline = UnpaidOrderStorageMover.DeadlineFrom(DateTime.UtcNow); // UC 1.2.4 7b
             order.Timeline.Add(new WashOrderTimeline
             {
                 WashOrderId = order.Id,

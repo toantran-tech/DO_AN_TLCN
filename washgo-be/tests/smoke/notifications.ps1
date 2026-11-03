@@ -114,6 +114,7 @@ INSERT INTO washgo.services SELECT (jsonb_populate_record(NULL::washgo.services,
     Call-Api Post '/payment/callback' @{orderId=$id;transactionReference=$p2.transactionReference;success=$true} $admin | Out-Null
     Call-Api Post '/payment/callback' @{orderId=$id;transactionReference=$p2.transactionReference;success=$true} $admin | Out-Null
     Expect-Note $customer $id 6 'Customer' | Out-Null
+    Expect-Note $merchant $id 6 'Merchant (UC 1.2.4 step 9)' | Out-Null
 
     Write-Output '6. Return to locker and pickup'
     Call-Api Put '/wash-order/assign-shipper' @{orderId=$id;shipperId="$fixtureShipper"} $merchant | Out-Null
