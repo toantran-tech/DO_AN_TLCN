@@ -17,7 +17,7 @@ Chỉ tính **Backend**; FE chưa làm. Chi tiết từng UC ở bảng mục I 
 | --- | --- |
 | Customer | 1.1.1–1.1.3 Đăng ký, đăng nhập, quên mật khẩu; 1.1.4–1.1.5 Xem/cập nhật hồ sơ (avatar, tổng đơn, tổng chi tiêu); 1.2.1 Tạo đơn; 1.2.2 Xem danh sách locker (khoảng cách, gần nhất trước); 1.2.4 Thanh toán VNPay (đã chạy thật trên VNPay sandbox; còn MoMo, 7b); 1.2.6 Theo dõi đơn; 1.2.7 Hủy đơn; 1.2.8 Lịch sử đơn; 1.3 Gửi/nhận đồ bằng QR/PIN; 1.4.1–1.4.3 Đánh giá, báo cáo sự cố, danh sách khiếu nại |
 | Merchant | 2.1.1 Đăng nhập; 2.1.2 Cập nhật hồ sơ (chờ Admin duyệt); 2.3.1–2.3.2 Quản lý/chi tiết đơn; 2.3.4 Cập nhật số kg thực tế; 2.4.1–2.4.4 Quản lý và phân công Shipper; 2.5.1–2.5.3 Xem locker/ô/lịch sử; 2.6.1–2.6.3 Dịch vụ và đề xuất |
-| Admin | 3.2.1–3.2.5 Quản lý Merchant + vùng phục vụ; 3.4.1–3.4.5 Quản lý Locker; 3.5.1–3.5.6 Quản lý và duyệt dịch vụ; 3.6.1–3.6.5 Khuyến mãi; 3.7.1–3.7.3 Khiếu nại và đánh giá; 3.8.1–3.8.3 Tài chính; 3.9.1–3.9.4 Cài đặt hệ thống |
+| Admin | 3.2.1–3.2.5 Quản lý Merchant + vùng phục vụ; 3.3.1–3.3.3 Phân công đơn cho Merchant (thủ công + gợi ý tự động); 3.4.1–3.4.5 Quản lý Locker (nhiều Merchant phụ trách); 3.5.1–3.5.6 Quản lý và duyệt dịch vụ; 3.6.1–3.6.5 Khuyến mãi; 3.7.1–3.7.3 Khiếu nại và đánh giá; 3.8.1–3.8.3 Tài chính; 3.9.1–3.9.4 Cài đặt hệ thống |
 | Shipper | 4.1.1 Đăng nhập; 4.1.3–4.1.4 Xem/cập nhật hồ sơ; 4.3.1–4.3.2 Đơn được gán/chi tiết nhiệm vụ; 4.3.3–4.3.5 Lấy/trả đồ bằng QR; 4.3.6 Lịch sử giao nhận |
 | Thông báo | 5.1–5.3 Xem, đánh dấu đã đọc, xóa (SignalR realtime); nhắc nhở theo thời gian bằng worker định kỳ |
 
@@ -29,15 +29,15 @@ Chỉ tính **Backend**; FE chưa làm. Chi tiết từng UC ở bảng mục I 
 
 ### ❌ Chưa làm
 
-| Use case | Ghi chú |
-| --- | --- |
-| 3.3.1–3.3.3 Phân công đơn cho Merchant (thủ công + AI) | Ngày 01/11 đã làm thử rồi gỡ ra theo quyết định của nhóm; hiện đơn vẫn tự lấy Merchant theo locker khi tạo. Cần làm: danh sách đơn chờ phân công (highlight quá hạn, lọc khu vực/thời gian), gán thủ công kèm danh sách Merchant trong khu vực (đánh giá, tải lượng X/Y, khoảng cách), gán tự động (AI) đề xuất + xác nhận, thông báo Merchant. **Chỉ làm khi nhóm quyết định làm lại.** |
+Không còn UC nào chưa làm ở phía BE (03/11/2026).
+
 
 ### Ngoài phạm vi BE / cần lưu ý
 
 - Giao diện (Customer, Merchant, Shipper, Admin) chưa làm; `washgo-admin` đã được gỡ khỏi repo ngày 01/11.
 - Chưa chạy với SMTP thật (email OTP, mật khẩu tạm). VNPay đã chạy thật trên **sandbox** (02/11); muốn thu tiền thật cần tài khoản VNPay production (doanh nghiệp ký hợp đồng).
 - API tạo Merchant (`POST /merchant/`) không còn nhận `userId`; FE mới phải gửi `email` để hệ thống tự tạo tài khoản.
+- Từ 03/11: locker gửi `merchantIds` (nhiều Merchant, theo thứ tự ưu tiên) và trả `merchants` thay cho `merchantId`/`merchantName`; dịch vụ là bảng chung (`GET /customer/services` không còn `merchantId`/`merchantName`); đơn mới có `merchantId = null` cho tới khi Admin phân công qua `/order-assignment`.
 - Đăng nhập có thêm trường tùy chọn `portal` (`Customer`/`Merchant`/`Shipper`/`Admin`): FE từng trang nên gửi để nhận "Bạn không có quyền truy cập trang này." khi sai vai trò.
 - Điểm tích lũy (1.1.4) đang hiển thị giá trị lưu trong DB; đặc tả chưa có quy tắc cộng điểm nên chưa tính.
 - 1.2.1 bước 6 "ô trống kèm kích thước và giá": giá đơn tính theo dịch vụ (không có giá riêng theo ô) — FE hiển thị kích thước ô + giá dịch vụ đã chọn.
@@ -68,7 +68,7 @@ Chỉ tính **Backend**; FE chưa làm. Chi tiết từng UC ở bảng mục I 
 | 2.3.4 Cập nhật số kg thực tế | Đã có BE cân/chốt giá | `PUT /wash-order/{id}/actual-weight` dành cho Merchant của đơn: tính phí/ETA theo mức 3/5/10 kg, lưu giá và thời lượng gói khi đặt đơn, chống phí trùng. Theo quyết định mới: cân xong giữ `Collected`, giặt xong mới `AwaitingPayment`. Thông báo xử lý/chờ thanh toán cho khách đã có (module 5). |
 | 2.4.1–2.4.3 Quản lý Shipper | Đã có BE | Ngày 01/11: `/shipper` cho Merchant (tiệm của mình) và Admin: danh sách/lọc, thêm (tạo tài khoản Shipper, gửi mật khẩu tạm qua email), sửa, Đang làm việc/Tạm nghỉ; đếm số đơn đã giao. |
 | 2.4.4 Phân công Shipper | Đã có BE | Ngày 29/10: Merchant/Admin xem Shipper khả dụng theo đơn và phân công đúng tiệm, đúng giai đoạn, tài khoản đang hoạt động/khả dụng. Lưu riêng nhiệm vụ lấy/trả và thời điểm; chống phân công đồng thời. Shipper nhận thông báo nhiệm vụ mới (module 5, 01/11). |
-| 2.5.1–2.5.3 Xem locker/ô/lịch sử | Đã có BE | Ngày 01/11: Merchant chỉ xem locker được gán (danh sách, chi tiết ô có cờ `hasItems`), tạo/sửa locker và đổi trạng thái ô chỉ Admin; `GET /locker/{id}/usage-history` lịch sử từng lượt dùng ô. |
+| 2.5.1–2.5.3 Xem locker/ô/lịch sử | Đã có BE | Merchant xem các locker mình phụ trách (một locker có thể có nhiều Merchant, 03/11), chi tiết ô có cờ `hasItems`; tạo/sửa locker và đổi trạng thái ô chỉ Admin; `GET /locker/{id}/usage-history` lịch sử từng lượt dùng ô. |
 | 2.6.1–2.6.3 Dịch vụ và đề xuất thay đổi | Đã có BE | `/merchant-service` Merchant xem **bảng dịch vụ chung** (03/11: dịch vụ và giá dùng chung cho mọi Merchant), đề xuất thêm dịch vụ / sửa giá; Admin duyệt thì áp dụng chung cho cả hệ thống. Tên dịch vụ không trùng trong toàn bảng (kể cả đề xuất đang chờ), mỗi dịch vụ một đề xuất chờ duyệt. |
 
 ### 3. Admin
@@ -76,8 +76,8 @@ Chỉ tính **Backend**; FE chưa làm. Chi tiết từng UC ở bảng mục I 
 | Use case trong đặc tả | Tiến độ BE | Đã có / phần còn thiếu |
 | --- | --- | --- |
 | 3.2.1–3.2.5 Quản lý Merchant | Đã có BE | Ngày 01/11: tạo Merchant kèm tài khoản + email mật khẩu tạm, kiểm tra email/MST/tọa độ/SĐT/chiết khấu; sửa đủ trường hợp đồng/SLA/ảnh; khóa cần lý do + xác nhận khi còn đơn, chặn đăng nhập; thiết lập vùng phục vụ với độ ưu tiên. |
-| 3.3.1–3.3.3 Phân công đơn cho Merchant | Chưa làm | Ngày 01/11 đã làm thử rồi gỡ ra theo quyết định của nhóm; hiện đơn vẫn tự lấy Merchant theo locker khi tạo. Chưa có danh sách đơn chờ phân công, gán thủ công, gán tự động (AI). |
-| 3.4.1–3.4.5 Quản lý locker | Đã có BE | Ngày 01/11: danh sách có tên Merchant/khu vực/số ô trống, lọc khu vực; tạo/sửa kiểm tra tên trùng, tọa độ, khu vực, ảnh; xóa mềm khi không còn đơn; ô tủ chỉ chuyển Trống ↔ Bảo trì; lịch sử theo từng ô. |
+| 3.3.1–3.3.3 Phân công đơn cho Merchant | Đã có BE | Ngày 03/11 (mô hình nhóm chốt): đơn tạo ra chưa có Merchant; sau khi khách gửi đồ, Admin chọn một trong các Merchant phụ trách locker. `/order-assignment`: danh sách đơn chờ (highlight chờ quá 60 phút, nhắc Admin), Merchant có thể nhận (độ ưu tiên, đánh giá, tải lượng X/Y, khoảng cách), gán thủ công, gợi ý tự động + xác nhận theo lô. |
+| 3.4.1–3.4.5 Quản lý locker | Đã có BE | Danh sách có Merchant phụ trách/khu vực/số ô trống, lọc khu vực; tạo/sửa kiểm tra tên trùng, tọa độ, khu vực, ảnh và **nhiều Merchant phụ trách theo thứ tự ưu tiên** (03/11, `merchantIds`); xóa mềm khi không còn đơn; ô tủ chỉ chuyển Trống ↔ Bảo trì; lịch sử theo từng ô. |
 | 3.5.1–3.5.6 Quản lý và duyệt dịch vụ | Đã có BE | `/wash-service` chỉ Admin, quản lý bảng dịch vụ chung (`merchantId` chỉ ghi Merchant đã đề xuất, không bắt buộc), chặn tên trùng toàn bảng, xóa mềm (chặn khi còn đơn chưa xong); `/service-proposal` duyệt (tạo/cập nhật dịch vụ chung) hoặc từ chối có lý do, báo Merchant. |
 | 3.6.1–3.6.5 Khuyến mãi | Đã có BE | Ngày 01/11: CRUD `/promotion`, lọc theo trạng thái/thời gian, bật/tắt, xóa khi chưa dùng, thống kê + xuất CSV. Chi tiết ở mục khuyến mãi bên dưới. |
 | 3.7.1–3.7.3 Khiếu nại và đánh giá | Đã có BE | Ngày 01/11: lọc/xử lý/từ chối khiếu nại, bồi thường 30/70/100/200% do server tính, ghi nhận chi trả; lọc/ẩn đánh giá, cập nhật điểm Merchant. |
@@ -109,7 +109,8 @@ Chỉ tính **Backend**; FE chưa làm. Chi tiết từng UC ở bảng mục I 
 10. **3.8 Tài chính, 2.5 Locker theo phạm vi Merchant, 2.6/3.5 Đề xuất – duyệt dịch vụ, 2.1.2 Merchant cập nhật hồ sơ — ĐÃ XONG BE ngày 01/11/2026** (xem các mục bên dưới).
 11. **3.2 Quản lý Merchant + vùng phục vụ, 3.4 Quản lý Locker — ĐÃ XONG BE ngày 01/11/2026** sau khi đối chiếu lại đặc tả (xem các mục bên dưới).
 12. **Ngày 02/11/2026 — ĐÃ XONG BE:** 4.1.3–4.1.4 Hồ sơ Shipper, 4.3.1–4.3.2 nhiệm vụ của Shipper, 4.3.6 Lịch sử giao nhận, 2.3.1–2.3.2 đơn của Merchant, 1.2.6/1.2.8 đơn của Customer, 1.1.4–1.1.5 hồ sơ Customer, đối chiếu 1.2.1 và câu thông báo đăng nhập; tách lại contract hồ sơ Merchant theo cấu trúc chung (xem mục bên dưới).
-13. **Còn lại:** 3.3 Phân công đơn cho Merchant (khi nhóm quyết định làm lại); 1.2.4 MoMo và luồng 7b quá hạn thanh toán 7 ngày (chờ nhóm xác nhận cách làm).
+13. **Ngày 03/11/2026 — ĐÃ XONG BE:** 1.2.2 khoảng cách locker; bảng dịch vụ chung; locker nhiều Merchant + 3.3 Phân công đơn cho Merchant (xem mục bên dưới).
+14. **Còn lại:** 1.2.4 MoMo và luồng 7b quá hạn thanh toán 7 ngày (nhóm để sau).
 
 **Đồng bộ đặc tả Word ngày 31/10/2026:** Đã cập nhật UC Customer gửi đồ (quá 30 phút chỉ từ chối, không tự hủy), Customer nhận tại locker hai bước và phiên 10 phút, SLA Shipper lấy 4 giờ từ DepositedAt/trả 24 giờ từ PaidAt (trễ vẫn cho giao nhận), mã riêng và khóa 5 lần/5 phút. Bổ sung UC Nhận đồ tại kho với phí locker đã chốt + 100.000đ/mỗi ngày kho bắt đầu, không giải phóng ô lần hai. Giữ yêu cầu thông báo/đánh giá trong đặc tả; đây vẫn là phần chưa triển khai. Đã lưu bản dự phòng `../Đặc tả usecase.backup-20261031-021336.docx`; kiểm tra nội dung và ZIP chỉ đổi `word/document.xml`. Chưa xác minh bố cục trang: không có Python runtime đóng gói để chạy renderer; thử xuất Word sang PDF bị timeout 25 giây.
 **Dọn mục trùng ngày 31/10/2026:** Xóa đúng 3 bảng Hiển thị QR Code giống hệt cùng tiêu đề đi kèm trong bản project; giữ bảng QR còn lại trong nhóm Customer và bảng QR khác nội dung ở mục khác. Nội dung tất cả bảng còn lại được đối chiếu giữ nguyên; đánh lại mục 1.3.1–1.3.4. Bản Downloads không chỉnh sửa. Backup: `../Đặc tả usecase.backup-dedup-20261031-023310.docx`. Chưa render lại bố cục do giới hạn công cụ xem trước đã ghi ở trên.
@@ -127,6 +128,11 @@ Chỉ tính **Backend**; FE chưa làm. Chi tiết từng UC ở bảng mục I 
 Quyết định của nhóm: đơn luôn có Merchant; một locker có thể có nhiều Merchant phụ trách; Admin chọn Merchant cho từng đơn sau khi khách gửi đồ; **giá là bảng giá chung**, Merchant đề xuất giá thì Admin duyệt.
 
 - [x] **Bảng dịch vụ chung:** `services.merchant_id` thành không bắt buộc, chỉ ghi Merchant đã đề xuất (migration `ShareWashServiceCatalog`, khóa ngoại SET NULL). Tính giá đơn không còn kiểm tra dịch vụ thuộc Merchant của tủ ("Dịch vụ đã chọn không còn được cung cấp."). `GET /customer/services` trả bảng chung (bỏ tham số `merchantId`, bỏ `merchantName`). `/merchant-service/filter` trả bảng chung cho mọi Merchant; đề xuất sửa được gửi cho bất kỳ dịch vụ chung nào; tên không trùng toàn bảng kể cả đề xuất chờ của Merchant khác; mỗi dịch vụ chỉ một đề xuất chờ. Admin tạo dịch vụ không cần chọn Merchant. Test `service-proposals.ps1` cập nhật PASS; hồi quy `qr-pin-flow`, `finance` PASS.
+
+- [x] **Locker nhiều Merchant:** bảng mới `locker_merchants` (locker, Merchant, độ ưu tiên; migration `AddLockerMerchants` chuyển `lockers.merchant_id` cũ thành Merchant ưu tiên 1 rồi xóa cột). Tạo/sửa locker nhận `merchantIds` theo thứ tự ưu tiên (`merchantId` đơn lẻ vẫn dùng được), chặn trùng/Merchant không hoạt động, "Vui lòng chọn ít nhất một Merchant phụ trách locker."; chi tiết/danh sách trả `merchants` [{merchantId, businessName, priority}]. Merchant thấy mọi locker mình phụ trách. Khách chỉ thấy locker còn ít nhất một Merchant hoạt động.
+- [x] **UC 3.3 Phân công đơn cho Merchant:** đơn tạo ra **chưa có Merchant** (giá lấy từ bảng chung); tủ trả khác tủ gửi phải có chung Merchant phụ trách. Khách gửi đồ → Admin nhận "Đơn mới chờ phân công". `POST /order-assignment/filter` (đơn Deposited chưa có Merchant; lọc quận/thành phố/vùng phục vụ/thời gian gửi/chỉ quá hạn; highlight chờ quá 60 phút; "Không có đơn hàng nào chờ phân công."), `GET /order-assignment/{id}/candidates` (Merchant hoạt động phụ trách tủ gửi và tủ trả; độ ưu tiên, đánh giá, tải lượng X/Y, khoảng cách, điểm; "Không có Merchant nào phục vụ khu vực này."), `POST /order-assignment/{id}/assign` (khóa đơn, kiểm tra còn chờ, Merchant thuộc danh sách, còn sức chứa; ghi lịch sử; báo Merchant; "Phân công thành công!"), `POST /order-assignment/auto-suggest` (điểm = 35 ưu tiên + 25 tải trống + 25 đánh giá + 15 khoảng cách; bỏ Merchant đủ tải, tính cả đơn đã gợi ý trong lượt; "Không tìm thấy Merchant phù hợp cho đơn này."), `POST /order-assignment/auto-assign` (xác nhận theo lô, tất cả hoặc không; "Phân công tự động thành công!"). Merchant chỉ thấy đơn sau khi được gán; phân công Shipper trước khi có Merchant bị chặn ("Đơn chưa được Admin phân công cho Merchant."). Worker nhắc Admin khi đơn chờ phân công quá 60 phút.
+- [x] Test mới `order-assignment.ps1` PASS. Helper `Invoke-TestDelivery … deposit` tự gán Merchant ưu tiên 1 khi test có token `$admin` (đặt `$NoAutoAssign` để tắt), nên các test luồng đơn cũ vẫn dùng được.
+- [x] Đặc tả `Docs/Đặc tả usecase.docx` đã sửa theo code (sao lưu `Đặc tả usecase.backup-20261103-uc33.docx`): 1.2.1 (bảng dịch vụ chung, đơn chưa có Merchant đến khi Admin phân công), 2.5.1, 2.6.1–2.6.3, 3.3.1–3.3.3 (Merchant phụ trách locker, độ ưu tiên, chờ quá 60 phút), 3.4.2–3.4.3 (Merchant phụ trách theo thứ tự ưu tiên, 4c), 3.5.1–3.5.2, 3.5.5.
 
 ### Đợt 02/11/2026 — hoàn thiện các UC "một phần"
 

@@ -752,10 +752,6 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("double precision")
                         .HasColumnName("longitude");
 
-                    b.Property<Guid>("MerchantId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("merchant_id");
-
                     b.Property<string>("Modified")
                         .HasColumnType("jsonb")
                         .HasColumnName("modified");
@@ -808,8 +804,6 @@ namespace WashGo.EntityFrameworkCore.Migrations
 
                     b.HasIndex("Code")
                         .IsUnique();
-
-                    b.HasIndex("MerchantId");
 
                     b.HasIndex("SearchVector");
 
@@ -908,6 +902,38 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .IsUnique();
 
                     b.ToTable("locker_slots", "washgo");
+                });
+
+            modelBuilder.Entity("WashGo.Domain.Entities.Locker.LockerMerchant", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("LockerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("locker_id");
+
+                    b.Property<Guid>("MerchantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("merchant_id");
+
+                    b.Property<int>("Priority")
+                        .HasColumnType("integer")
+                        .HasColumnName("priority");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MerchantId");
+
+                    b.HasIndex("LockerId", "MerchantId")
+                        .IsUnique();
+
+                    b.ToTable("locker_merchants", "washgo");
                 });
 
             modelBuilder.Entity("WashGo.Domain.Entities.Notification.Notification", b =>
@@ -2844,12 +2870,6 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasForeignKey("ApprovedBy")
                         .OnDelete(DeleteBehavior.SetNull);
 
-                    b.HasOne("WashGo.Domain.Entities.Partner.Merchant", null)
-                        .WithMany()
-                        .HasForeignKey("MerchantId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
                     b.HasOne("WashGo.Domain.Entities.Partner.ServiceArea", null)
                         .WithMany()
                         .HasForeignKey("ServiceAreaId")
@@ -2861,6 +2881,21 @@ namespace WashGo.EntityFrameworkCore.Migrations
                     b.HasOne("WashGo.Domain.Entities.Locker.Locker", null)
                         .WithMany("Boxes")
                         .HasForeignKey("LockerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("WashGo.Domain.Entities.Locker.LockerMerchant", b =>
+                {
+                    b.HasOne("WashGo.Domain.Entities.Locker.Locker", null)
+                        .WithMany()
+                        .HasForeignKey("LockerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("WashGo.Domain.Entities.Partner.Merchant", null)
+                        .WithMany()
+                        .HasForeignKey("MerchantId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

@@ -23,11 +23,9 @@ namespace WashGo.EntityFrameworkCore.BuilderConfiguration
             builder.Property(x => x.TotalBoxes).HasColumnName("total_slots").HasDefaultValue(10);
             builder.Property(x => x.AvailableBoxes).HasColumnName("available_slots").HasDefaultValue(10);
             builder.Property(x => x.Images).HasColumnType("jsonb");
-            builder.HasIndex(x => x.MerchantId);
             builder.HasIndex(x => x.ServiceAreaId);
             builder.HasIndex(x => x.Status);
             builder.HasIndex(x => new { x.Latitude, x.Longitude });
-            builder.HasOne<Merchant>().WithMany().HasForeignKey(x => x.MerchantId).OnDelete(DeleteBehavior.Cascade);
             builder.HasOne<ServiceArea>().WithMany().HasForeignKey(x => x.ServiceAreaId).OnDelete(DeleteBehavior.SetNull);
             builder.HasOne<User>().WithMany().HasForeignKey(x => x.ApprovedBy).OnDelete(DeleteBehavior.SetNull);
             builder.HasMany(x => x.Boxes).WithOne().HasForeignKey(x => x.LockerId).OnDelete(DeleteBehavior.Cascade);

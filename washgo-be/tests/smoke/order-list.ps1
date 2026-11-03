@@ -52,13 +52,13 @@ INSERT INTO washgo.shippers SELECT (jsonb_populate_record(NULL::washgo.shippers,
     if($o.merchantOrderCode -ne ('MC'+$o.orderCode.Substring(2))){throw "Merchant order code wrong: $($o.merchantOrderCode)"}
     $mine=(Call-Api Post '/wash-order/mine' @{page=1;take=20} $customer).list[0]
     if((@($mine.serviceNames) -join ',') -ne 'List Smoke Package' -or $mine.boxSize -ne 3 -or $mine.isNew){throw 'Customer row wrong.'}
-    $row=(Call-Api Post '/wash-order/filter' @{page=1;take=20} $merchant).list[0]
-    if($row.isNew -or $row.merchantOrderCode -ne $o.merchantOrderCode -or (@($row.serviceNames) -join ',') -ne 'List Smoke Package'){throw 'Pending order flagged new or Merchant row wrong.'}
+    # UC 3.3: the Merchant only sees the order once the Admin assigns it after the deposit.
+    if((Call-Api Post '/wash-order/filter' @{page=1;take=20} $merchant).total -ne 0){throw 'Merchant sees an order before the Admin assigned it.'}
 
     Write-Output '3. Highlight new orders (2.3.1 step 4)'
     Invoke-TestDelivery $o.id deposit $customer | Out-Null
     $row=(Call-Api Post '/wash-order/filter' @{page=1;take=20} $merchant).list[0]
-    if(!$row.isNew){throw 'Deposited order not flagged new.'}
+    if(!$row.isNew -or $row.merchantOrderCode -ne $o.merchantOrderCode -or (@($row.serviceNames) -join ',') -ne 'List Smoke Package'){throw 'Deposited order not flagged new or Merchant row wrong.'}
     Call-Api Put '/wash-order/assign-shipper' @{orderId=$o.id;shipperId="$shipperB"} $merchant | Out-Null
     if((Call-Api Post '/wash-order/filter' @{page=1;take=20} $merchant).list[0].isNew){throw 'Assigned order still new.'}
 

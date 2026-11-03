@@ -36,6 +36,7 @@ namespace WashGo.EntityFrameworkCore.EntityFrameworkCore
         public DbSet<WashOrderTimeline> WashOrderTimelines { get; set; } = null!;
         public DbSet<Locker> Lockers { get; set; } = null!;
         public DbSet<LockerBox> LockerBoxes { get; set; } = null!;
+        public DbSet<LockerMerchant> LockerMerchants { get; set; } = null!;
         public DbSet<WashService> WashServices { get; set; } = null!;
         public DbSet<PaymentTransaction> PaymentTransactions { get; set; } = null!;
         public DbSet<RefundRequest> RefundRequests { get; set; } = null!;
@@ -88,6 +89,7 @@ namespace WashGo.EntityFrameworkCore.EntityFrameworkCore
             builder.ApplyConfiguration(new ReminderLogEntityTypeConfiguration());
             builder.ApplyConfiguration(new MerchantSettlementEntityTypeConfiguration());
             builder.ApplyConfiguration(new MerchantProfileRequestEntityTypeConfiguration());
+            builder.ApplyConfiguration(new LockerMerchantEntityTypeConfiguration());
 
             builder.UseWashGoSnakeCaseColumns();
         }

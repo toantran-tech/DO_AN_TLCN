@@ -78,7 +78,8 @@ FROM washgo.services s WHERE id='$weightService';
         $base=if($case.mixed){190000}else{100000}
         $hours=if($case.mixed){36}else{24}
         if($created.totalAmount -ne $base -or $created.finalAmount -ne $base -or $created.includedWeightKg -ne $case.included){throw 'New-order package pricing multiplied estimated kg or used wrong capacity.'}
-        Assert-Status 400 Put "/wash-order/$id/actual-weight" @{weightKg=$case.kg} $merchant
+        # UC 3.3: not assigned to the Merchant before the deposit.
+        Assert-Status 404 Put "/wash-order/$id/actual-weight" @{weightKg=$case.kg} $merchant
         Collect-WeightFixture $id
         Assert-Status 400 Put '/wash-order/status' @{orderId="$id";newStatus=4} $merchant
         Assert-Status 400 Put '/wash-order/status' @{orderId="$id";newStatus=8} $merchant

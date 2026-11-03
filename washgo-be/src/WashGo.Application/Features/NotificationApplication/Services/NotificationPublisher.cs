@@ -125,8 +125,11 @@ namespace WashGo.Application.Features.NotificationApplication.Services
                 $"Bạn đã gửi đồ thành công cho đơn #{o.OrderCode}!", "order", o.Id);
             await SendAsync([o.MerchantId], NotificationType.CustomerDeposited, "Khách hàng đã gửi đồ",
                 $"Khách hàng đã gửi đồ #{o.OrderCode} vào {o.LockerName}, ô số {o.BoxNumber}. Vui lòng phân công Shipper.", "order", o.Id);
-            await SendToAdminsAsync(NotificationType.CustomerDeposited, "Khách hàng đã gửi đồ",
-                $"Khách hàng đã gửi đồ #{o.OrderCode} vào {o.LockerName}, ô số {o.BoxNumber}.", "order", o.Id);
+            // Orders get their Merchant from the Admin after deposit (UC 3.3).
+            await SendToAdminsAsync(NotificationType.CustomerDeposited, "Đơn mới chờ phân công",
+                o.MerchantId == null
+                    ? $"Khách hàng đã gửi đồ #{o.OrderCode} vào {o.LockerName}, ô số {o.BoxNumber}. Vui lòng phân công Merchant."
+                    : $"Khách hàng đã gửi đồ #{o.OrderCode} vào {o.LockerName}, ô số {o.BoxNumber}.", "order", o.Id);
         }
 
         public async Task ShipperAssignedAsync(WashOrder o, DeliveryTaskType task)

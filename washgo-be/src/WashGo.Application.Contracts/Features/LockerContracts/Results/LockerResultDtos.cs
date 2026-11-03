@@ -9,8 +9,8 @@ namespace WashGo.Application.Contracts.Features.LockerContracts.Results
     public class LockerResultDto
     {
         public Guid Id { get; set; }
-        public Guid MerchantId { get; set; }
-        public string? MerchantName { get; set; }
+        /// <summary>Các Merchant phụ trách locker, sắp theo độ ưu tiên.</summary>
+        public List<LockerMerchantDto> Merchants { get; set; } = [];
         public Guid? ServiceAreaId { get; set; }
         public string? ServiceAreaName { get; set; }
         public List<string> ImageUrls { get; set; } = [];
@@ -30,6 +30,13 @@ namespace WashGo.Application.Contracts.Features.LockerContracts.Results
         public int EmptyBoxesCount { get; set; }
         public long CreatedOn { get; set; }
         public List<LockerBoxResultDto> Boxes { get; set; } = [];
+    }
+
+    public class LockerMerchantDto
+    {
+        public Guid MerchantId { get; set; }
+        public string BusinessName { get; set; } = string.Empty;
+        public int Priority { get; set; }
     }
 
     public class LockerBoxResultDto

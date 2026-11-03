@@ -15,17 +15,20 @@ public class CustomerCatalogAppService : WashGoAppService, ICustomerCatalogAppSe
     private readonly IRepository<Locker, Guid> _lockers;
     private readonly IRepository<LockerBox, Guid> _slots;
     private readonly IRepository<Merchant, Guid> _merchants;
+    private readonly IRepository<LockerMerchant, Guid> _lockerMerchants;
 
     public CustomerCatalogAppService(
         IRepository<WashService, Guid> services,
         IRepository<Locker, Guid> lockers,
         IRepository<LockerBox, Guid> slots,
-        IRepository<Merchant, Guid> merchants)
+        IRepository<Merchant, Guid> merchants,
+        IRepository<LockerMerchant, Guid> lockerMerchants)
     {
         _services = services;
         _lockers = lockers;
         _slots = slots;
         _merchants = merchants;
+        _lockerMerchants = lockerMerchants;
     }
 
     // Shared catalog: one price per service for every Merchant (Admin approves Merchant proposals).
@@ -110,13 +113,15 @@ public class CustomerCatalogAppService : WashGoAppService, ICustomerCatalogAppSe
         var lockers = await _lockers.GetQueryableAsync();
         var slots = await _slots.GetQueryableAsync();
         var merchants = await _merchants.GetQueryableAsync();
+        var links = await _lockerMerchants.GetQueryableAsync();
+        // A locker is open to customers while at least one of its Merchants is active.
         var query = from locker in lockers
-                    join merchant in merchants on locker.MerchantId equals merchant.Id
                     where !locker.IsDeleted && locker.Status == LockerStatus.Active
-                        && merchant.Status == MerchantStatus.Active
+                        && links.Any(l => l.LockerId == locker.Id
+                            && merchants.Any(m => m.Id == l.MerchantId && m.Status == MerchantStatus.Active))
                         && slots.Any(slot => slot.LockerId == locker.Id && !slot.IsDeleted
                             && slot.Status == LockerBoxStatus.Available)
-                    select new { locker, merchant };
+                    select new { locker };
 
         if (!string.IsNullOrWhiteSpace(city))
         {
@@ -140,7 +145,6 @@ public class CustomerCatalogAppService : WashGoAppService, ICustomerCatalogAppSe
         var withDistance = query.Select(x => new
         {
             x.locker,
-            x.merchant,
             // Haversine, translated to SQL so sorting and paging stay on the server.
             distance = 2 * 6371 * Math.Asin(Math.Sqrt(
                 Math.Pow(Math.Sin((x.locker.Latitude - lat) * Rad / 2), 2) +
@@ -157,8 +161,6 @@ public class CustomerCatalogAppService : WashGoAppService, ICustomerCatalogAppSe
             .Select(x => new CustomerLockerCatalogDto
             {
                 Id = x.locker.Id,
-                MerchantId = x.locker.MerchantId,
-                MerchantName = x.merchant.BusinessName,
                 Code = x.locker.Code,
                 Name = x.locker.Name,
                 Address = x.locker.Address,
@@ -181,15 +183,14 @@ public class CustomerCatalogAppService : WashGoAppService, ICustomerCatalogAppSe
     {
         var lockers = await _lockers.GetQueryableAsync();
         var merchants = await _merchants.GetQueryableAsync();
+        var links = await _lockerMerchants.GetQueryableAsync();
         var query = from locker in lockers
-                    join merchant in merchants on locker.MerchantId equals merchant.Id
                     where locker.Id == id && !locker.IsDeleted && locker.Status == LockerStatus.Active
-                        && merchant.Status == MerchantStatus.Active
+                        && links.Any(l => l.LockerId == locker.Id
+                            && merchants.Any(m => m.Id == l.MerchantId && m.Status == MerchantStatus.Active))
                     select new CustomerLockerCatalogDto
                     {
                         Id = locker.Id,
-                        MerchantId = locker.MerchantId,
-                        MerchantName = merchant.BusinessName,
                         Code = locker.Code,
                         Name = locker.Name,
                         Address = locker.Address,

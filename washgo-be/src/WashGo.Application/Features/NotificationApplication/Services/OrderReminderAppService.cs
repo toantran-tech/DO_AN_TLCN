@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Volo.Abp.Domain.Repositories;
 using WashGo.Application.Contracts.Features.NotificationContracts.Results;
 using WashGo.Application.Contracts.Features.NotificationContracts.Services;
+using WashGo.Application.Features.OrderAssignmentApplication.Services;
 using WashGo.Application.Features.PaymentApplication.Services;
 using WashGo.Application.Features.SystemSettingApplication.Services;
 using WashGo.Core.Domain.Shared.Bases;
@@ -112,6 +113,17 @@ namespace WashGo.Application.Features.NotificationApplication.Services
                 await _notifications.SendAsync([await _notifications.ShipperUserIdAsync(o.ShipperId)],
                     NotificationType.ShipperCollectReminder, "Nhắc nhở lấy đồ",
                     $"Đơn #{o.OrderCode} đã chờ {ShipperCollectReminderMinutes} phút. Vui lòng đến {o.LockerName}, ô số {o.BoxNumber} để lấy đồ.",
+                    "order", o.Id);
+            }
+
+            // UC 3.3: deposited orders still waiting for the Admin to pick a Merchant.
+            var assignDue = now.AddMinutes(-OrderAssignmentRules.AssignmentOverdueMinutes);
+            foreach (var o in await OrdersAsync(q => q.Where(x => x.Status == WashOrderStatus.Deposited
+                         && x.MerchantId == null && x.DepositedAt != null && x.DepositedAt <= assignDue)))
+            {
+                if (!await ClaimAsync("assign-late", $"assign-late:{o.Id}", o.Id, now)) continue;
+                await _notifications.SendToAdminsAsync(NotificationType.SlaWarning, "Đơn chờ phân công quá hạn",
+                    $"⚠️ Đơn #{o.OrderCode} tại {o.LockerName} đã chờ phân công Merchant hơn {OrderAssignmentRules.AssignmentOverdueMinutes} phút.",
                     "order", o.Id);
             }
 

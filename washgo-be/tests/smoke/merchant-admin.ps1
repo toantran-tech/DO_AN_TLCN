@@ -100,7 +100,8 @@ INSERT INTO washgo.services SELECT (jsonb_populate_record(NULL::washgo.services,
     $locker=(Call-Api Post '/locker/' @{merchantId="$merchantId";code="MAL_$run";name="Merchant Admin Locker $run";address='Private development fixture';district='Test';city='Test';latitude=10.76;longitude=106.66;boxCount=2} $admin).data
     $lockerId=[Guid]$locker.id
     $l=(Call-Api Get "/customer/lockers/$lockerId" $null $customer).data
-    Call-Api Post '/wash-order/' @{lockerId="$lockerId";boxId=$l.availableSlots[0].id;paymentMethod=2;items=@(@{serviceId="$serviceId";quantity=1})} $customer | Out-Null
+    $o=(Call-Api Post '/wash-order/' @{lockerId="$lockerId";boxId=$l.availableSlots[0].id;paymentMethod=2;items=@(@{serviceId="$serviceId";quantity=1})} $customer).data
+    Invoke-TestDelivery $o.id deposit $customer | Out-Null  # the Admin assigns the locker's Merchant (UC 3.3)
     $m=Get-Merchant
     if($m.totalOrders -ne 1 -or $m.unfinishedOrders -ne 1){throw 'Order stats wrong.'}
     Assert-Status 400 Put '/merchant/status' (Status-Body 3) $admin

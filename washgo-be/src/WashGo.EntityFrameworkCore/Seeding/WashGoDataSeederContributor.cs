@@ -22,6 +22,7 @@ namespace WashGo.EntityFrameworkCore.Seeding
         private readonly IRepository<ServiceArea, Guid> _serviceAreaRepo;
         private readonly IRepository<MerchantServiceArea, Guid> _merchantServiceAreaRepo;
         private readonly IRepository<Locker, Guid> _lockerRepo;
+        private readonly IRepository<LockerMerchant, Guid> _lockerMerchantRepo;
         private readonly IRepository<WashService, Guid> _washServiceRepo;
 
         public WashGoDataSeederContributor(
@@ -33,6 +34,7 @@ namespace WashGo.EntityFrameworkCore.Seeding
             IRepository<ServiceArea, Guid> serviceAreaRepo,
             IRepository<MerchantServiceArea, Guid> merchantServiceAreaRepo,
             IRepository<Locker, Guid> lockerRepo,
+            IRepository<LockerMerchant, Guid> lockerMerchantRepo,
             IRepository<WashService, Guid> washServiceRepo)
         {
             _roleRepo = roleRepo;
@@ -43,6 +45,7 @@ namespace WashGo.EntityFrameworkCore.Seeding
             _serviceAreaRepo = serviceAreaRepo;
             _merchantServiceAreaRepo = merchantServiceAreaRepo;
             _lockerRepo = lockerRepo;
+            _lockerMerchantRepo = lockerMerchantRepo;
             _washServiceRepo = washServiceRepo;
         }
 
@@ -267,7 +270,6 @@ namespace WashGo.EntityFrameworkCore.Seeding
             {
                 var locker = new Locker(lockerId)
                 {
-                    MerchantId = merchantId,
                     ServiceAreaId = serviceAreaId,
                     Code = code,
                     Name = name,
@@ -306,6 +308,19 @@ namespace WashGo.EntityFrameworkCore.Seeding
 
                 await _lockerRepo.InsertAsync(locker, autoSave: true);
             }
+            await SeedLockerMerchantAsync(lockerId, merchantId);
+        }
+
+        // Lockers may have several Merchants; the seed locker starts with the seed Merchant (priority 1).
+        private async Task SeedLockerMerchantAsync(Guid lockerId, Guid merchantId)
+        {
+            if (!await _lockerMerchantRepo.AnyAsync(x => x.LockerId == lockerId && x.MerchantId == merchantId))
+                await _lockerMerchantRepo.InsertAsync(new LockerMerchant(Guid.NewGuid())
+                {
+                    LockerId = lockerId,
+                    MerchantId = merchantId,
+                    Priority = 1
+                }, autoSave: true);
         }
 
         private async Task SeedReturnLockerAsync(Guid merchantId, Guid serviceAreaId)
@@ -316,7 +331,6 @@ namespace WashGo.EntityFrameworkCore.Seeding
 
             var locker = new Locker(lockerId)
             {
-                MerchantId = merchantId,
                 ServiceAreaId = serviceAreaId,
                 Code = "LK_Q1_002",
                 Name = "Trạm Locker Nhà thờ Đức Bà",
@@ -346,6 +360,7 @@ namespace WashGo.EntityFrameworkCore.Seeding
                 Status = LockerBoxStatus.Available
             });
             await _lockerRepo.InsertAsync(locker, autoSave: true);
+            await SeedLockerMerchantAsync(lockerId, merchantId);
         }
 
         private async Task SeedWashServiceAsync(Guid id, Guid merchantId, string code, string name, decimal unitPrice, decimal? pricePerKg, decimal? pricePerItem, WashServiceType type, string unit)

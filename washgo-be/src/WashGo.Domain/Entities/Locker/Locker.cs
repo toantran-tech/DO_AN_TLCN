@@ -22,7 +22,6 @@ namespace WashGo.Domain.Entities.Locker
             Boxes = new List<LockerBox>();
         }
 
-        public Guid MerchantId { get; set; }
         public Guid? ServiceAreaId { get; set; }
 
         [Filterable(ColumnVariant.Text)]

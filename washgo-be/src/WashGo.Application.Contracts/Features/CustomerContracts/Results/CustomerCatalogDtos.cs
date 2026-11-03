@@ -20,8 +20,6 @@ public class CustomerServiceCatalogDto
 public class CustomerLockerCatalogDto
 {
     public Guid Id { get; set; }
-    public Guid MerchantId { get; set; }
-    public string MerchantName { get; set; } = string.Empty;
     public string Code { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public string Address { get; set; } = string.Empty;
