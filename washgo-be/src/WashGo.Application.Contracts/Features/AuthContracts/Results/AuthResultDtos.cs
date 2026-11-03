@@ -10,6 +10,7 @@ namespace WashGo.Application.Contracts.Features.AuthContracts.Results
     {
         public bool Verified { get; set; }
         public string? VerificationToken { get; set; }
+        public DateTime? ExpiresAt { get; set; }
     }
 
     public class AuthResponseDto
