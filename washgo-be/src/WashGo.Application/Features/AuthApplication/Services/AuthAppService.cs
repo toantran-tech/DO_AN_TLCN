@@ -11,12 +11,14 @@ using Google.Apis.Auth;
 using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
 using Volo.Abp.Domain.Repositories;
+using Volo.Abp.Uow;
 using WashGo.Application.Contracts.Features.AuthContracts.Commands;
 using WashGo.Application.Contracts.Features.AuthContracts.Results;
 using WashGo.Application.Contracts.Features.AuthContracts.Services;
 using WashGo.Core.Domain.Common;
 using WashGo.Core.Domain.Shared.Bases;
 using WashGo.Domain.Entities.Identity;
+using WashGo.Domain.Entities.Identity.Interfaces;
 using WashGo.Domain.Entities.Partner;
 using WashGo.Domain.Shared.Enums;
 
@@ -25,10 +27,11 @@ namespace WashGo.Application.Features.AuthApplication.Services
     public class AuthAppService : WashGoAppService, IAuthAppService
     {
         private const string VerifiedRegistrationPrefix = "verified-register:";
+        private const string VerifiedPasswordResetPrefix = "verified-reset:";
         private readonly IRepository<User, Guid> _userRepo;
         private readonly IRepository<Role, Guid> _roleRepo;
         private readonly IRepository<RefreshToken, Guid> _refreshTokenRepo;
-        private readonly IRepository<OtpCode, Guid> _otpRepo;
+        private readonly IOtpCodeRepository _otpRepo;
         private readonly IRepository<Customer, Guid> _customerRepo;
         private readonly IConfiguration _configuration;
         private readonly IAuthEmailSender _authEmailSender;
@@ -37,7 +40,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
             IRepository<User, Guid> userRepo,
             IRepository<Role, Guid> roleRepo,
             IRepository<RefreshToken, Guid> refreshTokenRepo,
-            IRepository<OtpCode, Guid> otpRepo,
+            IOtpCodeRepository otpRepo,
             IRepository<Customer, Guid> customerRepo,
             IConfiguration configuration,
             IAuthEmailSender authEmailSender)
@@ -562,20 +565,17 @@ namespace WashGo.Application.Features.AuthApplication.Services
                 return BadRequest<VerifyOtpResultDto>("Loại OTP này hiện chưa được hỗ trợ.");
             }
 
+            using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
             var email = command.Email.Trim().ToLowerInvariant();
-            var activeOtps = await _otpRepo.GetListAsync(o =>
-                o.Email.ToLower() == email &&
-                o.Purpose == command.Purpose &&
-                !o.IsUsed &&
-                o.ExpiryDate > DateTime.UtcNow);
-            var validOtp = activeOtps.OrderByDescending(o => o.CreatedAt).FirstOrDefault();
+            var validOtp = await _otpRepo.GetLatestActiveForUpdateAsync(email, command.Purpose);
 
             if (validOtp == null)
             {
                 return BadRequest<VerifyOtpResultDto>("Mã OTP không hợp lệ hoặc đã hết hạn.");
             }
 
-            if (validOtp.CodeHash.StartsWith(VerifiedRegistrationPrefix, StringComparison.Ordinal))
+            if (validOtp.CodeHash.StartsWith(VerifiedRegistrationPrefix, StringComparison.Ordinal) ||
+                validOtp.CodeHash.StartsWith(VerifiedPasswordResetPrefix, StringComparison.Ordinal))
             {
                 return BadRequest<VerifyOtpResultDto>("Mã OTP đã được xác minh.");
             }
@@ -590,28 +590,33 @@ namespace WashGo.Application.Features.AuthApplication.Services
             {
                 validOtp.AttemptCount++;
                 await _otpRepo.UpdateAsync(validOtp, autoSave: true);
+                // Persist failed attempts even though the API returns a validation error.
+                await uow.CompleteAsync();
                 return BadRequest<VerifyOtpResultDto>($"Mã OTP không chính xác. Còn lại {validOtp.MaxAttempts - validOtp.AttemptCount} lần thử.");
             }
 
-            if (command.Purpose == OtpPurpose.Register)
-            {
-                var verificationToken = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
-                validOtp.CodeHash = VerifiedRegistrationPrefix + BCrypt.Net.BCrypt.HashPassword(verificationToken);
-                validOtp.ExpiryDate = DateTime.UtcNow.AddMinutes(10);
-                await _otpRepo.UpdateAsync(validOtp, autoSave: true);
-                return Success(new VerifyOtpResultDto { Verified = true, VerificationToken = verificationToken },
-                    "Xác minh email thành công!");
-            }
-
-            validOtp.IsUsed = true;
-            validOtp.UsedAt = DateTime.UtcNow;
+            var verificationToken = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+            var prefix = command.Purpose == OtpPurpose.Register
+                ? VerifiedRegistrationPrefix : VerifiedPasswordResetPrefix;
+            validOtp.CodeHash = prefix + BCrypt.Net.BCrypt.HashPassword(verificationToken);
+            validOtp.ExpiryDate = DateTime.UtcNow.AddMinutes(10);
             await _otpRepo.UpdateAsync(validOtp, autoSave: true);
-
-            return Success(new VerifyOtpResultDto { Verified = true }, "Xác thực mã OTP thành công!");
+            await uow.CompleteAsync();
+            return Success(new VerifyOtpResultDto
+            {
+                Verified = true,
+                VerificationToken = verificationToken,
+                ExpiresAt = validOtp.ExpiryDate
+            }, command.Purpose == OtpPurpose.Register
+                ? "Xác minh email thành công!"
+                : "Xác minh OTP thành công! Vui lòng nhập mật khẩu mới.");
         }
 
         public async Task<BaseResponse<bool>> ResetPasswordAsync(ResetPasswordCommand command)
         {
+            if (!IsValidEmail(command.Email) || command.VerificationToken?.Length != 64)
+                return BadRequest<bool>("Vui lòng xác minh OTP trước khi đặt lại mật khẩu.");
+
             var passwordError = ValidatePassword(command.NewPassword);
             if (passwordError != null)
             {
@@ -622,19 +627,14 @@ namespace WashGo.Application.Features.AuthApplication.Services
                 return BadRequest<bool>("Xác nhận mật khẩu mới không khớp.");
             }
 
-            var verifyResult = await VerifyOtpAsync(new VerifyOtpCommand
-            {
-                Email = command.Email,
-                Code = command.Code,
-                Purpose = OtpPurpose.ForgotPassword
-            });
-
-            if (!verifyResult.Succeeded)
-            {
-                return BadRequest<bool>(verifyResult.Message ?? "Mã xác thực OTP không hợp lệ.");
-            }
-
+            using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
             var email = command.Email.Trim().ToLowerInvariant();
+            var validOtp = await _otpRepo.GetLatestActiveForUpdateAsync(email, OtpPurpose.ForgotPassword);
+            if (validOtp == null ||
+                !validOtp.CodeHash.StartsWith(VerifiedPasswordResetPrefix, StringComparison.Ordinal) ||
+                !BCrypt.Net.BCrypt.Verify(command.VerificationToken, validOtp.CodeHash[VerifiedPasswordResetPrefix.Length..]))
+                return BadRequest<bool>("Phiên đặt lại mật khẩu không hợp lệ hoặc đã hết hạn. Vui lòng yêu cầu OTP mới.");
+
             var user = await _userRepo.FirstOrDefaultAsync(u => u.Email.ToLower() == email);
             if (user == null)
             {
@@ -644,8 +644,12 @@ namespace WashGo.Application.Features.AuthApplication.Services
             user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(command.NewPassword);
             user.UpdatedAt = DateTime.UtcNow;
 
+            validOtp.IsUsed = true;
+            validOtp.UsedAt = DateTime.UtcNow;
+            await _otpRepo.UpdateAsync(validOtp, autoSave: true);
             await _userRepo.UpdateAsync(user, autoSave: true);
             await RevokeAllRefreshTokensAsync(user.Id);
+            await uow.CompleteAsync();
             return Success(true, "Đặt lại mật khẩu thành công! Vui lòng đăng nhập bằng mật khẩu mới.");
         }
 

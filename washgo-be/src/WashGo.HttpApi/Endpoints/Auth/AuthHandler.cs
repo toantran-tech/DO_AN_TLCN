@@ -95,14 +95,14 @@ namespace WashGo.HttpApi.Endpoints.Auth
             group.MapPost("/verify-otp", async (VerifyOtpCommand command, IAuthAppService svc) =>
                 (await svc.VerifyOtpAsync(command)).CustomResult())
                 .WithName("Kiểm tra mã OTP")
-                .WithSummary("Xác minh mã OTP theo email và mục đích xác thực.")
+                .WithSummary("Xác minh OTP đăng ký/quên mật khẩu, trả verificationToken dùng một lần có hạn 10 phút.")
                 .WithOpenApi();
 
             group.MapPost("/reset-password", async (ResetPasswordCommand command, IAuthAppService svc) =>
                 (await svc.ResetPasswordAsync(command)).CustomResult())
                 .RequireRateLimiting("auth-sensitive")
                 .WithName("Đặt lại mật khẩu")
-                .WithSummary("Đặt mật khẩu mới bằng email và mã OTP quên mật khẩu.")
+                .WithSummary("Đặt mật khẩu mới bằng email và verificationToken nhận từ verify-otp (purpose = 2).")
                 .WithOpenApi();
 
             group.MapGet("/me", async (HttpContext httpContext, IAuthAppService svc) =>
