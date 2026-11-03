@@ -33,6 +33,8 @@ public class CustomerLockerCatalogDto
     public double Latitude { get; set; }
     public double Longitude { get; set; }
     public int AvailableSlotCount { get; set; }
+    /// <summary>Khoảng cách (km) từ vị trí khách gửi lên; null khi không gửi vị trí (UC 1.2.2).</summary>
+    public double? DistanceKm { get; set; }
     public string? Description { get; set; }
     public string? Images { get; set; }
     public List<CustomerLockerSlotDto> AvailableSlots { get; set; } = [];

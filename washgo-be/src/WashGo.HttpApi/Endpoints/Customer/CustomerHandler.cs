@@ -41,10 +41,10 @@ public class CustomerHandler : IEndpointBase
             .WithOpenApi();
 
         group.MapGet("/lockers", async (string? city, string? district, string? keyword,
-            int? page, int? take, ICustomerCatalogAppService catalog) =>
-            (await catalog.GetLockersAsync(city, district, keyword, page ?? 1, take ?? 20)).CustomResult())
+            int? page, int? take, double? latitude, double? longitude, ICustomerCatalogAppService catalog) =>
+            (await catalog.GetLockersAsync(city, district, keyword, page ?? 1, take ?? 20, latitude, longitude)).CustomResult())
             .WithName("Customer tìm tủ còn ô trống")
-            .WithSummary("Customer tìm tủ còn ô trống.")
+            .WithSummary("Customer tìm tủ còn ô trống; gửi latitude/longitude của khách để nhận khoảng cách (km) và sắp xếp gần nhất trước.")
             .WithOpenApi();
 
         group.MapGet("/lockers/{id:guid}", async (Guid id, ICustomerCatalogAppService catalog) =>

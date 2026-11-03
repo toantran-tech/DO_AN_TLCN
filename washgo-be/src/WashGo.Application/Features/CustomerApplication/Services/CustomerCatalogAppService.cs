@@ -103,9 +103,21 @@ public class CustomerCatalogAppService : WashGoAppService, ICustomerCatalogAppSe
     }
 
     public async Task<PaginatedResult<CustomerLockerCatalogDto>> GetLockersAsync(
-        string? city, string? district, string? keyword, int page, int take)
+        string? city, string? district, string? keyword, int page, int take,
+        double? latitude = null, double? longitude = null)
     {
         (page, take) = NormalizePaging(page, take);
+        // UC 1.2.2: with the customer's position, show the distance and list the nearest lockers first.
+        var hasPosition = latitude.HasValue && longitude.HasValue;
+        if (hasPosition && (latitude is < -90 or > 90 || longitude is < -180 or > 180))
+            return new PaginatedResult<CustomerLockerCatalogDto>
+            {
+                Succeeded = false,
+                StatusCode = System.Net.HttpStatusCode.BadRequest,
+                Message = "Vị trí không hợp lệ."
+            };
+        var lat = latitude ?? 0;
+        var lng = longitude ?? 0;
         var lockers = await _lockers.GetQueryableAsync();
         var slots = await _slots.GetQueryableAsync();
         var merchants = await _merchants.GetQueryableAsync();
@@ -135,8 +147,23 @@ public class CustomerCatalogAppService : WashGoAppService, ICustomerCatalogAppSe
                 || x.locker.Address.ToLower().Contains(term));
         }
 
+        const double Rad = Math.PI / 180;
+        var withDistance = query.Select(x => new
+        {
+            x.locker,
+            x.merchant,
+            // Haversine, translated to SQL so sorting and paging stay on the server.
+            distance = 2 * 6371 * Math.Asin(Math.Sqrt(
+                Math.Pow(Math.Sin((x.locker.Latitude - lat) * Rad / 2), 2) +
+                Math.Cos(lat * Rad) * Math.Cos(x.locker.Latitude * Rad) *
+                Math.Pow(Math.Sin((x.locker.Longitude - lng) * Rad / 2), 2)))
+        });
+        var ordered = hasPosition
+            ? withDistance.OrderBy(x => x.distance).ThenBy(x => x.locker.Id)
+            : withDistance.OrderBy(x => x.locker.Name).ThenBy(x => x.locker.Id);
+
         var total = await AsyncExecuter.CountAsync(query);
-        var list = await AsyncExecuter.ToListAsync(query.OrderBy(x => x.locker.Name).ThenBy(x => x.locker.Id)
+        var list = await AsyncExecuter.ToListAsync(ordered
             .Skip((page - 1) * take).Take(take)
             .Select(x => new CustomerLockerCatalogDto
             {
@@ -154,7 +181,8 @@ public class CustomerCatalogAppService : WashGoAppService, ICustomerCatalogAppSe
                 AvailableSlotCount = slots.Count(slot => slot.LockerId == x.locker.Id && !slot.IsDeleted
                     && slot.Status == LockerBoxStatus.Available),
                 Description = x.locker.Description,
-                Images = x.locker.Images
+                Images = x.locker.Images,
+                DistanceKm = hasPosition ? Math.Round(x.distance, 2) : null
             }));
         // UC 1.2.1 4a.
         return Success(list, total, page, take, total == 0 ? "Hiện tại không có locker khả dụng." : null);

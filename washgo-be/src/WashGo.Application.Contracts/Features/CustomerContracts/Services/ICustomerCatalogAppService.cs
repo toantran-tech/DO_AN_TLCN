@@ -9,6 +9,8 @@ public interface ICustomerCatalogAppService : IApplicationService
 {
     Task<PaginatedResult<CustomerServiceCatalogDto>> GetServicesAsync(Guid? merchantId, WashServiceType? serviceType, string? keyword, int page, int take);
     Task<BaseResponse<CustomerServiceCatalogDto>> GetServiceAsync(Guid id);
-    Task<PaginatedResult<CustomerLockerCatalogDto>> GetLockersAsync(string? city, string? district, string? keyword, int page, int take);
+    Task<PaginatedResult<CustomerLockerCatalogDto>> GetLockersAsync(
+        string? city, string? district, string? keyword, int page, int take,
+        double? latitude = null, double? longitude = null);
     Task<BaseResponse<CustomerLockerCatalogDto>> GetLockerAsync(Guid id);
 }
