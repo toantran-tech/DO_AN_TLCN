@@ -41,7 +41,8 @@ FROM washgo.shippers s WHERE user_id = '$seedUser';
     $sessions.Fixture = (Call-Api Post '/auth/login' @{ email = $fixtureEmail; password = 'Shipper@123' } $null).data
     $shipper = $sessions.Fixture.accessToken
     $lockers = (Call-Api Get '/customer/lockers?page=1&take=100' $null $customer).list
-    $lockerSummary = $lockers | Where-Object { $_.merchantId -eq "$merchantId" -and $_.availableSlotCount -ge 2 } | Select-Object -First 1
+    $merchantLockerIds = @((Call-Api Post '/locker/filter' @{merchantId="$merchantId";page=1;take=100} $admin).list | ForEach-Object { $_.id })
+    $lockerSummary = $lockers | Where-Object { $merchantLockerIds -contains $_.id -and $_.availableSlotCount -ge 2 } | Select-Object -First 1
     if (!$lockerSummary) { throw 'Need two available slots for the assignment concurrency smoke test.' }
     $locker = (Call-Api Get "/customer/lockers/$($lockerSummary.id)" $null $customer).data
     $service = (Call-Api Get "/customer/services?merchantId=$merchantId&page=1&take=100" $null $customer).list | Select-Object -First 1
@@ -53,7 +54,8 @@ FROM washgo.shippers s WHERE user_id = '$seedUser';
             customerNote = 'Shipper assignment smoke'; items = @($item)
         } $customer).data
         $orders += [Guid]$order.id
-        Assert-Status 400 Put '/wash-order/assign-shipper' @{ orderId = $order.id; shipperId = "$fixtureShipper" } $merchant
+        # UC 3.3: before the deposit the order has no Merchant yet, so the Merchant cannot see it.
+        Assert-Status 404 Put '/wash-order/assign-shipper' @{ orderId = $order.id; shipperId = "$fixtureShipper" } $merchant
         Invoke-TestDelivery $order.id deposit $customer | Out-Null
     }
     $first = $orders[0]

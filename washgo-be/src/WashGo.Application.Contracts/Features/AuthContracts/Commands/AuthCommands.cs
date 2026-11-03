@@ -6,6 +6,8 @@ namespace WashGo.Application.Contracts.Features.AuthContracts.Commands
     {
         public string Email { get; set; } = string.Empty;
         public string Password { get; set; } = string.Empty;
+        /// <summary>Tùy chọn: trang đăng nhập (Customer, Merchant, Shipper, Admin); sai vai trò thì từ chối (UC 2.1.1/4.1.1 6a).</summary>
+        public string? Portal { get; set; }
     }
 
     public class GoogleLoginCommand

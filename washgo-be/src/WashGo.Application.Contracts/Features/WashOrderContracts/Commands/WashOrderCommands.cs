@@ -45,6 +45,8 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Commands
         public Guid OrderId { get; set; }
         public Guid ShipperId { get; set; }
         public string ShipperName { get; set; } = string.Empty;
+        /// <summary>Ghi chú cho Shipper (tối đa 500 ký tự), hiển thị ở chi tiết nhiệm vụ.</summary>
+        public string? Note { get; set; }
     }
 
     public class MoveOrderToStorageCommand

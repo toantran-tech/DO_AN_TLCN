@@ -48,10 +48,23 @@ function Assert-Private($Order) {
 }
 
 # Exercise the action endpoints; never simulate delivery through the generic status route.
+# UC 3.3: Admin assigns the order to a Merchant (default: priority-1 Merchant of the locker).
+function Assign-Order($Id, $MerchantId, $AdminToken) {
+    if (-not $MerchantId) {
+        $candidates = (Call-Api Get "/order-assignment/$Id/candidates" $null $AdminToken).data.merchants
+        $MerchantId = ($candidates | Sort-Object priority | Select-Object -First 1).merchantId
+    }
+    Call-Api Post "/order-assignment/$Id/assign" @{merchantId="$MerchantId"} $AdminToken
+}
 function Invoke-TestDelivery($Id, $Action, $Token) {
     $view=(Call-Api Get "/wash-order/$Id" $null $Token).data
     switch($Action){
-        'deposit' { Call-Api Post "/wash-order/$Id/deposit" @{pinCode=$view.depositPinCode} $Token }
+        'deposit' {
+            Call-Api Post "/wash-order/$Id/deposit" @{pinCode=$view.depositPinCode} $Token
+            # UC 3.3: orders have no Merchant until the Admin assigns one. Tests that hold an $admin token get the
+            # priority-1 Merchant of the locker assigned right after the deposit; set $NoAutoAssign to skip.
+            if ($admin -and -not $NoAutoAssign) { Assign-Order $Id $null $admin | Out-Null }
+        }
         'collect' { Call-Api Post "/wash-order/$Id/shipper-collect" @{pinCode=$view.shipperTaskPinCode} $Token }
         'return' { Call-Api Post "/wash-order/$Id/shipper-return" @{pinCode=$view.shipperTaskPinCode} $Token }
         'pickup' {
@@ -82,7 +95,8 @@ try {
     $shipperId = [Guid](Sql "SELECT id FROM washgo.shippers WHERE user_id = '$shipperUserId' AND is_active = true LIMIT 1;")
 
     $lockers = (Call-Api Get '/customer/lockers?page=1&take=100' $null $customer).list
-    $locker = $lockers | Where-Object { $_.merchantId -eq "$merchantId" } | Select-Object -First 1
+    $merchantLockerIds = @((Call-Api Post '/locker/filter' @{merchantId="$merchantId";page=1;take=100} $admin).list | ForEach-Object { $_.id })
+    $locker = $lockers | Where-Object { $merchantLockerIds -contains $_.id } | Select-Object -First 1
     if (!$locker) { throw 'Seed Merchant needs an available locker for this smoke test.' }
     $locker = (Call-Api Get "/customer/lockers/$($locker.id)" $null $customer).data
     $services = (Call-Api Get "/customer/services?merchantId=$merchantId&page=1&take=100" $null $customer).list
@@ -96,6 +110,10 @@ try {
     } $customer).data
     $orderId = [Guid]$created.id
     if (!$orderId) { throw 'Order creation failed.' }
+    # UC 3.3: a new order has no Merchant; this fixture is given the seed Merchant directly so the Merchant
+    # scope checks below run on a pending order (the deposit then skips the Admin assignment).
+    Assert-Status 404 Get "/wash-order/$orderId" $null $merchant
+    Sql "UPDATE washgo.orders SET merchant_id = '$merchantId' WHERE id = '$orderId';" | Out-Null
 
     foreach ($token in @($admin, $merchant, $shipper)) {
         foreach ($status in @(9, 99)) {
@@ -122,7 +140,9 @@ try {
 
     Assert-Status 404 Get "/wash-order/$orderId" $null $shipper
     Assert-Status 400 Put '/wash-order/assign-shipper' @{ orderId = "$orderId"; shipperId = "$shipperId" } $merchant
+    $NoAutoAssign = $true
     Invoke-TestDelivery $orderId deposit $customer | Out-Null
+    $NoAutoAssign = $false
     Call-Api Put '/wash-order/assign-shipper' @{ orderId = "$orderId"; shipperId = "$shipperId"; shipperName = 'Security smoke Shipper' } $merchant | Out-Null
     Assert-Private (Call-Api Get "/wash-order/$orderId" $null $shipper).data
     Sql "UPDATE washgo.orders SET shipper_id = NULL WHERE id = '$orderId';" | Out-Null

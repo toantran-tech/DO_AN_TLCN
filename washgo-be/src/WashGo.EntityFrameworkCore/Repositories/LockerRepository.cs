@@ -39,8 +39,9 @@ namespace WashGo.EntityFrameworkCore.Repositories
                     && x.Status == LockerBoxStatus.Available
                     && db.Lockers.Any(locker => locker.Id == lockerId && !locker.IsDeleted
                         && locker.Status == LockerStatus.Active
-                        && db.Merchants.Any(merchant => merchant.Id == locker.MerchantId
-                            && merchant.Status == MerchantStatus.Active)))
+                        && db.LockerMerchants.Any(link => link.LockerId == locker.Id
+                            && db.Merchants.Any(merchant => merchant.Id == link.MerchantId
+                                && merchant.Status == MerchantStatus.Active))))
                 .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.Status, LockerBoxStatus.Reserved));
             if (changed != 1)
                 return false;

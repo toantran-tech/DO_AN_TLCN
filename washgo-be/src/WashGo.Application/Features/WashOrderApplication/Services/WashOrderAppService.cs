@@ -20,6 +20,7 @@ using WashGo.Domain.Entities.WashOrder;
 using WashGo.Domain.Entities.WashOrder.Interfaces;
 using WashGo.Domain.Entities.WashService.Interfaces;
 using WashGo.Application.Contracts.Features.PromotionContracts.Results;
+using WashGo.Application.Features.LockerApplication.Services;
 using WashGo.Application.Features.NotificationApplication.Services;
 using WashGo.Application.Features.PaymentApplication.Services;
 using WashGo.Application.Features.SystemSettingApplication.Services;
@@ -48,6 +49,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
         private readonly IRepository<PromotionUsage, Guid> _promotionUsageRepo;
         private readonly NotificationPublisher _notifications;
         private readonly SystemSettingProvider _settings;
+        private readonly OrderListEnricher _enricher;
+        private readonly LockerMerchantResolver _lockerMerchants;
 
         public WashOrderAppService(
             IWashOrderRepository orderRepo,
@@ -63,7 +66,9 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             IPromotionRepository promotionRepo,
             IRepository<PromotionUsage, Guid> promotionUsageRepo,
             NotificationPublisher notifications,
-            SystemSettingProvider settings)
+            SystemSettingProvider settings,
+            OrderListEnricher enricher,
+            LockerMerchantResolver lockerMerchants)
         {
             _orderRepo = orderRepo;
             _lockerRepo = lockerRepo;
@@ -79,6 +84,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             _promotionUsageRepo = promotionUsageRepo;
             _notifications = notifications;
             _settings = settings;
+            _enricher = enricher;
+            _lockerMerchants = lockerMerchants;
         }
 
         private readonly record struct OrderScope(string Role, Guid Id);
@@ -124,6 +131,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 // Customer cannot see Shipper task codes
                 dto.ShipperTaskPinCode = null;
                 dto.ShipperTaskQrString = null;
+                dto.ShipperNote = null;
             }
             else if (scope.Role == "Merchant")
             {
@@ -202,6 +210,10 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                         q = q.Where(x => x.ShipperId == query.ShipperId.Value);
                     if (query.MerchantId.HasValue)
                         q = q.Where(x => x.MerchantId == query.MerchantId.Value);
+                    if (query.TaskType.HasValue)
+                        q = q.Where(x => x.AssignedTaskType == query.TaskType.Value);
+                    if (query.PendingOnly == true)
+                        q = DeliveryTaskRules.ActiveDeliveries(q);
                     if (!string.IsNullOrWhiteSpace(query.Keyword))
                     {
                         var kw = query.Keyword.Trim().ToLower();
@@ -215,7 +227,14 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 defaultOrder: q => q.OrderByDescending(x => x.CreatedOn)
             );
 
-            return Success(data.Select(x => RedactStaffData(x, scope)).ToList(), total, query.Page, query.Take);
+            var list = data.Select(x => RedactStaffData(x, scope)).ToList();
+            await _enricher.FillAsync(list, scope.Role);
+            return Success(list, total, query.Page, query.Take, total > 0 ? null : scope.Role switch
+            {
+                "Shipper" => "Bạn chưa có đơn hàng nào được phân công.",
+                "Customer" or "Merchant" => "Bạn chưa có đơn hàng nào.",
+                _ => "Chưa có đơn hàng nào."
+            });
         }
 
         public Task<PaginatedResult<WashOrderResultDto>> GetMyOrdersAsync(WashOrderFilterQuery query)
@@ -241,6 +260,9 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             }
 
             var dto = ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order);
+            await _enricher.FillAsync([dto], scope.Role);
+            if (scope.Role is "Shipper" or "Merchant" or "Admin")
+                await _enricher.FillTaskAsync(dto);
             return Success(RedactStaffData(dto, scope));
         }
 
@@ -256,7 +278,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 : null;
 
         // Prices always come from the server catalog; client prices are never trusted.
-        private async Task<(PricedOrder? Result, string? Error)> PriceItemsAsync(List<CreateWashOrderItemDto> items, Guid merchantId)
+        private async Task<(PricedOrder? Result, string? Error)> PriceItemsAsync(List<CreateWashOrderItemDto> items)
         {
             var orderItems = new List<WashOrderItem>();
             decimal total = 0;
@@ -266,9 +288,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             {
                 var service = await _serviceRepo.FindAsync(item.ServiceId);
                 if (service == null || service.IsDeleted || !service.IsActive ||
-                    service.ApprovalStatus != ServiceApprovalStatus.Approved ||
-                    service.MerchantId != merchantId)
-                    return (null, "Dịch vụ đã chọn không còn được bán bởi đối tác của tủ.");
+                    service.ApprovalStatus != ServiceApprovalStatus.Approved)
+                    return (null, "Dịch vụ đã chọn không còn được cung cấp.");
 
                 var isWeightBased = service.Unit.Equals("kg", StringComparison.OrdinalIgnoreCase);
                 if (isWeightBased && item.Quantity != 1)
@@ -347,11 +368,10 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             var locker = await _lockerRepo.FindAsync(command.LockerId);
             if (locker == null || locker.IsDeleted || locker.Status != LockerStatus.Active)
                 return BadRequest<VoucherQuoteDto>("Tủ Locker đã chọn không hoạt động.");
-            var merchant = await _merchantRepo.FindAsync(locker.MerchantId);
-            if (merchant == null || merchant.Status != MerchantStatus.Active)
+            if (!await _lockerMerchants.HasActiveMerchantAsync(locker.Id))
                 return BadRequest<VoucherQuoteDto>("Đối tác quản lý tủ hiện không hoạt động.");
 
-            var (priced, priceError) = await PriceItemsAsync(command.Items, locker.MerchantId);
+            var (priced, priceError) = await PriceItemsAsync(command.Items);
             if (priced == null)
                 return BadRequest<VoucherQuoteDto>(priceError!);
 
@@ -416,16 +436,18 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 return BadRequest<WashOrderDetailDto>("Tủ Locker đã chọn không hoạt động.");
             }
 
-            var merchant = await _merchantRepo.FindAsync(locker.MerchantId);
-            if (merchant == null || merchant.Status != MerchantStatus.Active)
+            var lockerMerchants = await _lockerMerchants.ActiveLinksAsync(locker.Id);
+            if (lockerMerchants.Count == 0)
                 return BadRequest<WashOrderDetailDto>("Đối tác quản lý tủ hiện không hoạt động.");
 
             if (command.ReturnLockerId.HasValue && command.ReturnLockerId.Value != locker.Id)
             {
+                // The Merchant assigned later must serve both lockers.
                 var returnLocker = await _lockerRepo.FindAsync(command.ReturnLockerId.Value);
-                if (returnLocker == null || returnLocker.Status != LockerStatus.Active ||
-                    returnLocker.MerchantId != locker.MerchantId)
-                    return BadRequest<WashOrderDetailDto>("Tủ trả đồ phải đang hoạt động và thuộc cùng đối tác.");
+                var returnMerchants = returnLocker == null || returnLocker.Status != LockerStatus.Active
+                    ? [] : (await _lockerMerchants.ActiveLinksAsync(returnLocker.Id)).Select(x => x.MerchantId).ToList();
+                if (!lockerMerchants.Any(x => returnMerchants.Contains(x.MerchantId)))
+                    return BadRequest<WashOrderDetailDto>("Tủ trả đồ phải đang hoạt động và có chung Merchant phụ trách với tủ gửi.");
             }
 
             var box = locker.Boxes.FirstOrDefault(b => b.Id == command.BoxId && !b.IsDeleted);
@@ -445,7 +467,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 : customerUser.FullName;
             var customerPhone = customerUser.Phone ?? string.Empty;
 
-            var (priced, priceError) = await PriceItemsAsync(command.Items, locker.MerchantId);
+            var (priced, priceError) = await PriceItemsAsync(command.Items);
             if (priced == null)
                 return BadRequest<WashOrderDetailDto>(priceError!);
             if (!Enum.IsDefined(box.Size))
@@ -471,11 +493,14 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             var order = new WashOrder
             {
                 OrderCode = orderCode,
+                // Unique because the order code is; short code for the Merchant to tag the laundry bag (UC 2.3.1).
+                MerchantOrderCode = "MC" + orderCode[2..],
                 CustomerId = customerId,
                 CustomerName = customerName,
                 CustomerPhoneNumber = customerPhone,
-                MerchantId = locker.MerchantId,
-                MerchantName = merchant.BusinessName,
+                // No Merchant yet: the Admin assigns one after the customer deposits (UC 3.3).
+                MerchantId = null,
+                MerchantName = null,
                 LockerId = locker.Id,
                 LockerName = locker.Name,
                 BoxId = box.Id,
@@ -514,7 +539,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
 
             using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
             if (!await _lockerRepo.TryReserveBoxAsync(locker.Id, box.Id))
-                return BadRequest<WashOrderDetailDto>("Ô tủ vừa được người khác đặt; vui lòng chọn ô khác.");
+                return BadRequest<WashOrderDetailDto>("Ô này vừa được đặt. Vui lòng chọn ô khác.");
             if (promotion != null)
             {
                 // The consume UPDATE locks the promotion row, so the per-customer recount below is serialized.
@@ -776,6 +801,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 return BadRequest<WashOrderDetailDto>("Đơn hàng vừa đổi trạng thái; vui lòng tải lại trước khi cập nhật.");
 
             order.Status = command.NewStatus;
+            if (command.NewStatus == WashOrderStatus.AwaitingPayment)
+                order.PaymentDeadline = UnpaidOrderStorageMover.DeadlineFrom(DateTime.UtcNow); // UC 1.2.4 7b
             order.Timeline.Add(new WashOrderTimeline
             {
                 WashOrderId = order.Id,
@@ -864,9 +891,14 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 return NotFound<WashOrderDetailDto>("Không tìm thấy đơn hàng được phép phân công.");
             }
 
+            if (order.MerchantId == null)
+                return BadRequest<WashOrderDetailDto>("Đơn chưa được Admin phân công cho Merchant.");
             var task = GetAssignableTask(order);
             if (!task.HasValue)
                 return BadRequest<WashOrderDetailDto>("Chỉ phân công khi đơn đã gửi đồ hoặc đã thanh toán và chờ mang đồ về tủ.");
+            var note = string.IsNullOrWhiteSpace(command.Note) ? null : command.Note.Trim();
+            if (note?.Length > 500)
+                return BadRequest<WashOrderDetailDto>("Ghi chú cho Shipper tối đa 500 ký tự.");
 
             // Serialize assignments for the same Shipper, including different orders.
             var shipper = await _shipperRepo.GetForUpdateAsync(command.ShipperId);
@@ -887,12 +919,17 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
 
             if (order.ShipperId == shipper.Id && order.AssignedTaskType == task)
             {
-                if (string.IsNullOrEmpty(order.ShipperTaskPinCode))
+                if (string.IsNullOrEmpty(order.ShipperTaskPinCode) || command.Note != null && order.ShipperNote != note)
                 {
-                    order.ShipperTaskPinCode = taskPin;
-                    order.ShipperTaskQrString = taskQr;
-                    order.TaskPinAttemptCount = 0;
-                    order.TaskPinLockoutUntil = null;
+                    if (string.IsNullOrEmpty(order.ShipperTaskPinCode))
+                    {
+                        order.ShipperTaskPinCode = taskPin;
+                        order.ShipperTaskQrString = taskQr;
+                        order.TaskPinAttemptCount = 0;
+                        order.TaskPinLockoutUntil = null;
+                    }
+                    if (command.Note != null)
+                        order.ShipperNote = note;
                     await _orderRepo.UpdateAsync(order, autoSave: true);
                 }
                 await uow.CompleteAsync();
@@ -904,6 +941,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             order.ShipperName = user.FullName;
             order.AssignedTaskType = task;
             order.ShipperAssignedAt = DateTime.UtcNow;
+            order.ShipperNote = note;
             order.ShipperTaskPinCode = taskPin;
             order.ShipperTaskQrString = taskQr;
             order.TaskPinAttemptCount = 0;
@@ -1204,7 +1242,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
 
             var returnLockerId = order.ReturnLockerId ?? order.LockerId;
             var returnLocker = await _lockerRepo.GetWithBoxesAsync(returnLockerId);
-            if (returnLocker == null || returnLocker.Status != LockerStatus.Active || returnLocker.MerchantId != order.MerchantId)
+            if (returnLocker == null || returnLocker.Status != LockerStatus.Active ||
+                !await _lockerMerchants.ServesAsync(returnLocker.Id, order.MerchantId))
             {
                 await uow.RollbackAsync();
                 return BadRequest<WashOrderDetailDto>("Tủ trả đồ không còn hoạt động hoặc không thuộc đối tác của đơn.");

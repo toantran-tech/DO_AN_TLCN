@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Volo.Abp.Domain.Repositories;
 using WashGo.Application.Contracts.Features.NotificationContracts.Results;
 using WashGo.Application.Contracts.Features.NotificationContracts.Services;
+using WashGo.Application.Features.OrderAssignmentApplication.Services;
 using WashGo.Application.Features.PaymentApplication.Services;
 using WashGo.Application.Features.SystemSettingApplication.Services;
 using WashGo.Core.Domain.Shared.Bases;
@@ -34,6 +35,7 @@ namespace WashGo.Application.Features.NotificationApplication.Services
         private readonly IRepository<ReminderLog, Guid> _logRepo;
         private readonly NotificationPublisher _notifications;
         private readonly SystemSettingProvider _settings;
+        private readonly UnpaidOrderStorageMover _unpaidStorage;
         private readonly Dictionary<string, int> _sent = [];
 
         public OrderReminderAppService(
@@ -41,13 +43,15 @@ namespace WashGo.Application.Features.NotificationApplication.Services
             ILockerRepository lockerRepo,
             IRepository<ReminderLog, Guid> logRepo,
             NotificationPublisher notifications,
-            SystemSettingProvider settings)
+            SystemSettingProvider settings,
+            UnpaidOrderStorageMover unpaidStorage)
         {
             _orderRepo = orderRepo;
             _lockerRepo = lockerRepo;
             _logRepo = logRepo;
             _notifications = notifications;
             _settings = settings;
+            _unpaidStorage = unpaidStorage;
         }
 
         public async Task<BaseResponse<ReminderRunResultDto>> RunAsync()
@@ -60,6 +64,7 @@ namespace WashGo.Application.Features.NotificationApplication.Services
             await RemindCollectionAsync(now, settings);
             await RemindReturnAsync(now, settings);
             await RemindPickupAsync(now, settings);
+            await RemindPaymentAsync(now);
 
             return Success(new ReminderRunResultDto { RanAt = now, Sent = new(_sent), Total = _sent.Values.Sum() },
                 "Đã quét nhắc nhở.");
@@ -115,6 +120,17 @@ namespace WashGo.Application.Features.NotificationApplication.Services
                     "order", o.Id);
             }
 
+            // UC 3.3: deposited orders still waiting for the Admin to pick a Merchant.
+            var assignDue = now.AddMinutes(-OrderAssignmentRules.AssignmentOverdueMinutes);
+            foreach (var o in await OrdersAsync(q => q.Where(x => x.Status == WashOrderStatus.Deposited
+                         && x.MerchantId == null && x.DepositedAt != null && x.DepositedAt <= assignDue)))
+            {
+                if (!await ClaimAsync("assign-late", $"assign-late:{o.Id}", o.Id, now)) continue;
+                await _notifications.SendToAdminsAsync(NotificationType.SlaWarning, "Đơn chờ phân công quá hạn",
+                    $"⚠️ Đơn #{o.OrderCode} tại {o.LockerName} đã chờ phân công Merchant hơn {OrderAssignmentRules.AssignmentOverdueMinutes} phút.",
+                    "order", o.Id);
+            }
+
             var slaDue = now.AddHours(-s.MerchantCollectSlaHours);
             foreach (var o in await OrdersAsync(q => q.Where(x => x.Status == WashOrderStatus.Deposited
                          && x.DepositedAt != null && x.DepositedAt <= slaDue)))
@@ -154,6 +170,26 @@ namespace WashGo.Application.Features.NotificationApplication.Services
                     $"⚠️ Đơn #{o.OrderCode} đã quá hạn trả đồ {s.MerchantReturnSlaHours} giờ. Phí phạt sẽ được áp dụng.", "order", o.Id);
                 await _notifications.SendToAdminsAsync(NotificationType.SlaWarning, "Merchant trễ trả đồ",
                     $"⚠️ Merchant {o.MerchantName ?? "(chưa rõ)"} trễ trả đồ đơn #{o.OrderCode} quá {s.MerchantReturnSlaHours} giờ.", "order", o.Id);
+            }
+        }
+
+        // UC 1.2.4 7b: nhắc thanh toán 24 giờ trước hạn; quá 7 ngày chưa thanh toán thì chuyển đơn sang lưu kho.
+        private async Task RemindPaymentAsync(DateTime now)
+        {
+            var remindFrom = now.AddHours(UnpaidOrderStorageMover.ReminderBeforeHours);
+            foreach (var o in await OrdersAsync(q => q.Where(x => x.Status == WashOrderStatus.AwaitingPayment
+                         && x.PaymentStatus == PaymentStatus.Unpaid && x.PaymentDeadline != null && x.PaymentDeadline <= remindFrom)))
+            {
+                if (now >= o.PaymentDeadline!.Value)
+                {
+                    if (await _unpaidStorage.MoveAsync(o.Id, now))
+                        _sent["payment-storage"] = _sent.GetValueOrDefault("payment-storage") + 1;
+                    continue;
+                }
+                if (await ClaimAsync("payment-remind", $"payment-remind:{o.Id}", o.Id, now))
+                    await _notifications.SendAsync([o.CustomerId], NotificationType.AwaitingPayment, "Nhắc nhở thanh toán",
+                        $"Đơn #{o.OrderCode} còn {Hours((o.PaymentDeadline.Value - now).TotalHours)} để thanh toán {o.FinalAmount:N0}đ. " +
+                        "Quá hạn, đồ sẽ được chuyển sang lưu kho và tính phí lưu kho.", "order", o.Id);
             }
         }
 

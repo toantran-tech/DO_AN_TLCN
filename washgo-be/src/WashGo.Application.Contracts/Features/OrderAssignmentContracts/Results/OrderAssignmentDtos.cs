@@ -1,0 +1,63 @@
+using System;
+using System.Collections.Generic;
+using WashGo.Domain.Shared.Enums;
+
+namespace WashGo.Application.Contracts.Features.OrderAssignmentContracts.Results
+{
+    /// <summary>UC 3.3.1: đơn đã gửi đồ, chưa có Merchant.</summary>
+    public class WaitingOrderDto
+    {
+        public Guid Id { get; set; }
+        public string OrderCode { get; set; } = string.Empty;
+        public Guid LockerId { get; set; }
+        public string LockerName { get; set; } = string.Empty;
+        public string BoxNumber { get; set; } = string.Empty;
+        public LockerBoxSize? BoxSize { get; set; }
+        public List<string> Services { get; set; } = [];
+        public DateTime? DepositedAt { get; set; }
+        public string District { get; set; } = string.Empty;
+        public string City { get; set; } = string.Empty;
+        public Guid? ServiceAreaId { get; set; }
+        public string? ServiceAreaName { get; set; }
+        /// <summary>Đã chờ phân công quá hạn (highlight).</summary>
+        public bool IsOverdue { get; set; }
+        public int WaitingMinutes { get; set; }
+    }
+
+    /// <summary>Merchant phụ trách locker của đơn, kèm số liệu để Admin chọn.</summary>
+    public class MerchantCandidateDto
+    {
+        public Guid MerchantId { get; set; }
+        public string BusinessName { get; set; } = string.Empty;
+        public decimal Rating { get; set; }
+        public int CurrentLoad { get; set; }
+        public int MaxCapacity { get; set; }
+        public double? DistanceKm { get; set; }
+        /// <summary>Độ ưu tiên của Merchant tại locker (1 cao nhất).</summary>
+        public int Priority { get; set; }
+        /// <summary>Điểm gợi ý 0–100: ưu tiên tại locker, tải lượng còn trống, đánh giá, khoảng cách.</summary>
+        public double Score { get; set; }
+    }
+
+    public class OrderCandidatesDto
+    {
+        public WaitingOrderDto Order { get; set; } = new();
+        public List<MerchantCandidateDto> Merchants { get; set; } = [];
+    }
+
+    public class AutoSuggestionDto
+    {
+        public Guid OrderId { get; set; }
+        public string OrderCode { get; set; } = string.Empty;
+        public MerchantCandidateDto? Suggested { get; set; }
+        public string? Message { get; set; }
+    }
+
+    public class AssignmentResultDto
+    {
+        public Guid OrderId { get; set; }
+        public string OrderCode { get; set; } = string.Empty;
+        public Guid MerchantId { get; set; }
+        public string MerchantName { get; set; } = string.Empty;
+    }
+}

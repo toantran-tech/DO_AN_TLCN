@@ -49,7 +49,7 @@ try {
     Write-Output '1. List, filters, empty message (UC 3.4.1)'
     $empty=Call-Api Post '/locker/filter' @{serviceAreaId="$area"} $admin
     if($empty.total -ne 0 -or !$empty.message){throw 'Empty locker message missing.'}
-    if(!$existing.merchantName){throw 'Merchant name missing in list.'}
+    if(!$existing.merchants[0].businessName){throw 'Merchant name missing in list.'}
 
     Write-Output '2. Create with validation (UC 3.4.2)'
     Assert-Status 403 Post '/locker/' (Locker-Body) $merchant
@@ -67,7 +67,7 @@ try {
     if(!$created.message -or $created.data.totalBoxes -ne 3 -or $created.data.status -ne 1){throw 'Create failed.'}
     $d=Detail
     if($d.boxes.Count -ne 3 -or @($d.boxes | Where-Object { $_.size -ne 3 }).Count -ne 0 -or (@($d.boxes | ForEach-Object { $_.boxNumber }) -join ',') -ne '1,2,3'){throw 'Generated boxes wrong.'}
-    if((@($d.imageUrls) -join ',') -ne $img -or $d.merchantName -ne $merchantName -or $d.serviceAreaName -ne "Locker Area $run"){throw 'Detail fields wrong.'}
+    if((@($d.imageUrls) -join ',') -ne $img -or $d.merchants[0].businessName -ne $merchantName -or $d.merchants[0].priority -ne 1 -or $d.serviceAreaName -ne "Locker Area $run"){throw 'Detail fields wrong.'}
     Assert-Status 400 Post '/locker/' (Locker-Body @{name="Other $run"}) $admin
     $list=Call-Api Post '/locker/filter' @{serviceAreaId="$area"} $admin
     if($list.total -ne 1 -or $list.list[0].serviceAreaName -ne "Locker Area $run" -or $list.list[0].emptyBoxesCount -ne 3){throw "Area filter wrong: $($list.total) $($list.list[0].serviceAreaName) $($list.list[0].emptyBoxesCount)"}

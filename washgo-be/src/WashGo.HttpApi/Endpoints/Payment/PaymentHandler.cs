@@ -58,6 +58,13 @@ namespace WashGo.HttpApi.Endpoints.Payment
             .WithSummary("Nhận thông báo thanh toán từ VNPay và kiểm tra chữ ký cùng thông tin giao dịch.")
             .WithOpenApi();
 
+            group.MapPost("/momo-ipn", async (MomoIpnCommand ipn, IPaymentAppService service) =>
+                await service.HandleMomoIpnAsync(ipn) ? Results.NoContent() : Results.BadRequest())
+            .AllowAnonymous()
+            .WithName("MoMo IPN")
+            .WithSummary("Nhận kết quả thanh toán từ MoMo (kiểm tra chữ ký HMAC SHA256, số tiền); trả 204 để MoMo ngừng gửi lại.")
+            .WithOpenApi();
+
             group.MapPost("/refund-requests", async (CreateRefundRequestCommand command, IPaymentAppService service) =>
                 (await service.CreateRefundRequestAsync(command)).CustomResult())
                 .RequireAuthorization("CustomerOnly")

@@ -117,6 +117,8 @@ FROM washgo.shippers s WHERE user_id = '$seedUser';
     $depositedOrder = (Call-Api Post "/wash-order/$orderId/deposit" @{ pinCode = $depositPin } $customer).data
     if ($depositedOrder.status -ne 2) { throw "Don hang phai o trang thai Deposited (2) sau khi gui do, nhan duoc: $($depositedOrder.status)" }
     Write-Host "  -> Gui do thanh cong! Don sang Deposited." -ForegroundColor Green
+    # UC 3.3: the Admin assigns the Merchant after the deposit.
+    Assign-Order $orderId $merchantId $admin | Out-Null
 
     # Idempotent call
     $repeatDeposit = (Call-Api Post "/wash-order/$orderId/deposit" @{ pinCode = $depositPin } $customer).data
@@ -230,6 +232,7 @@ FROM washgo.shippers s WHERE user_id = '$seedUser';
     } $customer).data
     $storageId=[Guid]$stored.id; $orders+=$storageId
     Call-Api Post "/wash-order/$storageId/deposit" @{qrCode=$stored.qrCodeString} $customer | Out-Null
+    Assign-Order $storageId $merchantId $admin | Out-Null
     Call-Api Put '/wash-order/assign-shipper' @{orderId="$storageId";shipperId="$fixtureShipper"} $merchant | Out-Null
     $task=(Call-Api Get "/wash-order/$storageId" $null $shipper).data
     Call-Api Post "/wash-order/$storageId/shipper-collect" @{qrCode=$task.shipperTaskQrString} $shipper | Out-Null

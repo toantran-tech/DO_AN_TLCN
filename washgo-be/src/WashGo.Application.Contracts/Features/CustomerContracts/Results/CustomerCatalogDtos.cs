@@ -5,8 +5,6 @@ namespace WashGo.Application.Contracts.Features.CustomerContracts.Results;
 public class CustomerServiceCatalogDto
 {
     public Guid Id { get; set; }
-    public Guid MerchantId { get; set; }
-    public string MerchantName { get; set; } = string.Empty;
     public string Code { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public string? Description { get; set; }
@@ -22,8 +20,6 @@ public class CustomerServiceCatalogDto
 public class CustomerLockerCatalogDto
 {
     public Guid Id { get; set; }
-    public Guid MerchantId { get; set; }
-    public string MerchantName { get; set; } = string.Empty;
     public string Code { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public string Address { get; set; } = string.Empty;
@@ -33,6 +29,8 @@ public class CustomerLockerCatalogDto
     public double Latitude { get; set; }
     public double Longitude { get; set; }
     public int AvailableSlotCount { get; set; }
+    /// <summary>Khoảng cách (km) từ vị trí khách gửi lên; null khi không gửi vị trí (UC 1.2.2).</summary>
+    public double? DistanceKm { get; set; }
     public string? Description { get; set; }
     public string? Images { get; set; }
     public List<CustomerLockerSlotDto> AvailableSlots { get; set; } = [];

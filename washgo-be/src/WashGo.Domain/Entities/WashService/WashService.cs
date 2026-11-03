@@ -13,7 +13,8 @@ namespace WashGo.Domain.Entities.WashService
         public WashService() { }
         public WashService(Guid id) : base(id) { }
 
-        public Guid MerchantId { get; set; }
+        /// <summary>Merchant đã đề xuất dịch vụ (chỉ để tham khảo). Dịch vụ và giá dùng chung cho mọi Merchant.</summary>
+        public Guid? MerchantId { get; set; }
 
         [Filterable(ColumnVariant.Text)]
         public string Code { get; set; } = string.Empty;

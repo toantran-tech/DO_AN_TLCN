@@ -62,7 +62,7 @@ INSERT INTO washgo.services SELECT (jsonb_populate_record(NULL::washgo.services,
     $empty=Call-Api Get '/notification' $null $customer
     if($empty.total -ne 0 -or !$empty.message){throw 'Empty inbox message missing.'}
 
-    Write-Output '2. Order created: Customer + Merchant, delivered in real time over SignalR'
+    Write-Output '2. Order created: Customer notified in real time over SignalR (no Merchant until the Admin assigns one)'
     $listenerOut=Join-Path ([IO.Path]::GetTempPath()) "washgo-signalr-$([Guid]::NewGuid().ToString('N')).txt"
     $listenerScript=Join-Path $PSScriptRoot 'signalr-listen.cjs'
     $listener=Start-Process node -ArgumentList "`"$listenerScript`"",$BaseUrl,$customer,'20000' -NoNewWindow -PassThru -RedirectStandardOutput $listenerOut
@@ -81,16 +81,16 @@ INSERT INTO washgo.services SELECT (jsonb_populate_record(NULL::washgo.services,
     if($pushed.type -ne 1 -or $pushed.linkId -ne $id -or $pushed.linkType -ne 'order'){throw 'Real-time payload wrong.'}
     $created=Expect-Note $customer $id 1 'Customer'
     if($created.isRead -or $created.content -notmatch $order.orderCode -or $created.content -notmatch $order.boxNumber){throw 'Order-created content wrong.'}
-    Expect-Note $merchant $id 20 'Merchant' | Out-Null
+    if(@(Find-Note $merchant $id 20).Count){throw 'Merchant notified before the Admin assigned the order.'}
     if((Unread $customer) -ne 1){throw 'Unread count wrong after order creation.'}
 
-    Write-Output '3. Failed actions do not notify; deposit notifies Customer, Merchant and Admin'
+    Write-Output '3. Failed actions do not notify; deposit notifies Customer and Admin, assignment notifies the Merchant'
     Assert-Status 400 Post "/wash-order/$id/deposit" @{pinCode='000000'} $customer
     if(@(Find-Note $customer $id 2).Count){throw 'Rejected deposit produced a notification.'}
     Invoke-TestDelivery $id deposit $customer | Out-Null
     Expect-Note $customer $id 2 'Customer' | Out-Null
-    Expect-Note $merchant $id 43 'Merchant' | Out-Null
     Expect-Note $admin $id 43 'Admin' | Out-Null
+    Expect-Note $merchant $id 20 'Merchant assigned by Admin' | Out-Null
 
     Write-Output '4. Shipper task, collection and laundry steps'
     Call-Api Put '/wash-order/assign-shipper' @{orderId=$id;shipperId="$fixtureShipper"} $merchant | Out-Null
@@ -114,6 +114,7 @@ INSERT INTO washgo.services SELECT (jsonb_populate_record(NULL::washgo.services,
     Call-Api Post '/payment/callback' @{orderId=$id;transactionReference=$p2.transactionReference;success=$true} $admin | Out-Null
     Call-Api Post '/payment/callback' @{orderId=$id;transactionReference=$p2.transactionReference;success=$true} $admin | Out-Null
     Expect-Note $customer $id 6 'Customer' | Out-Null
+    Expect-Note $merchant $id 6 'Merchant (UC 1.2.4 step 9)' | Out-Null
 
     Write-Output '6. Return to locker and pickup'
     Call-Api Put '/wash-order/assign-shipper' @{orderId=$id;shipperId="$fixtureShipper"} $merchant | Out-Null
@@ -126,13 +127,13 @@ INSERT INTO washgo.services SELECT (jsonb_populate_record(NULL::washgo.services,
     Expect-Note $customer $id 9 'Customer' | Out-Null
     Expect-Note $admin $id 44 'Admin' | Out-Null
 
-    Write-Output '7. Cancellation notifies Customer and Merchant'
+    Write-Output '7. Cancellation notifies Customer (and the Merchant once assigned)'
     $l=(Call-Api Get "/customer/lockers/$lockerId" $null $customer).data
     $o2=(Call-Api Post '/wash-order/' @{lockerId="$lockerId";boxId=$l.availableSlots[0].id;paymentMethod=2;items=@(@{serviceId="$kgServiceId";quantity=1})} $customer).data
     Call-Api Post "/wash-order/$($o2.id)/cancel" @{reason='Notify smoke cancel'} $customer | Out-Null
     $cancel=Expect-Note $customer $o2.id 10 'Customer'
     if($cancel.content -notmatch 'Notify smoke cancel'){throw 'Cancellation reason missing.'}
-    Expect-Note $merchant $o2.id 10 'Merchant' | Out-Null
+    if(@(Find-Note $merchant $o2.id 10).Count){throw 'Unassigned Merchant notified of the cancellation.'}
     $l=(Call-Api Get "/customer/lockers/$lockerId" $null $customer).data
     $o3=(Call-Api Post '/wash-order/' @{lockerId="$lockerId";boxId=$l.availableSlots[0].id;paymentMethod=2;items=@(@{serviceId="$kgServiceId";quantity=1})} $customer).data
     Invoke-TestDelivery $o3.id deposit $customer | Out-Null
