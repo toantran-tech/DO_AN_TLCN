@@ -87,6 +87,11 @@ namespace WashGo.Application.Features.AuthApplication.Services
                     IsBodyHtml = isHtml
                 };
                 message.To.Add(email);
+                if (isHtml)
+                {
+                    message.Body = string.Empty;
+                    message.AlternateViews.Add(AuthEmailTemplates.CreateOtpView(body));
+                }
 
                 using var client = new SmtpClient(host, port)
                 {

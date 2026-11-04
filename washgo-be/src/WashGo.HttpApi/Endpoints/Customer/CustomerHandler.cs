@@ -2,9 +2,9 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using WashGo.Application.Contracts.Features.CustomerContracts.Commands;
+using WashGo.Application.Contracts.Features.CustomerContracts.Queries;
 using WashGo.Application.Contracts.Features.CustomerContracts.Services;
 using WashGo.Core.Endpoint;
-using WashGo.Domain.Shared.Enums;
 
 namespace WashGo.HttpApi.Endpoints.Customer;
 
@@ -27,11 +27,10 @@ public class CustomerHandler : IEndpointBase
             .WithSummary("Cập nhật hồ sơ Customer của tôi.")
             .WithOpenApi();
 
-        group.MapGet("/services", async (WashServiceType? serviceType, string? keyword,
-            int? page, int? take, ICustomerCatalogAppService catalog) =>
-            (await catalog.GetServicesAsync(serviceType, keyword, page ?? 1, take ?? 20)).CustomResult())
-            .WithName("Customer xem dịch vụ đang bán")
-            .WithSummary("Customer xem bảng dịch vụ chung đang bán (giá giống nhau cho mọi Merchant).")
+        group.MapPost("/services/filter", async (CustomerServiceFilterQuery query, ICustomerCatalogAppService catalog) =>
+            (await catalog.GetServicesAsync(query)).CustomResult())
+            .WithName("Customer lọc và sắp xếp dịch vụ")
+            .WithSummary("Lọc bằng CustomerServiceFilterQuery kế thừa BaseFilterQuery: keyword, page (từ 1), take, sortBy (Field=Name|UnitPrice, IsDescending), serviceType, minPrice/maxPrice. Nhiều tiêu chí sort theo thứ tự trong mảng.")
             .WithOpenApi();
 
         group.MapGet("/services/{id:guid}", async (Guid id, ICustomerCatalogAppService catalog) =>

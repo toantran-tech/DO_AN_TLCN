@@ -6,7 +6,7 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --background: #fffcfa;
+  --background: #f8fbff;
   --foreground: #25324a;
 
   --card: oklch(1 0 0);
@@ -15,8 +15,8 @@
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
 
-  /* Màu chính WashGo (Cam) */
-  --primary: #ff7a45;
+  /* Màu chính WashGo (Xanh dương) */
+  --primary: #2563eb;
   --primary-foreground: oklch(0.985 0 0);
 
   --secondary: oklch(0.97 0 0);
@@ -33,7 +33,7 @@
 
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
-  --ring: #ff7a45;
+  --ring: #2563eb;
 
   --radius: 0.625rem;
 
@@ -60,6 +60,8 @@
 }
 
 @theme inline {
+  --text-xs: 0.8125rem;
+  --text-xs--line-height: 1.25rem;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -117,7 +119,7 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-sm text-foreground;
   }
   html {
     @apply font-sans;
@@ -125,24 +127,24 @@
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
+  --background: #0b1220;
+  --foreground: #e6efff;
+  --card: #111c30;
   --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
+  --popover: #111c30;
   --popover-foreground: oklch(0.985 0 0);
-  --primary: #ff966c;
-  --primary-foreground: #24150e;
-  --secondary: oklch(0.269 0 0);
+  --primary: #60a5fa;
+  --primary-foreground: #071a35;
+  --secondary: #1d2b44;
   --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
+  --muted: #1d2b44;
   --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
+  --accent: #1d2b44;
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.704 0.191 22.216);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
-  --ring: #ff966c;
+  --ring: #60a5fa;
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
