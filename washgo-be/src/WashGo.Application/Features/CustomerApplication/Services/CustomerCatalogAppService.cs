@@ -1,4 +1,5 @@
 using Volo.Abp.Domain.Repositories;
+using WashGo.Application.Contracts.Features.CustomerContracts.Queries;
 using WashGo.Application.Contracts.Features.CustomerContracts.Results;
 using WashGo.Application.Contracts.Features.CustomerContracts.Services;
 using WashGo.Core.Domain.Shared.Bases;
@@ -32,40 +33,71 @@ public class CustomerCatalogAppService : WashGoAppService, ICustomerCatalogAppSe
     }
 
     // Shared catalog: one price per service for every Merchant (Admin approves Merchant proposals).
-    public async Task<PaginatedResult<CustomerServiceCatalogDto>> GetServicesAsync(
-        WashServiceType? serviceType, string? keyword, int page, int take)
+    public async Task<PaginatedResult<CustomerServiceCatalogDto>> GetServicesAsync(CustomerServiceFilterQuery filter)
     {
-        (page, take) = NormalizePaging(page, take);
-        var services = await _services.GetQueryableAsync();
-        var query = from service in services
-                    where !service.IsDeleted && service.IsActive
-                        && service.ApprovalStatus == ServiceApprovalStatus.Approved && service.UnitPrice > 0
-                    select new { service };
+        var sorts = filter.SortBy ?? [];
+        string? error = sorts.Any(sort => sort == null ||
+            sort.Field?.Trim().ToLowerInvariant() is not ("name" or "unitprice" or "price"))
+            ? "SortBy.Field chỉ chấp nhận Name hoặc UnitPrice (price)."
+            : filter.MinPrice is < 0 || filter.MaxPrice is < 0
+                ? "Giá lọc không được âm."
+                : filter.MinPrice.HasValue && filter.MaxPrice.HasValue && filter.MinPrice.Value > filter.MaxPrice.Value
+                    ? "Giá tối thiểu không được lớn hơn giá tối đa."
+                    : null;
+        if (error != null)
+            return new PaginatedResult<CustomerServiceCatalogDto>
+            {
+                StatusCode = System.Net.HttpStatusCode.BadRequest,
+                Succeeded = false,
+                Message = error
+            };
 
-        if (serviceType.HasValue)
-            query = query.Where(x => x.service.ServiceType == serviceType.Value);
-        if (!string.IsNullOrWhiteSpace(keyword))
+        var (page, take) = NormalizePaging(filter.Page, filter.Take);
+        var services = await _services.GetQueryableAsync();
+        var query = services.Where(service => !service.IsDeleted && service.IsActive
+            && service.ApprovalStatus == ServiceApprovalStatus.Approved && service.UnitPrice > 0);
+
+        if (filter.ServiceType.HasValue)
+            query = query.Where(x => x.ServiceType == filter.ServiceType.Value);
+        if (filter.MinPrice.HasValue)
+            query = query.Where(x => x.UnitPrice >= filter.MinPrice.Value);
+        if (filter.MaxPrice.HasValue)
+            query = query.Where(x => x.UnitPrice <= filter.MaxPrice.Value);
+        if (!string.IsNullOrWhiteSpace(filter.Keyword))
         {
-            var term = keyword.Trim().ToLower();
-            query = query.Where(x => x.service.Name.ToLower().Contains(term) || x.service.Code.ToLower().Contains(term));
+            var term = filter.Keyword.Trim().ToLower();
+            query = query.Where(x => x.Name.ToLower().Contains(term) || x.Code.ToLower().Contains(term));
         }
 
         var total = await AsyncExecuter.CountAsync(query);
-        var list = await AsyncExecuter.ToListAsync(query.OrderBy(x => x.service.Name).ThenBy(x => x.service.Id)
+        IOrderedQueryable<WashService>? ordered = null;
+        foreach (var sort in sorts)
+        {
+            if (sort.Field.Trim().Equals("name", StringComparison.OrdinalIgnoreCase))
+                ordered = ordered == null
+                    ? (sort.IsDescending ? query.OrderByDescending(x => x.Name) : query.OrderBy(x => x.Name))
+                    : (sort.IsDescending ? ordered.ThenByDescending(x => x.Name) : ordered.ThenBy(x => x.Name));
+            else
+                ordered = ordered == null
+                    ? (sort.IsDescending ? query.OrderByDescending(x => x.UnitPrice) : query.OrderBy(x => x.UnitPrice))
+                    : (sort.IsDescending ? ordered.ThenByDescending(x => x.UnitPrice) : ordered.ThenBy(x => x.UnitPrice));
+        }
+        ordered ??= query.OrderBy(x => x.Name);
+        var list = await AsyncExecuter.ToListAsync(ordered.ThenBy(x => x.Id)
             .Skip((page - 1) * take).Take(take)
             .Select(x => new CustomerServiceCatalogDto
             {
-                Id = x.service.Id,
-                Code = x.service.Code,
-                Name = x.service.Name,
-                Description = x.service.Description,
-                ServiceType = x.service.ServiceType,
-                Unit = x.service.Unit,
-                UnitPrice = x.service.UnitPrice,
-                PricePerKg = x.service.PricePerKg,
-                PricePerItem = x.service.PricePerItem,
-                EstimatedDurationHours = x.service.EstimatedDurationHours,
-                Images = x.service.Images
+                Id = x.Id,
+                Code = x.Code,
+                Name = x.Name,
+                Description = x.Description,
+                ServiceType = x.ServiceType,
+                Unit = x.Unit,
+                UnitPrice = x.UnitPrice,
+                PricePerKg = x.PricePerKg,
+                PricePerItem = x.PricePerItem,
+                EstimatedDurationHours = x.EstimatedDurationHours,
+                Images = x.Images
             }));
         return Success(list, total, page, take);
     }

@@ -99,7 +99,7 @@ try {
     $locker = $lockers | Where-Object { $merchantLockerIds -contains $_.id } | Select-Object -First 1
     if (!$locker) { throw 'Seed Merchant needs an available locker for this smoke test.' }
     $locker = (Call-Api Get "/customer/lockers/$($locker.id)" $null $customer).data
-    $services = (Call-Api Get "/customer/services?merchantId=$merchantId&page=1&take=100" $null $customer).list
+    $services = (Call-Api Post '/customer/services/filter' @{page=1;take=100} $customer).list
     $service = $services | Select-Object -First 1
     if (!$service) { throw 'No approved service for the test locker.' }
     $item = @{ serviceId = $service.id; quantity = 1 }
