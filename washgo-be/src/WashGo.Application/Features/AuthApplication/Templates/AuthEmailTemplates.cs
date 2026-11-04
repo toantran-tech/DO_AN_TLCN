@@ -1,3 +1,7 @@
+using System.Net.Mail;
+using System.Net.Mime;
+using System.Text;
+
 namespace WashGo.Application.Features.AuthApplication.Templates
 {
   /// <summary>
@@ -5,6 +9,21 @@ namespace WashGo.Application.Features.AuthApplication.Templates
   /// </summary>
   public static class AuthEmailTemplates
   {
+    public const string LogoContentId = "washgo-logo";
+
+    public static AlternateView CreateOtpView(string html)
+    {
+      var stream = typeof(AuthEmailTemplates).Assembly.GetManifestResourceStream("WashGo.EmailAssets.logo.png")
+        ?? throw new InvalidOperationException("Embedded WashGo email logo is missing.");
+      var view = AlternateView.CreateAlternateViewFromString(html, Encoding.UTF8, MediaTypeNames.Text.Html);
+      view.LinkedResources.Add(new LinkedResource(stream, "image/png")
+      {
+        ContentId = LogoContentId,
+        TransferEncoding = TransferEncoding.Base64
+      });
+      return view;
+    }
+
     /// <summary>
     /// Tạo giao diện HTML cho email gửi mã OTP (Đăng ký, Quên mật khẩu, Bảo mật).
     /// </summary>
@@ -17,27 +36,23 @@ namespace WashGo.Application.Features.AuthApplication.Templates
   <meta name=""viewport"" content=""width=device-width, initial-scale=1.0"">
   <title>{title}</title>
 </head>
-<body style=""margin: 0; padding: 0; background-color: #fffcfa; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #25324a; -webkit-font-smoothing: antialiased;"">
-  <table role=""presentation"" width=""100%"" cellspacing=""0"" cellpadding=""0"" border=""0"" style=""background-color: #fffcfa; padding: 40px 16px;"">
+<body style=""margin: 0; padding: 0; background-color: #f8fbff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #25324a; -webkit-font-smoothing: antialiased;"">
+  <table role=""presentation"" width=""100%"" cellspacing=""0"" cellpadding=""0"" border=""0"" style=""background-color: #f8fbff; padding: 40px 16px;"">
     <tr>
       <td align=""center"">
-        <table role=""presentation"" width=""100%"" cellspacing=""0"" cellpadding=""0"" border=""0"" style=""max-width: 520px; background-color: #ffffff; border-radius: 14px; border: 1px solid #f0eee9; box-shadow: 0 4px 24px rgba(37, 50, 74, 0.06); overflow: hidden;"">
-          <!-- Header Banner WashGo (Màu chính: #ff7a45) -->
+        <table role=""presentation"" width=""100%"" cellspacing=""0"" cellpadding=""0"" border=""0"" style=""max-width: 520px; background-color: #ffffff; border-radius: 14px; border: 1px solid #e5e7eb; box-shadow: 0 4px 24px rgba(37, 50, 74, 0.06); overflow: hidden;"">
+          <!-- Header Banner WashGo (Màu chính: #2563eb) -->
           <tr>
-            <td style=""background-color: #ff7a45; padding: 28px 32px 24px 32px; text-align: center;"">
+            <td style=""background-color: #2563eb; padding: 28px 32px 24px 32px; text-align: center;"">
               <!-- Logo WashGo -->
               <table role=""presentation"" cellspacing=""0"" cellpadding=""0"" border=""0"" align=""center"" style=""margin: 0 auto 14px auto;"">
                 <tr>
                   <td align=""center"" valign=""middle"" style=""background-color: #ffffff; width: 68px; height: 68px; border-radius: 22px; text-align: center; box-shadow: 0 4px 12px rgba(0,0,0,0.12);"">
-                    <svg xmlns=""http://www.w3.org/2000/svg"" viewBox=""0 0 100 100"" width=""54"" height=""54"" style=""display: block; margin: 0 auto;"">
-                      <rect x=""0"" y=""0"" width=""100"" height=""100"" rx=""35"" fill=""#FF7A45""/>
-                      <path d=""M 50 20 C 50 20, 75 50, 75 65 A 25 25 0 0 1 25 65 C 25 50, 50 20, 50 20 Z"" fill=""#FFFFFF""/>
-                      <path d=""M 35 65 A 15 15 0 0 0 50 80"" fill=""none"" stroke=""#FF7A45"" stroke-width=""5"" stroke-linecap=""round""/>
-                    </svg>
+                    <img src=""cid:{LogoContentId}"" alt=""WashGo"" width=""54"" height=""54"" border=""0"" style=""display: block; margin: 0 auto; width: 54px; height: 54px;"">
                   </td>
                 </tr>
               </table>
-              <span style=""font-size: 26px; font-weight: 800; color: #ffffff; letter-spacing: 1.5px; display: inline-block;"">WASH<span style=""color: #ffe8dc;"">GO</span></span>
+              <span style=""font-size: 26px; font-weight: 800; color: #ffffff; letter-spacing: 1.5px; display: inline-block;"">WASH<span style=""color: #dbeafe;"">GO</span></span>
               <div style=""font-size: 13px; color: rgba(255, 255, 255, 0.92); margin-top: 4px; font-weight: 500;"">Hệ thống Tủ giặt thông minh</div>
             </td>
           </tr>
@@ -56,9 +71,9 @@ namespace WashGo.Application.Features.AuthApplication.Templates
               <table role=""presentation"" width=""100%"" cellspacing=""0"" cellpadding=""0"" border=""0"" style=""margin: 0 0 24px 0;"">
                 <tr>
                   <td align=""center"">
-                    <div style=""background-color: #FFF7ED; border: 2px dashed #ff7a45; border-radius: 12px; padding: 18px 28px; display: inline-block; min-width: 240px; text-align: center;"">
-                      <span style=""font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: #ff7a45; display: block; margin-bottom: 6px;"">MÃ XÁC THỰC CỦA BẠN</span>
-                      <span style=""font-family: 'Courier New', Courier, monospace, sans-serif; font-size: 34px; font-weight: 800; letter-spacing: 8px; color: #ff7a45; line-height: 1.2;"">{code}</span>
+                    <div style=""background-color: #eff6ff; border: 2px dashed #2563eb; border-radius: 12px; padding: 18px 28px; display: inline-block; min-width: 240px; text-align: center;"">
+                      <span style=""font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: #2563eb; display: block; margin-bottom: 6px;"">MÃ XÁC THỰC CỦA BẠN</span>
+                      <span style=""font-family: 'Courier New', Courier, monospace, sans-serif; font-size: 34px; font-weight: 800; letter-spacing: 8px; color: #2563eb; line-height: 1.2;"">{code}</span>
                     </div>
                   </td>
                 </tr>
@@ -84,7 +99,7 @@ namespace WashGo.Application.Features.AuthApplication.Templates
 
           <!-- Chân trang -->
           <tr>
-            <td style=""background-color: #faf9f6; padding: 18px 32px; text-align: center; border-top: 1px solid #f0eee9;"">
+            <td style=""background-color: #f8fbff; padding: 18px 32px; text-align: center; border-top: 1px solid #e5e7eb;"">
               <p style=""margin: 0; font-size: 12px; color: #8e99a8;"">
                 © 2026 WashGo Inc. Dịch vụ giặt ủi thông minh qua Smart Locker.
               </p>

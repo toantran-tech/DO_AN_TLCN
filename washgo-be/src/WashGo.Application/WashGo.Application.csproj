@@ -8,6 +8,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="Features\AuthApplication\Templates\Assets\washgo-logo.png" LogicalName="WashGo.EmailAssets.logo.png" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\WashGo.Application.Contracts\WashGo.Application.Contracts.csproj" />
     <ProjectReference Include="..\WashGo.Domain\WashGo.Domain.csproj" />
     <ProjectReference Include="..\Core\WashGo.Core\WashGo.Core.csproj" />
