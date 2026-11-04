@@ -1,5 +1,9 @@
 # Tiến độ WashGo theo Đặc tả usecase (Backend trước)
-Cập nhật lần cuối: 03/11/2026
+Cập nhật lần cuối: 04/11/2026
+
+Ghi nhận ngày 04/11/2026 (sửa logo email): thay SVG inline bằng PNG 400×400 nhúng trong assembly, hiển thị 54×54 qua `cid:washgo-logo`. SMTP gửi HTML AlternateView kèm LinkedResource image/png (multipart/related), không cần URL ảnh công khai. Giữ hình giọt nước và màu xanh từ SVG gốc; công cụ tái tạo asset: `tools/Export-WashGoEmailLogo.ps1`. Test `dotnet run --project tests/smoke/EmailLogo/EmailLogo.csproj` PASS: kiểm tra PNG embedded, CID trùng HTML, MIME email thực tế có phần ảnh. Test lưu .eml cục bộ rồi tự dọn, không gửi thư thật; cần gửi OTP mới để xác nhận hiển thị ở hộp thư người dùng.
+
+Ghi nhận ngày 04/11/2026: đồng bộ `../styles/theme.css` với CSS xanh dương được cung cấp (light/dark, primary/ring, typography). Email OTP dùng logo giọt nước nền xanh #2563EB, header và khung mã OTP cùng màu thương hiệu; giữ màu cảnh báo theo theme. Sửa escape SVG trong chuỗi C# để template biên dịch hợp lệ. CSS đã đối chiếu khớp bản cung cấp (bỏ qua khoảng trắng).
 
 Ghi nhận ngày 03/11/2026 — UC 1.1.3 Quên mật khẩu: chuyển sang `send-otp` (purpose = 2) → `verify-otp` → `reset-password`. Xác minh OTP trả `verificationToken` và `expiresAt`; token ngẫu nhiên 256 bit, lưu BCrypt kèm dấu phân biệt mục đích trên bản ghi OTP, hết hạn sau 10 phút và chỉ dùng một lần. `reset-password` nhận token thay cho `code`, kiểm tra email/mục đích, đổi mật khẩu và thu hồi phiên trong cùng transaction. Khóa dòng OTP để chống xác minh/reset đồng thời. Không đổi schema, không cần migration. Kịch bản Swagger: `docs/AUTH_FORGOT_PASSWORD.md`; kiểm thử hồi quy: `tests/smoke/forgot-password.ps1`.
 
