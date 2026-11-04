@@ -45,7 +45,7 @@ FROM washgo.shippers s WHERE user_id = '$seedUser';
     $lockerSummary = $lockers | Where-Object { $merchantLockerIds -contains $_.id -and $_.availableSlotCount -ge 2 } | Select-Object -First 1
     if (!$lockerSummary) { throw 'Need two available slots for the assignment concurrency smoke test.' }
     $locker = (Call-Api Get "/customer/lockers/$($lockerSummary.id)" $null $customer).data
-    $service = (Call-Api Get "/customer/services?merchantId=$merchantId&page=1&take=100" $null $customer).list | Select-Object -First 1
+    $service = (Call-Api Post '/customer/services/filter' @{page=1;take=100} $customer).list | Select-Object -First 1
     foreach ($slot in @($locker.availableSlots | Select-Object -First 2)) {
         $item = @{ serviceId = $service.id; quantity = 1 }
         if ($service.unit -eq 'kg') { $item.weightKg = 1 }

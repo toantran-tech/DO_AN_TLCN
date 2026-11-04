@@ -52,7 +52,7 @@ FROM washgo.shippers s WHERE user_id = '$seedUser';
     $lockerId = [Guid]$locker.id
     $locker = (Call-Api Get "/customer/lockers/$lockerId" $null $customer).data
     $slot = $locker.availableSlots | Select-Object -First 1
-    $service = (Call-Api Get "/customer/services?merchantId=$merchantId&page=1&take=100" $null $customer).list | Select-Object -First 1
+    $service = (Call-Api Post '/customer/services/filter' @{page=1;take=100} $customer).list | Select-Object -First 1
 
     Write-Host "=== 4. Customer tao don hang moi ===" -ForegroundColor Cyan
     $item = @{ serviceId = $service.id; quantity = 1 }

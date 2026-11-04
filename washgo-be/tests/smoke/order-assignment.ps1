@@ -38,7 +38,7 @@ try {
     $admin=$sessions.Admin.accessToken;$customer=$sessions.Customer.accessToken
     $seedMerchantId=[Guid]$sessions.Merchant.user.id
     Sql ((Merchant-Sql $mA "Assign A $run" 12.001 4.5) + (Merchant-Sql $mB "Assign B $run" 12.002 4.5) + (Merchant-Sql $mC "Assign C $run" 12.003 5.0)) | Out-Null
-    $serviceId=(Call-Api Get '/customer/services?page=1&take=1' $null $customer).list[0].id
+    $serviceId=(Call-Api Post '/customer/services/filter' @{page=1;take=1} $customer).list[0].id
     $L=(Call-Api Post '/locker/' @{merchantIds=@("$mA","$mB");name="Assign Locker $run";address='Private development fixture';district="Assign $run";city='Test';latitude=12.0;longitude=105.0;boxCount=4} $admin).data
     $L2=(Call-Api Post '/locker/' @{merchantIds=@("$mA");name="Assign Locker Two $run";address='Private development fixture';district="Assign $run";city='Test';latitude=12.01;longitude=105.0;boxCount=2} $admin).data
     $lockerIds=@($L.id,$L2.id)
