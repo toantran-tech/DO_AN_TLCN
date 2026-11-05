@@ -80,7 +80,7 @@ namespace WashGo.EntityFrameworkCore.Seeding
             await SeedUserAsync(shipperUserId, shipperRole.Id, "shipper@washgo.vn", shipperPassHash, "Trần Văn Shipper", "0904000004");
 
             // 3. Profiles
-            await SeedCustomerProfileAsync(customerUserId, "123 Nguyễn Huệ", "Quận 1", "TP. Hồ Chí Minh");
+            await SeedCustomerProfileAsync(customerUserId, "123 Nguyễn Huệ", "TP. Hồ Chí Minh");
             await SeedMerchantProfileAsync(merchantUserId, "Giặt Sấy WashGo Q1", "45 Lê Thánh Tôn", "Quận 1", "TP. Hồ Chí Minh", "0903000003");
             await SeedShipperProfileAsync(shipperUserId, merchantUserId, "59-X1 12345");
 
@@ -152,7 +152,7 @@ namespace WashGo.EntityFrameworkCore.Seeding
             }
         }
 
-        private async Task SeedCustomerProfileAsync(Guid userId, string address, string district, string city)
+        private async Task SeedCustomerProfileAsync(Guid userId, string address, string city)
         {
             var existing = await _customerRepo.FindAsync(userId);
             if (existing == null)
@@ -160,7 +160,6 @@ namespace WashGo.EntityFrameworkCore.Seeding
                 var customer = new Customer(userId)
                 {
                     Address = address,
-                    District = district,
                     City = city,
                     LoyaltyPoints = 0,
                     TotalOrders = 0,

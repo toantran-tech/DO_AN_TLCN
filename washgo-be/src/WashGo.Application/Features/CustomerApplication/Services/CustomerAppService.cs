@@ -1,4 +1,3 @@
-using System.Text.RegularExpressions;
 using Microsoft.Extensions.Configuration;
 using Volo.Abp.Authorization;
 using Volo.Abp.Domain.Repositories;
@@ -12,6 +11,7 @@ using WashGo.Domain.Entities.Identity;
 using WashGo.Domain.Entities.Partner;
 using WashGo.Domain.Entities.WashOrder.Interfaces;
 using WashGo.Domain.Shared.Enums;
+using WashGo.Domain.Shared.Validation;
 
 namespace WashGo.Application.Features.CustomerApplication.Services;
 
@@ -49,26 +49,19 @@ public class CustomerAppService : WashGoAppService, ICustomerAppService
         if (string.IsNullOrWhiteSpace(name) || name.Length is < 2 or > 100 || name.Any(char.IsControl))
             return BadRequest<CustomerProfileDto>("Họ tên phải có từ 2 đến 100 ký tự và không chứa ký tự điều khiển.");
 
-        // Accept common display separators, but store only ASCII digits, matching registration.
+        // Same ten-digit local phone format as registration.
         var phone = Clean(command.Phone);
-        if (phone != null)
-        {
-            if (phone.Length > 30 || !Regex.IsMatch(phone, @"^\+?[0-9 ()\-]+$"))
-                return BadRequest<CustomerProfileDto>("Số điện thoại không hợp lệ.");
-            phone = new string(phone.Where(c => c is >= '0' and <= '9').ToArray());
-            if (phone.Length is < 9 or > 11)
-                return BadRequest<CustomerProfileDto>("Số điện thoại không hợp lệ.");
-        }
-
+        if (!CustomerPhoneRules.IsValid(phone))
+            return BadRequest<CustomerProfileDto>("Số điện thoại phải gồm 10 chữ số và bắt đầu bằng 0.");
         var address = Clean(command.Address);
         // UC 1.1.5 9b: the address is required.
         if (address == null)
             return BadRequest<CustomerProfileDto>("Vui lòng nhập địa chỉ.");
-        var district = Clean(command.District);
         var city = Clean(command.City);
-        if (address?.Length > 500 || district?.Length > 100 || city?.Length > 100)
-            return BadRequest<CustomerProfileDto>("Địa chỉ tối đa 500 ký tự; quận/huyện và tỉnh/thành phố tối đa 100 ký tự.");
-
+        if (city == null)
+            return BadRequest<CustomerProfileDto>("Vui lòng nhập tỉnh/thành phố.");
+        if (address.Length > 500 || city.Length > 100)
+            return BadRequest<CustomerProfileDto>("Địa chỉ tối đa 500 ký tự; tỉnh/thành phố tối đa 100 ký tự.");
         // Both tables must commit together, even when this service is called outside HTTP.
         using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
         var user = await _users.FindAsync(id);
@@ -89,7 +82,6 @@ public class CustomerAppService : WashGoAppService, ICustomerAppService
         user.Phone = phone;
         user.UpdatedAt = DateTime.UtcNow;
         customer.Address = address;
-        customer.District = district;
         customer.City = city;
         customer.UpdatedAt = user.UpdatedAt;
         await _users.UpdateAsync(user);
@@ -125,7 +117,6 @@ public class CustomerAppService : WashGoAppService, ICustomerAppService
         Phone = user.Phone,
         AvatarUrl = user.Avatar,
         Address = customer.Address,
-        District = customer.District,
         City = customer.City,
         LoyaltyPoints = customer.LoyaltyPoints,
         TotalOrders = customer.TotalOrders,

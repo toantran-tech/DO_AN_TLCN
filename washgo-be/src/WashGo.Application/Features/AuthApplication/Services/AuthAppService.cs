@@ -6,6 +6,7 @@ using System.Net.Mail;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Google.Apis.Auth;
 using Microsoft.Extensions.Configuration;
@@ -21,6 +22,7 @@ using WashGo.Domain.Entities.Identity;
 using WashGo.Domain.Entities.Identity.Interfaces;
 using WashGo.Domain.Entities.Partner;
 using WashGo.Domain.Shared.Enums;
+using WashGo.Domain.Shared.Validation;
 
 namespace WashGo.Application.Features.AuthApplication.Services
 {
@@ -435,7 +437,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
                 Email = email,
                 PasswordHash = passwordHash,
                 FullName = command.FullName.Trim(),
-                Phone = NormalizePhone(command.Phone),
+                Phone = command.Phone,
                 AuthProvider = AuthProvider.Local,
                 IsActive = true,
                 CreatedAt = DateTime.UtcNow,
@@ -822,15 +824,8 @@ namespace WashGo.Application.Features.AuthApplication.Services
 
         private static bool IsValidPhone(string phone)
         {
-            var normalized = new string(phone.Where(char.IsDigit).ToArray());
-            return normalized.Length is >= 9 and <= 11;
+            return CustomerPhoneRules.IsValid(phone);
         }
 
-        private static string? NormalizePhone(string? phone)
-        {
-            return string.IsNullOrWhiteSpace(phone)
-                ? null
-                : new string(phone.Where(char.IsDigit).ToArray());
-        }
     }
 }

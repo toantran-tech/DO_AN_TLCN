@@ -1077,11 +1077,6 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
-                    b.Property<string>("District")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("district");
-
                     b.Property<int>("LoyaltyPoints")
                         .HasColumnType("integer")
                         .HasColumnName("loyalty_points");
