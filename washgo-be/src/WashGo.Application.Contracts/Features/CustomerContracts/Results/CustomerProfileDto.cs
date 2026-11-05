@@ -8,7 +8,6 @@ public class CustomerProfileDto
     public string? Phone { get; set; }
     public string? AvatarUrl { get; set; }
     public string? Address { get; set; }
-    public string? District { get; set; }
     public string? City { get; set; }
     public int LoyaltyPoints { get; set; }
     /// <summary>Số đơn không bị hủy, tính từ đơn hàng thực tế.</summary>
