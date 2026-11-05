@@ -44,15 +44,15 @@ UPDATE washgo.services SET is_deleted=true WHERE id='$($ids[6])';" | Out-Null
     Write-Output '2. Price sorting, inclusive bounds, one-sided filters and combination'
     Assert-Values @((Catalog @{sortBy=@(@{field='UnitPrice';isDescending=$false})}).list.unitPrice) @(10000,20000,20000,30000)
     Assert-Values @((Catalog @{sortBy=@(@{field='UnitPrice';isDescending=$true})}).list.unitPrice) @(30000,20000,20000,10000)
-    $range = Catalog @{sortBy=@(@{field='UnitPrice';isDescending=$true});minPrice=10000;maxPrice=20000}
+    $range = Catalog @{sortBy=@(@{field='UnitPrice';isDescending=$true});priceRanges=@(@{minPrice=10000;maxPrice=20000})}
     if ($range.total -ne 3) { throw 'Wrong filtered total.' }
     Assert-Values @($range.list.unitPrice) @(20000,20000,10000)
-    if ((Catalog @{minPrice=20000;maxPrice=20000}).total -ne 2) { throw 'Equal bounds should include exact price.' }
-    if ((Catalog @{minPrice=20000.01}).total -ne 1) { throw 'Decimal lower bound failed.' }
-    if ((Catalog @{maxPrice=19999.99}).total -ne 1) { throw 'Decimal upper bound failed.' }
-    if ((Catalog @{minPrice=0;maxPrice=0}).total -ne 0) { throw 'Empty range should return empty catalog.' }
+    if ((Catalog @{priceRanges=@(@{minPrice=20000;maxPrice=20000})}).total -ne 2) { throw 'Equal bounds should include exact price.' }
+    if ((Catalog @{priceRanges=@(@{minPrice=20000.01})}).total -ne 1) { throw 'Decimal lower bound failed.' }
+    if ((Catalog @{priceRanges=@(@{maxPrice=19999.99})}).total -ne 1) { throw 'Decimal upper bound failed.' }
+    if ((Catalog @{priceRanges=@(@{minPrice=0;maxPrice=0})}).total -ne 0) { throw 'Empty range should return empty catalog.' }
     $type = Sql "SELECT category FROM washgo.services WHERE id='$($ids[0])';"
-    if ((Catalog @{serviceType=[int]$type;minPrice=10000;maxPrice=20000}).total -ne 3) { throw 'Combined type/keyword/price filter failed.' }
+    if ((Catalog @{serviceTypes=@([int]$type);priceRanges=@(@{minPrice=10000;maxPrice=20000})}).total -ne 3) { throw 'Combined type/keyword/price filter failed.' }
 
     Write-Output '3. Stable pagination when prices tie'
     $first = Catalog @{sortBy=@(@{field='UnitPrice';isDescending=$false});page=1;take=2}
@@ -71,7 +71,10 @@ UPDATE washgo.services SET is_deleted=true WHERE id='$($ids[6])';" | Out-Null
     if ($defaults.currentPage -ne 1 -or $defaults.pageSize -ne 20) { throw 'DTO must default to Customer page 1/take 20.' }
     foreach ($invalid in @(
         @{sortBy=@(@{field='Invalid'})},@{sortBy=@($null)},@{sortBy=@(@{field=''})},
-        @{minPrice=-1},@{maxPrice=-1},@{minPrice=30000;maxPrice=10000}
+        @{priceRanges=@(@{minPrice=-1})},@{priceRanges=@(@{maxPrice=-1})},
+        @{priceRanges=@(@{minPrice=30000;maxPrice=10000})},@{priceRanges=@(@{})},@{priceRanges=@($null)},
+        @{serviceTypes=@(0)},@{serviceTypes=@(999)},@{serviceTypes=@(1,999)},
+        @{serviceType=1},@{minPrice=10000},@{maxPrice=20000}
     )) {
         Assert-Status 400 Post '/customer/services/filter' $invalid $session.accessToken
     }
@@ -79,7 +82,31 @@ UPDATE washgo.services SET is_deleted=true WHERE id='$($ids[6])';" | Out-Null
     Assert-Status 404 Get '/customer/services' $null $session.accessToken
     $detail = (Call-Api Get "/customer/services/$($ids[0])" $null $session.accessToken).data
     if ($detail.id -ne $ids[0]) { throw 'Service detail route is broken.' }
-    Write-Output 'PASS: POST service filter, removed GET list, retained GET detail, sorting, price bounds and pagination.'
+    Write-Output '5. Multiple types/ranges: OR within criteria, AND across criteria'
+    Sql "UPDATE washgo.services SET base_price=30000,category=1 WHERE id='$($ids[0])';
+UPDATE washgo.services SET base_price=50000,category=2 WHERE id='$($ids[1])';
+UPDATE washgo.services SET base_price=90000,category=3 WHERE id='$($ids[2])';
+UPDATE washgo.services SET base_price=100000,category=1 WHERE id='$($ids[3])';
+UPDATE washgo.services SET base_price=60000,category=2,is_active=true WHERE id='$($ids[4])';" | Out-Null
+    $bands=@(@{minPrice=30000;maxPrice=50000},@{minPrice=90000;maxPrice=100000})
+    $twoRanges=Catalog @{priceRanges=$bands;sortBy=@(@{field='UnitPrice'})}
+    Assert-Values @($twoRanges.list.unitPrice) @(30000,50000,90000,100000)
+    if ($twoRanges.total -ne 4) { throw 'Disjoint ranges included gap or lost inclusive endpoints.' }
+    $combined=Catalog @{serviceTypes=@(1,2);priceRanges=$bands;sortBy=@(@{field='UnitPrice'})}
+    Assert-Values @($combined.list.unitPrice) @(30000,50000,100000)
+    if ($combined.total -ne 3) { throw 'Type and price criteria must be combined with AND.' }
+    if ((Catalog @{serviceTypes=@(1,1,2);priceRanges=$bands}).total -ne 3) { throw 'Duplicate types duplicated results.' }
+    if ((Catalog @{serviceTypes=@(2,3);priceRanges=$bands}).total -ne 2) { throw 'Types must be combined with OR.' }
+    if ((Catalog @{serviceTypes=@(5)}).total -ne 0) { throw 'Unmatched service type must return no data.' }
+    if ((Catalog @{serviceTypes=@();priceRanges=@()}).total -ne 5) { throw 'Empty arrays should not filter.' }
+    if ((Catalog @{serviceTypes=$null;priceRanges=$null}).total -ne 5) { throw 'Null arrays should not filter.' }
+    $overlap=Catalog @{priceRanges=@(@{minPrice=30000;maxPrice=90000},@{minPrice=50000;maxPrice=100000})}
+    if ($overlap.total -ne 5 -or @($overlap.list.id|Select-Object -Unique).Count -ne 5) { throw 'Overlapping ranges duplicated rows.' }
+    $pageOne=Catalog @{priceRanges=$bands;sortBy=@(@{field='UnitPrice'});page=1;take=2}
+    $pageTwo=Catalog @{priceRanges=$bands;sortBy=@(@{field='UnitPrice'});page=2;take=2}
+    if ($pageOne.total -ne 4 -or $pageTwo.total -ne 4) { throw 'OR-filtered total must be computed before paging.' }
+    Assert-Values (@($pageOne.list.id)+@($pageTwo.list.id)) @($twoRanges.list.id)
+    Write-Output 'PASS: multi-select service types, disjoint/overlapping price ranges, AND/OR semantics, validation and pagination.'
 } finally {
     $fixtureIds = ($ids | ForEach-Object { "'$_'" }) -join ','
     Sql "DELETE FROM washgo.services WHERE id IN ($fixtureIds);" | Out-Null

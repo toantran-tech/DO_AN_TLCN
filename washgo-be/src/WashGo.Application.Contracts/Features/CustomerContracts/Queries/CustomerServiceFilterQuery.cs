@@ -1,8 +1,10 @@
 using WashGo.Core.Domain.Shared.Bases;
 using WashGo.Domain.Shared.Enums;
+using System.Text.Json.Serialization;
 
 namespace WashGo.Application.Contracts.Features.CustomerContracts.Queries;
 
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public class CustomerServiceFilterQuery : BaseFilterQuery
 {
     public CustomerServiceFilterQuery()
@@ -11,7 +13,6 @@ public class CustomerServiceFilterQuery : BaseFilterQuery
         Take = 20;
     }
 
-    public WashServiceType? ServiceType { get; set; }
-    public decimal? MinPrice { get; set; }
-    public decimal? MaxPrice { get; set; }
+    public WashServiceType[] ServiceTypes { get; set; } = [];
+    public ServicePriceRangeQuery[] PriceRanges { get; set; } = [];
 }
