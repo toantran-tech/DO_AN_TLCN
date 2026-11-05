@@ -69,6 +69,35 @@ namespace WashGo.HttpApi.Host
                                 Environment.SetEnvironmentVariable("Jwt__SecretKey", value);
                             if (key == "GOOGLE_CLIENT_ID" && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("Google__ClientId")))
                                 Environment.SetEnvironmentVariable("Google__ClientId", value);
+
+                            // Payment (MoMo & VNPay)
+                            if (key == "PAYMENT_PROVIDER" && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("Payment__Provider")))
+                                Environment.SetEnvironmentVariable("Payment__Provider", value);
+                            if (key == "MOMO_PARTNER_CODE" && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("Payment__Momo__PartnerCode")))
+                                Environment.SetEnvironmentVariable("Payment__Momo__PartnerCode", value);
+                            if (key == "MOMO_ACCESS_KEY" && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("Payment__Momo__AccessKey")))
+                                Environment.SetEnvironmentVariable("Payment__Momo__AccessKey", value);
+                            if (key == "MOMO_SECRET_KEY" && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("Payment__Momo__SecretKey")))
+                                Environment.SetEnvironmentVariable("Payment__Momo__SecretKey", value);
+                            if (key == "MOMO_PAYMENT_URL" && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("Payment__Momo__Endpoint")))
+                                Environment.SetEnvironmentVariable("Payment__Momo__Endpoint", value);
+                            if (key == "MOMO_REQUEST_TYPE" && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("Payment__Momo__RequestType")))
+                                Environment.SetEnvironmentVariable("Payment__Momo__RequestType", value);
+                            if (key == "MOMO_REDIRECT_URL" && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("Payment__Momo__RedirectUrl")))
+                                Environment.SetEnvironmentVariable("Payment__Momo__RedirectUrl", value);
+                            if (key == "MOMO_IPN_URL" && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("Payment__Momo__IpnUrl")))
+                                Environment.SetEnvironmentVariable("Payment__Momo__IpnUrl", value);
+
+                            if (key == "VNPAY_TMN_CODE" && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("Payment__VnPay__TmnCode")))
+                                Environment.SetEnvironmentVariable("Payment__VnPay__TmnCode", value);
+                            if (key == "VNPAY_HASH_SECRET" && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("Payment__VnPay__HashSecret")))
+                                Environment.SetEnvironmentVariable("Payment__VnPay__HashSecret", value);
+                            if (key == "VNPAY_PAYMENT_URL" && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("Payment__VnPay__Url")))
+                                Environment.SetEnvironmentVariable("Payment__VnPay__Url", value);
+                            if (key == "VNPAY_RETURN_URL" && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("Payment__VnPay__ReturnUrl")))
+                                Environment.SetEnvironmentVariable("Payment__VnPay__ReturnUrl", value);
+                            if (key == "VNPAY_IPN_URL" && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("Payment__VnPay__IpnUrl")))
+                                Environment.SetEnvironmentVariable("Payment__VnPay__IpnUrl", value);
                         }
                         break;
                     }
