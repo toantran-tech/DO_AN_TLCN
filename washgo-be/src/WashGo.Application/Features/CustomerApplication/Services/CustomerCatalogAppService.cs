@@ -1,4 +1,5 @@
 using Volo.Abp.Domain.Repositories;
+using System.Linq.Expressions;
 using WashGo.Application.Contracts.Features.CustomerContracts.Queries;
 using WashGo.Application.Contracts.Features.CustomerContracts.Results;
 using WashGo.Application.Contracts.Features.CustomerContracts.Services;
@@ -36,13 +37,18 @@ public class CustomerCatalogAppService : WashGoAppService, ICustomerCatalogAppSe
     public async Task<PaginatedResult<CustomerServiceCatalogDto>> GetServicesAsync(CustomerServiceFilterQuery filter)
     {
         var sorts = filter.SortBy ?? [];
+        var serviceTypes = (filter.ServiceTypes ?? []).Distinct().ToArray();
+        var ranges = filter.PriceRanges ?? [];
         string? error = sorts.Any(sort => sort == null ||
             sort.Field?.Trim().ToLowerInvariant() is not ("name" or "unitprice" or "price"))
             ? "SortBy.Field chỉ chấp nhận Name hoặc UnitPrice (price)."
-            : filter.MinPrice is < 0 || filter.MaxPrice is < 0
-                ? "Giá lọc không được âm."
-                : filter.MinPrice.HasValue && filter.MaxPrice.HasValue && filter.MinPrice.Value > filter.MaxPrice.Value
-                    ? "Giá tối thiểu không được lớn hơn giá tối đa."
+            : serviceTypes.Any(type => !Enum.IsDefined(type))
+                ? "ServiceTypes chứa loại dịch vụ không hợp lệ."
+                : ranges.Any(range => range == null ||
+                    (!range.MinPrice.HasValue && !range.MaxPrice.HasValue) ||
+                    range.MinPrice is < 0 || range.MaxPrice is < 0 ||
+                    (range.MinPrice.HasValue && range.MaxPrice.HasValue && range.MinPrice.Value > range.MaxPrice.Value))
+                    ? "Mỗi khoảng giá phải có ít nhất một đầu mút, giá không âm và giá tối thiểu không lớn hơn giá tối đa."
                     : null;
         if (error != null)
             return new PaginatedResult<CustomerServiceCatalogDto>
@@ -57,12 +63,26 @@ public class CustomerCatalogAppService : WashGoAppService, ICustomerCatalogAppSe
         var query = services.Where(service => !service.IsDeleted && service.IsActive
             && service.ApprovalStatus == ServiceApprovalStatus.Approved && service.UnitPrice > 0);
 
-        if (filter.ServiceType.HasValue)
-            query = query.Where(x => x.ServiceType == filter.ServiceType.Value);
-        if (filter.MinPrice.HasValue)
-            query = query.Where(x => x.UnitPrice >= filter.MinPrice.Value);
-        if (filter.MaxPrice.HasValue)
-            query = query.Where(x => x.UnitPrice <= filter.MaxPrice.Value);
+        if (serviceTypes.Length > 0)
+            query = query.Where(x => serviceTypes.Contains(x.ServiceType));
+        if (ranges.Length > 0)
+        {
+            // Build one SQL predicate: OR within price ranges, AND with other criteria.
+            // Avoid compiling the predicate or filtering in memory before paging.
+            var service = Expression.Parameter(typeof(WashService), "service");
+            var price = Expression.Property(service, nameof(WashService.UnitPrice));
+            Expression anyRange = Expression.Constant(false);
+            foreach (var range in ranges)
+            {
+                Expression match = Expression.Constant(true);
+                if (range.MinPrice.HasValue)
+                    match = Expression.AndAlso(match, Expression.GreaterThanOrEqual(price, Expression.Constant(range.MinPrice.Value)));
+                if (range.MaxPrice.HasValue)
+                    match = Expression.AndAlso(match, Expression.LessThanOrEqual(price, Expression.Constant(range.MaxPrice.Value)));
+                anyRange = Expression.OrElse(anyRange, match);
+            }
+            query = query.Where(Expression.Lambda<Func<WashService, bool>>(anyRange, service));
+        }
         if (!string.IsNullOrWhiteSpace(filter.Keyword))
         {
             var term = filter.Keyword.Trim().ToLower();

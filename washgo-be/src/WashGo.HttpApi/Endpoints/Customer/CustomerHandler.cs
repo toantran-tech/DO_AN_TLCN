@@ -30,7 +30,7 @@ public class CustomerHandler : IEndpointBase
         group.MapPost("/services/filter", async (CustomerServiceFilterQuery query, ICustomerCatalogAppService catalog) =>
             (await catalog.GetServicesAsync(query)).CustomResult())
             .WithName("Customer lọc và sắp xếp dịch vụ")
-            .WithSummary("Lọc bằng CustomerServiceFilterQuery kế thừa BaseFilterQuery: keyword, page (từ 1), take, sortBy (Field=Name|UnitPrice, IsDescending), serviceType, minPrice/maxPrice. Nhiều tiêu chí sort theo thứ tự trong mảng.")
+            .WithSummary("Lọc dịch vụ: serviceTypes là mảng loại dịch vụ; priceRanges là mảng khoảng minPrice/maxPrice, bao gồm hai đầu mút. OR trong từng tiêu chí, AND giữa loại/giá/keyword. Mảng rỗng = không lọc; page từ 1, sortBy Field=Name|UnitPrice và IsDescending.")
             .WithOpenApi();
 
         group.MapGet("/services/{id:guid}", async (Guid id, ICustomerCatalogAppService catalog) =>
