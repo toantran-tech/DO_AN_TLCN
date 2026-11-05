@@ -24,7 +24,7 @@ public class CustomerHandler : IEndpointBase
         group.MapPut("/me", async (UpdateCustomerProfileCommand command, ICustomerAppService service) =>
             (await service.UpdateMyProfileAsync(command)).CustomResult())
             .WithName("Cập nhật hồ sơ Customer của tôi")
-            .WithSummary("Cập nhật hồ sơ Customer của tôi.")
+            .WithSummary("Cập nhật hồ sơ: bắt buộc họ tên, số điện thoại 10 số bắt đầu bằng 0, địa chỉ (tối đa 500 ký tự), tỉnh/thành phố (tối đa 100 ký tự).")
             .WithOpenApi();
 
         group.MapPost("/services/filter", async (CustomerServiceFilterQuery query, ICustomerCatalogAppService catalog) =>
