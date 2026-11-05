@@ -32,6 +32,18 @@ services:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_HTTP_PORTS=8080
       - Google__ClientId=${GOOGLE_CLIENT_ID}
+      - Payment__Provider=${PAYMENT_PROVIDER:-Live}
+      - Payment__VnPay__TmnCode=${VNPAY_TMN_CODE:-}
+      - Payment__VnPay__HashSecret=${VNPAY_HASH_SECRET:-}
+      - Payment__VnPay__PaymentUrl=${VNPAY_PAYMENT_URL:-https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}
+      - Payment__VnPay__ReturnUrl=${VNPAY_RETURN_URL:-http://localhost:5000/swagger/index.html}
+      - Payment__Momo__PartnerCode=${MOMO_PARTNER_CODE:-}
+      - Payment__Momo__AccessKey=${MOMO_ACCESS_KEY:-}
+      - Payment__Momo__SecretKey=${MOMO_SECRET_KEY:-}
+      - Payment__Momo__Endpoint=${MOMO_PAYMENT_URL:-https://test-payment.momo.vn/v2/gateway/api/create}
+      - Payment__Momo__RequestType=${MOMO_REQUEST_TYPE:-payWithMethod}
+      - Payment__Momo__RedirectUrl=${MOMO_REDIRECT_URL:-http://localhost:5000/swagger/index.html}
+      - Payment__Momo__IpnUrl=${MOMO_IPN_URL:-}
       - ConnectionStrings__Default=Host=postgres;Port=5432;Database=${POSTGRES_DB:-washgo_db};Username=${POSTGRES_USER:-postgres};Password=${POSTGRES_PASSWORD:-123456};Include Error Detail=true;
       - App__CorsOrigins=http://localhost:5173,http://localhost:3000,http://127.0.4.1:5173,http://127.0.0.1:3000
       - Jwt__SecretKey=${JWT_SECRET_KEY:-WashGo_Super_Secret_Key_For_Jwt_Token_Generation_2026!#@$}
