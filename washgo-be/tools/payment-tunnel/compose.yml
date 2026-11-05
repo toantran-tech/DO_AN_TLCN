@@ -1,0 +1,20 @@
+name: washgo-payment-tunnel
+services:
+  payment-proxy:
+    image: node:20-alpine
+    container_name: washgo_payment_proxy
+    command: ["node", "/app/server.mjs"]
+    volumes:
+      - ./server.mjs:/app/server.mjs:ro
+    read_only: true
+    networks: [backend]
+  payment-tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: washgo_payment_tunnel
+    command: ["tunnel", "--no-autoupdate", "--protocol", "http2", "--url", "http://payment-proxy:8080"]
+    depends_on: [payment-proxy]
+    networks: [backend]
+networks:
+  backend:
+    external: true
+    name: do_an_washgo_network
