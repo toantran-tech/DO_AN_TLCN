@@ -30,6 +30,7 @@ namespace WashGo.Application.Contracts.Features.OrderAssignmentContracts.Results
         public Guid MerchantId { get; set; }
         public string BusinessName { get; set; } = string.Empty;
         public decimal Rating { get; set; }
+        public decimal CommissionRate { get; set; }
         public int CurrentLoad { get; set; }
         public int MaxCapacity { get; set; }
         public double? DistanceKm { get; set; }
@@ -59,5 +60,6 @@ namespace WashGo.Application.Contracts.Features.OrderAssignmentContracts.Results
         public string OrderCode { get; set; } = string.Empty;
         public Guid MerchantId { get; set; }
         public string MerchantName { get; set; } = string.Empty;
+        public decimal CommissionRateApplied { get; set; }
     }
 }

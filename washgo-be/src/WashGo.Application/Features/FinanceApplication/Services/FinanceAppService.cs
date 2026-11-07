@@ -58,8 +58,8 @@ namespace WashGo.Application.Features.FinanceApplication.Services
             _notifications = notifications;
         }
 
-        private sealed record PaymentRow(Guid OrderId, Guid? MerchantId, PaymentPurpose Purpose, decimal Amount, DateTime CompletedAt);
-        private sealed record RefundRow(Guid OrderId, Guid? MerchantId, decimal Amount, DateTime RefundedAt);
+        private sealed record PaymentRow(Guid OrderId, Guid? MerchantId, PaymentPurpose Purpose, decimal Amount, DateTime CompletedAt, decimal CommissionRateApplied);
+        private sealed record RefundRow(Guid OrderId, Guid? MerchantId, decimal Amount, DateTime RefundedAt, decimal CommissionRateApplied);
 
         private static (DateTime From, DateTime To, string? Error) Period(long? fromDate, long? toDate)
         {
@@ -81,7 +81,7 @@ namespace WashGo.Application.Features.FinanceApplication.Services
                         where (p.Status == PaymentTransactionStatus.Succeeded || p.Status == PaymentTransactionStatus.Refunded)
                               && p.CompletedAt != null && p.CompletedAt >= periodFrom && p.CompletedAt <= periodTo
                               && (merchantId == null || o.MerchantId == merchantId)
-                        select new PaymentRow(o.Id, o.MerchantId, p.Purpose, p.Amount, p.CompletedAt!.Value);
+                        select new PaymentRow(o.Id, o.MerchantId, p.Purpose, p.Amount, p.CompletedAt!.Value, o.CommissionRateApplied);
             return await AsyncExecuter.ToListAsync(query);
         }
 
@@ -94,7 +94,7 @@ namespace WashGo.Application.Features.FinanceApplication.Services
                         where r.Status == RefundRequestStatus.Refunded && r.RefundedAt != null
                               && r.RefundedAt >= periodFrom && r.RefundedAt <= periodTo
                               && (merchantId == null || o.MerchantId == merchantId)
-                        select new RefundRow(o.Id, o.MerchantId, r.Amount, r.RefundedAt!.Value);
+                        select new RefundRow(o.Id, o.MerchantId, r.Amount, r.RefundedAt!.Value, o.CommissionRateApplied);
             return await AsyncExecuter.ToListAsync(query);
         }
 
@@ -202,22 +202,45 @@ namespace WashGo.Application.Features.FinanceApplication.Services
             return merchantIds.Where(id => merchants.ContainsKey(id!.Value)).Select(id =>
             {
                 var merchant = merchants[id!.Value];
-                var gross = payments.Where(x => x.MerchantId == id).Sum(x => x.Amount);
+                var mPayments = payments.Where(x => x.MerchantId == id).ToList();
+                var mRefunds = refunds.Where(x => x.MerchantId == id).ToList();
+                var gross = mPayments.Sum(x => x.Amount);
                 // Refunds of laundry money reduce the base; refunds cannot exceed what was collected.
-                var refunded = Math.Min(gross, refunds.Where(x => x.MerchantId == id).Sum(x => x.Amount));
+                var refunded = Math.Min(gross, mRefunds.Sum(x => x.Amount));
                 var net = gross - refunded;
-                var commission = decimal.Round(net * merchant.CommissionRate / 100m, 0, MidpointRounding.AwayFromZero);
+
+                // Tính hoa hồng theo từng đơn (UC 2.3.2 & UC 3.8):
+                // Mỗi đơn giặt sử dụng CommissionRateApplied được snapshot trên đơn (hoặc fallback về merchant.CommissionRate nếu đơn cũ = 0)
+                var orderIds = mPayments.Select(x => x.OrderId).Concat(mRefunds.Select(x => x.OrderId)).Distinct().ToList();
+                decimal totalCommission = 0m;
+                foreach (var oId in orderIds)
+                {
+                    var oGross = mPayments.Where(x => x.OrderId == oId).Sum(x => x.Amount);
+                    var oRefund = Math.Min(oGross, mRefunds.Where(x => x.OrderId == oId).Sum(x => x.Amount));
+                    var oNet = oGross - oRefund;
+                    if (oNet <= 0) continue;
+
+                    var rate = mPayments.FirstOrDefault(x => x.OrderId == oId)?.CommissionRateApplied
+                               ?? mRefunds.FirstOrDefault(x => x.OrderId == oId)?.CommissionRateApplied
+                               ?? 0m;
+                    if (rate <= 0m)
+                    {
+                        rate = merchant.CommissionRate;
+                    }
+                    totalCommission += decimal.Round(oNet * rate / 100m, 0, MidpointRounding.AwayFromZero);
+                }
+
                 return new MerchantCommissionDto
                 {
                     MerchantId = merchant.Id,
                     MerchantName = merchant.BusinessName,
-                    PaidOrderCount = payments.Where(x => x.MerchantId == id).Select(x => x.OrderId).Distinct().Count(),
+                    PaidOrderCount = mPayments.Select(x => x.OrderId).Distinct().Count(),
                     GrossRevenue = gross,
                     RefundedAmount = refunded,
                     NetRevenue = net,
                     CommissionRate = merchant.CommissionRate,
-                    CommissionAmount = commission,
-                    PayoutAmount = net - commission
+                    CommissionAmount = totalCommission,
+                    PayoutAmount = net - totalCommission
                 };
             }).OrderByDescending(x => x.NetRevenue).ToList();
         }
