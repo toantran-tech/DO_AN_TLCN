@@ -90,11 +90,26 @@ namespace WashGo.Application.Features.ShipperApplication.Services
                     (x.shipper.VehiclePlate != null && x.shipper.VehiclePlate.ToLower().Contains(kw)));
             }
 
+            var sorts = query.SortBy ?? [];
+            if (sorts.Any(x => !string.Equals(x.Field, "Rating", StringComparison.OrdinalIgnoreCase)))
+                return new PaginatedResult<ShipperDto>
+                {
+                    Succeeded = false, StatusCode = System.Net.HttpStatusCode.BadRequest,
+                    Message = "Chỉ hỗ trợ sắp xếp theo Rating.", CurrentPage = query.Page, PageSize = query.Take
+                };
+
             var page = Math.Max(1, query.Page);
             var take = Math.Clamp(query.Take, 1, 100);
             var total = await AsyncExecuter.CountAsync(rows);
-            var items = await AsyncExecuter.ToListAsync(rows.OrderByDescending(x => x.shipper.IsActive)
-                .ThenBy(x => x.user.FullName).Skip((page - 1) * take).Take(take));
+            // Sorted over the whole filtered set before paging; unrated (0) last in both directions, then name, then id.
+            var ordered = sorts.Length == 0
+                ? rows.OrderByDescending(x => x.shipper.IsActive).ThenBy(x => x.user.FullName).ThenBy(x => x.shipper.Id)
+                : sorts[0].IsDescending
+                    ? rows.OrderBy(x => x.shipper.Rating <= 0).ThenByDescending(x => x.shipper.Rating)
+                        .ThenBy(x => x.user.FullName).ThenBy(x => x.shipper.Id)
+                    : rows.OrderBy(x => x.shipper.Rating <= 0).ThenBy(x => x.shipper.Rating)
+                        .ThenBy(x => x.user.FullName).ThenBy(x => x.shipper.Id);
+            var items = await AsyncExecuter.ToListAsync(ordered.Skip((page - 1) * take).Take(take));
             var activeCounts = await ActiveTaskCountsAsync(items.Select(x => x.shipper.Id).ToList());
             var dtos = items.Select(x => ToDto(x.shipper, x.user, activeCounts.GetValueOrDefault(x.shipper.Id))).ToList();
             return Success(dtos, total, page, take, total == 0 ? "Bạn chưa có Shipper nào." : null);
@@ -107,6 +122,27 @@ namespace WashGo.Application.Features.ShipperApplication.Services
                 return NotFound<ShipperDto>("Không tìm thấy Shipper!");
             var active = await ActiveTaskCountsAsync([shipper.Id]);
             return Success(ToDto(shipper, user, active.GetValueOrDefault(shipper.Id)));
+        }
+
+        public async Task<BaseResponse<ShipperSummaryDto>> GetSummaryAsync(Guid? merchantId)
+        {
+            var scope = ScopeMerchantId(merchantId);
+            var shippers = await _shipperRepo.GetQueryableAsync();
+            if (scope.HasValue)
+                shippers = shippers.Where(x => x.MerchantId == scope.Value);
+            // One grouped query so every number comes from the same moment.
+            var rows = await AsyncExecuter.ToListAsync(shippers.GroupBy(x => new { x.IsActive, x.Status })
+                .Select(g => new { g.Key.IsActive, g.Key.Status, Count = g.Count() }));
+            return Success(new ShipperSummaryDto
+            {
+                Total = rows.Sum(x => x.Count),
+                Working = rows.Where(x => x.IsActive).Sum(x => x.Count),
+                OnLeave = rows.Where(x => !x.IsActive).Sum(x => x.Count),
+                Available = rows.Where(x => x.Status == ShipperStatus.Available).Sum(x => x.Count),
+                Busy = rows.Where(x => x.Status == ShipperStatus.Busy).Sum(x => x.Count),
+                Offline = rows.Where(x => x.Status == ShipperStatus.Offline).Sum(x => x.Count),
+                GeneratedAt = DateTime.UtcNow
+            });
         }
 
         public async Task<BaseResponse<ShipperDto>> CreateAsync(CreateShipperCommand command)
@@ -240,6 +276,7 @@ namespace WashGo.Application.Features.ShipperApplication.Services
             FullName = u.FullName,
             Phone = u.Phone,
             Email = u.Email,
+            AvatarUrl = string.IsNullOrWhiteSpace(u.Avatar) ? null : u.Avatar,
             VehicleType = s.VehicleType,
             VehiclePlate = s.VehiclePlate,
             Status = s.Status,

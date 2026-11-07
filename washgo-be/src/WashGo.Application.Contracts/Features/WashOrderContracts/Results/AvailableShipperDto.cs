@@ -6,6 +6,8 @@ public class AvailableShipperDto
 {
     public Guid Id { get; set; }
     public string FullName { get; set; } = string.Empty;
+    /// <summary>Ảnh đại diện của Shipper; null khi chưa có.</summary>
+    public string? AvatarUrl { get; set; }
     public string? Phone { get; set; }
     public VehicleType VehicleType { get; set; }
     public string? VehiclePlate { get; set; }
