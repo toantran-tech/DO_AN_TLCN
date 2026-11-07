@@ -38,10 +38,14 @@ namespace WashGo.HttpApi.Endpoints.Shipper
                 .WithSummary("Xem chi tiết Shipper thuộc tiệm của mình.")
                 .WithOpenApi();
 
-            group.MapPost("/", async (CreateShipperCommand command, IShipperManagementAppService svc) =>
-                (await svc.CreateAsync(command)).CustomResult())
+            group.MapPost("/", async (CreateShipperCommand command, HttpContext http, IShipperManagementAppService svc) =>
+            {
+                if (command.ClientRequestId == null && Guid.TryParse(http.Request.Headers["Idempotency-Key"].ToString(), out var key))
+                    command.ClientRequestId = key;
+                return (await svc.CreateAsync(command)).CustomResult();
+            })
                 .WithName("Thêm mới Shipper")
-                .WithSummary("Tạo tài khoản role Shipper cho tiệm; mật khẩu tạm được gửi qua email (không trả về trong API).")
+                .WithSummary("Tạo tài khoản role Shipper cho tiệm; mật khẩu tạm được gửi qua email (không trả về trong API), kết quả gửi ở credentialDelivery/credentialEmailSent. clientRequestId (hoặc Idempotency-Key): gửi lại trả Shipper đã tạo (200, meta.replayed), không tạo thêm/không gửi lại email. Ảnh CCCD: identityFrontImageUrl + identityBackImageUrl.")
                 .WithOpenApi();
 
             group.MapPost("/{id:guid}/lock", async (Guid id, ShipperAccountActionCommand command, IShipperManagementAppService svc) =>
@@ -89,8 +93,12 @@ namespace WashGo.HttpApi.Endpoints.Shipper
                 .WithSummary("Xóa mềm tối đa 50 Shipper (ID trùng bỏ qua), mỗi người một transaction theo cùng luật xóa đơn lẻ; trả kết quả/lý do theo từng ID. Gửi lại an toàn.")
                 .WithOpenApi();
 
-            group.MapPut("/{id:guid}", async (Guid id, UpdateShipperCommand command, IShipperManagementAppService svc) =>
-                (await svc.UpdateAsync(id, command)).CustomResult())
+            group.MapPut("/{id:guid}", async (Guid id, UpdateShipperCommand command, HttpContext http, IShipperManagementAppService svc) =>
+            {
+                if (command.ExpectedRevision == null && long.TryParse(http.Request.Headers.IfMatch.ToString().Trim().Trim('"'), out var revision))
+                    command.ExpectedRevision = revision;
+                return (await svc.UpdateAsync(id, command)).CustomResult();
+            })
                 .WithName("Chỉnh sửa Shipper")
                 .WithSummary("Cập nhật họ tên, SĐT, email, phương tiện, biển số và trạng thái Đang làm việc/Tạm nghỉ.")
                 .WithOpenApi();

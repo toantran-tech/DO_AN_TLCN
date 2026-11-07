@@ -38,5 +38,11 @@ namespace WashGo.Application.Contracts.Features.ShipperContracts.Results
         /// <summary>None (chưa có ảnh), FrontBack (đủ hai mặt), Unspecified (ảnh cũ chưa xác định mặt, cần cập nhật lại).</summary>
         public string IdentityImageSides { get; set; } = "None";
         public DateTime CreatedAt { get; set; }
+        /// <summary>Phiên bản dữ liệu; gửi lại làm expectedRevision khi sửa.</summary>
+        public long Revision { get; set; }
+        /// <summary>Kết quả gửi email đăng nhập: 0 Unknown, 1 Sent, 2 Failed (không bao giờ trả mật khẩu).</summary>
+        public CredentialDeliveryStatus CredentialDelivery { get; set; }
+        public bool CredentialEmailSent => CredentialDelivery == CredentialDeliveryStatus.Sent;
+        public DateTime? CredentialSentAt { get; set; }
     }
 }

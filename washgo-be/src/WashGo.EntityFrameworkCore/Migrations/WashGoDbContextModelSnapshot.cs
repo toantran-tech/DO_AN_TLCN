@@ -1593,9 +1593,21 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<Guid?>("CreateRequestId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("create_request_id");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
+
+                    b.Property<int>("CredentialDelivery")
+                        .HasColumnType("integer")
+                        .HasColumnName("credential_delivery");
+
+                    b.Property<DateTime?>("CredentialSentAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("credential_sent_at");
 
                     b.Property<DateTime?>("DeletedAt")
                         .HasColumnType("timestamp with time zone")
@@ -1652,6 +1664,12 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("numeric(2,1)")
                         .HasColumnName("rating");
 
+                    b.Property<long>("Revision")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("bigint")
+                        .HasDefaultValue(0L)
+                        .HasColumnName("revision");
+
                     b.Property<int>("Status")
                         .HasColumnType("integer")
                         .HasColumnName("status");
@@ -1685,6 +1703,10 @@ namespace WashGo.EntityFrameworkCore.Migrations
 
                     b.HasIndex("UserId")
                         .IsUnique();
+
+                    b.HasIndex("MerchantId", "CreateRequestId")
+                        .IsUnique()
+                        .HasFilter("create_request_id IS NOT NULL");
 
                     b.ToTable("shippers", "washgo");
                 });

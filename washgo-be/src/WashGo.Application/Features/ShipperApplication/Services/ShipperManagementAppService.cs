@@ -174,6 +174,10 @@ namespace WashGo.Application.Features.ShipperApplication.Services
             var merchantId = ScopeMerchantId(command.MerchantId);
             if (!merchantId.HasValue)
                 return BadRequest<ShipperDto>("Vui lòng chọn Merchant quản lý Shipper.");
+            if (command.ClientRequestId == Guid.Empty)
+                return BadRequest<ShipperDto>("clientRequestId không hợp lệ.");
+            if (command.ClientRequestId.HasValue && await ReplayCreateAsync(merchantId.Value, command) is { } replay)
+                return replay;
             var merchant = await _merchantRepo.FindAsync(merchantId.Value);
             if (merchant == null || merchant.Status != MerchantStatus.Active)
                 return BadRequest<ShipperDto>("Merchant không tồn tại hoặc không hoạt động.");
@@ -231,27 +235,78 @@ namespace WashGo.Application.Features.ShipperApplication.Services
                 IsActive = true
             };
 
-            using (var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true))
+            shipper.CreateRequestId = command.ClientRequestId;
+            try
             {
+                using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
                 await _userRepo.InsertAsync(user, autoSave: true);
                 await _shipperRepo.InsertAsync(shipper, autoSave: true);
                 await uow.CompleteAsync();
             }
+            catch (Exception) when (command.ClientRequestId.HasValue)
+            {
+                // A concurrent send with the same key won the unique index: answer with that shipper.
+                if (await ReplayCreateAsync(merchantId.Value, command) is { } winner)
+                    return winner;
+                throw;
+            }
 
-            // Spec 6a: a failed delivery is logged but the account stays created.
+            // Spec 6a: a failed delivery is logged but the account stays created; the outcome is stored as data.
             var sent = await _emailSender.SendAccountCredentialsAsync(email, fullName, temporaryPassword);
             if (!sent)
                 _logger.LogWarning("Could not send Shipper credentials to {Email}.", email);
+            using (var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true))
+            {
+                var saved = await _shipperRepo.GetAsync(shipper.Id);
+                saved.CredentialDelivery = sent ? CredentialDeliveryStatus.Sent : CredentialDeliveryStatus.Failed;
+                saved.CredentialSentAt = sent ? DateTime.UtcNow : null;
+                await _shipperRepo.UpdateAsync(saved, autoSave: true);
+                await uow.CompleteAsync();
+                shipper = saved;
+            }
             return Created(ToDto(shipper, user, 0), sent
                 ? "Thêm Shipper thành công! Thông tin đăng nhập đã được gửi qua email."
                 : "Thêm Shipper thành công! Chưa gửi được email thông tin đăng nhập; Shipper có thể dùng Quên mật khẩu.");
         }
 
+        // Same key from the same Merchant: return the created shipper (no new account, no second email).
+        private async Task<BaseResponse<ShipperDto>?> ReplayCreateAsync(Guid merchantId, CreateShipperCommand command)
+        {
+            var existing = await _shipperRepo.FirstOrDefaultAsync(x => x.MerchantId == merchantId && x.CreateRequestId == command.ClientRequestId);
+            if (existing == null)
+                return null;
+            var user = await _userRepo.GetAsync(existing.UserId);
+            var dto = await ToDtoAsync(existing, user);
+            if (!string.Equals(user.Email, command.Email?.Trim(), StringComparison.OrdinalIgnoreCase))
+                return new BaseResponse<ShipperDto>
+                {
+                    Succeeded = false, StatusCode = HttpStatusCode.Conflict, Data = dto, Meta = new { code = "ClientRequestIdReused" },
+                    Message = "clientRequestId này đã dùng để tạo một Shipper khác."
+                };
+            return new BaseResponse<ShipperDto>
+            {
+                Succeeded = true, StatusCode = HttpStatusCode.OK, Data = dto, Meta = new { code = "Replayed", replayed = true },
+                Message = "Shipper này đã được tạo trước đó; không tạo thêm tài khoản và không gửi lại email."
+            };
+        }
+
         public async Task<BaseResponse<ShipperDto>> UpdateAsync(Guid id, UpdateShipperCommand command)
         {
-            var (shipper, user) = await FindOwnedAsync(id);
-            if (shipper == null || user == null)
+            // Row lock: a change to Tạm nghỉ and a new assignment of this shipper cannot cross.
+            using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            var shipper = await _shipperRepo.GetForUpdateAsync(id);
+            if (shipper == null || !IsAdmin && shipper.MerchantId != CurrentUser.Id)
                 return NotFound<ShipperDto>("Không tìm thấy Shipper!");
+            var user = await _userRepo.FindAsync(shipper.UserId);
+            if (user == null)
+                return NotFound<ShipperDto>("Không tìm thấy Shipper!");
+            if (command.ExpectedRevision.HasValue && command.ExpectedRevision.Value != shipper.Revision)
+                return new BaseResponse<ShipperDto>
+                {
+                    Succeeded = false, StatusCode = HttpStatusCode.Conflict, Data = await ToDtoAsync(shipper, user),
+                    Meta = new { code = "RevisionMismatch", currentRevision = shipper.Revision },
+                    Message = "Thông tin Shipper đã được người khác thay đổi; vui lòng tải lại trước khi lưu."
+                };
 
             var (error, fullName, phone, email, plate) = ShipperRules.Validate(command.FullName, command.Phone, command.Email,
                 command.VehicleType, command.VehiclePlate);
@@ -279,6 +334,7 @@ namespace WashGo.Application.Features.ShipperApplication.Services
             await _shipperRepo.UpdateAsync(shipper, autoSave: true);
             if (identityChanges.Count > 0)
                 await AuditAsync(shipper, ShipperAuditAction.IdentityUpdated, null, string.Join(",", identityChanges));
+            await uow.CompleteAsync();
             return Success(ToDto(shipper, user, active), "Cập nhật Shipper thành công!");
         }
 
@@ -647,7 +703,10 @@ namespace WashGo.Application.Features.ShipperApplication.Services
                 : string.IsNullOrWhiteSpace(s.IdentityImages) ? [] : JsonSerializer.Deserialize<List<string>>(s.IdentityImages) ?? [],
             IdentityImageSides = s.IdentityFrontImageUrl != null && s.IdentityBackImageUrl != null ? "FrontBack"
                 : string.IsNullOrWhiteSpace(s.IdentityImages) || s.IdentityImages == "[]" ? "None" : "Unspecified",
-            CreatedAt = s.CreatedAt
+            CreatedAt = s.CreatedAt,
+            Revision = s.Revision,
+            CredentialDelivery = s.CredentialDelivery,
+            CredentialSentAt = s.CredentialSentAt
         };
     }
 }
