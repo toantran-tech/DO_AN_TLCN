@@ -98,6 +98,15 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Results
         public string? TaskBoxNumber { get; set; }
         /// <summary>Collect / Return khi Shipper còn nhiệm vụ chưa làm; null khi không có.</summary>
         public DeliveryTaskType? NextAction { get; set; }
+        /// <summary>Tủ khách nhận đồ (tủ trả; mặc định là tủ gửi) để chỉ đường trước khi mở phiên nhận đồ.</summary>
+        public string? ReturnLockerName { get; set; }
+        public string? ReturnLockerAddress { get; set; }
+        public double? ReturnLockerLatitude { get; set; }
+        public double? ReturnLockerLongitude { get; set; }
+        /// <summary>Địa chỉ và tọa độ tủ gửi đồ.</summary>
+        public string? LockerAddress { get; set; }
+        public double? LockerLatitude { get; set; }
+        public double? LockerLongitude { get; set; }
         public List<WashOrderItemDto> Items { get; set; } = [];
         public List<WashOrderTimelineDto> Timeline { get; set; } = [];
     }

@@ -261,6 +261,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
 
             var dto = ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order);
             await _enricher.FillAsync([dto], scope.Role);
+            await _enricher.FillLockersAsync(dto);
             if (scope.Role is "Shipper" or "Merchant" or "Admin")
                 await _enricher.FillTaskAsync(dto);
             return Success(RedactStaffData(dto, scope));
