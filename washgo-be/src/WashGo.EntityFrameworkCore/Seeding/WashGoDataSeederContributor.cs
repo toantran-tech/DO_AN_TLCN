@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using Volo.Abp.Data;
 using Volo.Abp.DependencyInjection;
 using Volo.Abp.Domain.Repositories;
+using WashGo.Domain.Entities.Policy;
 using WashGo.Domain.Entities.Identity;
 using WashGo.Domain.Entities.Locker;
 using WashGo.Domain.Entities.Partner;
@@ -24,6 +25,7 @@ namespace WashGo.EntityFrameworkCore.Seeding
         private readonly IRepository<Locker, Guid> _lockerRepo;
         private readonly IRepository<LockerMerchant, Guid> _lockerMerchantRepo;
         private readonly IRepository<WashService, Guid> _washServiceRepo;
+        private readonly IRepository<TermsPolicy, Guid> _termsRepo;
 
         public WashGoDataSeederContributor(
             IRepository<Role, Guid> roleRepo,
@@ -35,7 +37,8 @@ namespace WashGo.EntityFrameworkCore.Seeding
             IRepository<MerchantServiceArea, Guid> merchantServiceAreaRepo,
             IRepository<Locker, Guid> lockerRepo,
             IRepository<LockerMerchant, Guid> lockerMerchantRepo,
-            IRepository<WashService, Guid> washServiceRepo)
+            IRepository<WashService, Guid> washServiceRepo,
+            IRepository<TermsPolicy, Guid> termsRepo)
         {
             _roleRepo = roleRepo;
             _userRepo = userRepo;
@@ -47,6 +50,7 @@ namespace WashGo.EntityFrameworkCore.Seeding
             _lockerRepo = lockerRepo;
             _lockerMerchantRepo = lockerMerchantRepo;
             _washServiceRepo = washServiceRepo;
+            _termsRepo = termsRepo;
         }
 
         public async Task SeedAsync(DataSeedContext context)
@@ -105,7 +109,34 @@ namespace WashGo.EntityFrameworkCore.Seeding
             await SeedWashServiceAsync(service1Id, merchantUserId, "SVC_WASH_DRY", "Giặt sấy sấy khô cao cấp", 30000, 30000, null, WashServiceType.StandardWash, "kg");
             await SeedWashServiceAsync(service2Id, merchantUserId, "SVC_DRY_CLEAN", "Giặt hấp giặt khô vest/đầm", 80000, null, 80000, WashServiceType.DryClean, "cái");
             await SeedWashServiceAsync(service3Id, merchantUserId, "SVC_SHOES", "Vệ sinh giày thể thao", 50000, null, 50000, WashServiceType.ShoeCare, "đôi");
+
+            // 8. Terms of service for customers (first login)
+            await SeedTermsPolicyAsync();
         }
+
+        private async Task SeedTermsPolicyAsync()
+        {
+            if (await _termsRepo.GetCountAsync() > 0)
+                return;
+            await _termsRepo.InsertAsync(new TermsPolicy(TermsPolicy.DefaultId)
+            {
+                Version = TermsPolicy.DefaultVersion,
+                Title = "Điều khoản sử dụng dịch vụ WashGo",
+                Content = DefaultTermsContent,
+                EffectiveFrom = new DateTime(2026, 11, 1, 0, 0, 0, DateTimeKind.Utc),
+                CreatedAt = DateTime.UtcNow
+            }, autoSave: true);
+        }
+
+        private const string DefaultTermsContent =
+            "1. Đặt đơn và gửi đồ: sau khi tạo đơn, ô tủ được giữ trong thời hạn gửi đồ (xem mục quy định bên dưới). " +
+            "Quá hạn, bạn không thể gửi đồ cho đơn đó và nên hủy đơn để giải phóng ô.\n" +
+            "2. Giá và thanh toán: giá tạm tính theo bảng dịch vụ; Merchant cân thực tế và chốt giá cuối cùng. " +
+            "Bạn thanh toán trực tuyến (VNPay/MoMo) sau khi giặt xong; quá 7 ngày chưa thanh toán, đồ được chuyển sang lưu kho và tính phí lưu kho.\n" +
+            "3. Hủy đơn: miễn phí trong thời hạn gửi đồ khi chưa gửi; sau đó tính phí hủy theo tỷ lệ đang áp dụng.\n" +
+            "4. Nhận đồ: đồ được giữ miễn phí tại locker trong thời gian quy định; quá hạn tính phí theo ngày và có thể chuyển về kho.\n" +
+            "5. Sự cố và bồi thường: báo cáo sự cố kèm hình ảnh/video trong thời hạn quy định; mức bồi thường theo tỷ lệ giá trị món đồ.\n" +
+            "6. Dữ liệu cá nhân: WashGo chỉ dùng thông tin của bạn để xử lý đơn hàng và thông báo liên quan.";
 
         private async Task<Role> SeedRoleAsync(Guid id, string name, string description)
         {
