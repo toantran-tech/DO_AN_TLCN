@@ -985,6 +985,15 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("character varying(30)")
                         .HasColumnName("link_type");
 
+                    b.Property<string>("MessageArgs")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("message_args");
+
+                    b.Property<string>("MessageKey")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("message_key");
+
                     b.Property<string>("Modified")
                         .HasColumnType("jsonb")
                         .HasColumnName("modified");
@@ -1022,6 +1031,8 @@ namespace WashGo.EntityFrameworkCore.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("UserId", "CreatedOn");
+
+                    b.HasIndex("UserId", "Type");
 
                     b.HasIndex("UserId", "IsDeleted", "IsRead");
 
