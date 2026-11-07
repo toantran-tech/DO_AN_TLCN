@@ -3022,6 +3022,10 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<Guid?>("ClientRequestId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("client_request_id");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
@@ -3038,6 +3042,12 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .IsRequired()
                         .HasColumnType("jsonb")
                         .HasColumnName("proposed_data");
+
+                    b.Property<string>("ProposedName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("proposed_name");
 
                     b.Property<string>("Reason")
                         .HasColumnType("text")
@@ -3080,6 +3090,10 @@ namespace WashGo.EntityFrameworkCore.Migrations
                     b.HasIndex("ServiceId");
 
                     b.HasIndex("Status");
+
+                    b.HasIndex("MerchantId", "ClientRequestId")
+                        .IsUnique()
+                        .HasFilter("client_request_id IS NOT NULL");
 
                     b.ToTable("service_change_requests", "washgo");
                 });

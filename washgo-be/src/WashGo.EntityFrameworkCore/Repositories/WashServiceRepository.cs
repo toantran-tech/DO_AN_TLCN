@@ -22,5 +22,11 @@ namespace WashGo.EntityFrameworkCore.Repositories
             : base(dbContextProvider, objectMapper)
         {
         }
+
+        public async Task AcquireLockAsync(string key)
+        {
+            var db = await GetDbContextAsync();
+            await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtext({key}))");
+        }
     }
 }
