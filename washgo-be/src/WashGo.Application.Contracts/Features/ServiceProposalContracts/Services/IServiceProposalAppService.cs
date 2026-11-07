@@ -13,6 +13,8 @@ namespace WashGo.Application.Contracts.Features.ServiceProposalContracts.Service
     public interface IServiceProposalAppService : IApplicationService
     {
         Task<PaginatedResult<WashServiceResultDto>> GetMyServicesAsync(WashServiceFilterQuery query);
+        Task<BaseResponse<WashServiceResultDto>> GetMyServiceAsync(Guid id);
+        Task<BaseResponse<MerchantServiceSummaryDto>> GetSummaryAsync();
         Task<BaseResponse<ServiceProposalDto>> ProposeCreateAsync(ServiceProposalCommand command);
         Task<BaseResponse<ServiceProposalDto>> ProposeUpdateAsync(Guid serviceId, ServiceProposalCommand command);
         Task<PaginatedResult<ServiceProposalDto>> GetListAsync(ServiceProposalFilterQuery query);

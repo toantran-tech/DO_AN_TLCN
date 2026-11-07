@@ -9,6 +9,9 @@ namespace WashGo.Application.Contracts.Features.ServiceProposalContracts.Queries
         public ServiceApprovalStatus? Status { get; set; }
         public ServiceChangeRequestType? RequestType { get; set; }
         public Guid? MerchantId { get; set; }
+        /// <summary>Tìm theo tên dịch vụ đề xuất hoặc mã dịch vụ.</summary>
+        public string? Keyword { get; set; }
+        public Guid? ServiceId { get; set; }
         public int Page { get; set; } = 1;
         public int Take { get; set; } = 20;
     }

@@ -23,6 +23,19 @@ namespace WashGo.Application.Contracts.Features.WashServiceContracts.Results
         public ServiceApprovalStatus ApprovalStatus { get; set; }
         public bool IsActive { get; set; }
         public long CreatedOn { get; set; }
+        /// <summary>Ảnh theo thứ tự lưu (danh mục Merchant); thiếu ảnh trả [].</summary>
+        public List<string> ImageUrls { get; set; } = [];
+        public string? ThumbnailUrl => ImageUrls.Count > 0 ? ImageUrls[0] : null;
+        /// <summary>Phiên bản nội dung (tên, mô tả, giá, thời gian, loại, đơn vị, ảnh); gửi lại làm expectedVersion khi đề xuất sửa.</summary>
+        public string? Version { get; set; }
+        /// <summary>Đang có đề xuất sửa chờ duyệt (của bất kỳ Merchant nào; không lộ nội dung/người gửi).</summary>
+        public bool HasPendingProposal { get; set; }
+        /// <summary>Đề xuất chờ duyệt của chính Merchant đang xem (nếu có).</summary>
+        public Guid? MyPendingProposalId { get; set; }
+        public bool CanProposeUpdate { get; set; }
+        /// <summary>PendingProposal, MerchantInactive.</summary>
+        public string? ProposeBlockedCode { get; set; }
+        public string? ProposeBlockedReason { get; set; }
     }
 }
 

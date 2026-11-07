@@ -17,8 +17,16 @@ namespace WashGo.Application.Contracts.Features.ServiceProposalContracts.Command
         /// <summary>Danh mục dịch vụ.</summary>
         public WashServiceType ServiceType { get; set; } = WashServiceType.StandardWash;
         public string Unit { get; set; } = "kg";
-        public List<string> ImageUrls { get; set; } = [];
+        /// <summary>
+        /// Ảnh dịch vụ: null = giữ ảnh hiện tại (khi đề xuất sửa), [] = xóa hết, danh sách = bộ ảnh mới theo thứ tự.
+        /// Ảnh đang thuộc dịch vụ được giữ lại; ảnh mới phải do chính Merchant upload.
+        /// </summary>
+        public List<string>? ImageUrls { get; set; }
         public string? Reason { get; set; }
+        /// <summary>Mã yêu cầu FE sinh một lần (hoặc header Idempotency-Key): gửi lại trả đề xuất đã tạo, không báo Admin lần nữa.</summary>
+        public Guid? ClientRequestId { get; set; }
+        /// <summary>`version` của dịch vụ lúc Merchant xem (đề xuất sửa); khác bản hiện tại → 409 StaleVersion.</summary>
+        public string? ExpectedVersion { get; set; }
     }
 
     public class RejectServiceProposalCommand
