@@ -66,6 +66,57 @@ namespace WashGo.HttpApi.Endpoints.Feedback
                 .WithName("Xác nhận đã chi trả bồi thường")
                 .WithSummary("Admin ghi nhận đã chuyển tiền bồi thường thủ công kèm mã tham chiếu.")
                 .WithOpenApi();
+
+            // ---- Customer self-service (UC 1.4.2–1.4.3) ----
+
+            group.MapPost("/mine/filter", async (CustomerIncidentFilterQuery query, ICustomerIncidentAppService svc) =>
+                (await svc.FilterMineAsync(query)).CustomResult())
+                .RequireAuthorization("CustomerOnly")
+                .WithName("Lọc khiếu nại của tôi")
+                .WithSummary("Lọc theo trạng thái, loại (ghép OR), mã đơn, khoảng ngày gửi (Unix giây); sắp xếp newest/oldest/status; phân trang.")
+                .WithOpenApi();
+
+            group.MapGet("/eligibility/{orderId:guid}", async (Guid orderId, ICustomerIncidentAppService svc) =>
+                (await svc.GetEligibilityAsync(orderId)).CustomResult())
+                .RequireAuthorization("CustomerOnly")
+                .WithName("Điều kiện báo cáo sự cố của đơn")
+                .WithSummary("canReport, lý do nếu không được, thời điểm nhận đồ, hạn báo cáo (3 ngày), khiếu nại đang chờ và các khiếu nại của đơn.")
+                .WithOpenApi();
+
+            group.MapGet("/mine/request/{clientRequestId}", async (string clientRequestId, ICustomerIncidentAppService svc) =>
+                (await svc.GetByRequestIdAsync(clientRequestId)).CustomResult())
+                .RequireAuthorization("CustomerOnly")
+                .WithName("Tra khiếu nại theo mã yêu cầu")
+                .WithSummary("Kiểm tra một lần gửi (clientRequestId) đã tạo khiếu nại chưa, ví dụ sau khi mất mạng.")
+                .WithOpenApi();
+
+            group.MapPut("/{id:guid}", async (Guid id, UpdateIncidentCommand command, ICustomerIncidentAppService svc) =>
+                (await svc.UpdateAsync(id, command)).CustomResult())
+                .RequireAuthorization("CustomerOnly")
+                .WithName("Sửa khiếu nại")
+                .WithSummary("Customer sửa loại, mức độ, mô tả và minh chứng khi khiếu nại còn chờ xử lý; báo Admin.")
+                .WithOpenApi();
+
+            group.MapPost("/{id:guid}/withdraw", async (Guid id, WithdrawIncidentCommand command, ICustomerIncidentAppService svc) =>
+                (await svc.WithdrawAsync(id, command)).CustomResult())
+                .RequireAuthorization("CustomerOnly")
+                .WithName("Rút khiếu nại")
+                .WithSummary("Customer rút khiếu nại đang chờ xử lý (lý do tùy chọn); gọi lại trả kết quả đã rút; báo Admin.")
+                .WithOpenApi();
+
+            group.MapGet("/{id:guid}/messages", async (Guid id, ICustomerIncidentAppService svc) =>
+                (await svc.GetMessagesAsync(id)).CustomResult())
+                .RequireAuthorization()
+                .WithName("Trao đổi trong khiếu nại")
+                .WithSummary("Customer (khiếu nại của mình) hoặc Admin xem các tin trao đổi và minh chứng bổ sung, cũ trước.")
+                .WithOpenApi();
+
+            group.MapPost("/{id:guid}/messages", async (Guid id, AddIncidentMessageCommand command, ICustomerIncidentAppService svc) =>
+                (await svc.AddMessageAsync(id, command)).CustomResult())
+                .RequireAuthorization()
+                .WithName("Gửi trao đổi / bổ sung minh chứng")
+                .WithSummary("Customer gửi khi khiếu nại còn chờ xử lý (kèm ảnh/video tùy chọn), Admin phản hồi; bên kia nhận thông báo.")
+                .WithOpenApi();
         }
     }
 }
