@@ -50,6 +50,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
         private readonly NotificationPublisher _notifications;
         private readonly SystemSettingProvider _settings;
         private readonly OrderListEnricher _enricher;
+        private readonly EtaPredictor _eta;
         private readonly LockerMerchantResolver _lockerMerchants;
 
         public WashOrderAppService(
@@ -68,6 +69,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             NotificationPublisher notifications,
             SystemSettingProvider settings,
             OrderListEnricher enricher,
+            EtaPredictor eta,
             LockerMerchantResolver lockerMerchants)
         {
             _orderRepo = orderRepo;
@@ -85,6 +87,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             _notifications = notifications;
             _settings = settings;
             _enricher = enricher;
+            _eta = eta;
             _lockerMerchants = lockerMerchants;
         }
 
@@ -262,6 +265,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             var dto = ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order);
             await _enricher.FillAsync([dto], scope.Role);
             await _enricher.FillLockersAsync(dto);
+            await _eta.FillAsync(dto);
             if (scope.Role is "Shipper" or "Merchant" or "Admin")
                 await _enricher.FillTaskAsync(dto);
             return Success(RedactStaffData(dto, scope));

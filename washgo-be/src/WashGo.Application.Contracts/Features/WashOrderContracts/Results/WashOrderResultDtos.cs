@@ -121,6 +121,18 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Results
         public string? LockerAddress { get; set; }
         public double? LockerLatitude { get; set; }
         public double? LockerLongitude { get; set; }
+        /// <summary>
+        /// ETA dự đoán (giặt xong, UTC) từ dữ liệu đơn thật. Khác `estimatedFinishAt` = ETA theo quy tắc (giờ xử lý chuẩn).
+        /// </summary>
+        public DateTime? PredictedFinishAt { get; set; }
+        /// <summary>predicted (dự đoán từ dữ liệu), rule (chưa đủ dữ liệu, dùng ETA quy tắc), done (đã giặt xong), notApplicable (đơn hủy).</summary>
+        public string PredictionStatus { get; set; } = "notApplicable";
+        /// <summary>history-merchant (cùng tiệm, cùng loại dịch vụ), history-service (toàn hệ thống, cùng loại), rule, actual.</summary>
+        public string? PredictionSource { get; set; }
+        public int? PredictionSampleSize { get; set; }
+        /// <summary>Hệ số tải của tiệm (1 = bình thường, tối đa 1.5).</summary>
+        public double? PredictionLoadFactor { get; set; }
+        public DateTime? PredictionUpdatedAt { get; set; }
         public List<WashOrderItemDto> Items { get; set; } = [];
         public List<WashOrderTimelineDto> Timeline { get; set; } = [];
     }
