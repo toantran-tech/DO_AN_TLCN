@@ -18,12 +18,17 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
     {
         private readonly IRepository<WashOrderItem, Guid> _itemRepo;
         private readonly IRepository<LockerBox, Guid> _boxRepo;
+        private readonly IRepository<WashGo.Domain.Entities.WashService.WashService, Guid> _serviceRepo;
+        private readonly IRepository<WashOrderTimeline, Guid> _timelineRepo;
         private readonly ILockerRepository _lockerRepo;
         private readonly IAsyncQueryableExecuter _executer;
 
         public OrderListEnricher(IRepository<WashOrderItem, Guid> itemRepo, IRepository<LockerBox, Guid> boxRepo,
-            ILockerRepository lockerRepo, IAsyncQueryableExecuter executer)
+            ILockerRepository lockerRepo, IAsyncQueryableExecuter executer,
+            IRepository<WashGo.Domain.Entities.WashService.WashService, Guid> serviceRepo, IRepository<WashOrderTimeline, Guid> timelineRepo)
         {
+            _serviceRepo = serviceRepo;
+            _timelineRepo = timelineRepo;
             _itemRepo = itemRepo;
             _boxRepo = boxRepo;
             _lockerRepo = lockerRepo;
@@ -36,11 +41,18 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 return;
             var orderIds = orders.Select(x => x.Id).ToList();
             var boxIds = orders.Select(x => x.BoxId).Distinct().ToList();
-            var services = (await _executer.ToListAsync((await _itemRepo.GetQueryableAsync())
-                    .Where(x => orderIds.Contains(x.WashOrderId))
-                    .Select(x => new { x.WashOrderId, x.ServiceName })))
-                .GroupBy(x => x.WashOrderId)
+            var items = await _executer.ToListAsync((await _itemRepo.GetQueryableAsync())
+                .Where(x => orderIds.Contains(x.WashOrderId))
+                .Select(x => new { x.WashOrderId, x.ServiceId, x.ServiceName }));
+            var services = items.GroupBy(x => x.WashOrderId)
                 .ToDictionary(g => g.Key, g => g.Select(x => x.ServiceName).Distinct().ToList());
+            var serviceIds = items.Select(x => x.ServiceId).Distinct().ToList();
+            var serviceTypes = (await _executer.ToListAsync((await _serviceRepo.GetQueryableAsync())
+                    .Where(x => serviceIds.Contains(x.Id)).Select(x => new { x.Id, x.ServiceType })))
+                .ToDictionary(x => x.Id, x => x.ServiceType);
+            var history = (await _executer.ToListAsync((await _timelineRepo.GetQueryableAsync())
+                    .Where(x => orderIds.Contains(x.WashOrderId)).Select(x => new { x.WashOrderId, x.Status, x.Timestamp })))
+                .ToLookup(x => x.WashOrderId);
             var sizes = (await _executer.ToListAsync((await _boxRepo.GetQueryableAsync())
                     .Where(x => boxIds.Contains(x.Id))
                     .Select(x => new { x.Id, x.Size })))
@@ -51,6 +63,10 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 order.ServiceNames = services.GetValueOrDefault(order.Id) ?? [];
                 order.BoxSize = sizes.TryGetValue(order.BoxId, out var size) ? size : null;
                 order.IsNew = IsNew(order, role);
+                var types = items.Where(x => x.WashOrderId == order.Id && serviceTypes.ContainsKey(x.ServiceId))
+                    .Select(x => serviceTypes[x.ServiceId]);
+                (order.ProgressPercent, order.WorkflowSteps) = OrderProgressCalculator.Build(order.Status, types,
+                    history[order.Id].Select(x => (x.Status, x.Timestamp)));
             }
         }
 

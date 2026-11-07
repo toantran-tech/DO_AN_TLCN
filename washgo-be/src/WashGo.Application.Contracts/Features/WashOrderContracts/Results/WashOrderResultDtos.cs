@@ -87,6 +87,20 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Results
         public WashOrderStatus? CancellationFromStatus { get; set; }
         public CancelledGoodsStatus CancelledGoodsStatus { get; set; }
         public DateTime? CancelledGoodsReturnedAt { get; set; }
+        /// <summary>Phần trăm các bước áp dụng cho đơn đã đi qua (bước hiện tại tính là đã tới); 100 khi hoàn tất.</summary>
+        public int ProgressPercent { get; set; }
+        /// <summary>Các bước quy trình: bước nào áp dụng theo dịch vụ của đơn, đã xong, đang ở, thời điểm (Unix giây).</summary>
+        public List<OrderWorkflowStepDto> WorkflowSteps { get; set; } = [];
+    }
+
+    public class OrderWorkflowStepDto
+    {
+        public WashOrderStatus Status { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public bool IsApplicable { get; set; }
+        public bool IsCompleted { get; set; }
+        public bool IsCurrent { get; set; }
+        public long? Timestamp { get; set; }
     }
 
     public class WashOrderDetailDto : WashOrderResultDto
