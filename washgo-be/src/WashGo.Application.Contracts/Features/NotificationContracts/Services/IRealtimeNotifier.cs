@@ -8,5 +8,6 @@ namespace WashGo.Application.Contracts.Features.NotificationContracts.Services
     public interface IRealtimeNotifier
     {
         Task SendAsync(Guid userId, NotificationDto notification);
+        Task SendStateAsync(Guid userId, NotificationStateDto state);
     }
 }

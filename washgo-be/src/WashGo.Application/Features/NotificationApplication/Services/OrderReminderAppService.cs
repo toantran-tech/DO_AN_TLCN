@@ -100,7 +100,9 @@ namespace WashGo.Application.Features.NotificationApplication.Services
                 var left = DateTimeOffset.FromUnixTimeSeconds(o.CreatedOn).UtcDateTime + window - now;
                 await _notifications.SendAsync([o.CustomerId], NotificationType.DepositReminder, "Nhắc nhở gửi đồ",
                     $"Bạn còn {Math.Max(1, (int)Math.Ceiling(left.TotalMinutes))} phút để gửi đồ vào {o.LockerName}, ô số {o.BoxNumber}. " +
-                    "Quá hạn sẽ không thể gửi đồ cho đơn này.", "order", o.Id);
+                    "Quá hạn sẽ không thể gửi đồ cho đơn này.", "order", o.Id,
+                    NotificationPublisher.Message("depositReminder.customer", ("orderCode", o.OrderCode), ("lockerName", o.LockerName),
+                        ("boxNumber", o.BoxNumber), ("minutesLeft", Math.Max(1, (int)Math.Ceiling(left.TotalMinutes)).ToString())));
             }
         }
 
@@ -189,7 +191,10 @@ namespace WashGo.Application.Features.NotificationApplication.Services
                 if (await ClaimAsync("payment-remind", $"payment-remind:{o.Id}", o.Id, now))
                     await _notifications.SendAsync([o.CustomerId], NotificationType.AwaitingPayment, "Nhắc nhở thanh toán",
                         $"Đơn #{o.OrderCode} còn {Hours((o.PaymentDeadline.Value - now).TotalHours)} để thanh toán {o.FinalAmount:N0}đ. " +
-                        "Quá hạn, đồ sẽ được chuyển sang lưu kho và tính phí lưu kho.", "order", o.Id);
+                        "Quá hạn, đồ sẽ được chuyển sang lưu kho và tính phí lưu kho.", "order", o.Id,
+                        NotificationPublisher.Message("paymentReminder.customer", ("orderCode", o.OrderCode),
+                            ("amount", o.FinalAmount.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)),
+                            ("paymentDeadline", o.PaymentDeadline.Value.ToString("O"))));
             }
         }
 
@@ -212,7 +217,9 @@ namespace WashGo.Application.Features.NotificationApplication.Services
                     if (now >= deadline.AddHours(-s.FreePickupHours / 2.0) &&
                         await ClaimAsync("pickup-remind", $"pickup-remind:{o.Id}", o.Id, now))
                         await _notifications.SendAsync([o.CustomerId], NotificationType.PickupReminder, "Nhắc nhở lấy đồ",
-                            $"Đồ của bạn đang chờ tại {place}. Còn {Hours((deadline - now).TotalHours)} để lấy miễn phí.", "order", o.Id);
+                            $"Đồ của bạn đang chờ tại {place}. Còn {Hours((deadline - now).TotalHours)} để lấy miễn phí.", "order", o.Id,
+                            NotificationPublisher.Message("pickupReminder.customer", ("orderCode", o.OrderCode), ("place", place),
+                                ("pickupDeadline", deadline.ToString("O"))));
                     continue;
                 }
 
@@ -226,7 +233,10 @@ namespace WashGo.Application.Features.NotificationApplication.Services
                         ? $"Đồ của bạn tại {place} đã quá hạn lấy miễn phí. Phí phạt lưu locker hiện tại: {fee:N0}đ và tăng theo mỗi ngày quá hạn."
                         : $"Phí phạt lưu locker quá hạn: {fee:N0}đ đã được tính cho đơn #{o.OrderCode}. Vui lòng thanh toán và lấy đồ.";
                     await _notifications.SendAsync([o.CustomerId], NotificationType.OverdueFeeApplied,
-                        chargedDays == 1 ? "Đồ đã quá hạn lấy" : "Thông báo phí phạt", content, "order", o.Id);
+                        chargedDays == 1 ? "Đồ đã quá hạn lấy" : "Thông báo phí phạt", content, "order", o.Id,
+                        NotificationPublisher.Message(chargedDays == 1 ? "overdueFee.firstDay.customer" : "overdueFee.customer",
+                            ("orderCode", o.OrderCode), ("place", place), ("overdueDays", chargedDays.ToString()),
+                            ("fee", fee.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))));
                 }
 
                 if (OverdueFeeCalculator.IsTransferToStorageDue(deadline, now) &&

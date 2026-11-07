@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.OpenApi;
 using Microsoft.AspNetCore.Routing;
+using WashGo.Application.Contracts.Features.NotificationContracts.Queries;
 using WashGo.Application.Contracts.Features.NotificationContracts.Services;
 using WashGo.Core.Endpoint;
 
@@ -22,6 +23,12 @@ namespace WashGo.HttpApi.Endpoints.Notification
                 (await svc.GetMineAsync(page ?? 1, take ?? 20, unreadOnly ?? false)).CustomResult())
                 .WithName("Xem thông báo của tôi")
                 .WithSummary("Danh sách thông báo của tài khoản đang đăng nhập, mới nhất trước; real-time qua SignalR /hubs/notifications (sự kiện 'notification').")
+                .WithOpenApi();
+
+            group.MapPost("/filter", async (NotificationFilterQuery query, INotificationAppService svc) =>
+                (await svc.FilterAsync(query)).CustomResult())
+                .WithName("Lọc thông báo của tôi")
+                .WithSummary("Tìm theo từ khóa, lọc nhóm (order/payment/promotion/feedback/system), loại, chưa đọc, khoảng ngày (Unix giây); sắp xếp newest/oldest/unreadFirst; kèm số lượng tổng/chưa đọc theo nhóm. Mỗi thông báo có group, messageKey, messageArgs để FE dịch. Đọc/xóa ở thiết bị khác được đẩy qua SignalR sự kiện 'notificationState'.")
                 .WithOpenApi();
 
             group.MapGet("/unread-count", async (INotificationAppService svc) =>
