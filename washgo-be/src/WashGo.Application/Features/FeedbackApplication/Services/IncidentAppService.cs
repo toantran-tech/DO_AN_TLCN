@@ -57,6 +57,13 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
             if (!CurrentUser.Id.HasValue)
                 return BadRequest<IncidentResultDto>("Không xác định được tài khoản khách hàng.");
             var customerId = CurrentUser.Id.Value;
+            var requestId = string.IsNullOrWhiteSpace(command.ClientRequestId) ? null : command.ClientRequestId.Trim();
+            if (requestId?.Length > 64)
+                return BadRequest<IncidentResultDto>("Mã yêu cầu tối đa 64 ký tự.");
+            // A retried submit with the same request id returns the incident created the first time.
+            if (requestId != null &&
+                await _incidentRepo.FirstOrDefaultAsync(x => x.CustomerId == customerId && x.ClientRequestId == requestId) is { } existing)
+                return Success(ToDto(existing), "Yêu cầu khiếu nại này đã được ghi nhận trước đó.");
             if (!Enum.IsDefined(command.Type) || !Enum.IsDefined(command.Severity))
                 return BadRequest<IncidentResultDto>("Vui lòng chọn loại sự cố và mức độ hợp lệ.");
             var description = command.Description?.Trim();
@@ -103,6 +110,7 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
                 Description = description,
                 ImageUrls = images,
                 VideoUrls = videos,
+                ClientRequestId = requestId,
                 Status = IncidentStatus.Pending
             };
             await _incidentRepo.InsertAsync(incident, autoSave: true);
@@ -250,7 +258,7 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
             return Success(ToDto(incident), "Đã ghi nhận chi trả bồi thường.");
         }
 
-        private static IncidentResultDto ToDto(Incident x) => new()
+        public static IncidentResultDto ToDto(Incident x) => new()
         {
             Id = x.Id,
             OrderId = x.OrderId,
@@ -274,7 +282,11 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
             CompensationReference = x.CompensationReference,
             CompensationPaidAt = x.CompensationPaidAt,
             ReviewedAt = x.ReviewedAt,
-            CreatedOn = x.CreatedOn
+            CreatedOn = x.CreatedOn,
+            ClientRequestId = x.ClientRequestId,
+            CustomerUpdatedAt = x.CustomerUpdatedAt,
+            WithdrawnAt = x.WithdrawnAt,
+            WithdrawReason = x.WithdrawReason
         };
     }
 }

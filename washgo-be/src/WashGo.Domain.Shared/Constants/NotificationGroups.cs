@@ -24,7 +24,7 @@ namespace WashGo.Domain.Shared.Constants
         ];
 
         private static readonly NotificationType[] FeedbackTypes =
-            [NotificationType.IncidentProcessed, NotificationType.NewIncident, NotificationType.NewRating];
+            [NotificationType.IncidentProcessed, NotificationType.NewIncident, NotificationType.NewRating, NotificationType.IncidentMessage];
 
         private static readonly NotificationType[] SystemTypes =
         [

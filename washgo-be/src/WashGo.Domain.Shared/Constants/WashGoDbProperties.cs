@@ -35,5 +35,6 @@ namespace WashGo.Domain.Shared.Constants
         public const string LockerMerchants = "locker_merchants";
         public const string TermsPolicies = "terms_policies";
         public const string TermsAcceptances = "terms_acceptances";
+        public const string IncidentMessages = "incident_messages";
     }
 }
