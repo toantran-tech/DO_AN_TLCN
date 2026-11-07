@@ -16,6 +16,7 @@ using Volo.Abp.Uow;
 using WashGo.Application.Contracts.Features.AuthContracts.Commands;
 using WashGo.Application.Contracts.Features.AuthContracts.Results;
 using WashGo.Application.Contracts.Features.AuthContracts.Services;
+using WashGo.Application.Features.PolicyApplication.Services;
 using WashGo.Core.Domain.Common;
 using WashGo.Core.Domain.Shared.Bases;
 using WashGo.Domain.Entities.Identity;
@@ -37,6 +38,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
         private readonly IRepository<Customer, Guid> _customerRepo;
         private readonly IConfiguration _configuration;
         private readonly IAuthEmailSender _authEmailSender;
+        private readonly TermsPolicyProvider _terms;
 
         public AuthAppService(
             IRepository<User, Guid> userRepo,
@@ -45,7 +47,8 @@ namespace WashGo.Application.Features.AuthApplication.Services
             IOtpCodeRepository otpRepo,
             IRepository<Customer, Guid> customerRepo,
             IConfiguration configuration,
-            IAuthEmailSender authEmailSender)
+            IAuthEmailSender authEmailSender,
+            TermsPolicyProvider terms)
         {
             _userRepo = userRepo;
             _roleRepo = roleRepo;
@@ -54,6 +57,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
             _customerRepo = customerRepo;
             _configuration = configuration;
             _authEmailSender = authEmailSender;
+            _terms = terms;
         }
 
         public async Task<BaseResponse<AuthResponseDto>> LoginAsync(LoginCommand command)
@@ -97,6 +101,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
             }
 
             // Update last login
+            var firstLogin = user.LastLoginAt == null;
             user.LastLoginAt = DateTime.UtcNow;
             await _userRepo.UpdateAsync(user, autoSave: true);
 
@@ -115,9 +120,11 @@ namespace WashGo.Application.Features.AuthApplication.Services
                     FullName = user.FullName,
                     Phone = user.Phone,
                     Role = roleName,
-                    Avatar = user.Avatar
+                    Avatar = user.Avatar,
+                    FirstLogin = firstLogin
                 }
             };
+            await FillTermsAsync(result.User);
 
             return Success(result, "Đăng nhập thành công!");
         }
@@ -226,6 +233,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
             if (!allowCustomerRegistration && roleName.Equals("Customer", StringComparison.OrdinalIgnoreCase))
                 return BadRequest<AuthResponseDto>("Tài khoản Customer không thể đăng nhập vào trang quản trị.");
 
+            var firstLogin = user.LastLoginAt == null;
             user.LastLoginAt = DateTime.UtcNow;
             user.UpdatedAt = DateTime.UtcNow;
             await _userRepo.UpdateAsync(user, autoSave: true);
@@ -233,20 +241,23 @@ namespace WashGo.Application.Features.AuthApplication.Services
             var (refreshToken, sessionId) = await GenerateAndSaveRefreshTokenAsync(user.Id);
             var (accessToken, expiresAt) = GenerateJwtToken(user, roleName, sessionId);
 
+            var googleUser = new AuthUserDto
+            {
+                Id = user.Id,
+                Email = user.Email,
+                FullName = user.FullName,
+                Phone = user.Phone,
+                Role = roleName,
+                Avatar = user.Avatar,
+                FirstLogin = firstLogin
+            };
+            await FillTermsAsync(googleUser);
             return Success(new AuthResponseDto
             {
                 AccessToken = accessToken,
                 RefreshToken = refreshToken,
                 ExpiresAt = expiresAt,
-                User = new AuthUserDto
-                {
-                    Id = user.Id,
-                    Email = user.Email,
-                    FullName = user.FullName,
-                    Phone = user.Phone,
-                    Role = roleName,
-                    Avatar = user.Avatar
-                }
+                User = googleUser
             }, "Đăng nhập bằng Google thành công!");
         }
 
@@ -331,6 +342,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
                     Avatar = user.Avatar
                 }
             };
+            await FillTermsAsync(result.User);
 
             return Success(result, "Làm mới phiên đăng nhập thành công!");
         }
@@ -673,8 +685,15 @@ namespace WashGo.Application.Features.AuthApplication.Services
                 Role = role?.Name ?? "Customer",
                 Avatar = user.Avatar
             };
+            await FillTermsAsync(result);
 
             return Success(result);
+        }
+
+        // Terms acceptance is stored per account, so every device gets the same answer.
+        private async Task FillTermsAsync(AuthUserDto user)
+        {
+            (user.RequiresTermsAcceptance, user.TermsVersion) = await _terms.RequirementAsync(user.Id, user.Role);
         }
 
         private (string token, DateTime expiresAt) GenerateJwtToken(User user, string roleName, Guid sessionId)
