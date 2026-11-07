@@ -85,19 +85,29 @@ namespace WashGo.Application.Features.NotificationApplication.Services
 
         private static string Hours(double hours) => $"{Math.Max(1, (int)Math.Round(hours))} giờ";
 
-        // Khách chưa gửi đồ: nhắc khi còn 15 phút trước hạn giữ ô (hoặc nửa thời hạn nếu thời hạn ngắn).
+        // Khách chưa gửi đồ: nhắc khi còn 15 phút trước hạn giữ ô (hoặc nửa thời hạn nếu thời hạn ngắn);
+        // quá hạn thì báo một lần để khách hủy đơn giải phóng ô (UC 1.3.2 6b: không tự hủy đơn).
         private async Task RemindDepositAsync(DateTime now, SystemSetting s)
         {
-            var window = TimeSpan.FromMinutes(s.DepositWindowMinutes);
-            var before = TimeSpan.FromMinutes(Math.Min(DepositReminderBeforeMinutes, s.DepositWindowMinutes / 2.0));
-            var nowTs = new DateTimeOffset(now).ToUnixTimeSeconds();
-            var remindFrom = nowTs - (long)(window - before).TotalSeconds;
-            var expiredBefore = nowTs - (long)window.TotalSeconds;
-            foreach (var o in await OrdersAsync(q => q.Where(x => x.Status == WashOrderStatus.Pending
-                         && x.CreatedOn <= remindFrom && x.CreatedOn > expiredBefore)))
+            // Orders from the last day are enough; older pending orders expired long ago and are not announced again.
+            var since = new DateTimeOffset(now.AddDays(-1)).ToUnixTimeSeconds();
+            foreach (var o in await OrdersAsync(q => q.Where(x => x.Status == WashOrderStatus.Pending && x.CreatedOn > since)))
             {
-                if (!await ClaimAsync("deposit", $"deposit:{o.Id}", o.Id, now)) continue;
-                var left = DateTimeOffset.FromUnixTimeSeconds(o.CreatedOn).UtcDateTime + window - now;
+                var deadline = OrderDepositRules.DeadlineOf(o, s.DepositWindowMinutes);
+                if (now >= deadline)
+                {
+                    if (await ClaimAsync("deposit-expired", $"deposit-expired:{o.Id}", o.Id, now))
+                        await _notifications.SendAsync([o.CustomerId], NotificationType.DepositExpired, "Đơn đã quá hạn gửi đồ",
+                            $"Đơn #{o.OrderCode} đã quá hạn gửi đồ vào {o.LockerName}, ô số {o.BoxNumber}. " +
+                            "Vui lòng hủy đơn để giải phóng ô và tạo đơn mới.", "order", o.Id,
+                            NotificationPublisher.Message("depositExpired.customer", ("orderCode", o.OrderCode),
+                                ("lockerName", o.LockerName), ("boxNumber", o.BoxNumber), ("depositDeadline", deadline.ToString("O"))));
+                    continue;
+                }
+                var window = deadline - DateTimeOffset.FromUnixTimeSeconds(o.CreatedOn).UtcDateTime;
+                var before = TimeSpan.FromMinutes(Math.Min(DepositReminderBeforeMinutes, window.TotalMinutes / 2.0));
+                if (now < deadline - before || !await ClaimAsync("deposit", $"deposit:{o.Id}", o.Id, now)) continue;
+                var left = deadline - now;
                 await _notifications.SendAsync([o.CustomerId], NotificationType.DepositReminder, "Nhắc nhở gửi đồ",
                     $"Bạn còn {Math.Max(1, (int)Math.Ceiling(left.TotalMinutes))} phút để gửi đồ vào {o.LockerName}, ô số {o.BoxNumber}. " +
                     "Quá hạn sẽ không thể gửi đồ cho đơn này.", "order", o.Id,

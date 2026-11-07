@@ -72,7 +72,7 @@ INSERT INTO washgo.services SELECT (jsonb_populate_record(NULL::washgo.services,
     $pen=Penalty $original; $pen.cancelLatePendingPercent=40
     Call-Api Put '/system-setting/penalty' $pen $admin | Out-Null
     $o=New-Order
-    Sql "UPDATE washgo.orders SET created_on=EXTRACT(EPOCH FROM NOW())::bigint-11*60 WHERE id='$($o.id)';" | Out-Null
+    Sql "UPDATE washgo.orders SET created_on=EXTRACT(EPOCH FROM NOW())::bigint-11*60,deposit_deadline=deposit_deadline-(created_on-(EXTRACT(EPOCH FROM NOW())::bigint-11*60))*interval '1 second' WHERE id='$($o.id)';" | Out-Null
     Assert-Status 400 Post "/wash-order/$($o.id)/deposit" @{pinCode=$o.depositPinCode} $customer
     $quote=(Call-Api Get "/wash-order/$($o.id)/cancellation-quote" $null $customer).data
     if($quote.feePercent -ne 40 -or $quote.feeAmount -ne 40000){throw "Late-cancel fee ignored settings: $($quote.feePercent)% $($quote.feeAmount)."}
@@ -83,7 +83,7 @@ INSERT INTO washgo.services SELECT (jsonb_populate_record(NULL::washgo.services,
     $after=(Call-Api Get "/wash-order/$($o.id)/cancellation-quote" $null $customer).data
     if($after.feePercent -ne 40){throw 'Cancelled order percentage changed with later settings.'}
     $o2=New-Order
-    Sql "UPDATE washgo.orders SET created_on=EXTRACT(EPOCH FROM NOW())::bigint-5*60 WHERE id='$($o2.id)';" | Out-Null
+    Sql "UPDATE washgo.orders SET created_on=EXTRACT(EPOCH FROM NOW())::bigint-5*60,deposit_deadline=deposit_deadline-(created_on-(EXTRACT(EPOCH FROM NOW())::bigint-5*60))*interval '1 second' WHERE id='$($o2.id)';" | Out-Null
     Invoke-TestDelivery $o2.id deposit $customer | Out-Null
 
     Write-Output '4. Default commission applies to new Merchants only when omitted'

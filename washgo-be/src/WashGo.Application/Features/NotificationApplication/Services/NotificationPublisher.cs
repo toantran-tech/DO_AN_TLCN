@@ -116,6 +116,9 @@ namespace WashGo.Application.Features.NotificationApplication.Services
 
         private static string Money(decimal amount) => $"{amount:N0}đ";
 
+        private static int DepositMinutes(WashOrder o) => o.DepositDeadline.HasValue
+            ? (int)Math.Round((o.DepositDeadline.Value - DateTimeOffset.FromUnixTimeSeconds(o.CreatedOn).UtcDateTime).TotalMinutes) : 30;
+
         private static string Invariant(decimal value) => value.ToString("0.##", CultureInfo.InvariantCulture);
 
         /// <summary>Template key + the order fields a client needs to render the message in its own language.</summary>
@@ -145,8 +148,9 @@ namespace WashGo.Application.Features.NotificationApplication.Services
         public async Task OrderCreatedAsync(WashOrder o)
         {
             await SendAsync([o.CustomerId], NotificationType.OrderCreated, "Đơn hàng đã được tạo",
-                $"Đơn hàng #{o.OrderCode} đã được tạo. Vui lòng đến {o.LockerName}, ô số {o.BoxNumber} để gửi đồ trong 30 phút.",
-                "order", o.Id, Msg("orderCreated.customer", o));
+                $"Đơn hàng #{o.OrderCode} đã được tạo. Vui lòng đến {o.LockerName}, ô số {o.BoxNumber} để gửi đồ trong {DepositMinutes(o)} phút.",
+                "order", o.Id, Msg("orderCreated.customer", o, ("depositMinutes", DepositMinutes(o).ToString()),
+                    ("depositDeadline", o.DepositDeadline?.ToString("O", CultureInfo.InvariantCulture))));
             await SendAsync([o.MerchantId], NotificationType.NewOrderForMerchant, "Đơn hàng mới",
                 $"Bạn có đơn hàng mới #{o.OrderCode} cần xử lý.", "order", o.Id, Msg("orderCreated.merchant", o));
         }
