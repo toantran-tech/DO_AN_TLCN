@@ -31,7 +31,12 @@ namespace WashGo.Application.Contracts.Features.ShipperContracts.Results
         /// <summary>false khi Rating = 0 (chưa có đánh giá); khi sắp xếp theo Rating các Shipper này luôn đứng cuối.</summary>
         public bool HasRating => Rating > 0;
         public string? IdentityNumber { get; set; }
+        /// <summary>Tương thích cũ: [mặt trước, mặt sau] khi đã rõ mặt, nếu không là mảng ảnh cũ.</summary>
         public List<string> IdentityImageUrls { get; set; } = [];
+        public string? IdentityFrontImageUrl { get; set; }
+        public string? IdentityBackImageUrl { get; set; }
+        /// <summary>None (chưa có ảnh), FrontBack (đủ hai mặt), Unspecified (ảnh cũ chưa xác định mặt, cần cập nhật lại).</summary>
+        public string IdentityImageSides { get; set; } = "None";
         public DateTime CreatedAt { get; set; }
     }
 }

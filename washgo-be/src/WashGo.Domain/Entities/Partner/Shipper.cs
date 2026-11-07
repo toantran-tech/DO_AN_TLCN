@@ -22,7 +22,11 @@ namespace WashGo.Domain.Entities.Partner
         public bool IsActive { get; set; } = true;
         public ShipperStatus Status { get; set; } = ShipperStatus.Available;
         public string? IdentityNumber { get; set; }
+        /// <summary>Ảnh giấy tờ cũ dạng mảng, không rõ mặt trước/sau (giữ tương thích).</summary>
         public string? IdentityImages { get; set; }
+        /// <summary>Ảnh mặt trước/mặt sau CMND/CCCD; luôn có đủ hai hoặc không có.</summary>
+        public string? IdentityFrontImageUrl { get; set; }
+        public string? IdentityBackImageUrl { get; set; }
         public int TotalDeliveries { get; set; }
         public decimal Rating { get; set; }
         /// <summary>Thời điểm và lý do khóa tài khoản (User.IsActive = false) gần nhất; null khi không bị khóa.</summary>

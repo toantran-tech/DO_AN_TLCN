@@ -14,8 +14,11 @@ namespace WashGo.Application.Contracts.Features.ShipperContracts.Commands
         public VehicleType VehicleType { get; set; } = VehicleType.Motorbike;
         public string? VehiclePlate { get; set; }
         public string? IdentityNumber { get; set; }
-        /// <summary>URL ảnh CMND/CCCD đã upload qua POST /files/images.</summary>
+        /// <summary>Cách cũ: URL ảnh CMND/CCCD không rõ mặt. Không dùng cùng identityFront/BackImageUrl.</summary>
         public List<string> IdentityImageUrls { get; set; } = [];
+        /// <summary>Ảnh mặt trước/mặt sau (upload qua POST /files/images); phải có đủ cả hai hoặc bỏ trống cả hai.</summary>
+        public string? IdentityFrontImageUrl { get; set; }
+        public string? IdentityBackImageUrl { get; set; }
     }
 
     /// <summary>Khóa (lý do bắt buộc) / mở khóa (lý do tùy chọn) tài khoản Shipper; tối đa 500 ký tự.</summary>
@@ -40,5 +43,13 @@ namespace WashGo.Application.Contracts.Features.ShipperContracts.Commands
         public string? VehiclePlate { get; set; }
         /// <summary>true = Đang làm việc, false = Tạm nghỉ (không được phân công).</summary>
         public bool IsActive { get; set; } = true;
+        /// <summary>Số CMND/CCCD: null = giữ nguyên, chuỗi rỗng = xóa.</summary>
+        public string? IdentityNumber { get; set; }
+        /// <summary>
+        /// Ảnh mặt trước/sau: null = giữ nguyên; chuỗi rỗng = xóa. Sau khi cập nhật phải có đủ hai mặt hoặc không có;
+        /// đặt ảnh hai mặt thì ảnh cũ không rõ mặt (identityImageUrls) được thay thế.
+        /// </summary>
+        public string? IdentityFrontImageUrl { get; set; }
+        public string? IdentityBackImageUrl { get; set; }
     }
 }
