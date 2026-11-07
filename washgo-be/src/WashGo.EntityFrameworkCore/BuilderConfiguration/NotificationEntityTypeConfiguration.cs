@@ -19,6 +19,9 @@ namespace WashGo.EntityFrameworkCore.BuilderConfiguration
             builder.Property(x => x.Title).HasMaxLength(200).IsRequired();
             builder.Property(x => x.Content).HasMaxLength(1000).IsRequired();
             builder.Property(x => x.LinkType).HasMaxLength(30);
+            builder.Property(x => x.MessageKey).HasMaxLength(100);
+            builder.Property(x => x.MessageArgs).HasColumnType("jsonb");
+            builder.HasIndex(x => new { x.UserId, x.Type });
             builder.HasIndex(x => new { x.UserId, x.IsDeleted, x.IsRead });
             builder.HasIndex(x => new { x.UserId, x.CreatedOn });
             builder.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);

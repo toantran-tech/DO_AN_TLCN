@@ -171,7 +171,7 @@ INSERT INTO washgo.services SELECT (jsonb_populate_record(NULL::washgo.services,
 
     Write-Output '7. Cancellation fee uses the pre-discount price; weighing keeps the discount'
     $late=New-PromoOrder $customer "$prefix-FIX"
-    Sql "UPDATE washgo.orders SET created_on=EXTRACT(EPOCH FROM NOW())::bigint-1860 WHERE id='$($late.id)';" | Out-Null
+    Sql "UPDATE washgo.orders SET created_on=EXTRACT(EPOCH FROM NOW())::bigint-1860,deposit_deadline=deposit_deadline-(created_on-(EXTRACT(EPOCH FROM NOW())::bigint-1860))*interval '1 second' WHERE id='$($late.id)';" | Out-Null
     $lateQuote=(Call-Api Get "/wash-order/$($late.id)/cancellation-quote" $null $customer).data
     if($lateQuote.basisAmount -ne 100000 -or $lateQuote.feeAmount -ne 30000){throw 'Cancellation basis must be TotalAmount before discount.'}
     $w=New-PromoOrder $customer "$prefix-FIX"

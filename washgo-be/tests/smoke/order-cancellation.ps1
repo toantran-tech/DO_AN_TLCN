@@ -115,7 +115,7 @@ INSERT INTO washgo.services SELECT (jsonb_populate_record(NULL::washgo.services,
 
     Write-Output '2. Late Pending 30%, payment failure/retry, fee separated from laundry'
     $o=New-CancelOrder;$id=$o.id
-    Sql "UPDATE washgo.orders SET created_on=EXTRACT(EPOCH FROM NOW())::bigint-1860 WHERE id='$id';" | Out-Null
+    Sql "UPDATE washgo.orders SET created_on=EXTRACT(EPOCH FROM NOW())::bigint-1860,deposit_deadline=deposit_deadline-(created_on-(EXTRACT(EPOCH FROM NOW())::bigint-1860))*interval '1 second' WHERE id='$id';" | Out-Null
     $quote=(Call-Api Get "/wash-order/$id/cancellation-quote" $null $customer).data
     if($quote.feeAmount -ne 30000){throw 'Late Pending quote wrong.'}
     $result=(Call-Api Post "/wash-order/$id/cancel" @{reason='Late Pending';cancelFeeAmount=1} $customer).data
@@ -168,7 +168,7 @@ INSERT INTO washgo.services SELECT (jsonb_populate_record(NULL::washgo.services,
     Write-Output '6. Legacy prepaid Pending: refund only balance after fee, no duplicate refund'
     $o=New-CancelOrder;$id=$o.id;$transactionId=[Guid]::NewGuid()
     Sql @"
-UPDATE washgo.orders SET payment_status=2,created_on=EXTRACT(EPOCH FROM NOW())::bigint-1860 WHERE id='$id';
+UPDATE washgo.orders SET payment_status=2,created_on=EXTRACT(EPOCH FROM NOW())::bigint-1860,deposit_deadline=deposit_deadline-(created_on-(EXTRACT(EPOCH FROM NOW())::bigint-1860))*interval '1 second' WHERE id='$id';
 INSERT INTO washgo.payment_transactions SELECT (jsonb_populate_record(NULL::washgo.payment_transactions,to_jsonb(t)||jsonb_build_object(
 'id','$transactionId','order_id','$id','transaction_reference','CANCEL_LEGACY_$transactionId','amount',100000,'status',2,'purpose',1))).*
 FROM washgo.payment_transactions t WHERE transaction_reference='$($pay.transactionReference)';

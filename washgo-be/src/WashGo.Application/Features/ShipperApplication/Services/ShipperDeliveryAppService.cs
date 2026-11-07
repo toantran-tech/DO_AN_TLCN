@@ -53,7 +53,9 @@ namespace WashGo.Application.Features.ShipperApplication.Services
             var page = Math.Max(1, query.Page);
             var take = Math.Clamp(query.Take, 1, 100);
             var total = await AsyncExecuter.CountAsync(entries);
+            // Timestamps are whole seconds: a collect and a return in the same second keep the flow order (return first).
             var rows = await AsyncExecuter.ToListAsync(entries.OrderByDescending(x => x.Timestamp)
+                .ThenByDescending(x => x.Status == WashOrderStatus.Collected ? 0 : 1).ThenByDescending(x => x.Id)
                 .Skip((page - 1) * take).Take(take));
 
             var orderIds = rows.Select(x => x.WashOrderId).Distinct().ToList();

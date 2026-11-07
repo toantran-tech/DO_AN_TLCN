@@ -22,6 +22,7 @@ namespace WashGo.Domain.Entities.Feedback
         public int? PackagingStars { get; set; }
         public string? Comment { get; set; }
         public List<string> ImageUrls { get; set; } = [];
+        public List<string> VideoUrls { get; set; } = [];
         public bool IsHidden { get; set; }
         public string? HiddenReason { get; set; }
         public Guid? HiddenBy { get; set; }

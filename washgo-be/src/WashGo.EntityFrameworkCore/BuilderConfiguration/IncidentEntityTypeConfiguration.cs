@@ -24,6 +24,9 @@ namespace WashGo.EntityFrameworkCore.BuilderConfiguration
             builder.Property(x => x.ItemValue).HasPrecision(18, 2);
             builder.Property(x => x.CompensationAmount).HasPrecision(18, 2);
             builder.Property(x => x.CompensationReference).HasMaxLength(120);
+            builder.Property(x => x.ClientRequestId).HasMaxLength(64);
+            builder.Property(x => x.WithdrawReason).HasMaxLength(500);
+            builder.HasIndex(x => new { x.CustomerId, x.ClientRequestId }).IsUnique().HasFilter("client_request_id IS NOT NULL");
             builder.HasIndex(x => x.OrderId);
             builder.HasIndex(x => x.CustomerId);
             builder.HasIndex(x => new { x.Status, x.Severity });

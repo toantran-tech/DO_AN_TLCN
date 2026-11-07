@@ -14,6 +14,8 @@ namespace WashGo.Application.Contracts.Features.FeedbackContracts.Commands
         public int? PackagingStars { get; set; }
         public string? Comment { get; set; }
         public List<string> ImageUrls { get; set; } = [];
+        /// <summary>Video MP4/WEBM/MOV đã upload qua /files/videos (tối đa 2).</summary>
+        public List<string> VideoUrls { get; set; } = [];
     }
 
     public class SetRatingVisibilityCommand
@@ -29,6 +31,33 @@ namespace WashGo.Application.Contracts.Features.FeedbackContracts.Commands
         public IncidentSeverity Severity { get; set; }
         public string Description { get; set; } = string.Empty;
         public List<string> ImageUrls { get; set; } = [];
+        /// <summary>Video MP4/WEBM/MOV đã upload qua /files/videos (tối đa 2).</summary>
+        public List<string> VideoUrls { get; set; } = [];
+        /// <summary>Mã do client sinh (tối đa 64 ký tự); gửi lại cùng mã trả về khiếu nại đã tạo, không tạo trùng.</summary>
+        public string? ClientRequestId { get; set; }
+    }
+
+    /// <summary>Khách sửa khiếu nại khi còn chờ xử lý; thay toàn bộ mô tả và minh chứng.</summary>
+    public class UpdateIncidentCommand
+    {
+        public IncidentType Type { get; set; }
+        public IncidentSeverity Severity { get; set; }
+        public string Description { get; set; } = string.Empty;
+        public List<string> ImageUrls { get; set; } = [];
+        public List<string> VideoUrls { get; set; } = [];
+    }
+
+    public class WithdrawIncidentCommand
+    {
+        public string? Reason { get; set; }
+    }
+
+    /// <summary>Tin nhắn trao đổi trong khiếu nại, có thể kèm minh chứng bổ sung.</summary>
+    public class AddIncidentMessageCommand
+    {
+        public string Content { get; set; } = string.Empty;
+        public List<string> ImageUrls { get; set; } = [];
+        public List<string> VideoUrls { get; set; } = [];
     }
 
     public class ResolveIncidentCommand
