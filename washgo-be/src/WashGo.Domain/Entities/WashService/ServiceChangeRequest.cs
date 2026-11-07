@@ -16,6 +16,10 @@ namespace WashGo.Domain.Entities.WashService
         public Guid? ServiceId { get; set; }
         public ServiceChangeRequestType RequestType { get; set; }
         public string ProposedData { get; set; } = "{}";
+        /// <summary>Tên dịch vụ đề xuất (bản sao từ ProposedData) để tìm kiếm.</summary>
+        public string ProposedName { get; set; } = string.Empty;
+        /// <summary>Mã yêu cầu FE sinh (Idempotency-Key): gửi lại trả đề xuất đã tạo.</summary>
+        public Guid? ClientRequestId { get; set; }
         public string? CurrentData { get; set; }
         public string? Reason { get; set; }
         public ServiceApprovalStatus Status { get; set; } = ServiceApprovalStatus.Pending;

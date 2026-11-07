@@ -13,6 +13,7 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Services
     {
         Task<PaginatedResult<WashOrderResultDto>> GetListAsync(WashOrderFilterQuery query);
         Task<PaginatedResult<WashOrderResultDto>> GetMyOrdersAsync(WashOrderFilterQuery query);
+        Task<BaseResponse<WashOrderSummaryDto>> GetSummaryAsync(WashOrderFilterQuery query);
         Task<BaseResponse<WashOrderDetailDto>> GetByIdAsync(Guid id);
         Task<BaseResponse<WashOrderDetailDto>> CreateAsync(CreateWashOrderCommand command);
         Task<BaseResponse<VoucherQuoteDto>> ApplyVoucherAsync(ApplyVoucherCommand command);
@@ -23,6 +24,7 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Services
         Task<BaseResponse<WashOrderDetailDto>> MoveToStorageAsync(MoveOrderToStorageCommand command);
         Task<BaseResponse<WashOrderDetailDto>> AssignShipperAsync(AssignShipperCommand command);
         Task<BaseResponse<List<AvailableShipperDto>>> GetAvailableShippersAsync(Guid orderId);
+        Task<BaseResponse<OrderOperationDto>> GetOperationAsync(Guid orderId, Guid operationId);
         Task<BaseResponse<List<ColumnFilterDistinctValueDto>>> GetColumnDistinctValuesAsync(string fieldName, WashOrderFilterQuery query);
 
         // QR/PIN simulation operations

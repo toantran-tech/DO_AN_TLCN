@@ -22,7 +22,14 @@ namespace WashGo.HttpApi.Endpoints.WashOrder
                 (await svc.GetListAsync(request)).CustomResult())
                 .RequireAuthorization("OrderStatusUpdater")
                 .WithName("Lọc danh sách đơn WashGo")
-                .WithSummary("Lọc và phân trang đơn hàng trong phạm vi quyền của Admin, Merchant hoặc Shipper.")
+                .WithSummary("Lọc và phân trang đơn hàng trong phạm vi quyền của Admin, Merchant hoặc Shipper. keyword tìm mã đơn WashGo hoặc mã nội bộ Merchant; fromDate/toDate là Unix giây (ngày tạo đơn, tính cả hai đầu), khoảng ngược trả 400.")
+                .WithOpenApi();
+
+            group.MapPost("/summary", async (WashOrderFilterQuery request, IWashOrderAppService svc) =>
+                (await svc.GetSummaryAsync(request)).CustomResult())
+                .RequireAuthorization("OrderStatusUpdater")
+                .WithName("Thống kê đơn theo bộ lọc")
+                .WithSummary("Tổng và số đơn từng trạng thái trong một lần đếm, theo cùng keyword/paymentStatus/fromDate/toDate của danh sách (không áp dụng status, trang, sắp xếp). Merchant chỉ thấy đơn của tiệm mình.")
                 .WithOpenApi();
 
             group.MapPost("/mine", async (WashOrderFilterQuery request, IWashOrderAppService svc) =>
@@ -86,18 +93,18 @@ namespace WashGo.HttpApi.Endpoints.WashOrder
                 .WithSummary("Customer hủy Pending, Deposited hoặc Collected đã cân; tính phí và hoàn tiền, giữ ô đang có đồ đến khi nhận lại.")
                 .WithOpenApi();
 
-            group.MapPut("/status", async (UpdateWashOrderStatusCommand command, IWashOrderAppService svc) =>
-                (await svc.UpdateStatusAsync(command)).CustomResult())
+            group.MapPut("/status", async (UpdateWashOrderStatusCommand command, HttpContext http, IWashOrderAppService svc) =>
+                (await svc.UpdateStatusAsync(OrderWriteHeaders.Apply(command, http))).CustomResult())
                 .RequireAuthorization("OrderStatusUpdater")
                 .WithName("Cập nhật trạng thái đơn")
-                .WithSummary("Cập nhật trạng thái vận hành đơn theo quyền; không cho chuyển sang đã thanh toán hoặc đã hủy.")
+                .WithSummary("Cập nhật trạng thái vận hành đơn theo quyền; không cho chuyển sang đã thanh toán hoặc đã hủy. Tùy chọn expectedRevision (If-Match)/expectedStatus: lệch thì 409 kèm đơn hiện tại; operationId (Idempotency-Key): gửi lại không thực hiện lại.")
                 .WithOpenApi();
 
-            group.MapPut("/{id:guid}/actual-weight", async (Guid id, UpdateActualWeightCommand command, IWashOrderAppService svc) =>
-                (await svc.UpdateActualWeightAsync(id, command)).CustomResult())
+            group.MapPut("/{id:guid}/actual-weight", async (Guid id, UpdateActualWeightCommand command, HttpContext http, IWashOrderAppService svc) =>
+                (await svc.UpdateActualWeightAsync(id, OrderWriteHeaders.Apply(command, http))).CustomResult())
                 .RequireAuthorization("MerchantOnly")
                 .WithName("Merchant cập nhật cân nặng thực tế và chốt giá")
-                .WithSummary("Merchant cân đồ đã thu gom, tính lại giá và thời gian dự kiến; đơn giữ trạng thái Collected.")
+                .WithSummary("Merchant cân đồ đã thu gom, tính lại giá và thời gian dự kiến; đơn giữ trạng thái Collected. Hỗ trợ expectedRevision/expectedStatus (409) và operationId như PUT /status.")
                 .WithOpenApi();
 
             group.MapPost("/move-to-storage", async (MoveOrderToStorageCommand command, IWashOrderAppService svc) =>
@@ -107,11 +114,18 @@ namespace WashGo.HttpApi.Endpoints.WashOrder
                 .WithSummary("Shipper hoặc Admin ghi nhận chuyển đồ quá hạn khỏi locker sang kho.")
                 .WithOpenApi();
 
-            group.MapPut("/assign-shipper", async (AssignShipperCommand command, IWashOrderAppService svc) =>
-                (await svc.AssignShipperAsync(command)).CustomResult())
+            group.MapPut("/assign-shipper", async (AssignShipperCommand command, HttpContext http, IWashOrderAppService svc) =>
+                (await svc.AssignShipperAsync(OrderWriteHeaders.Apply(command, http))).CustomResult())
                 .RequireAuthorization("MerchantOrAdmin")
                 .WithName("Phân công Shipper cho đơn")
-                .WithSummary("Merchant hoặc Admin phân công riêng chuyến lấy đồ hoặc chuyến trả đồ theo trạng thái đơn.")
+                .WithSummary("Merchant hoặc Admin phân công riêng chuyến lấy đồ hoặc chuyến trả đồ theo trạng thái đơn. Hỗ trợ expectedRevision/expectedStatus (409) và operationId như PUT /status.")
+                .WithOpenApi();
+
+            group.MapGet("/{id:guid}/operations/{operationId:guid}", async (Guid id, Guid operationId, IWashOrderAppService svc) =>
+                (await svc.GetOperationAsync(id, operationId)).CustomResult())
+                .RequireAuthorization("MerchantOrAdmin")
+                .WithName("Tra cứu kết quả thao tác trên đơn")
+                .WithSummary("Sau timeout/lỗi mạng: tra theo operationId đã gửi xem thao tác status/actual-weight/assign-shipper đã thực hiện chưa; 404 = chưa thực hiện, có thể gửi lại cùng operationId.")
                 .WithOpenApi();
 
             group.MapGet("/{id:guid}/available-shippers", async (Guid id, IWashOrderAppService svc) =>

@@ -6,6 +6,7 @@ using System.Text;
 using System.Threading.Tasks;
 using Volo.Abp.Domain.Repositories;
 using Volo.Abp.Uow;
+using WashGo.Application.Contracts.Features.MerchantContracts.Results;
 using WashGo.Application.Contracts.Features.WashOrderContracts.Commands;
 using WashGo.Application.Contracts.Features.WashOrderContracts.Queries;
 using WashGo.Application.Contracts.Features.WashOrderContracts.Results;
@@ -52,6 +53,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
         private readonly OrderListEnricher _enricher;
         private readonly EtaPredictor _eta;
         private readonly LockerMerchantResolver _lockerMerchants;
+        private readonly OrderWriteGuard _writeGuard;
+        private readonly DeliveryTaskRecorder _taskRecorder;
 
         public WashOrderAppService(
             IWashOrderRepository orderRepo,
@@ -70,7 +73,9 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             SystemSettingProvider settings,
             OrderListEnricher enricher,
             EtaPredictor eta,
-            LockerMerchantResolver lockerMerchants)
+            LockerMerchantResolver lockerMerchants,
+            OrderWriteGuard writeGuard,
+            DeliveryTaskRecorder taskRecorder)
         {
             _orderRepo = orderRepo;
             _lockerRepo = lockerRepo;
@@ -89,6 +94,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             _enricher = enricher;
             _eta = eta;
             _lockerMerchants = lockerMerchants;
+            _writeGuard = writeGuard;
+            _taskRecorder = taskRecorder;
         }
 
         private readonly record struct OrderScope(string Role, Guid Id);
@@ -187,45 +194,60 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             return dto;
         }
 
+        // Shared by the list and the summary: scope first, then the list filters (status only for the list).
+        private static IQueryable<WashOrder> ApplyListFilters(IQueryable<WashOrder> q, WashOrderFilterQuery query,
+            OrderScope scope, bool includeStatus)
+        {
+            var isStaff = scope.Role is "Merchant" or "Shipper";
+            q = ApplyScope(q, scope);
+            if (includeStatus && query.Status.HasValue)
+                q = q.Where(x => x.Status == query.Status.Value);
+            if (query.PaymentStatus.HasValue)
+                q = q.Where(x => x.PaymentStatus == query.PaymentStatus.Value);
+            if (query.LockerId.HasValue)
+                q = q.Where(x => x.LockerId == query.LockerId.Value);
+            if (query.CustomerId.HasValue)
+                q = q.Where(x => x.CustomerId == query.CustomerId.Value);
+            if (query.ShipperId.HasValue)
+                q = q.Where(x => x.ShipperId == query.ShipperId.Value);
+            if (query.MerchantId.HasValue)
+                q = q.Where(x => x.MerchantId == query.MerchantId.Value);
+            if (query.TaskType.HasValue)
+                q = q.Where(x => x.AssignedTaskType == query.TaskType.Value);
+            if (query.PendingOnly == true)
+                q = DeliveryTaskRules.ActiveDeliveries(q);
+            if (!string.IsNullOrWhiteSpace(query.Keyword))
+            {
+                var kw = query.Keyword.Trim().ToLower();
+                q = q.Where(x => x.OrderCode.ToLower().Contains(kw) ||
+                                 x.MerchantOrderCode != null && x.MerchantOrderCode.ToLower().Contains(kw) || !isStaff && (
+                                 x.CustomerName.ToLower().Contains(kw) ||
+                                 x.CustomerPhoneNumber.Contains(kw)));
+            }
+            return q;
+        }
+
+        private static void RestrictStaffQuery(WashOrderFilterQuery query, OrderScope scope)
+        {
+            if (scope.Role is not ("Merchant" or "Shipper"))
+                return;
+            query.CustomerId = null;
+            query.ColumnFilters = query.ColumnFilters.Where(x => IsStaffField(x.Field)).ToList();
+            query.SortBy = query.SortBy.Where(x => IsStaffField(x.Field)).ToArray();
+        }
+
         public async Task<PaginatedResult<WashOrderResultDto>> GetListAsync(WashOrderFilterQuery query)
         {
             var scope = await GetOrderScopeAsync();
-            var isStaff = scope.Role is "Merchant" or "Shipper";
-            if (isStaff)
-            {
-                query.CustomerId = null;
-                query.ColumnFilters = query.ColumnFilters.Where(x => IsStaffField(x.Field)).ToList();
-                query.SortBy = query.SortBy.Where(x => IsStaffField(x.Field)).ToArray();
-            }
-            var (data, total) = await _orderRepo.FilterProjectedDataAsync<WashOrderResultDto>(
-                filterFunc: q =>
+            if (query.DateRangeError() is { } dateError)
+                return new PaginatedResult<WashOrderResultDto>
                 {
-                    q = ApplyScope(q, scope);
-                    if (query.Status.HasValue)
-                        q = q.Where(x => x.Status == query.Status.Value);
-                    if (query.PaymentStatus.HasValue)
-                        q = q.Where(x => x.PaymentStatus == query.PaymentStatus.Value);
-                    if (query.LockerId.HasValue)
-                        q = q.Where(x => x.LockerId == query.LockerId.Value);
-                    if (query.CustomerId.HasValue)
-                        q = q.Where(x => x.CustomerId == query.CustomerId.Value);
-                    if (query.ShipperId.HasValue)
-                        q = q.Where(x => x.ShipperId == query.ShipperId.Value);
-                    if (query.MerchantId.HasValue)
-                        q = q.Where(x => x.MerchantId == query.MerchantId.Value);
-                    if (query.TaskType.HasValue)
-                        q = q.Where(x => x.AssignedTaskType == query.TaskType.Value);
-                    if (query.PendingOnly == true)
-                        q = DeliveryTaskRules.ActiveDeliveries(q);
-                    if (!string.IsNullOrWhiteSpace(query.Keyword))
-                    {
-                        var kw = query.Keyword.Trim().ToLower();
-                        q = q.Where(x => x.OrderCode.ToLower().Contains(kw) || !isStaff && (
-                                         x.CustomerName.ToLower().Contains(kw) ||
-                                         x.CustomerPhoneNumber.Contains(kw)));
-                    }
-                    return q;
-                },
+                    Succeeded = false, StatusCode = System.Net.HttpStatusCode.BadRequest, Message = dateError,
+                    CurrentPage = query.Page, PageSize = query.Take
+                };
+            RestrictStaffQuery(query, scope);
+            var (data, total) = await _orderRepo.FilterProjectedDataAsync<WashOrderResultDto>(
+                filterFunc: q => ApplyListFilters(q, query, scope, includeStatus: true),
                 parameters: query,
                 defaultOrder: q => q.OrderByDescending(x => x.CreatedOn)
             );
@@ -248,6 +270,44 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             return GetListAsync(query);
         }
 
+        public async Task<BaseResponse<WashOrderSummaryDto>> GetSummaryAsync(WashOrderFilterQuery query)
+        {
+            var scope = await GetOrderScopeAsync();
+            if (scope.Role is "None" or "Customer")
+                return NotFound<WashOrderSummaryDto>("Không tìm thấy dữ liệu được phép xem.");
+            if (query.DateRangeError() is { } dateError)
+                return BadRequest<WashOrderSummaryDto>(dateError);
+            RestrictStaffQuery(query, scope);
+            var q = ApplyListFilters(await _orderRepo.GetQueryableAsync(), query, scope, includeStatus: false);
+            if (query.FromDate > 0)
+                q = q.Where(x => x.CreatedOn >= query.FromDate);
+            if (query.ToDate > 0)
+                q = q.Where(x => x.CreatedOn <= query.ToDate);
+
+            // One grouped query: the total and every status count come from the same snapshot.
+            var rows = await AsyncExecuter.ToListAsync(q.GroupBy(x => x.Status)
+                .Select(g => new { Status = g.Key, Count = g.Count() }));
+            var counts = rows.ToDictionary(x => x.Status, x => x.Count);
+            int C(WashOrderStatus status) => counts.GetValueOrDefault(status);
+            return Success(new WashOrderSummaryDto
+            {
+                Total = rows.Sum(x => x.Count),
+                StatusCounts = new MerchantStatusCountsDto
+                {
+                    Pending = C(WashOrderStatus.Pending), Deposited = C(WashOrderStatus.Deposited),
+                    Collected = C(WashOrderStatus.Collected), Washing = C(WashOrderStatus.Washing),
+                    Drying = C(WashOrderStatus.Drying), Ironing = C(WashOrderStatus.Ironing),
+                    Folding = C(WashOrderStatus.Folding), AwaitingPayment = C(WashOrderStatus.AwaitingPayment),
+                    Paid = C(WashOrderStatus.Paid), ReadyToReturn = C(WashOrderStatus.ReadyToReturn),
+                    Returned = C(WashOrderStatus.Returned), Completed = C(WashOrderStatus.Completed),
+                    MovedToStorage = C(WashOrderStatus.MovedToStorage), Cancelled = C(WashOrderStatus.Cancelled)
+                },
+                FromDate = query.FromDate,
+                ToDate = query.ToDate,
+                GeneratedAt = DateTime.UtcNow
+            });
+        }
+
         public async Task<BaseResponse<WashOrderDetailDto>> GetByIdAsync(Guid id)
         {
             var order = await _orderRepo.GetWithDetailsAsync(id);
@@ -268,6 +328,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             await _eta.FillAsync(dto);
             if (scope.Role is "Shipper" or "Merchant" or "Admin")
                 await _enricher.FillTaskAsync(dto);
+            dto.AllowedActions = OrderActionRules.Build(order, scope.Role);
             return Success(RedactStaffData(dto, scope));
         }
 
@@ -712,6 +773,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 Note = $"Khách hủy đơn; phí {percent}% = {fee:N0}đ; lý do: {reason}. Vị trí đồ: {order.CancelledGoodsStatus}."
             });
             await _orderRepo.UpdateAsync(order, autoSave: true);
+            if (voidedTaskShipperId.HasValue)
+                await _taskRecorder.CancelledAsync(order.Id, now);
             await _notifications.CancelledAsync(order, voidedTaskShipperId);
             await uow.CompleteAsync();
             return Success(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order),
@@ -729,14 +792,14 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             var order = await _orderRepo.GetWithDetailsAsync(orderId);
             if (order == null || scope.Role != "Merchant" || !CanAccess(order, scope))
                 return NotFound<WashOrderDetailDto>("Không tìm thấy đơn hàng thuộc tiệm để cập nhật cân nặng.");
-            if (order.Status != WashOrderStatus.Collected || order.PaymentStatus != PaymentStatus.Unpaid)
-                return BadRequest<WashOrderDetailDto>("Chỉ cân và chốt giá khi đơn đã lấy về tiệm, chưa bắt đầu giặt và chưa thanh toán.");
-            if (order.IncludedWeightKg is null || order.BaseProcessingHours is null)
-                return BadRequest<WashOrderDetailDto>("Đơn cũ chưa có thông tin giá gói; không tự áp dụng quy tắc mới để đổi giá đơn này.");
-            if (order.IncludedWeightKg <= 0 || !order.Items.Any(x => x.IsWeightBased))
-                return BadRequest<WashOrderDetailDto>("Đơn chỉ có dịch vụ theo chiếc/đôi, không áp dụng chốt giá theo kg.");
+            var weightRequest = FormattableString.Invariant($"weightKg={command.WeightKg:0.##}");
+            if (await GuardAsync(order, scope, command, "UpdateWeight", weightRequest) is { } stop)
+                return stop;
+            if (OrderActionRules.Weigh(order, scope.Role) is { } blocked)
+                return BadRequest<WashOrderDetailDto>(blocked.Message);
             if (order.ActualWeightKg == command.WeightKg)
             {
+                await _writeGuard.RecordAsync(order, CurrentUser.Id!.Value, command, "UpdateWeight", weightRequest);
                 await uow.CompleteAsync();
                 return Success(RedactStaffData(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), scope),
                     "Khối lượng này đã được chốt trước đó.");
@@ -762,6 +825,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 Note = $"Chốt {command.WeightKg:0.##} kg; vượt {pricing.ExcessWeightKg:0.##} kg; phụ phí {pricing.SurchargeAmount:0.##}đ; giá cuối {finalAmount:0.##}đ. Thanh toán sau khi giặt xong."
             });
             await _orderRepo.UpdateAsync(order, autoSave: true);
+            await _writeGuard.RecordAsync(order, CurrentUser.Id!.Value, command, "UpdateWeight", weightRequest);
             await uow.CompleteAsync();
             return Success(RedactStaffData(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), scope),
                 "Đã chốt cân nặng, giá và ETA. Đơn tiếp tục xử lý giặt; khách thanh toán sau khi giặt xong.");
@@ -785,24 +849,13 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             {
                 return NotFound<WashOrderDetailDto>("Không tìm thấy đơn hàng được phép cập nhật.");
             }
-
-            if (scope.Role is not ("Merchant" or "Admin"))
-                return BadRequest<WashOrderDetailDto>("Chỉ Merchant hoặc Admin được cập nhật các bước xử lý giặt.");
-
-            if (scope.Role == "Merchant" && command.NewStatus is not
-                (WashOrderStatus.Washing or WashOrderStatus.Drying or WashOrderStatus.Ironing or
-                 WashOrderStatus.Folding or WashOrderStatus.AwaitingPayment))
-                return BadRequest<WashOrderDetailDto>("Vai trò hiện tại không được thực hiện bước này.");
+            var statusRequest = $"status={(int)command.NewStatus}";
+            if (await GuardAsync(order, scope, command, "UpdateStatus", statusRequest) is { } stop)
+                return stop;
 
             var previousStatus = order.Status;
-            if (order.IncludedWeightKg > 0 && !order.ActualWeightKg.HasValue &&
-                command.NewStatus is WashOrderStatus.Washing or WashOrderStatus.AwaitingPayment)
-                return BadRequest<WashOrderDetailDto>("Merchant cần cập nhật số kg thực tế và chốt giá trước khi giặt hoặc yêu cầu thanh toán.");
-            if (!IsValidTransition(previousStatus, command.NewStatus))
-            {
-                return BadRequest<WashOrderDetailDto>(
-                    $"Không thể chuyển trạng thái từ {previousStatus} sang {command.NewStatus}.");
-            }
+            if (OrderActionRules.StatusChange(order, scope.Role, command.NewStatus) is { } blocked)
+                return BadRequest<WashOrderDetailDto>(blocked.Message);
 
             if (!await _orderRepo.TryChangeStatusAsync(order.Id, previousStatus, command.NewStatus))
                 return BadRequest<WashOrderDetailDto>("Đơn hàng vừa đổi trạng thái; vui lòng tải lại trước khi cập nhật.");
@@ -823,6 +876,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             });
 
             await _orderRepo.UpdateAsync(order, autoSave: true);
+            await _writeGuard.RecordAsync(order, CurrentUser.Id!.Value, command, "UpdateStatus", statusRequest);
             await _notifications.ProcessingAsync(order);
             await uow.CompleteAsync();
             var result = ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order);
@@ -897,12 +951,12 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             {
                 return NotFound<WashOrderDetailDto>("Không tìm thấy đơn hàng được phép phân công.");
             }
+            var assignRequest = $"shipperId={command.ShipperId}";
+            if (await GuardAsync(order, scope, command, "AssignShipper", assignRequest) is { } stop)
+                return stop;
 
-            if (order.MerchantId == null)
-                return BadRequest<WashOrderDetailDto>("Đơn chưa được Admin phân công cho Merchant.");
-            var task = GetAssignableTask(order);
-            if (!task.HasValue)
-                return BadRequest<WashOrderDetailDto>("Chỉ phân công khi đơn đã gửi đồ hoặc đã thanh toán và chờ mang đồ về tủ.");
+            if (OrderActionRules.Assign(order, scope.Role, out var task) is { } blocked)
+                return BadRequest<WashOrderDetailDto>(blocked.Message);
             var note = string.IsNullOrWhiteSpace(command.Note) ? null : command.Note.Trim();
             if (note?.Length > 500)
                 return BadRequest<WashOrderDetailDto>("Ghi chú cho Shipper tối đa 500 ký tự.");
@@ -939,6 +993,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                         order.ShipperNote = note;
                     await _orderRepo.UpdateAsync(order, autoSave: true);
                 }
+                await _writeGuard.RecordAsync(order, CurrentUser.Id!.Value, command, "AssignShipper", assignRequest);
                 await uow.CompleteAsync();
                 return Success(RedactStaffData(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), scope),
                     "Shipper đã được phân công cho nhiệm vụ này.");
@@ -948,6 +1003,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             order.ShipperName = user.FullName;
             order.AssignedTaskType = task;
             order.ShipperAssignedAt = DateTime.UtcNow;
+            await _taskRecorder.AssignedAsync(order, shipper.Id, task!.Value, CurrentUser.Id, order.ShipperAssignedAt.Value);
             order.ShipperNote = note;
             order.ShipperTaskPinCode = taskPin;
             order.ShipperTaskQrString = taskQr;
@@ -966,10 +1022,54 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             });
 
             await _orderRepo.UpdateAsync(order, autoSave: true);
+            await _writeGuard.RecordAsync(order, CurrentUser.Id!.Value, command, "AssignShipper", assignRequest);
             await _notifications.ShipperAssignedAsync(order, order.AssignedTaskType ?? DeliveryTaskType.Collect);
             await uow.CompleteAsync();
             var result = ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order);
             return Success(RedactStaffData(result, scope), "Phân công Shipper thành công!");
+        }
+
+        // Replay or 409 (with the current order) before any rule runs; null = go on with the write.
+        private async Task<BaseResponse<WashOrderDetailDto>?> GuardAsync(WashOrder order, OrderScope scope,
+            GuardedOrderCommand command, string operation, string request)
+        {
+            var decision = await _writeGuard.CheckAsync(order, CurrentUser.Id ?? Guid.Empty, command, operation, request);
+            if (decision.Outcome == OrderWriteGuard.Outcome.Proceed)
+                return null;
+            if (decision.Outcome == OrderWriteGuard.Outcome.Invalid)
+                return BadRequest<WashOrderDetailDto>(decision.Message!);
+            var dto = RedactStaffData(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), scope);
+            dto.AllowedActions = OrderActionRules.Build(order, scope.Role);
+            var replay = decision.Outcome == OrderWriteGuard.Outcome.Replay;
+            return new BaseResponse<WashOrderDetailDto>
+            {
+                Succeeded = replay,
+                StatusCode = replay ? System.Net.HttpStatusCode.OK : System.Net.HttpStatusCode.Conflict,
+                Data = dto,
+                Message = decision.Message,
+                Meta = new OrderWriteMetaDto
+                {
+                    Code = decision.Code!, Replayed = replay, OperationId = command.OperationId,
+                    ResultRevision = decision.Previous?.ResultRevision, CurrentRevision = order.Revision,
+                    CurrentStatus = order.Status
+                }
+            };
+        }
+
+        public async Task<BaseResponse<OrderOperationDto>> GetOperationAsync(Guid orderId, Guid operationId)
+        {
+            var scope = await GetOrderScopeAsync();
+            var operation = await _writeGuard.FindAsync(operationId);
+            var order = operation == null ? null : await _orderRepo.FindAsync(orderId);
+            if (operation == null || order == null || operation.OrderId != orderId || !CanAccess(order, scope) ||
+                scope.Role != "Admin" && operation.ActorId != CurrentUser.Id)
+                return NotFound<OrderOperationDto>("Không tìm thấy thao tác này: yêu cầu chưa tới server hoặc đã thất bại, có thể gửi lại cùng operationId.");
+            return Success(new OrderOperationDto
+            {
+                OperationId = operation.Id, OrderId = order.Id, Operation = operation.Operation, Request = operation.Request,
+                CreatedAt = operation.CreatedAt, ResultStatus = operation.ResultStatus, ResultRevision = operation.ResultRevision,
+                CurrentStatus = order.Status, CurrentRevision = order.Revision
+            });
         }
 
         public async Task<BaseResponse<List<AvailableShipperDto>>> GetAvailableShippersAsync(Guid orderId)
@@ -978,7 +1078,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             var order = await _orderRepo.FindAsync(orderId);
             if (order == null || scope.Role is not ("Admin" or "Merchant") || !CanAccess(order, scope))
                 return NotFound<List<AvailableShipperDto>>("Không tìm thấy đơn hàng được phép phân công.");
-            var task = GetAssignableTask(order);
+            var task = OrderActionRules.AssignableTask(order);
             if (!task.HasValue)
                 return BadRequest<List<AvailableShipperDto>>("Đơn chưa ở giai đoạn phân công giao nhận.");
 
@@ -996,7 +1096,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                              orderby user.FullName, shipper.Id
                              select new AvailableShipperDto
                              {
-                                 Id = shipper.Id, FullName = user.FullName, Phone = user.Phone,
+                                 Id = shipper.Id, FullName = user.FullName, AvatarUrl = user.Avatar, Phone = user.Phone,
                                  VehicleType = shipper.VehicleType, VehiclePlate = shipper.VehiclePlate,
                                  Rating = shipper.Rating, ActiveDeliveryCount = activeOrders.Count(x => x.ShipperId == shipper.Id),
                                  TaskType = task.Value
@@ -1160,6 +1260,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             var previousStatus = order.Status;
             order.Status = WashOrderStatus.Collected;
             await CountDeliveryAsync(order.ShipperId);
+            await _taskRecorder.CompletedAsync(order, DeliveryTaskType.Collect, DateTime.UtcNow);
             order.TaskPinAttemptCount = 0;
             order.TaskPinLockoutUntil = null;
 
@@ -1299,6 +1400,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             order.Status = cancelledReturn ? WashOrderStatus.Cancelled : WashOrderStatus.ReadyToReturn;
             if (cancelledReturn) order.CancelledGoodsStatus = CancelledGoodsStatus.AtReturnLocker;
             await CountDeliveryAsync(order.ShipperId);
+            await _taskRecorder.CompletedAsync(order, DeliveryTaskType.Return, DateTime.UtcNow);
             order.PickupDeadline = cancelledReturn ? null : DateTime.UtcNow.AddHours(returnSettings.FreePickupHours);
             order.TaskPinAttemptCount = 0;
             order.TaskPinLockoutUntil = null;
@@ -1660,14 +1762,6 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             return (false, 0);
         }
 
-        private static DeliveryTaskType? GetAssignableTask(WashOrder order) => order.Status switch
-        {
-            WashOrderStatus.Deposited => DeliveryTaskType.Collect,
-            WashOrderStatus.Paid when order.PaymentStatus == PaymentStatus.Paid => DeliveryTaskType.Return,
-            WashOrderStatus.Cancelled when order.CancelledGoodsStatus == CancelledGoodsStatus.AtMerchant => DeliveryTaskType.Return,
-            _ => null
-        };
-
         private async Task CountDeliveryAsync(Guid? shipperId)
         {
             if (!shipperId.HasValue) return;
@@ -1675,19 +1769,6 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             if (shipper == null) return;
             shipper.TotalDeliveries++;
             await _shipperRepo.UpdateAsync(shipper, autoSave: true);
-        }
-
-        private static bool IsValidTransition(WashOrderStatus current, WashOrderStatus next)
-        {
-            return current switch
-            {
-                WashOrderStatus.Collected => next == WashOrderStatus.Washing,
-                WashOrderStatus.Washing => next is WashOrderStatus.Drying or WashOrderStatus.Ironing or WashOrderStatus.Folding or WashOrderStatus.AwaitingPayment,
-                WashOrderStatus.Drying => next is WashOrderStatus.Ironing or WashOrderStatus.Folding or WashOrderStatus.AwaitingPayment,
-                WashOrderStatus.Ironing => next is WashOrderStatus.Folding or WashOrderStatus.AwaitingPayment,
-                WashOrderStatus.Folding => next == WashOrderStatus.AwaitingPayment,
-                _ => false
-            };
         }
 
         private static (Guid LockerId, Guid BoxId) GetReturnSlot(WashOrder order) =>
@@ -1702,6 +1783,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 return NotFound<List<ColumnFilterDistinctValueDto>>("Không tìm thấy dữ liệu được phép xem.");
             if ((scope.Role is "Merchant" or "Shipper") && !IsStaffField(fieldName))
                 return BadRequest<List<ColumnFilterDistinctValueDto>>("Không được lọc theo thông tin riêng tư của khách hàng.");
+            if (query.DateRangeError() is { } dateError)
+                return BadRequest<List<ColumnFilterDistinctValueDto>>(dateError);
             var result = await _orderRepo.GetColumnDistinctValuesAsync(fieldName, query,
                 baseFilter: q => ApplyScope(q, scope));
             return Success(result);

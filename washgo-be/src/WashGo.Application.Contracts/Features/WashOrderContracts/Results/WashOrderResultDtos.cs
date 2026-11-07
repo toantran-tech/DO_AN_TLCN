@@ -10,6 +10,8 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Results
         public string OrderCode { get; set; } = string.Empty;
         /// <summary>Mã đơn nội bộ của Merchant (UC 2.3.1).</summary>
         public string? MerchantOrderCode { get; set; }
+        /// <summary>Phiên bản dữ liệu; gửi lại làm expectedRevision (hoặc If-Match) khi ghi để tránh ghi đè thay đổi mới hơn.</summary>
+        public long Revision { get; set; }
         /// <summary>QR nhận diện đơn, không chứa mã mở tủ; dùng cho Merchant/Shipper đối chiếu túi đồ.</summary>
         public string OrderQrString => $"WASHGO:ORDER:{OrderCode}";
         public Guid CustomerId { get; set; }
@@ -80,6 +82,31 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Results
         public DateTime? DepositedAt { get; set; }
         public DateTime? PaidAt { get; set; }
         public DateTime? PickupDeadline { get; set; }
+        /// <summary>Hạn thanh toán (UTC), đặt khi đơn chuyển sang Chờ thanh toán; quá hạn thì đồ được chuyển về kho.</summary>
+        public DateTime? PaymentDeadline { get; set; }
+        /// <summary>Đơn chờ thanh toán, chưa trả tiền và đã quá hạn thanh toán.</summary>
+        public bool IsPaymentOverdue => Status == WashOrderStatus.AwaitingPayment && PaymentStatus == PaymentStatus.Unpaid &&
+            PaymentDeadline.HasValue && ServerNow > PaymentDeadline.Value;
+        /// <summary>Số giây còn lại để thanh toán (chỉ khi đơn đang chờ thanh toán và chưa trả tiền).</summary>
+        public long? PaymentSecondsLeft => Status == WashOrderStatus.AwaitingPayment && PaymentStatus == PaymentStatus.Unpaid &&
+            PaymentDeadline.HasValue ? Math.Max(0, (long)(PaymentDeadline.Value - ServerNow).TotalSeconds) : null;
+        /// <summary>Đồ đã ở tủ nhận nhưng khách chưa lấy và đã quá hạn lấy đồ (bắt đầu tính phí quá hạn).</summary>
+        public bool IsPickupOverdue => Status == WashOrderStatus.ReadyToReturn && PickupDeadline.HasValue && ServerNow > PickupDeadline.Value;
+        /// <summary>
+        /// Các loại quá hạn đang áp dụng: DepositExpired (quá hạn gửi đồ), PaymentOverdue (quá hạn thanh toán),
+        /// PickupOverdue (quá hạn lấy đồ). Rỗng khi đơn không quá hạn mốc nào.
+        /// </summary>
+        public List<string> OverdueTypes
+        {
+            get
+            {
+                var types = new List<string>();
+                if (IsDepositExpired) types.Add("DepositExpired");
+                if (IsPaymentOverdue) types.Add("PaymentOverdue");
+                if (IsPickupOverdue) types.Add("PickupOverdue");
+                return types;
+            }
+        }
         public decimal OverdueFeeTotal { get; set; }
         public decimal StorageFeeTotal { get; set; }
         public DateTime? MovedToStorageAt { get; set; }
@@ -109,6 +136,21 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Results
             QrCodeString = string.Empty;
             ShipperTaskPinCode = null;
         }
+
+        /// <summary>Phần trăm các bước áp dụng cho đơn đã đi qua (bước hiện tại tính là đã tới); 100 khi hoàn tất.</summary>
+        public int ProgressPercent { get; set; }
+        /// <summary>Các bước quy trình: bước nào áp dụng theo dịch vụ của đơn, đã xong, đang ở, thời điểm (Unix giây).</summary>
+        public List<OrderWorkflowStepDto> WorkflowSteps { get; set; } = [];
+    }
+
+    public class OrderWorkflowStepDto
+    {
+        public WashOrderStatus Status { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public bool IsApplicable { get; set; }
+        public bool IsCompleted { get; set; }
+        public bool IsCurrent { get; set; }
+        public long? Timestamp { get; set; }
     }
 
     public class WashOrderDetailDto : WashOrderResultDto
@@ -141,6 +183,8 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Results
         /// <summary>Hệ số tải của tiệm (1 = bình thường, tối đa 1.5).</summary>
         public double? PredictionLoadFactor { get; set; }
         public DateTime? PredictionUpdatedAt { get; set; }
+        /// <summary>Thao tác Merchant/Admin được làm lúc này (status/cân/phân công) kèm lý do; null với Customer, Shipper.</summary>
+        public OrderAllowedActionsDto? AllowedActions { get; set; }
         public List<WashOrderItemDto> Items { get; set; } = [];
         public List<WashOrderTimelineDto> Timeline { get; set; } = [];
     }
