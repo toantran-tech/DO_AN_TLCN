@@ -1605,6 +1605,16 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("deleted_by");
 
+                    b.Property<string>("IdentityBackImageUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("identity_back_image_url");
+
+                    b.Property<string>("IdentityFrontImageUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("identity_front_image_url");
+
                     b.Property<string>("IdentityImages")
                         .HasColumnType("jsonb")
                         .HasColumnName("identity_images");

@@ -19,6 +19,8 @@ namespace WashGo.EntityFrameworkCore.BuilderConfiguration
             builder.Property(x => x.VehiclePlate).HasMaxLength(20);
             builder.Property(x => x.IdentityNumber).HasMaxLength(20);
             builder.Property(x => x.IdentityImages).HasColumnType("jsonb");
+            builder.Property(x => x.IdentityFrontImageUrl).HasMaxLength(500);
+            builder.Property(x => x.IdentityBackImageUrl).HasMaxLength(500);
             builder.Property(x => x.Rating).HasPrecision(2, 1);
             builder.Property(x => x.LockReason).HasMaxLength(500);
             builder.HasIndex(x => x.UserId).IsUnique();

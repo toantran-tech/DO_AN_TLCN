@@ -178,6 +178,16 @@ namespace WashGo.Application.Features.ShipperApplication.Services
             var identity = string.IsNullOrWhiteSpace(command.IdentityNumber) ? null : command.IdentityNumber.Trim();
             if (identity != null && !IdentityPattern.IsMatch(identity))
                 return BadRequest<ShipperDto>("Số CMND/CCCD phải gồm 9 hoặc 12 chữ số.");
+            var front = Clean(command.IdentityFrontImageUrl);
+            var back = Clean(command.IdentityBackImageUrl);
+            if ((front == null) != (back == null))
+                return BadRequest<ShipperDto>("Ảnh CMND/CCCD cần đủ mặt trước và mặt sau (hoặc bỏ trống cả hai).");
+            if (front != null && command.IdentityImageUrls.Any(x => !string.IsNullOrWhiteSpace(x)))
+                return BadRequest<ShipperDto>("Dùng identityFrontImageUrl/identityBackImageUrl hoặc identityImageUrls, không dùng cả hai.");
+            if (front != null && front == back)
+                return BadRequest<ShipperDto>("Ảnh mặt trước và mặt sau phải khác nhau.");
+            if (front != null && ValidateSides(front, back!) is { } sideError)
+                return BadRequest<ShipperDto>(sideError);
             var imageError = UploadStorage.ValidateOwnedImages(_configuration, command.IdentityImageUrls,
                 CurrentUser.Id!.Value, 0, out var images);
             if (imageError != null)
@@ -208,6 +218,8 @@ namespace WashGo.Application.Features.ShipperApplication.Services
                 VehiclePlate = plate,
                 IdentityNumber = identity,
                 IdentityImages = images.Count == 0 ? null : JsonSerializer.Serialize(images),
+                IdentityFrontImageUrl = front,
+                IdentityBackImageUrl = back,
                 Status = ShipperStatus.Available,
                 IsActive = true
             };
@@ -244,6 +256,9 @@ namespace WashGo.Application.Features.ShipperApplication.Services
             var active = (await ActiveTaskCountsAsync([shipper.Id])).GetValueOrDefault(shipper.Id);
             if (!command.IsActive && shipper.IsActive && active > 0)
                 return BadRequest<ShipperDto>("Shipper đang có nhiệm vụ lấy/trả chưa hoàn tất; không thể chuyển sang Tạm nghỉ.");
+            var (identityError, identityChanges) = ApplyIdentity(shipper, command);
+            if (identityError != null)
+                return BadRequest<ShipperDto>(identityError);
 
             user.FullName = fullName;
             user.Phone = phone;
@@ -255,6 +270,8 @@ namespace WashGo.Application.Features.ShipperApplication.Services
             shipper.UpdatedAt = DateTime.UtcNow;
             await _userRepo.UpdateAsync(user, autoSave: true);
             await _shipperRepo.UpdateAsync(shipper, autoSave: true);
+            if (identityChanges.Count > 0)
+                await AuditAsync(shipper, ShipperAuditAction.IdentityUpdated, null, string.Join(",", identityChanges));
             return Success(ToDto(shipper, user, active), "Cập nhật Shipper thành công!");
         }
 
@@ -468,6 +485,56 @@ namespace WashGo.Application.Features.ShipperApplication.Services
         private async Task<ShipperDto> ToDtoAsync(Shipper shipper, User user) =>
             ToDto(shipper, user, (await ActiveTaskCountsAsync([shipper.Id])).GetValueOrDefault(shipper.Id));
 
+        private static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+        // New identity images must be uploads of the current Merchant/Admin (same rule as other evidence images).
+        private string? ValidateSides(params string[] urls) =>
+            UploadStorage.ValidateOwnedImages(_configuration, urls, CurrentUser.Id!.Value, urls.Length, out _);
+
+        /// <summary>
+        /// Applies identityNumber / front / back from an update (null keeps, "" clears) and returns the changed field names
+        /// (never the values) for the audit. Front and back must end up both set or both empty.
+        /// </summary>
+        private (string? Error, List<string> Changes) ApplyIdentity(Shipper shipper, UpdateShipperCommand command)
+        {
+            var changes = new List<string>();
+            if (command.IdentityNumber != null)
+            {
+                var number = Clean(command.IdentityNumber);
+                if (number != null && !IdentityPattern.IsMatch(number))
+                    return ("Số CMND/CCCD phải gồm 9 hoặc 12 chữ số.", changes);
+                if (number != shipper.IdentityNumber)
+                    changes.Add("identityNumber");
+                shipper.IdentityNumber = number;
+            }
+            if (command.IdentityFrontImageUrl == null && command.IdentityBackImageUrl == null)
+                return (null, changes);
+
+            var front = command.IdentityFrontImageUrl == null ? shipper.IdentityFrontImageUrl : Clean(command.IdentityFrontImageUrl);
+            var back = command.IdentityBackImageUrl == null ? shipper.IdentityBackImageUrl : Clean(command.IdentityBackImageUrl);
+            if ((front == null) != (back == null))
+                return ("Ảnh CMND/CCCD cần đủ mặt trước và mặt sau (hoặc xóa cả hai).", changes);
+            if (front != null && front == back)
+                return ("Ảnh mặt trước và mặt sau phải khác nhau.", changes);
+            // Only newly sent images are checked; the stored ones were accepted before.
+            var added = new[] { front, back }.Where(x => x != null && x != shipper.IdentityFrontImageUrl && x != shipper.IdentityBackImageUrl)
+                .Select(x => x!).ToArray();
+            if (added.Length > 0 && ValidateSides(added) is { } imageError)
+                return (imageError, changes);
+            if (front != shipper.IdentityFrontImageUrl)
+                changes.Add("identityFrontImage");
+            if (back != shipper.IdentityBackImageUrl)
+                changes.Add("identityBackImage");
+            // Any image change replaces (or clears) the old images whose sides were unknown.
+            if (!string.IsNullOrWhiteSpace(shipper.IdentityImages) && shipper.IdentityImages != "[]")
+                changes.Add("legacyIdentityImagesReplaced");
+            shipper.IdentityFrontImageUrl = front;
+            shipper.IdentityBackImageUrl = back;
+            if (changes.Contains("legacyIdentityImagesReplaced"))
+                shipper.IdentityImages = null;
+            return (null, changes);
+        }
+
         private async Task<(Shipper? Shipper, User? User)> FindOwnedAsync(Guid id)
         {
             var shipper = await _shipperRepo.FindAsync(id);
@@ -515,8 +582,13 @@ namespace WashGo.Application.Features.ShipperApplication.Services
             ActiveTaskCount = activeTasks,
             Rating = s.Rating,
             IdentityNumber = s.IdentityNumber,
-            IdentityImageUrls = string.IsNullOrWhiteSpace(s.IdentityImages)
-                ? [] : JsonSerializer.Deserialize<List<string>>(s.IdentityImages) ?? [],
+            IdentityFrontImageUrl = s.IdentityFrontImageUrl,
+            IdentityBackImageUrl = s.IdentityBackImageUrl,
+            IdentityImageUrls = s.IdentityFrontImageUrl != null && s.IdentityBackImageUrl != null
+                ? [s.IdentityFrontImageUrl, s.IdentityBackImageUrl]
+                : string.IsNullOrWhiteSpace(s.IdentityImages) ? [] : JsonSerializer.Deserialize<List<string>>(s.IdentityImages) ?? [],
+            IdentityImageSides = s.IdentityFrontImageUrl != null && s.IdentityBackImageUrl != null ? "FrontBack"
+                : string.IsNullOrWhiteSpace(s.IdentityImages) || s.IdentityImages == "[]" ? "None" : "Unspecified",
             CreatedAt = s.CreatedAt
         };
     }
