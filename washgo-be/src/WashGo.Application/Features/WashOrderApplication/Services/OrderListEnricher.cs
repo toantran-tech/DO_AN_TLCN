@@ -54,6 +54,30 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             }
         }
 
+        /// <summary>Tên, địa chỉ, tọa độ của tủ gửi và tủ nhận đồ (tủ trả, mặc định là tủ gửi).</summary>
+        public async Task FillLockersAsync(WashOrderDetailDto order)
+        {
+            var returnLockerId = order.ReturnLockerId ?? order.LockerId;
+            var deposit = await _lockerRepo.FindAsync(order.LockerId);
+            var pickup = returnLockerId == order.LockerId ? deposit : await _lockerRepo.FindAsync(returnLockerId);
+            if (deposit != null)
+            {
+                order.LockerAddress = AddressOf(deposit);
+                order.LockerLatitude = deposit.Latitude;
+                order.LockerLongitude = deposit.Longitude;
+            }
+            order.ReturnLockerName = pickup?.Name ?? order.LockerName;
+            if (pickup != null)
+            {
+                order.ReturnLockerAddress = AddressOf(pickup);
+                order.ReturnLockerLatitude = pickup.Latitude;
+                order.ReturnLockerLongitude = pickup.Longitude;
+            }
+        }
+
+        private static string AddressOf(Locker locker) =>
+            string.Join(", ", new[] { locker.Address, locker.Ward, locker.District, locker.City }.Where(x => !string.IsNullOrWhiteSpace(x)));
+
         /// <summary>UC 4.3.2: locker, địa chỉ, ô của nhiệm vụ đang gán và nút "Lấy đồ"/"Trả đồ".</summary>
         public async Task FillTaskAsync(WashOrderDetailDto order)
         {
@@ -63,9 +87,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             var lockerId = collect ? order.LockerId : order.ReturnLockerId ?? order.LockerId;
             var locker = await _lockerRepo.FindAsync(lockerId);
             order.TaskLockerName = locker?.Name ?? order.LockerName;
-            order.TaskLockerAddress = locker == null
-                ? null
-                : string.Join(", ", new[] { locker.Address, locker.Ward, locker.District, locker.City }.Where(x => !string.IsNullOrWhiteSpace(x)));
+            order.TaskLockerAddress = locker == null ? null : AddressOf(locker);
             // The return box is picked when the Shipper drops the goods off.
             order.TaskBoxNumber = collect ? order.BoxNumber : order.ReturnBoxNumber;
             order.NextAction = IsActiveTask(order) ? order.AssignedTaskType : null;

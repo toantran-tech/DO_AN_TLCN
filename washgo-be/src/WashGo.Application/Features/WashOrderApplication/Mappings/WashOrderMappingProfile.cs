@@ -19,7 +19,14 @@ namespace WashGo.Application.Features.WashOrderApplication.Mappings
                 .ForMember(dest => dest.TaskLockerName, opt => opt.Ignore())
                 .ForMember(dest => dest.TaskLockerAddress, opt => opt.Ignore())
                 .ForMember(dest => dest.TaskBoxNumber, opt => opt.Ignore())
-                .ForMember(dest => dest.NextAction, opt => opt.Ignore());
+                .ForMember(dest => dest.NextAction, opt => opt.Ignore())
+                .ForMember(dest => dest.ReturnLockerName, opt => opt.Ignore())
+                .ForMember(dest => dest.ReturnLockerAddress, opt => opt.Ignore())
+                .ForMember(dest => dest.ReturnLockerLatitude, opt => opt.Ignore())
+                .ForMember(dest => dest.ReturnLockerLongitude, opt => opt.Ignore())
+                .ForMember(dest => dest.LockerAddress, opt => opt.Ignore())
+                .ForMember(dest => dest.LockerLatitude, opt => opt.Ignore())
+                .ForMember(dest => dest.LockerLongitude, opt => opt.Ignore());
             CreateMap<WashOrderItem, WashOrderItemDto>();
             CreateMap<WashOrderTimeline, WashOrderTimelineDto>();
         }
