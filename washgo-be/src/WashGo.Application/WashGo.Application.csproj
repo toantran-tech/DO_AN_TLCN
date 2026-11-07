@@ -9,6 +9,8 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Features\AuthApplication\Templates\Assets\washgo-logo.png" LogicalName="WashGo.EmailAssets.logo.png" />
+    <EmbeddedResource Include="Features\WashOrderApplication\Receipts\Fonts\BeVietnamPro-Regular.ttf" LogicalName="WashGo.ReceiptFonts.Regular.ttf" />
+    <EmbeddedResource Include="Features\WashOrderApplication\Receipts\Fonts\BeVietnamPro-Bold.ttf" LogicalName="WashGo.ReceiptFonts.Bold.ttf" />
   </ItemGroup>
 
   <ItemGroup>
@@ -23,6 +25,7 @@
     <PackageReference Include="BCrypt.Net-Next" Version="4.0.3" />
     <PackageReference Include="Google.Apis.Auth" Version="1.77.0" />
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.0.2" />
+    <PackageReference Include="QuestPDF" Version="2024.12.3" />
   </ItemGroup>
 
 </Project>

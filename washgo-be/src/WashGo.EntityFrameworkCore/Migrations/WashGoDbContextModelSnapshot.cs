@@ -2556,6 +2556,15 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("character varying(500)")
                         .HasColumnName("qr_code");
 
+                    b.Property<DateTime?>("ReceiptIssuedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("receipt_issued_at");
+
+                    b.Property<string>("ReceiptNumber")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("receipt_number");
+
                     b.Property<Guid?>("ReturnBoxId")
                         .HasColumnType("uuid")
                         .HasColumnName("return_box_id");
@@ -2659,6 +2668,10 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .IsUnique();
 
                     b.HasIndex("PromotionId");
+
+                    b.HasIndex("ReceiptNumber")
+                        .IsUnique()
+                        .HasFilter("receipt_number IS NOT NULL");
 
                     b.HasIndex("ReturnBoxId");
 
