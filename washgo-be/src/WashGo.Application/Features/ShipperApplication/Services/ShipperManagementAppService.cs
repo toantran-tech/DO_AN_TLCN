@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Net.Mail;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -40,6 +41,8 @@ namespace WashGo.Application.Features.ShipperApplication.Services
         private readonly IRepository<Merchant, Guid> _merchantRepo;
         private readonly IWashOrderRepository _orderRepo;
         private readonly IAuthEmailSender _emailSender;
+        private readonly IRepository<RefreshToken, Guid> _refreshTokenRepo;
+        private readonly IRepository<ShipperAudit, Guid> _auditRepo;
         private readonly IConfiguration _configuration;
         private readonly ILogger<ShipperManagementAppService> _logger;
 
@@ -50,6 +53,8 @@ namespace WashGo.Application.Features.ShipperApplication.Services
             IRepository<Merchant, Guid> merchantRepo,
             IWashOrderRepository orderRepo,
             IAuthEmailSender emailSender,
+            IRepository<RefreshToken, Guid> refreshTokenRepo,
+            IRepository<ShipperAudit, Guid> auditRepo,
             IConfiguration configuration,
             ILogger<ShipperManagementAppService> logger)
         {
@@ -59,6 +64,8 @@ namespace WashGo.Application.Features.ShipperApplication.Services
             _merchantRepo = merchantRepo;
             _orderRepo = orderRepo;
             _emailSender = emailSender;
+            _refreshTokenRepo = refreshTokenRepo;
+            _auditRepo = auditRepo;
             _configuration = configuration;
             _logger = logger;
         }
@@ -130,9 +137,13 @@ namespace WashGo.Application.Features.ShipperApplication.Services
             var shippers = await _shipperRepo.GetQueryableAsync();
             if (scope.HasValue)
                 shippers = shippers.Where(x => x.MerchantId == scope.Value);
+            var users = await _userRepo.GetQueryableAsync();
             // One grouped query so every number comes from the same moment.
-            var rows = await AsyncExecuter.ToListAsync(shippers.GroupBy(x => new { x.IsActive, x.Status })
-                .Select(g => new { g.Key.IsActive, g.Key.Status, Count = g.Count() }));
+            var rows = await AsyncExecuter.ToListAsync((from shipper in shippers
+                                                        join user in users on shipper.UserId equals user.Id
+                                                        select new { shipper.IsActive, shipper.Status, Locked = !user.IsActive })
+                .GroupBy(x => new { x.IsActive, x.Status, x.Locked })
+                .Select(g => new { g.Key.IsActive, g.Key.Status, g.Key.Locked, Count = g.Count() }));
             return Success(new ShipperSummaryDto
             {
                 Total = rows.Sum(x => x.Count),
@@ -141,6 +152,7 @@ namespace WashGo.Application.Features.ShipperApplication.Services
                 Available = rows.Where(x => x.Status == ShipperStatus.Available).Sum(x => x.Count),
                 Busy = rows.Where(x => x.Status == ShipperStatus.Busy).Sum(x => x.Count),
                 Offline = rows.Where(x => x.Status == ShipperStatus.Offline).Sum(x => x.Count),
+                Locked = rows.Where(x => x.Locked).Sum(x => x.Count),
                 GeneratedAt = DateTime.UtcNow
             });
         }
@@ -241,6 +253,133 @@ namespace WashGo.Application.Features.ShipperApplication.Services
             return Success(ToDto(shipper, user, active), "Cập nhật Shipper thành công!");
         }
 
+        public async Task<BaseResponse<ShipperDto>> LockAsync(Guid id, ShipperAccountActionCommand command)
+        {
+            var reason = command.Reason?.Trim();
+            if (string.IsNullOrEmpty(reason) || reason.Length > 500)
+                return BadRequest<ShipperDto>("Vui lòng nhập lý do khóa tài khoản (tối đa 500 ký tự).");
+            return (await LockCoreAsync(id, reason)).ToResponse();
+        }
+
+        public async Task<BaseResponse<ShipperDto>> UnlockAsync(Guid id, ShipperAccountActionCommand command)
+        {
+            var reason = string.IsNullOrWhiteSpace(command.Reason) ? null : command.Reason.Trim();
+            if (reason?.Length > 500)
+                return BadRequest<ShipperDto>("Lý do tối đa 500 ký tự.");
+
+            using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            var shipper = await _shipperRepo.GetForUpdateAsync(id);
+            if (shipper == null || !IsAdmin && shipper.MerchantId != CurrentUser.Id)
+                return NotFound<ShipperDto>("Không tìm thấy Shipper!");
+            var user = await _userRepo.FindAsync(shipper.UserId);
+            if (user == null)
+                return NotFound<ShipperDto>("Không tìm thấy Shipper!");
+            if (user.IsActive)
+            {
+                await uow.CompleteAsync();
+                return Success(await ToDtoAsync(shipper, user), "Tài khoản Shipper đang hoạt động, không cần mở khóa.");
+            }
+            // Unlocking restores sign-in only: working/operational status and old tasks are left as they are.
+            user.IsActive = true;
+            user.UpdatedAt = DateTime.UtcNow;
+            shipper.LockedAt = null;
+            shipper.LockReason = null;
+            shipper.UpdatedAt = DateTime.UtcNow;
+            await _userRepo.UpdateAsync(user, autoSave: true);
+            await _shipperRepo.UpdateAsync(shipper, autoSave: true);
+            await AuditAsync(shipper, ShipperAuditAction.Unlocked, reason, null);
+            await uow.CompleteAsync();
+            return Success(await ToDtoAsync(shipper, user), "Đã mở khóa tài khoản Shipper.");
+        }
+
+        public async Task<BaseResponse<List<ShipperAuditDto>>> GetAuditsAsync(Guid id)
+        {
+            var (shipper, _) = await FindOwnedAsync(id);
+            if (shipper == null)
+                return NotFound<List<ShipperAuditDto>>("Không tìm thấy Shipper!");
+            var rows = await AsyncExecuter.ToListAsync((await _auditRepo.GetQueryableAsync())
+                .Where(x => x.ShipperId == id).OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id));
+            return Success(rows.Select(x => new ShipperAuditDto
+            {
+                Id = x.Id, Action = x.Action, Reason = x.Reason, ActorId = x.ActorId, ActorRole = x.ActorRole,
+                ActorName = x.ActorName, Details = x.Details, CreatedAt = x.CreatedAt
+            }).ToList());
+        }
+
+        /// <summary>Result of one account action, shared by the single and the batch endpoints.</summary>
+        public sealed record AccountActionResult(HttpStatusCode Status, string Code, string Message, ShipperDto? Data)
+        {
+            public BaseResponse<ShipperDto> ToResponse() => new()
+            {
+                Succeeded = Status == HttpStatusCode.OK, StatusCode = Status, Message = Message, Data = Data,
+                Meta = new { code = Code }
+            };
+        }
+
+        // Locks the row first: assignment takes the same lock, so a lock and a new task cannot cross.
+        private async Task<AccountActionResult> LockCoreAsync(Guid id, string reason)
+        {
+            using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            var shipper = await _shipperRepo.GetForUpdateAsync(id);
+            if (shipper == null || !IsAdmin && shipper.MerchantId != CurrentUser.Id)
+                return new(HttpStatusCode.NotFound, "NotFound", "Không tìm thấy Shipper!", null);
+            var user = await _userRepo.FindAsync(shipper.UserId);
+            if (user == null || !await _roleRepo.AnyAsync(x => x.Id == user.RoleId && x.Name == "Shipper"))
+                return new(HttpStatusCode.BadRequest, "NotShipper", "Tài khoản này không phải tài khoản Shipper.", null);
+            if (!user.IsActive)
+            {
+                await uow.CompleteAsync();
+                return new(HttpStatusCode.OK, "AlreadyLocked", "Tài khoản Shipper đã bị khóa trước đó.", await ToDtoAsync(shipper, user));
+            }
+            var active = (await ActiveTaskCountsAsync([shipper.Id])).GetValueOrDefault(shipper.Id);
+            if (active > 0)
+                return new(HttpStatusCode.Conflict, "HasActiveTasks",
+                    $"Shipper đang có {active} nhiệm vụ lấy/trả chưa hoàn tất; hãy để Shipper hoàn tất hoặc phân công người khác trước khi khóa.",
+                    ToDto(shipper, user, active));
+
+            var now = DateTime.UtcNow;
+            user.IsActive = false;
+            user.UpdatedAt = now;
+            shipper.LockedAt = now;
+            shipper.LockReason = reason;
+            shipper.UpdatedAt = now;
+            await _userRepo.UpdateAsync(user, autoSave: true);
+            await _shipperRepo.UpdateAsync(shipper, autoSave: true);
+            await RevokeSessionsAsync(user.Id);
+            await AuditAsync(shipper, ShipperAuditAction.Locked, reason, null);
+            await uow.CompleteAsync();
+            return new(HttpStatusCode.OK, "Locked", "Đã khóa tài khoản Shipper; các phiên đăng nhập hiện tại đã bị thu hồi.", ToDto(shipper, user, 0));
+        }
+
+        // Refresh tokens are revoked; access tokens stop working at once because each request checks the session and User.IsActive.
+        private async Task RevokeSessionsAsync(Guid userId)
+        {
+            var sessions = await _refreshTokenRepo.GetListAsync(x => x.UserId == userId && !x.IsRevoked);
+            foreach (var session in sessions)
+                session.IsRevoked = true;
+            if (sessions.Count > 0)
+                await _refreshTokenRepo.UpdateManyAsync(sessions, autoSave: true);
+        }
+
+        private async Task AuditAsync(Shipper shipper, ShipperAuditAction action, string? reason, string? details)
+        {
+            await _auditRepo.InsertAsync(new ShipperAudit(GuidGenerator.Create())
+            {
+                ShipperId = shipper.Id,
+                MerchantId = shipper.MerchantId,
+                Action = action,
+                Reason = reason,
+                ActorId = CurrentUser.Id ?? Guid.Empty,
+                ActorRole = IsAdmin ? "Admin" : "Merchant",
+                ActorName = CurrentUser.Name ?? CurrentUser.UserName ?? (IsAdmin ? "Admin" : "Merchant"),
+                Details = details,
+                CreatedAt = DateTime.UtcNow
+            }, autoSave: true);
+        }
+
+        private async Task<ShipperDto> ToDtoAsync(Shipper shipper, User user) =>
+            ToDto(shipper, user, (await ActiveTaskCountsAsync([shipper.Id])).GetValueOrDefault(shipper.Id));
+
         private async Task<(Shipper? Shipper, User? User)> FindOwnedAsync(Guid id)
         {
             var shipper = await _shipperRepo.FindAsync(id);
@@ -281,6 +420,9 @@ namespace WashGo.Application.Features.ShipperApplication.Services
             VehiclePlate = s.VehiclePlate,
             Status = s.Status,
             IsActive = s.IsActive,
+            AccountActive = u.IsActive,
+            LockedAt = u.IsActive ? null : s.LockedAt,
+            LockReason = u.IsActive ? null : s.LockReason,
             TotalDeliveries = s.TotalDeliveries,
             ActiveTaskCount = activeTasks,
             Rating = s.Rating,
