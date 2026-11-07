@@ -12,6 +12,7 @@ namespace WashGo.Application.Contracts.Features.ShipperContracts.Services
     {
         Task<PaginatedResult<ShipperDto>> GetListAsync(ShipperFilterQuery query);
         Task<BaseResponse<ShipperDto>> GetByIdAsync(Guid id);
+        Task<BaseResponse<ShipperSummaryDto>> GetSummaryAsync(Guid? merchantId);
         Task<BaseResponse<ShipperDto>> CreateAsync(CreateShipperCommand command);
         Task<BaseResponse<ShipperDto>> UpdateAsync(Guid id, UpdateShipperCommand command);
     }

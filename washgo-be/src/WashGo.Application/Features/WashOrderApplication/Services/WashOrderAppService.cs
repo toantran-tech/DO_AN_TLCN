@@ -1090,7 +1090,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                              orderby user.FullName, shipper.Id
                              select new AvailableShipperDto
                              {
-                                 Id = shipper.Id, FullName = user.FullName, Phone = user.Phone,
+                                 Id = shipper.Id, FullName = user.FullName, AvatarUrl = user.Avatar, Phone = user.Phone,
                                  VehicleType = shipper.VehicleType, VehiclePlate = shipper.VehiclePlate,
                                  Rating = shipper.Rating, ActiveDeliveryCount = activeOrders.Count(x => x.ShipperId == shipper.Id),
                                  TaskType = task.Value
