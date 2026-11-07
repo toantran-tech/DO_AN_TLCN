@@ -36,7 +36,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Mappings
                 .ForMember(dest => dest.PredictionSource, opt => opt.Ignore())
                 .ForMember(dest => dest.PredictionSampleSize, opt => opt.Ignore())
                 .ForMember(dest => dest.PredictionLoadFactor, opt => opt.Ignore())
-                .ForMember(dest => dest.PredictionUpdatedAt, opt => opt.Ignore());
+                .ForMember(dest => dest.PredictionUpdatedAt, opt => opt.Ignore())
+                .ForMember(dest => dest.AllowedActions, opt => opt.Ignore());
             CreateMap<WashOrderItem, WashOrderItemDto>();
             CreateMap<WashOrderTimeline, WashOrderTimelineDto>();
         }
