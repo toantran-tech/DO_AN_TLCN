@@ -28,7 +28,7 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Commands
         public string? Note { get; set; }
     }
 
-    public class UpdateWashOrderStatusCommand
+    public class UpdateWashOrderStatusCommand : GuardedOrderCommand
     {
         public Guid OrderId { get; set; }
         public WashOrderStatus NewStatus { get; set; }
@@ -40,7 +40,7 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Commands
         public string? Note { get; set; }
     }
 
-    public class AssignShipperCommand
+    public class AssignShipperCommand : GuardedOrderCommand
     {
         public Guid OrderId { get; set; }
         public Guid ShipperId { get; set; }

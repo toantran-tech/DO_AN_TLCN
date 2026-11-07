@@ -53,6 +53,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
         private readonly OrderListEnricher _enricher;
         private readonly EtaPredictor _eta;
         private readonly LockerMerchantResolver _lockerMerchants;
+        private readonly OrderWriteGuard _writeGuard;
 
         public WashOrderAppService(
             IWashOrderRepository orderRepo,
@@ -71,7 +72,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             SystemSettingProvider settings,
             OrderListEnricher enricher,
             EtaPredictor eta,
-            LockerMerchantResolver lockerMerchants)
+            LockerMerchantResolver lockerMerchants,
+            OrderWriteGuard writeGuard)
         {
             _orderRepo = orderRepo;
             _lockerRepo = lockerRepo;
@@ -90,6 +92,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             _enricher = enricher;
             _eta = eta;
             _lockerMerchants = lockerMerchants;
+            _writeGuard = writeGuard;
         }
 
         private readonly record struct OrderScope(string Role, Guid Id);
@@ -784,10 +787,14 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             var order = await _orderRepo.GetWithDetailsAsync(orderId);
             if (order == null || scope.Role != "Merchant" || !CanAccess(order, scope))
                 return NotFound<WashOrderDetailDto>("Không tìm thấy đơn hàng thuộc tiệm để cập nhật cân nặng.");
+            var weightRequest = FormattableString.Invariant($"weightKg={command.WeightKg:0.##}");
+            if (await GuardAsync(order, scope, command, "UpdateWeight", weightRequest) is { } stop)
+                return stop;
             if (OrderActionRules.Weigh(order, scope.Role) is { } blocked)
                 return BadRequest<WashOrderDetailDto>(blocked.Message);
             if (order.ActualWeightKg == command.WeightKg)
             {
+                await _writeGuard.RecordAsync(order, CurrentUser.Id!.Value, command, "UpdateWeight", weightRequest);
                 await uow.CompleteAsync();
                 return Success(RedactStaffData(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), scope),
                     "Khối lượng này đã được chốt trước đó.");
@@ -813,6 +820,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 Note = $"Chốt {command.WeightKg:0.##} kg; vượt {pricing.ExcessWeightKg:0.##} kg; phụ phí {pricing.SurchargeAmount:0.##}đ; giá cuối {finalAmount:0.##}đ. Thanh toán sau khi giặt xong."
             });
             await _orderRepo.UpdateAsync(order, autoSave: true);
+            await _writeGuard.RecordAsync(order, CurrentUser.Id!.Value, command, "UpdateWeight", weightRequest);
             await uow.CompleteAsync();
             return Success(RedactStaffData(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), scope),
                 "Đã chốt cân nặng, giá và ETA. Đơn tiếp tục xử lý giặt; khách thanh toán sau khi giặt xong.");
@@ -836,6 +844,9 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             {
                 return NotFound<WashOrderDetailDto>("Không tìm thấy đơn hàng được phép cập nhật.");
             }
+            var statusRequest = $"status={(int)command.NewStatus}";
+            if (await GuardAsync(order, scope, command, "UpdateStatus", statusRequest) is { } stop)
+                return stop;
 
             var previousStatus = order.Status;
             if (OrderActionRules.StatusChange(order, scope.Role, command.NewStatus) is { } blocked)
@@ -860,6 +871,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             });
 
             await _orderRepo.UpdateAsync(order, autoSave: true);
+            await _writeGuard.RecordAsync(order, CurrentUser.Id!.Value, command, "UpdateStatus", statusRequest);
             await _notifications.ProcessingAsync(order);
             await uow.CompleteAsync();
             var result = ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order);
@@ -934,6 +946,9 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             {
                 return NotFound<WashOrderDetailDto>("Không tìm thấy đơn hàng được phép phân công.");
             }
+            var assignRequest = $"shipperId={command.ShipperId}";
+            if (await GuardAsync(order, scope, command, "AssignShipper", assignRequest) is { } stop)
+                return stop;
 
             if (OrderActionRules.Assign(order, scope.Role, out var task) is { } blocked)
                 return BadRequest<WashOrderDetailDto>(blocked.Message);
@@ -973,6 +988,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                         order.ShipperNote = note;
                     await _orderRepo.UpdateAsync(order, autoSave: true);
                 }
+                await _writeGuard.RecordAsync(order, CurrentUser.Id!.Value, command, "AssignShipper", assignRequest);
                 await uow.CompleteAsync();
                 return Success(RedactStaffData(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), scope),
                     "Shipper đã được phân công cho nhiệm vụ này.");
@@ -1000,10 +1016,54 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             });
 
             await _orderRepo.UpdateAsync(order, autoSave: true);
+            await _writeGuard.RecordAsync(order, CurrentUser.Id!.Value, command, "AssignShipper", assignRequest);
             await _notifications.ShipperAssignedAsync(order, order.AssignedTaskType ?? DeliveryTaskType.Collect);
             await uow.CompleteAsync();
             var result = ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order);
             return Success(RedactStaffData(result, scope), "Phân công Shipper thành công!");
+        }
+
+        // Replay or 409 (with the current order) before any rule runs; null = go on with the write.
+        private async Task<BaseResponse<WashOrderDetailDto>?> GuardAsync(WashOrder order, OrderScope scope,
+            GuardedOrderCommand command, string operation, string request)
+        {
+            var decision = await _writeGuard.CheckAsync(order, CurrentUser.Id ?? Guid.Empty, command, operation, request);
+            if (decision.Outcome == OrderWriteGuard.Outcome.Proceed)
+                return null;
+            if (decision.Outcome == OrderWriteGuard.Outcome.Invalid)
+                return BadRequest<WashOrderDetailDto>(decision.Message!);
+            var dto = RedactStaffData(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), scope);
+            dto.AllowedActions = OrderActionRules.Build(order, scope.Role);
+            var replay = decision.Outcome == OrderWriteGuard.Outcome.Replay;
+            return new BaseResponse<WashOrderDetailDto>
+            {
+                Succeeded = replay,
+                StatusCode = replay ? System.Net.HttpStatusCode.OK : System.Net.HttpStatusCode.Conflict,
+                Data = dto,
+                Message = decision.Message,
+                Meta = new OrderWriteMetaDto
+                {
+                    Code = decision.Code!, Replayed = replay, OperationId = command.OperationId,
+                    ResultRevision = decision.Previous?.ResultRevision, CurrentRevision = order.Revision,
+                    CurrentStatus = order.Status
+                }
+            };
+        }
+
+        public async Task<BaseResponse<OrderOperationDto>> GetOperationAsync(Guid orderId, Guid operationId)
+        {
+            var scope = await GetOrderScopeAsync();
+            var operation = await _writeGuard.FindAsync(operationId);
+            var order = operation == null ? null : await _orderRepo.FindAsync(orderId);
+            if (operation == null || order == null || operation.OrderId != orderId || !CanAccess(order, scope) ||
+                scope.Role != "Admin" && operation.ActorId != CurrentUser.Id)
+                return NotFound<OrderOperationDto>("Không tìm thấy thao tác này: yêu cầu chưa tới server hoặc đã thất bại, có thể gửi lại cùng operationId.");
+            return Success(new OrderOperationDto
+            {
+                OperationId = operation.Id, OrderId = order.Id, Operation = operation.Operation, Request = operation.Request,
+                CreatedAt = operation.CreatedAt, ResultStatus = operation.ResultStatus, ResultRevision = operation.ResultRevision,
+                CurrentStatus = order.Status, CurrentRevision = order.Revision
+            });
         }
 
         public async Task<BaseResponse<List<AvailableShipperDto>>> GetAvailableShippersAsync(Guid orderId)
