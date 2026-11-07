@@ -30,7 +30,13 @@ namespace WashGo.Application.Features.WashOrderApplication.Mappings
                 .ForMember(dest => dest.ReturnLockerLongitude, opt => opt.Ignore())
                 .ForMember(dest => dest.LockerAddress, opt => opt.Ignore())
                 .ForMember(dest => dest.LockerLatitude, opt => opt.Ignore())
-                .ForMember(dest => dest.LockerLongitude, opt => opt.Ignore());
+                .ForMember(dest => dest.LockerLongitude, opt => opt.Ignore())
+                .ForMember(dest => dest.PredictedFinishAt, opt => opt.Ignore())
+                .ForMember(dest => dest.PredictionStatus, opt => opt.Ignore())
+                .ForMember(dest => dest.PredictionSource, opt => opt.Ignore())
+                .ForMember(dest => dest.PredictionSampleSize, opt => opt.Ignore())
+                .ForMember(dest => dest.PredictionLoadFactor, opt => opt.Ignore())
+                .ForMember(dest => dest.PredictionUpdatedAt, opt => opt.Ignore());
             CreateMap<WashOrderItem, WashOrderItemDto>();
             CreateMap<WashOrderTimeline, WashOrderTimelineDto>();
         }
