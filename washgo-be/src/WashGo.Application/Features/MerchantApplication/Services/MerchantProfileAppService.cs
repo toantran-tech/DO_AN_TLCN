@@ -13,6 +13,7 @@ using WashGo.Application.Contracts.Features.MerchantProfileContracts.Services;
 using WashGo.Application.Features.FileApplication.Services;
 using WashGo.Application.Features.NotificationApplication.Services;
 using WashGo.Core.Domain.Shared.Bases;
+using WashGo.Domain.Entities.Feedback;
 using WashGo.Domain.Entities.Identity;
 using WashGo.Domain.Entities.Partner;
 using WashGo.Domain.Shared.Enums;
@@ -32,6 +33,7 @@ namespace WashGo.Application.Features.MerchantApplication.Services
         private readonly IRepository<Merchant, Guid> _merchantRepo;
         private readonly IRepository<MerchantImage, Guid> _imageRepo;
         private readonly IRepository<User, Guid> _userRepo;
+        private readonly IRepository<OrderRating, Guid> _ratingRepo;
         private readonly NotificationPublisher _notifications;
         private readonly IConfiguration _configuration;
 
@@ -40,6 +42,7 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             IRepository<Merchant, Guid> merchantRepo,
             IRepository<MerchantImage, Guid> imageRepo,
             IRepository<User, Guid> userRepo,
+            IRepository<OrderRating, Guid> ratingRepo,
             NotificationPublisher notifications,
             IConfiguration configuration)
         {
@@ -47,6 +50,7 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             _merchantRepo = merchantRepo;
             _imageRepo = imageRepo;
             _userRepo = userRepo;
+            _ratingRepo = ratingRepo;
             _notifications = notifications;
             _configuration = configuration;
         }
@@ -61,6 +65,7 @@ namespace WashGo.Application.Features.MerchantApplication.Services
                 return NotFound<MerchantProfileDto>("Không tìm thấy hồ sơ cửa hàng!");
             var user = await _userRepo.FindAsync(merchant.Id);
             var pending = await _requestRepo.FirstOrDefaultAsync(x => x.MerchantId == merchant.Id && x.Status == ServiceApprovalStatus.Pending);
+            var publicRatingCount = await _ratingRepo.CountAsync(x => x.MerchantId == merchant.Id && !x.IsHidden);
             return Success(new MerchantProfileDto
             {
                 Id = merchant.Id,
@@ -83,6 +88,8 @@ namespace WashGo.Application.Features.MerchantApplication.Services
                 MaxCapacity = merchant.MaxCapacity,
                 ContractStartDate = merchant.ContractStartDate,
                 ContractEndDate = merchant.ContractEndDate,
+                JoinedAt = merchant.ApprovedAt ?? merchant.CreatedAt,
+                PublicRatingCount = publicRatingCount,
                 PendingRequest = pending == null ? null : ToDto(pending, merchant.BusinessName)
             });
         }
@@ -97,12 +104,20 @@ namespace WashGo.Application.Features.MerchantApplication.Services
 
             var name = command.BusinessName?.Trim() ?? string.Empty;
             var address = command.Address?.Trim() ?? string.Empty;
+            var city = command.City?.Trim() ?? string.Empty;
             var phone = command.Phone?.Trim() ?? string.Empty;
             var hours = MerchantRules.NormalizeJson(command.OpeningHours);
             if (name.Length is 0 or > 200)
                 return BadRequest<MerchantProfileRequestDto>("Tên cửa hàng phải có từ 1 đến 200 ký tự.");
             if (address.Length is 0 or > 500)
                 return BadRequest<MerchantProfileRequestDto>("Địa chỉ không được để trống (tối đa 500 ký tự).");
+            if (city.Length is 0 or > 100)
+                return BadRequest<MerchantProfileRequestDto>("Tỉnh/Thành phố không được để trống (tối đa 100 ký tự).");
+            if (command.Latitude.HasValue && (command.Latitude.Value < -90m || command.Latitude.Value > 90m))
+                return BadRequest<MerchantProfileRequestDto>("Vĩ độ (Latitude) không hợp lệ (phải từ -90 đến 90).");
+            if (command.Longitude.HasValue && (command.Longitude.Value < -180m || command.Longitude.Value > 180m))
+                return BadRequest<MerchantProfileRequestDto>("Kinh độ (Longitude) không hợp lệ (phải từ -180 đến 180).");
+
             var digits = MerchantRules.NormalizePhone(phone);
             if (digits == null)
                 return BadRequest<MerchantProfileRequestDto>(MerchantRules.InvalidPhone);
@@ -113,6 +128,9 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             {
                 BusinessName = merchant.BusinessName,
                 Address = merchant.Address,
+                City = merchant.City,
+                Latitude = merchant.Latitude,
+                Longitude = merchant.Longitude,
                 Phone = merchant.Phone,
                 OpeningHours = MerchantRules.NormalizeJson(merchant.OpeningHours),
                 ImageUrls = await StoreImagesAsync(merchant.Id)
@@ -132,6 +150,9 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             {
                 BusinessName = name,
                 Address = address,
+                City = city,
+                Latitude = command.Latitude ?? merchant.Latitude,
+                Longitude = command.Longitude ?? merchant.Longitude,
                 Phone = digits,
                 OpeningHours = hours,
                 ImageUrls = images
@@ -200,6 +221,13 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             var now = DateTime.UtcNow;
             merchant.BusinessName = data.BusinessName;
             merchant.Address = data.Address;
+            if (!string.IsNullOrWhiteSpace(data.City))
+                merchant.City = data.City;
+            if (data.Latitude.HasValue && data.Longitude.HasValue)
+            {
+                merchant.Latitude = data.Latitude.Value;
+                merchant.Longitude = data.Longitude.Value;
+            }
             merchant.Phone = data.Phone;
             merchant.OpeningHours = data.OpeningHours;
             merchant.UpdatedAt = now;
@@ -272,6 +300,9 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             var changed = new List<string>();
             if (current.BusinessName != proposed.BusinessName) changed.Add("businessName");
             if (current.Address != proposed.Address) changed.Add("address");
+            if (current.City != proposed.City) changed.Add("city");
+            if (current.Latitude != proposed.Latitude) changed.Add("latitude");
+            if (current.Longitude != proposed.Longitude) changed.Add("longitude");
             if (current.Phone != proposed.Phone) changed.Add("phone");
             if (current.OpeningHours != proposed.OpeningHours) changed.Add("openingHours");
             if (!current.ImageUrls.SequenceEqual(proposed.ImageUrls)) changed.Add("imageUrls");

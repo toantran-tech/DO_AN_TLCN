@@ -205,6 +205,7 @@ namespace WashGo.Application.Features.OrderAssignmentApplication.Services
 
             order.MerchantId = target.MerchantId;
             order.MerchantName = target.BusinessName;
+            order.CommissionRateApplied = target.CommissionRate;
             await _orderRepo.UpdateAsync(order, autoSave: true);
             await _timelineRepo.InsertAsync(new WashOrderTimeline
             {
@@ -225,7 +226,8 @@ namespace WashGo.Application.Features.OrderAssignmentApplication.Services
                 OrderId = order.Id,
                 OrderCode = order.OrderCode,
                 MerchantId = target.MerchantId,
-                MerchantName = target.BusinessName
+                MerchantName = target.BusinessName,
+                CommissionRateApplied = order.CommissionRateApplied
             }, false, null);
         }
 
@@ -275,6 +277,7 @@ namespace WashGo.Application.Features.OrderAssignmentApplication.Services
                     MerchantId = m.Id,
                     BusinessName = m.BusinessName,
                     Rating = m.Rating,
+                    CommissionRate = m.CommissionRate,
                     CurrentLoad = load,
                     MaxCapacity = m.MaxCapacity,
                     DistanceKm = distance.HasValue ? Math.Round(distance.Value, 2) : null,

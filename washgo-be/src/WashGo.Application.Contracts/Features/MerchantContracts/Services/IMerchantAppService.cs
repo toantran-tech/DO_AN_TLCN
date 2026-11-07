@@ -18,6 +18,9 @@ namespace WashGo.Application.Contracts.Features.MerchantContracts.Services
         Task<BaseResponse<MerchantResultDto>> CreateAsync(CreateMerchantCommand command);
         Task<BaseResponse<MerchantResultDto>> UpdateAsync(UpdateMerchantCommand command);
         Task<BaseResponse<MerchantResultDto>> UpdateStatusAsync(UpdateMerchantStatusCommand command);
+        Task<BaseResponse<MerchantDashboardDto>> GetDashboardAsync(MerchantDashboardQuery query);
+        Task<BaseResponse<MerchantRevenueReportDto>> GetRevenueReportAsync(MerchantRevenueReportQuery query);
+        Task<BaseResponse<MerchantSlaAlertsDto>> GetSlaAlertsAsync();
         Task<BaseResponse<List<ColumnFilterDistinctValueDto>>> GetColumnDistinctValuesAsync(string fieldName, MerchantFilterQuery query);
     }
 }
