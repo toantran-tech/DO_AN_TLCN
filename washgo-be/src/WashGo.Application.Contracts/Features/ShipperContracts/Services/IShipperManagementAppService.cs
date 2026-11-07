@@ -20,6 +20,7 @@ namespace WashGo.Application.Contracts.Features.ShipperContracts.Services
         Task<BaseResponse<ShipperDto>> UnlockAsync(Guid id, ShipperAccountActionCommand command);
         Task<BaseResponse<List<ShipperAuditDto>>> GetAuditsAsync(Guid id);
         Task<BaseResponse<ShipperDto>> DeleteAsync(Guid id, string? reason);
+        Task<PaginatedResult<ShipperTaskDto>> GetTasksAsync(Guid id, ShipperTaskQuery query);
         Task<BaseResponse<ShipperBatchResultDto>> BatchLockAsync(ShipperBatchActionCommand command);
         Task<BaseResponse<ShipperBatchResultDto>> BatchDeleteAsync(ShipperBatchActionCommand command);
     }

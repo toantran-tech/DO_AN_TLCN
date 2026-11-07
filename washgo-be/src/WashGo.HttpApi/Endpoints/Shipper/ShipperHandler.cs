@@ -56,6 +56,15 @@ namespace WashGo.HttpApi.Endpoints.Shipper
                 .WithSummary("Mở khóa tài khoản; không tự đổi trạng thái làm việc/vận hành, không khôi phục nhiệm vụ cũ. Có audit.")
                 .WithOpenApi();
 
+            group.MapPost("/{id:guid}/tasks", async (Guid id, ShipperTaskQuery query, IShipperManagementAppService svc) =>
+            {
+                var result = await svc.GetTasksAsync(id, query);
+                return result.StatusCode == System.Net.HttpStatusCode.NotFound ? Results.NotFound(result) : result.CustomResult();
+            })
+                .WithName("Lịch sử nhiệm vụ của Shipper")
+                .WithSummary("Merchant xem nhiệm vụ lấy/trả của một Shipper trong tiệm (cả Shipper đã xóa): mã đơn, loại, trạng thái nhiệm vụ (Assigned/Completed/Reassigned/Cancelled), mốc phân công/hoàn tất/kết thúc thật; lọc taskType/status, phân trang tại BE.")
+                .WithOpenApi();
+
             group.MapGet("/{id:guid}/audits", async (Guid id, IShipperManagementAppService svc) =>
                 (await svc.GetAuditsAsync(id)).CustomResult())
                 .WithName("Lịch sử thao tác quản trị Shipper")
