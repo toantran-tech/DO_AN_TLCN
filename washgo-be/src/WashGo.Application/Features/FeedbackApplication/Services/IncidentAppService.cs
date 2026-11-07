@@ -57,14 +57,26 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
             if (!CurrentUser.Id.HasValue)
                 return BadRequest<IncidentResultDto>("Không xác định được tài khoản khách hàng.");
             var customerId = CurrentUser.Id.Value;
+            var requestId = string.IsNullOrWhiteSpace(command.ClientRequestId) ? null : command.ClientRequestId.Trim();
+            if (requestId?.Length > 64)
+                return BadRequest<IncidentResultDto>("Mã yêu cầu tối đa 64 ký tự.");
+            // A retried submit with the same request id returns the incident created the first time.
+            if (requestId != null &&
+                await _incidentRepo.FirstOrDefaultAsync(x => x.CustomerId == customerId && x.ClientRequestId == requestId) is { } existing)
+                return Success(ToDto(existing), "Yêu cầu khiếu nại này đã được ghi nhận trước đó.");
             if (!Enum.IsDefined(command.Type) || !Enum.IsDefined(command.Severity))
                 return BadRequest<IncidentResultDto>("Vui lòng chọn loại sự cố và mức độ hợp lệ.");
             var description = command.Description?.Trim();
             if (string.IsNullOrWhiteSpace(description) || description.Length > 2000)
                 return BadRequest<IncidentResultDto>("Mô tả sự cố phải có từ 1 đến 2000 ký tự.");
-            var imageError = UploadStorage.ValidateOwnedImages(_configuration, command.ImageUrls, customerId, 1, out var images);
+            // Evidence: at least one photo or one video.
+            var videoError = UploadStorage.ValidateOwnedVideos(_configuration, command.VideoUrls, customerId, out var videos);
+            if (videoError != null)
+                return BadRequest<IncidentResultDto>(videoError);
+            var imageError = UploadStorage.ValidateOwnedImages(_configuration, command.ImageUrls, customerId, videos.Count > 0 ? 0 : 1, out var images);
             if (imageError != null)
-                return BadRequest<IncidentResultDto>(imageError);
+                return BadRequest<IncidentResultDto>(videos.Count == 0 && images.Count == 0
+                    ? "Vui lòng upload ít nhất 1 ảnh hoặc video minh chứng." : imageError);
 
             using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
             var order = await _orderRepo.GetForUpdateAsync(command.OrderId);
@@ -97,6 +109,8 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
                 Severity = command.Severity,
                 Description = description,
                 ImageUrls = images,
+                VideoUrls = videos,
+                ClientRequestId = requestId,
                 Status = IncidentStatus.Pending
             };
             await _incidentRepo.InsertAsync(incident, autoSave: true);
@@ -244,7 +258,7 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
             return Success(ToDto(incident), "Đã ghi nhận chi trả bồi thường.");
         }
 
-        private static IncidentResultDto ToDto(Incident x) => new()
+        public static IncidentResultDto ToDto(Incident x) => new()
         {
             Id = x.Id,
             OrderId = x.OrderId,
@@ -257,6 +271,7 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
             Severity = x.Severity,
             Description = x.Description,
             ImageUrls = new List<string>(x.ImageUrls),
+            VideoUrls = new List<string>(x.VideoUrls),
             Status = x.Status,
             ResolutionNote = x.ResolutionNote,
             ResponsibleParty = x.ResponsibleParty,
@@ -267,7 +282,11 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
             CompensationReference = x.CompensationReference,
             CompensationPaidAt = x.CompensationPaidAt,
             ReviewedAt = x.ReviewedAt,
-            CreatedOn = x.CreatedOn
+            CreatedOn = x.CreatedOn,
+            ClientRequestId = x.ClientRequestId,
+            CustomerUpdatedAt = x.CustomerUpdatedAt,
+            WithdrawnAt = x.WithdrawnAt,
+            WithdrawReason = x.WithdrawReason
         };
     }
 }

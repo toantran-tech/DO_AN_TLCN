@@ -56,6 +56,18 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Results
         public string? PickupQrCodeString => string.IsNullOrEmpty(PickupPinCode)
             ? null : $"WASHGO:PICKUP:{OrderCode}:{PickupPinCode}";
         public string QrCodeString { get; set; } = string.Empty;
+        /// <summary>Hạn gửi đồ (UTC), chốt lúc tạo đơn; cùng mốc với kiểm tra gửi đồ và phí hủy.</summary>
+        public DateTime? DepositDeadline { get; set; }
+        /// <summary>Thời gian giữ ô (phút) áp dụng cho đơn này.</summary>
+        public int? DepositWindowMinutes => DepositDeadline.HasValue
+            ? (int)Math.Round((DepositDeadline.Value - DateTimeOffset.FromUnixTimeSeconds(CreatedOn).UtcDateTime).TotalMinutes) : null;
+        /// <summary>Giờ server (UTC) lúc trả kết quả, để FE đếm ngược đúng dù đồng hồ máy khách lệch.</summary>
+        public DateTime ServerNow => DateTime.UtcNow;
+        /// <summary>Đơn còn chờ gửi nhưng đã quá hạn: không gửi được nữa, nên hủy để giải phóng ô.</summary>
+        public bool IsDepositExpired => Status == WashOrderStatus.Pending && DepositDeadline.HasValue && ServerNow > DepositDeadline.Value;
+        /// <summary>Số giây còn lại để gửi đồ (chỉ khi đơn đang chờ gửi).</summary>
+        public long? DepositSecondsLeft => Status == WashOrderStatus.Pending && DepositDeadline.HasValue
+            ? Math.Max(0, (long)(DepositDeadline.Value - ServerNow).TotalSeconds) : null;
         public long ExpectedDeliveryTime { get; set; }
         public DateTime? DepositedAt { get; set; }
         public DateTime? PaidAt { get; set; }
@@ -75,6 +87,20 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Results
         public WashOrderStatus? CancellationFromStatus { get; set; }
         public CancelledGoodsStatus CancelledGoodsStatus { get; set; }
         public DateTime? CancelledGoodsReturnedAt { get; set; }
+        /// <summary>Phần trăm các bước áp dụng cho đơn đã đi qua (bước hiện tại tính là đã tới); 100 khi hoàn tất.</summary>
+        public int ProgressPercent { get; set; }
+        /// <summary>Các bước quy trình: bước nào áp dụng theo dịch vụ của đơn, đã xong, đang ở, thời điểm (Unix giây).</summary>
+        public List<OrderWorkflowStepDto> WorkflowSteps { get; set; } = [];
+    }
+
+    public class OrderWorkflowStepDto
+    {
+        public WashOrderStatus Status { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public bool IsApplicable { get; set; }
+        public bool IsCompleted { get; set; }
+        public bool IsCurrent { get; set; }
+        public long? Timestamp { get; set; }
     }
 
     public class WashOrderDetailDto : WashOrderResultDto
@@ -86,6 +112,27 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Results
         public string? TaskBoxNumber { get; set; }
         /// <summary>Collect / Return khi Shipper còn nhiệm vụ chưa làm; null khi không có.</summary>
         public DeliveryTaskType? NextAction { get; set; }
+        /// <summary>Tủ khách nhận đồ (tủ trả; mặc định là tủ gửi) để chỉ đường trước khi mở phiên nhận đồ.</summary>
+        public string? ReturnLockerName { get; set; }
+        public string? ReturnLockerAddress { get; set; }
+        public double? ReturnLockerLatitude { get; set; }
+        public double? ReturnLockerLongitude { get; set; }
+        /// <summary>Địa chỉ và tọa độ tủ gửi đồ.</summary>
+        public string? LockerAddress { get; set; }
+        public double? LockerLatitude { get; set; }
+        public double? LockerLongitude { get; set; }
+        /// <summary>
+        /// ETA dự đoán (giặt xong, UTC) từ dữ liệu đơn thật. Khác `estimatedFinishAt` = ETA theo quy tắc (giờ xử lý chuẩn).
+        /// </summary>
+        public DateTime? PredictedFinishAt { get; set; }
+        /// <summary>predicted (dự đoán từ dữ liệu), rule (chưa đủ dữ liệu, dùng ETA quy tắc), done (đã giặt xong), notApplicable (đơn hủy).</summary>
+        public string PredictionStatus { get; set; } = "notApplicable";
+        /// <summary>history-merchant (cùng tiệm, cùng loại dịch vụ), history-service (toàn hệ thống, cùng loại), rule, actual.</summary>
+        public string? PredictionSource { get; set; }
+        public int? PredictionSampleSize { get; set; }
+        /// <summary>Hệ số tải của tiệm (1 = bình thường, tối đa 1.5).</summary>
+        public double? PredictionLoadFactor { get; set; }
+        public DateTime? PredictionUpdatedAt { get; set; }
         public List<WashOrderItemDto> Items { get; set; } = [];
         public List<WashOrderTimelineDto> Timeline { get; set; } = [];
     }

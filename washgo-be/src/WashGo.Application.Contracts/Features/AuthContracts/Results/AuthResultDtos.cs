@@ -29,5 +29,10 @@ namespace WashGo.Application.Contracts.Features.AuthContracts.Results
         public string? Phone { get; set; }
         public string Role { get; set; } = string.Empty;
         public string? Avatar { get; set; }
+        /// <summary>True only on the very first successful login of the account.</summary>
+        public bool FirstLogin { get; set; }
+        /// <summary>Customer has not accepted the current terms version yet (first login or a new version): show the terms.</summary>
+        public bool RequiresTermsAcceptance { get; set; }
+        public string? TermsVersion { get; set; }
     }
 }

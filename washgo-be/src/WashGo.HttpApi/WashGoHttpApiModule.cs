@@ -9,6 +9,7 @@ using WashGo.HttpApi.Endpoints.Customer;
 using WashGo.HttpApi.Endpoints.Locker;
 using WashGo.HttpApi.Endpoints.Merchant;
 using WashGo.HttpApi.Endpoints.OrderAssignment;
+using WashGo.HttpApi.Endpoints.Policy;
 using WashGo.HttpApi.Endpoints.Payment;
 using WashGo.HttpApi.Endpoints.Promotion;
 using WashGo.HttpApi.Endpoints.Feedback;
@@ -53,6 +54,7 @@ namespace WashGo.HttpApi
             context.Services.AddTransient<IEndpointBase, FinanceHandler>();
             context.Services.AddTransient<IEndpointBase, ServiceProposalHandler>();
             context.Services.AddTransient<IEndpointBase, MerchantProfileHandler>();
+            context.Services.AddTransient<IEndpointBase, PolicyHandler>();
         }
     }
 }

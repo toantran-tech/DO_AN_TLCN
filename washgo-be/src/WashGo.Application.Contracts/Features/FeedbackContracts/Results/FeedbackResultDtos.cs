@@ -20,6 +20,7 @@ namespace WashGo.Application.Contracts.Features.FeedbackContracts.Results
         public int? PackagingStars { get; set; }
         public string? Comment { get; set; }
         public List<string> ImageUrls { get; set; } = [];
+        public List<string> VideoUrls { get; set; } = [];
         public bool IsHidden { get; set; }
         public string? HiddenReason { get; set; }
         public DateTime? HiddenAt { get; set; }
@@ -39,6 +40,7 @@ namespace WashGo.Application.Contracts.Features.FeedbackContracts.Results
         public IncidentSeverity Severity { get; set; }
         public string Description { get; set; } = string.Empty;
         public List<string> ImageUrls { get; set; } = [];
+        public List<string> VideoUrls { get; set; } = [];
         public IncidentStatus Status { get; set; }
         public string? ResolutionNote { get; set; }
         public ResponsibleParty? ResponsibleParty { get; set; }
@@ -50,5 +52,38 @@ namespace WashGo.Application.Contracts.Features.FeedbackContracts.Results
         public DateTime? CompensationPaidAt { get; set; }
         public DateTime? ReviewedAt { get; set; }
         public long CreatedOn { get; set; }
+        public string? ClientRequestId { get; set; }
+        public DateTime? CustomerUpdatedAt { get; set; }
+        public DateTime? WithdrawnAt { get; set; }
+        public string? WithdrawReason { get; set; }
+        /// <summary>Khách còn sửa/rút/bổ sung được (đang chờ xử lý).</summary>
+        public bool CanEdit => Status == IncidentStatus.Pending;
+    }
+
+    /// <summary>Điều kiện báo cáo sự cố của một đơn (UC 1.4.2).</summary>
+    public class IncidentEligibilityDto
+    {
+        public Guid OrderId { get; set; }
+        public string OrderCode { get; set; } = string.Empty;
+        public bool CanReport { get; set; }
+        /// <summary>Lý do không báo cáo được; null khi được phép.</summary>
+        public string? Reason { get; set; }
+        public DateTime? CompletedAt { get; set; }
+        public DateTime? ReportDeadline { get; set; }
+        public Guid? PendingIncidentId { get; set; }
+        public List<Guid> IncidentIds { get; set; } = [];
+    }
+
+    public class IncidentMessageDto
+    {
+        public Guid Id { get; set; }
+        public Guid IncidentId { get; set; }
+        public string SenderRole { get; set; } = string.Empty;
+        public string SenderName { get; set; } = string.Empty;
+        public bool IsMine { get; set; }
+        public string Content { get; set; } = string.Empty;
+        public List<string> ImageUrls { get; set; } = [];
+        public List<string> VideoUrls { get; set; } = [];
+        public DateTime CreatedAt { get; set; }
     }
 }

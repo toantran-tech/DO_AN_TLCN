@@ -33,6 +33,11 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<string>("ClientRequestId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("client_request_id");
+
                     b.Property<decimal>("CompensationAmount")
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)")
@@ -76,6 +81,10 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)")
                         .HasColumnName("customer_name");
+
+                    b.Property<DateTime?>("CustomerUpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("customer_updated_at");
 
                     b.Property<string>("DeletedBy")
                         .HasColumnType("text")
@@ -169,6 +178,20 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("type");
 
+                    b.Property<List<string>>("VideoUrls")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("video_urls");
+
+                    b.Property<string>("WithdrawReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("withdraw_reason");
+
+                    b.Property<DateTime?>("WithdrawnAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("withdrawn_at");
+
                     b.HasKey("Id");
 
                     b.HasIndex("CustomerId");
@@ -177,9 +200,66 @@ namespace WashGo.EntityFrameworkCore.Migrations
 
                     b.HasIndex("OrderId");
 
+                    b.HasIndex("CustomerId", "ClientRequestId")
+                        .IsUnique()
+                        .HasFilter("client_request_id IS NOT NULL");
+
                     b.HasIndex("Status", "Severity");
 
                     b.ToTable("incidents", "washgo");
+                });
+
+            modelBuilder.Entity("WashGo.Domain.Entities.Feedback.IncidentMessage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("content");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<List<string>>("ImageUrls")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("image_urls");
+
+                    b.Property<Guid>("IncidentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("incident_id");
+
+                    b.Property<Guid>("SenderId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("sender_id");
+
+                    b.Property<string>("SenderName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("sender_name");
+
+                    b.Property<string>("SenderRole")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("sender_role");
+
+                    b.Property<List<string>>("VideoUrls")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("video_urls");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IncidentId", "CreatedAt");
+
+                    b.ToTable("incident_messages", "washgo");
                 });
 
             modelBuilder.Entity("WashGo.Domain.Entities.Feedback.OrderRating", b =>
@@ -303,6 +383,11 @@ namespace WashGo.EntityFrameworkCore.Migrations
                     b.Property<int?>("SpeedStars")
                         .HasColumnType("integer")
                         .HasColumnName("speed_stars");
+
+                    b.Property<List<string>>("VideoUrls")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("video_urls");
 
                     b.HasKey("Id");
 
@@ -985,6 +1070,15 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("character varying(30)")
                         .HasColumnName("link_type");
 
+                    b.Property<string>("MessageArgs")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("message_args");
+
+                    b.Property<string>("MessageKey")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("message_key");
+
                     b.Property<string>("Modified")
                         .HasColumnType("jsonb")
                         .HasColumnName("modified");
@@ -1022,6 +1116,8 @@ namespace WashGo.EntityFrameworkCore.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("UserId", "CreatedOn");
+
+                    b.HasIndex("UserId", "Type");
 
                     b.HasIndex("UserId", "IsDeleted", "IsRead");
 
@@ -1766,6 +1862,95 @@ namespace WashGo.EntityFrameworkCore.Migrations
                     b.ToTable("refund_requests", "washgo");
                 });
 
+            modelBuilder.Entity("WashGo.Domain.Entities.Policy.TermsAcceptance", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("AcceptedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("accepted_at");
+
+                    b.Property<string>("IpAddress")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("ip_address");
+
+                    b.Property<Guid>("PolicyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("policy_id");
+
+                    b.Property<string>("UserAgent")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("user_agent");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<string>("Version")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PolicyId");
+
+                    b.HasIndex("UserId", "PolicyId")
+                        .IsUnique();
+
+                    b.ToTable("terms_acceptances", "washgo");
+                });
+
+            modelBuilder.Entity("WashGo.Domain.Entities.Policy.TermsPolicy", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("content");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateTime>("EffectiveFrom")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("effective_from");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("title");
+
+                    b.Property<string>("Version")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EffectiveFrom");
+
+                    b.HasIndex("Version")
+                        .IsUnique();
+
+                    b.ToTable("terms_policies", "washgo");
+                });
+
             modelBuilder.Entity("WashGo.Domain.Entities.Promotion.Promotion", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2371,6 +2556,15 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("character varying(500)")
                         .HasColumnName("qr_code");
 
+                    b.Property<DateTime?>("ReceiptIssuedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("receipt_issued_at");
+
+                    b.Property<string>("ReceiptNumber")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("receipt_number");
+
                     b.Property<Guid?>("ReturnBoxId")
                         .HasColumnType("uuid")
                         .HasColumnName("return_box_id");
@@ -2474,6 +2668,10 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .IsUnique();
 
                     b.HasIndex("PromotionId");
+
+                    b.HasIndex("ReceiptNumber")
+                        .IsUnique()
+                        .HasFilter("receipt_number IS NOT NULL");
 
                     b.HasIndex("ReturnBoxId");
 
@@ -2823,6 +3021,15 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("WashGo.Domain.Entities.Feedback.IncidentMessage", b =>
+                {
+                    b.HasOne("WashGo.Domain.Entities.Feedback.Incident", null)
+                        .WithMany()
+                        .HasForeignKey("IncidentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("WashGo.Domain.Entities.Feedback.OrderRating", b =>
                 {
                     b.HasOne("WashGo.Domain.Entities.WashOrder.WashOrder", null)
@@ -3013,6 +3220,21 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .IsRequired();
 
                     b.Navigation("Order");
+                });
+
+            modelBuilder.Entity("WashGo.Domain.Entities.Policy.TermsAcceptance", b =>
+                {
+                    b.HasOne("WashGo.Domain.Entities.Policy.TermsPolicy", null)
+                        .WithMany()
+                        .HasForeignKey("PolicyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("WashGo.Domain.Entities.Identity.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("WashGo.Domain.Entities.Promotion.PromotionUsage", b =>

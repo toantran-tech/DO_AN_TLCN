@@ -18,5 +18,8 @@ namespace WashGo.HttpApi.Hubs
 
         public Task SendAsync(Guid userId, NotificationDto notification) =>
             _hub.Clients.User(userId.ToString()).SendAsync(NotificationHub.ReceiveMethod, notification);
+
+        public Task SendStateAsync(Guid userId, NotificationStateDto state) =>
+            _hub.Clients.User(userId.ToString()).SendAsync(NotificationHub.StateMethod, state);
     }
 }

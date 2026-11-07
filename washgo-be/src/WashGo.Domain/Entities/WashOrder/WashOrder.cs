@@ -118,6 +118,9 @@ namespace WashGo.Domain.Entities.WashOrder
         public WashOrderStatus? CancellationFromStatus { get; set; }
         public CancelledGoodsStatus CancelledGoodsStatus { get; set; }
         public DateTime? CancelledGoodsReturnedAt { get; set; }
+        /// <summary>Số biên lai thanh toán (cấp ở lần xuất đầu tiên, không đổi).</summary>
+        public string? ReceiptNumber { get; set; }
+        public DateTime? ReceiptIssuedAt { get; set; }
         public string? CustomerNote { get; set; }
 
         public virtual ICollection<WashOrderItem> Items { get; set; }

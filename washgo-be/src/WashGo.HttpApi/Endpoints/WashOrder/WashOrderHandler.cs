@@ -39,6 +39,25 @@ namespace WashGo.HttpApi.Endpoints.WashOrder
                 .WithSummary("Xem chi tiết đơn hàng được phép truy cập theo tài khoản đang đăng nhập.")
                 .WithOpenApi();
 
+            group.MapGet("/{id:guid}/receipt", async (Guid id, IOrderReceiptAppService svc) =>
+                (await svc.GetAsync(id)).CustomResult())
+                .RequireAuthorization()
+                .WithName("Biên lai thanh toán")
+                .WithSummary("Biên lai nội bộ (không phải hóa đơn GTGT): số/ngày biên lai cố định, bên bán (Merchant, MST), bên mua, dịch vụ, phụ phí, giảm giá, phí đã thu, giao dịch. Khách chủ đơn, Merchant của đơn, Admin; đơn phải có thanh toán thành công.")
+                .WithOpenApi();
+
+            group.MapGet("/{id:guid}/receipt/pdf", async (Guid id, IOrderReceiptAppService svc) =>
+            {
+                var result = await svc.GetPdfAsync(id);
+                return result.Succeeded && result.Data != null
+                    ? Results.File(result.Data.Content, "application/pdf", result.Data.FileName)
+                    : result.CustomResult();
+            })
+                .RequireAuthorization()
+                .WithName("Tải biên lai PDF")
+                .WithSummary("Tải biên lai thanh toán dạng PDF (A5, tiếng Việt).")
+                .WithOpenApi();
+
             group.MapPost("/", async (CreateWashOrderCommand command, IWashOrderAppService svc) =>
                 (await svc.CreateAsync(command)).CustomResult())
                 .RequireAuthorization("CustomerOnly")

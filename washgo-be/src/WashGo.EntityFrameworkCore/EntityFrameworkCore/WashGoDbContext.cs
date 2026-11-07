@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Volo.Abp.Data;
 using Volo.Abp.EntityFrameworkCore;
+using WashGo.Domain.Entities.Policy;
 using WashGo.Domain.Entities.Identity;
 using WashGo.Domain.Entities.Locker;
 using WashGo.Domain.Entities.Feedback;
@@ -49,6 +50,9 @@ namespace WashGo.EntityFrameworkCore.EntityFrameworkCore
         public DbSet<ReminderLog> ReminderLogs { get; set; } = null!;
         public DbSet<MerchantSettlement> MerchantSettlements { get; set; } = null!;
         public DbSet<MerchantProfileRequest> MerchantProfileRequests { get; set; } = null!;
+        public DbSet<TermsPolicy> TermsPolicies { get; set; } = null!;
+        public DbSet<TermsAcceptance> TermsAcceptances { get; set; } = null!;
+        public DbSet<IncidentMessage> IncidentMessages { get; set; } = null!;
 
         public WashGoDbContext(DbContextOptions<WashGoDbContext> options)
             : base(options)
@@ -87,6 +91,9 @@ namespace WashGo.EntityFrameworkCore.EntityFrameworkCore
             builder.ApplyConfiguration(new NotificationEntityTypeConfiguration());
             builder.ApplyConfiguration(new SystemSettingEntityTypeConfiguration());
             builder.ApplyConfiguration(new ReminderLogEntityTypeConfiguration());
+            builder.ApplyConfiguration(new TermsPolicyEntityTypeConfiguration());
+            builder.ApplyConfiguration(new TermsAcceptanceEntityTypeConfiguration());
+            builder.ApplyConfiguration(new IncidentMessageEntityTypeConfiguration());
             builder.ApplyConfiguration(new MerchantSettlementEntityTypeConfiguration());
             builder.ApplyConfiguration(new MerchantProfileRequestEntityTypeConfiguration());
             builder.ApplyConfiguration(new LockerMerchantEntityTypeConfiguration());

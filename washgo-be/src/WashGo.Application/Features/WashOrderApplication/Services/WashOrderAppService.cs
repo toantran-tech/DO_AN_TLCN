@@ -50,6 +50,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
         private readonly NotificationPublisher _notifications;
         private readonly SystemSettingProvider _settings;
         private readonly OrderListEnricher _enricher;
+        private readonly EtaPredictor _eta;
         private readonly LockerMerchantResolver _lockerMerchants;
 
         public WashOrderAppService(
@@ -68,6 +69,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             NotificationPublisher notifications,
             SystemSettingProvider settings,
             OrderListEnricher enricher,
+            EtaPredictor eta,
             LockerMerchantResolver lockerMerchants)
         {
             _orderRepo = orderRepo;
@@ -85,6 +87,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             _notifications = notifications;
             _settings = settings;
             _enricher = enricher;
+            _eta = eta;
             _lockerMerchants = lockerMerchants;
         }
 
@@ -261,6 +264,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
 
             var dto = ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order);
             await _enricher.FillAsync([dto], scope.Role);
+            await _enricher.FillLockersAsync(dto);
+            await _eta.FillAsync(dto);
             if (scope.Role is "Shipper" or "Merchant" or "Admin")
                 await _enricher.FillTaskAsync(dto);
             return Success(RedactStaffData(dto, scope));
@@ -520,7 +525,9 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 FinalAmount = priced.Total - discount,
                 IncludedWeightKg = priced.HasWeightService ? WashOrderWeightPricing.IncludedWeight(box.Size) : 0m,
                 BaseProcessingHours = priced.BaseProcessingHours,
-                ExpectedDeliveryTime = DateTimeOffset.UtcNow.AddHours(priced.BaseProcessingHours).ToUnixTimeSeconds()
+                ExpectedDeliveryTime = DateTimeOffset.UtcNow.AddHours(priced.BaseProcessingHours).ToUnixTimeSeconds(),
+                // The box is held until this time; fixed now so a later SLA change does not move it (UC 3.9.1).
+                DepositDeadline = OrderDepositRules.DeadlineFor(DateTime.UtcNow, (await _settings.GetAsync()).DepositWindowMinutes)
             };
             foreach (var item in priced.Items)
                 order.Items.Add(item);
@@ -1022,10 +1029,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             if (order.Status != WashOrderStatus.Pending)
                 return BadRequest<WashOrderDetailDto>("Đơn hàng không ở trạng thái chờ gửi đồ.");
 
-            // Reservation window comes from the SLA settings (UC 3.9.1).
-            var depositWindow = (await _settings.GetAsync()).DepositWindowMinutes;
-            var orderCreatedTime = DateTimeOffset.FromUnixTimeSeconds(order.CreatedOn).UtcDateTime;
-            if (DateTime.UtcNow > orderCreatedTime.AddMinutes(depositWindow))
+            // Reservation window fixed when the order was created (UC 3.9.1).
+            if (OrderDepositRules.IsExpired(order, DateTime.UtcNow, (await _settings.GetAsync()).DepositWindowMinutes))
             {
                 return BadRequest<WashOrderDetailDto>("Đã quá hạn gửi đồ. Vui lòng hủy đơn để giải phóng ô và tạo đơn mới.");
             }
