@@ -13,9 +13,14 @@ namespace WashGo.Application.Features.FileApplication.Services
         public const string RequestPath = "/uploads";
         public const long MaxImageBytes = 5 * 1024 * 1024;
         public const int MaxImagesPerSubmission = 5;
+        public const long MaxVideoBytes = 50 * 1024 * 1024;
+        public const int MaxVideosPerSubmission = 2;
 
         private static readonly Regex UrlPattern =
             new(@"^/uploads/(?<owner>[0-9a-f]{32})/(?<file>[0-9a-f]{32}\.(jpg|png|webp))$", RegexOptions.Compiled);
+
+        private static readonly Regex VideoUrlPattern =
+            new(@"^/uploads/(?<owner>[0-9a-f]{32})/(?<file>[0-9a-f]{32}\.(mp4|webm|mov))$", RegexOptions.Compiled);
 
         public static string GetRoot(IConfiguration configuration) =>
             Path.GetFullPath(configuration["Storage:UploadPath"] ?? Path.Combine(AppContext.BaseDirectory, "uploads"));
@@ -39,6 +44,25 @@ namespace WashGo.Application.Features.FileApplication.Services
                 if (!match.Success || match.Groups["owner"].Value != owner ||
                     !File.Exists(Path.Combine(root, owner, match.Groups["file"].Value)))
                     return "Ảnh đính kèm không hợp lệ; vui lòng upload lại.";
+            }
+            return null;
+        }
+
+        /// <summary>Như ảnh: chỉ nhận video do chính người dùng upload qua /files/videos và còn tồn tại.</summary>
+        public static string? ValidateOwnedVideos(IConfiguration configuration, IEnumerable<string>? urls, Guid ownerId,
+            out List<string> normalized)
+        {
+            normalized = (urls ?? []).Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x.Trim()).Distinct().ToList();
+            if (normalized.Count > MaxVideosPerSubmission)
+                return $"Tối đa {MaxVideosPerSubmission} video.";
+            var root = GetRoot(configuration);
+            var owner = ownerId.ToString("N");
+            foreach (var url in normalized)
+            {
+                var match = VideoUrlPattern.Match(url);
+                if (!match.Success || match.Groups["owner"].Value != owner ||
+                    !File.Exists(Path.Combine(root, owner, match.Groups["file"].Value)))
+                    return "Video đính kèm không hợp lệ; vui lòng upload lại.";
             }
             return null;
         }

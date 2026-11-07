@@ -20,6 +20,7 @@ namespace WashGo.Application.Contracts.Features.FeedbackContracts.Results
         public int? PackagingStars { get; set; }
         public string? Comment { get; set; }
         public List<string> ImageUrls { get; set; } = [];
+        public List<string> VideoUrls { get; set; } = [];
         public bool IsHidden { get; set; }
         public string? HiddenReason { get; set; }
         public DateTime? HiddenAt { get; set; }
@@ -39,6 +40,7 @@ namespace WashGo.Application.Contracts.Features.FeedbackContracts.Results
         public IncidentSeverity Severity { get; set; }
         public string Description { get; set; } = string.Empty;
         public List<string> ImageUrls { get; set; } = [];
+        public List<string> VideoUrls { get; set; } = [];
         public IncidentStatus Status { get; set; }
         public string? ResolutionNote { get; set; }
         public ResponsibleParty? ResponsibleParty { get; set; }

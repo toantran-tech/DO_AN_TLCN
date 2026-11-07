@@ -14,6 +14,8 @@ namespace WashGo.Application.Contracts.Features.FeedbackContracts.Commands
         public int? PackagingStars { get; set; }
         public string? Comment { get; set; }
         public List<string> ImageUrls { get; set; } = [];
+        /// <summary>Video MP4/WEBM/MOV đã upload qua /files/videos (tối đa 2).</summary>
+        public List<string> VideoUrls { get; set; } = [];
     }
 
     public class SetRatingVisibilityCommand
@@ -29,6 +31,8 @@ namespace WashGo.Application.Contracts.Features.FeedbackContracts.Commands
         public IncidentSeverity Severity { get; set; }
         public string Description { get; set; } = string.Empty;
         public List<string> ImageUrls { get; set; } = [];
+        /// <summary>Video MP4/WEBM/MOV đã upload qua /files/videos (tối đa 2).</summary>
+        public List<string> VideoUrls { get; set; } = [];
     }
 
     public class ResolveIncidentCommand

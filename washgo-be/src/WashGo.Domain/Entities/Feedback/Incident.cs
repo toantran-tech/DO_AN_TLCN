@@ -24,6 +24,7 @@ namespace WashGo.Domain.Entities.Feedback
         public IncidentSeverity Severity { get; set; }
         public string Description { get; set; } = string.Empty;
         public List<string> ImageUrls { get; set; } = [];
+        public List<string> VideoUrls { get; set; } = [];
         public IncidentStatus Status { get; set; } = IncidentStatus.Pending;
         public string? ResolutionNote { get; set; }
         public ResponsibleParty? ResponsibleParty { get; set; }

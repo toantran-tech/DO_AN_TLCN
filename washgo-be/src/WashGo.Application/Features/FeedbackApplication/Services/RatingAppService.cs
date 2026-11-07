@@ -59,6 +59,9 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
             var imageError = UploadStorage.ValidateOwnedImages(_configuration, command.ImageUrls, customerId, 0, out var images);
             if (imageError != null)
                 return BadRequest<RatingResultDto>(imageError);
+            var videoError = UploadStorage.ValidateOwnedVideos(_configuration, command.VideoUrls, customerId, out var videos);
+            if (videoError != null)
+                return BadRequest<RatingResultDto>(videoError);
 
             using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
             // Locking the order serializes double submits before the unique index would reject them.
@@ -84,7 +87,8 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
                 AttitudeStars = command.AttitudeStars,
                 PackagingStars = command.PackagingStars,
                 Comment = comment,
-                ImageUrls = images
+                ImageUrls = images,
+                VideoUrls = videos
             };
             await _ratingRepo.InsertAsync(rating, autoSave: true);
             await RefreshMerchantRatingAsync(order.MerchantId);
@@ -191,6 +195,7 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
             PackagingStars = x.PackagingStars,
             Comment = x.Comment,
             ImageUrls = new List<string>(x.ImageUrls),
+            VideoUrls = new List<string>(x.VideoUrls),
             IsHidden = x.IsHidden,
             HiddenReason = x.HiddenReason,
             HiddenAt = x.HiddenAt,
