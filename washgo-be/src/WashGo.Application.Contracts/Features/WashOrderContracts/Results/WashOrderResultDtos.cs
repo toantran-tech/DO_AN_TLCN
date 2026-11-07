@@ -56,6 +56,18 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Results
         public string? PickupQrCodeString => string.IsNullOrEmpty(PickupPinCode)
             ? null : $"WASHGO:PICKUP:{OrderCode}:{PickupPinCode}";
         public string QrCodeString { get; set; } = string.Empty;
+        /// <summary>Hạn gửi đồ (UTC), chốt lúc tạo đơn; cùng mốc với kiểm tra gửi đồ và phí hủy.</summary>
+        public DateTime? DepositDeadline { get; set; }
+        /// <summary>Thời gian giữ ô (phút) áp dụng cho đơn này.</summary>
+        public int? DepositWindowMinutes => DepositDeadline.HasValue
+            ? (int)Math.Round((DepositDeadline.Value - DateTimeOffset.FromUnixTimeSeconds(CreatedOn).UtcDateTime).TotalMinutes) : null;
+        /// <summary>Giờ server (UTC) lúc trả kết quả, để FE đếm ngược đúng dù đồng hồ máy khách lệch.</summary>
+        public DateTime ServerNow => DateTime.UtcNow;
+        /// <summary>Đơn còn chờ gửi nhưng đã quá hạn: không gửi được nữa, nên hủy để giải phóng ô.</summary>
+        public bool IsDepositExpired => Status == WashOrderStatus.Pending && DepositDeadline.HasValue && ServerNow > DepositDeadline.Value;
+        /// <summary>Số giây còn lại để gửi đồ (chỉ khi đơn đang chờ gửi).</summary>
+        public long? DepositSecondsLeft => Status == WashOrderStatus.Pending && DepositDeadline.HasValue
+            ? Math.Max(0, (long)(DepositDeadline.Value - ServerNow).TotalSeconds) : null;
         public long ExpectedDeliveryTime { get; set; }
         public DateTime? DepositedAt { get; set; }
         public DateTime? PaidAt { get; set; }

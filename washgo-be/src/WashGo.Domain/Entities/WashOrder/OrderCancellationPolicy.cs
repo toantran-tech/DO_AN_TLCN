@@ -17,7 +17,8 @@ namespace WashGo.Domain.Entities.WashOrder
             switch (order.Status)
             {
                 case WashOrderStatus.Pending:
-                    percent = new DateTimeOffset(now).ToUnixTimeSeconds() - order.CreatedOn > settings.DepositWindowMinutes * 60L
+                    // Free while the box is still reserved (same deadline as the deposit check).
+                    percent = OrderDepositRules.IsExpired(order, now, settings.DepositWindowMinutes)
                         ? settings.CancelLatePendingPercent : 0;
                     break;
                 case WashOrderStatus.Deposited:

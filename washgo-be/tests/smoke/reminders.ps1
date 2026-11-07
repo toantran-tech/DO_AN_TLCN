@@ -61,8 +61,8 @@ INSERT INTO washgo.services SELECT (jsonb_populate_record(NULL::washgo.services,
 
     Write-Output '2. Deposit reminder 15 minutes before the window ends; expired orders are skipped'
     $o1=New-Order; $expired=New-Order
-    Shift $o1.id "created_on=EXTRACT(EPOCH FROM NOW())::bigint-16*60"
-    Shift $expired.id "created_on=EXTRACT(EPOCH FROM NOW())::bigint-31*60"
+    Shift $o1.id "created_on=EXTRACT(EPOCH FROM NOW())::bigint-16*60,deposit_deadline=deposit_deadline-(created_on-(EXTRACT(EPOCH FROM NOW())::bigint-16*60))*interval '1 second'"
+    Shift $expired.id "created_on=EXTRACT(EPOCH FROM NOW())::bigint-31*60,deposit_deadline=deposit_deadline-(created_on-(EXTRACT(EPOCH FROM NOW())::bigint-31*60))*interval '1 second'"
     Run-Scan | Out-Null; Run-Scan | Out-Null
     Expect-Count $customer $o1.id 13 1 'Deposit reminder'
     Expect-Count $customer $expired.id 13 0 'Expired order'
@@ -71,7 +71,7 @@ INSERT INTO washgo.services SELECT (jsonb_populate_record(NULL::washgo.services,
     Call-Api Post "/wash-order/$($expired.id)/cancel" @{reason='Reminder smoke cleanup'} $customer | Out-Null
 
     Write-Output '3. Shipper collect reminder after 30 minutes; Merchant/Admin warning after collect SLA'
-    Shift $o1.id "created_on=EXTRACT(EPOCH FROM NOW())::bigint-60"
+    Shift $o1.id "created_on=EXTRACT(EPOCH FROM NOW())::bigint-60,deposit_deadline=deposit_deadline-(created_on-(EXTRACT(EPOCH FROM NOW())::bigint-60))*interval '1 second'"
     Invoke-TestDelivery $o1.id deposit $customer | Out-Null
     Call-Api Put '/wash-order/assign-shipper' @{orderId=$o1.id;shipperId="$fixtureShipper"} $merchant | Out-Null
     Run-Scan | Out-Null

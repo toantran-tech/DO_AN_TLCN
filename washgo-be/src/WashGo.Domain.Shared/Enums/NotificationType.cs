@@ -18,6 +18,8 @@ namespace WashGo.Domain.Shared.Enums
         DepositReminder = 13,
         PickupReminder = 14,
         OverdueFeeApplied = 15,
+        /// <summary>Đơn chờ gửi đã quá hạn gửi đồ: khách nên hủy để giải phóng ô (không tự hủy).</summary>
+        DepositExpired = 16,
         NewOrderForMerchant = 20,
         MerchantReturnReminder = 21,
         SlaWarning = 22,
