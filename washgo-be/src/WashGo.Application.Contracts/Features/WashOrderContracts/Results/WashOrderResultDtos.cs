@@ -10,6 +10,8 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Results
         public string OrderCode { get; set; } = string.Empty;
         /// <summary>Mã đơn nội bộ của Merchant (UC 2.3.1).</summary>
         public string? MerchantOrderCode { get; set; }
+        /// <summary>Phiên bản dữ liệu; gửi lại làm expectedRevision (hoặc If-Match) khi ghi để tránh ghi đè thay đổi mới hơn.</summary>
+        public long Revision { get; set; }
         /// <summary>QR nhận diện đơn, không chứa mã mở tủ; dùng cho Merchant/Shipper đối chiếu túi đồ.</summary>
         public string OrderQrString => $"WASHGO:ORDER:{OrderCode}";
         public Guid CustomerId { get; set; }

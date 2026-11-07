@@ -61,10 +61,12 @@ UPDATE washgo.orders SET merchant_order_code='SUM$run'||'C' WHERE id='$($ids[2])
     }
 
     Write-Output '3. Payment deadline and overdue types'
-    Sql "UPDATE washgo.orders SET status=8, payment_status=1, payment_deadline=now() AT TIME ZONE 'utc' - interval '1 hour' WHERE id='$($ids[1])';" | Out-Null
+    # The unpaid-order worker moves an overdue order to storage; it may run between the update and the read.
+    Sql "UPDATE washgo.orders SET status=8, payment_status=1, payment_deadline=now() AT TIME ZONE 'utc' - interval '2 seconds' WHERE id='$($ids[1])';" | Out-Null
     $o=(Call-Api Get "/wash-order/$($ids[1])" $null $merchant).data
-    if(!$o.paymentDeadline -or !$o.isPaymentOverdue -or $o.paymentSecondsLeft -ne 0 -or (@($o.overdueTypes) -join ',') -ne 'PaymentOverdue'){throw "Overdue payment wrong: $($o.paymentDeadline) $($o.isPaymentOverdue) $($o.overdueTypes)"}
-    Sql "UPDATE washgo.orders SET payment_deadline=now() AT TIME ZONE 'utc' + interval '1 hour' WHERE id='$($ids[1])';" | Out-Null
+    if($o.status -eq 13){ Write-Output '   worker already moved the overdue order to storage (expected outcome of PaymentOverdue)' }
+    elseif(!$o.paymentDeadline -or !$o.isPaymentOverdue -or $o.paymentSecondsLeft -ne 0 -or (@($o.overdueTypes) -join ',') -ne 'PaymentOverdue'){throw "Overdue payment wrong: $($o.status) $($o.paymentDeadline) $($o.isPaymentOverdue) $($o.overdueTypes)"}
+    Sql "UPDATE washgo.orders SET status=8, payment_status=1, payment_deadline=now() AT TIME ZONE 'utc' + interval '1 hour' WHERE id='$($ids[1])';" | Out-Null
     $o=(Call-Api Post '/wash-order/filter' @{keyword="$kw"+'b';page=1;take=10} $merchant).list[0]
     if($o.isPaymentOverdue -or $o.paymentSecondsLeft -lt 3500 -or $o.paymentSecondsLeft -gt 3600 -or @($o.overdueTypes).Count -ne 0){throw "Payment countdown wrong: $($o.paymentSecondsLeft)"}
     $c=(Call-Api Get "/wash-order/$($ids[0])" $null $merchant).data
