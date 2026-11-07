@@ -54,6 +54,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
         private readonly EtaPredictor _eta;
         private readonly LockerMerchantResolver _lockerMerchants;
         private readonly OrderWriteGuard _writeGuard;
+        private readonly DeliveryTaskRecorder _taskRecorder;
 
         public WashOrderAppService(
             IWashOrderRepository orderRepo,
@@ -73,7 +74,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             OrderListEnricher enricher,
             EtaPredictor eta,
             LockerMerchantResolver lockerMerchants,
-            OrderWriteGuard writeGuard)
+            OrderWriteGuard writeGuard,
+            DeliveryTaskRecorder taskRecorder)
         {
             _orderRepo = orderRepo;
             _lockerRepo = lockerRepo;
@@ -93,6 +95,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             _eta = eta;
             _lockerMerchants = lockerMerchants;
             _writeGuard = writeGuard;
+            _taskRecorder = taskRecorder;
         }
 
         private readonly record struct OrderScope(string Role, Guid Id);
@@ -770,6 +773,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 Note = $"Khách hủy đơn; phí {percent}% = {fee:N0}đ; lý do: {reason}. Vị trí đồ: {order.CancelledGoodsStatus}."
             });
             await _orderRepo.UpdateAsync(order, autoSave: true);
+            if (voidedTaskShipperId.HasValue)
+                await _taskRecorder.CancelledAsync(order.Id, now);
             await _notifications.CancelledAsync(order, voidedTaskShipperId);
             await uow.CompleteAsync();
             return Success(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order),
@@ -998,6 +1003,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             order.ShipperName = user.FullName;
             order.AssignedTaskType = task;
             order.ShipperAssignedAt = DateTime.UtcNow;
+            await _taskRecorder.AssignedAsync(order, shipper.Id, task!.Value, CurrentUser.Id, order.ShipperAssignedAt.Value);
             order.ShipperNote = note;
             order.ShipperTaskPinCode = taskPin;
             order.ShipperTaskQrString = taskQr;
@@ -1254,6 +1260,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             var previousStatus = order.Status;
             order.Status = WashOrderStatus.Collected;
             await CountDeliveryAsync(order.ShipperId);
+            await _taskRecorder.CompletedAsync(order, DeliveryTaskType.Collect, DateTime.UtcNow);
             order.TaskPinAttemptCount = 0;
             order.TaskPinLockoutUntil = null;
 
@@ -1393,6 +1400,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             order.Status = cancelledReturn ? WashOrderStatus.Cancelled : WashOrderStatus.ReadyToReturn;
             if (cancelledReturn) order.CancelledGoodsStatus = CancelledGoodsStatus.AtReturnLocker;
             await CountDeliveryAsync(order.ShipperId);
+            await _taskRecorder.CompletedAsync(order, DeliveryTaskType.Return, DateTime.UtcNow);
             order.PickupDeadline = cancelledReturn ? null : DateTime.UtcNow.AddHours(returnSettings.FreePickupHours);
             order.TaskPinAttemptCount = 0;
             order.TaskPinLockoutUntil = null;

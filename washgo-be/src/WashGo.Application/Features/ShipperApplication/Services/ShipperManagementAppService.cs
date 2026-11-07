@@ -21,6 +21,7 @@ using WashGo.Application.Features.AuthApplication.Services;
 using WashGo.Application.Features.FileApplication.Services;
 using WashGo.Core.Domain.Shared.Bases;
 using WashGo.Domain.Entities.Identity;
+using WashGo.Domain.Entities.Locker.Interfaces;
 using WashGo.Domain.Entities.Partner;
 using WashGo.Domain.Entities.Partner.Interfaces;
 using WashGo.Domain.Entities.WashOrder;
@@ -46,6 +47,8 @@ namespace WashGo.Application.Features.ShipperApplication.Services
         private readonly IRepository<RefreshToken, Guid> _refreshTokenRepo;
         private readonly IRepository<ShipperAudit, Guid> _auditRepo;
         private readonly IDataFilter _dataFilter;
+        private readonly IRepository<DeliveryTask, Guid> _taskRepo;
+        private readonly ILockerRepository _lockerRepo;
         private readonly IConfiguration _configuration;
         private readonly ILogger<ShipperManagementAppService> _logger;
 
@@ -59,6 +62,8 @@ namespace WashGo.Application.Features.ShipperApplication.Services
             IRepository<RefreshToken, Guid> refreshTokenRepo,
             IRepository<ShipperAudit, Guid> auditRepo,
             IDataFilter dataFilter,
+            IRepository<DeliveryTask, Guid> taskRepo,
+            ILockerRepository lockerRepo,
             IConfiguration configuration,
             ILogger<ShipperManagementAppService> logger)
         {
@@ -71,6 +76,8 @@ namespace WashGo.Application.Features.ShipperApplication.Services
             _refreshTokenRepo = refreshTokenRepo;
             _auditRepo = auditRepo;
             _dataFilter = dataFilter;
+            _taskRepo = taskRepo;
+            _lockerRepo = lockerRepo;
             _configuration = configuration;
             _logger = logger;
         }
@@ -331,6 +338,57 @@ namespace WashGo.Application.Features.ShipperApplication.Services
         }
 
         public const int MaxBatchSize = 50;
+
+        public async Task<PaginatedResult<ShipperTaskDto>> GetTasksAsync(Guid id, ShipperTaskQuery query)
+        {
+            Shipper? shipper;
+            using (_dataFilter.Disable<ISoftDelete>())
+                shipper = await _shipperRepo.FindAsync(id);
+            if (shipper == null || !IsAdmin && shipper.MerchantId != CurrentUser.Id)
+                return new PaginatedResult<ShipperTaskDto>
+                {
+                    Succeeded = false, StatusCode = HttpStatusCode.NotFound, Message = "Không tìm thấy Shipper!",
+                    CurrentPage = query.Page, PageSize = query.Take
+                };
+            var orders = await _orderRepo.GetQueryableAsync();
+            var rows = from task in await _taskRepo.GetQueryableAsync()
+                       join order in orders on task.OrderId equals order.Id
+                       where task.ShipperId == id
+                       select new { task, order };
+            // A Merchant only sees tasks on its own orders, even for its own shipper.
+            if (!IsAdmin)
+                rows = rows.Where(x => x.order.MerchantId == CurrentUser.Id);
+            if (query.TaskType.HasValue)
+                rows = rows.Where(x => x.task.TaskType == query.TaskType.Value);
+            if (query.Status.HasValue)
+                rows = rows.Where(x => x.task.Status == query.Status.Value);
+
+            var page = Math.Max(1, query.Page);
+            var take = Math.Clamp(query.Take, 1, 100);
+            var total = await AsyncExecuter.CountAsync(rows);
+            var items = await AsyncExecuter.ToListAsync(rows
+                .OrderByDescending(x => x.task.CompletedAt ?? x.task.EndedAt ?? x.task.AssignedAt)
+                .ThenByDescending(x => x.task.Id)
+                .Skip((page - 1) * take).Take(take));
+            var lockerIds = items.Where(x => x.order.ReturnLockerId.HasValue).Select(x => x.order.ReturnLockerId!.Value).Distinct().ToList();
+            var lockerNames = (await _lockerRepo.GetListAsync(x => lockerIds.Contains(x.Id))).ToDictionary(x => x.Id, x => x.Name);
+            var list = items.Select(x =>
+            {
+                var collect = x.task.TaskType == DeliveryTaskType.Collect;
+                return new ShipperTaskDto
+                {
+                    TaskId = x.task.Id, OrderId = x.order.Id, OrderCode = x.order.OrderCode,
+                    MerchantOrderCode = x.order.MerchantOrderCode, TaskType = x.task.TaskType, Status = x.task.Status,
+                    AssignedAt = x.task.AssignedAt, CompletedAt = x.task.CompletedAt, EndedAt = x.task.EndedAt,
+                    LockerName = collect || !x.order.ReturnLockerId.HasValue
+                        ? x.order.LockerName
+                        : lockerNames.GetValueOrDefault(x.order.ReturnLockerId.Value, x.order.LockerName),
+                    BoxNumber = collect ? x.order.BoxNumber : x.order.ReturnBoxNumber ?? x.order.BoxNumber,
+                    OrderStatus = x.order.Status
+                };
+            }).ToList();
+            return Success(list, total, page, take, total == 0 ? "Shipper chưa có nhiệm vụ nào." : null);
+        }
 
         public async Task<BaseResponse<ShipperDto>> DeleteAsync(Guid id, string? reason)
         {

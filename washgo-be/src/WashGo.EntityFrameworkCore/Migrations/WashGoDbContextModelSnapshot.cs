@@ -2354,6 +2354,57 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         });
                 });
 
+            modelBuilder.Entity("WashGo.Domain.Entities.WashOrder.DeliveryTask", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime?>("AssignedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("assigned_at");
+
+                    b.Property<Guid?>("AssignedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("assigned_by");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("completed_at");
+
+                    b.Property<DateTime?>("EndedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("ended_at");
+
+                    b.Property<Guid?>("MerchantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("merchant_id");
+
+                    b.Property<Guid>("OrderId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("order_id");
+
+                    b.Property<Guid>("ShipperId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("shipper_id");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer")
+                        .HasColumnName("status");
+
+                    b.Property<int>("TaskType")
+                        .HasColumnType("integer")
+                        .HasColumnName("task_type");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrderId");
+
+                    b.HasIndex("ShipperId", "Status");
+
+                    b.ToTable("delivery_tasks", "washgo");
+                });
+
             modelBuilder.Entity("WashGo.Domain.Entities.WashOrder.OrderOperation", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3398,6 +3449,15 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .IsRequired();
 
                     b.Navigation("Promotion");
+                });
+
+            modelBuilder.Entity("WashGo.Domain.Entities.WashOrder.DeliveryTask", b =>
+                {
+                    b.HasOne("WashGo.Domain.Entities.WashOrder.WashOrder", null)
+                        .WithMany()
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("WashGo.Domain.Entities.WashOrder.OrderOperation", b =>
