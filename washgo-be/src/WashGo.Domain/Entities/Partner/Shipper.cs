@@ -32,6 +32,12 @@ namespace WashGo.Domain.Entities.Partner
         /// <summary>Thời điểm và lý do khóa tài khoản (User.IsActive = false) gần nhất; null khi không bị khóa.</summary>
         public DateTime? LockedAt { get; set; }
         public string? LockReason { get; set; }
+        /// <summary>Mã yêu cầu tạo (Idempotency-Key) để gửi lại không tạo thêm tài khoản/email.</summary>
+        public Guid? CreateRequestId { get; set; }
+        public CredentialDeliveryStatus CredentialDelivery { get; set; }
+        public DateTime? CredentialSentAt { get; set; }
+        /// <summary>Phiên bản dữ liệu, DB tự tăng mỗi lần cập nhật (trigger); dùng cho expectedRevision/If-Match.</summary>
+        public long Revision { get; set; }
         public bool IsDeleted { get; set; }
         public DateTime? DeletedAt { get; set; }
         public Guid? DeletedBy { get; set; }

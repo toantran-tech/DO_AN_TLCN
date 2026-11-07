@@ -8,6 +8,11 @@ namespace WashGo.Application.Contracts.Features.ShipperContracts.Commands
     {
         /// <summary>Chỉ Admin cần nhập; Merchant luôn tạo Shipper cho tiệm của mình.</summary>
         public Guid? MerchantId { get; set; }
+        /// <summary>
+        /// Mã yêu cầu FE sinh một lần cho mỗi lần bấm Tạo (hoặc header Idempotency-Key). Gửi lại cùng mã trả lại Shipper
+        /// đã tạo, không tạo thêm tài khoản và không gửi lại email.
+        /// </summary>
+        public Guid? ClientRequestId { get; set; }
         public string FullName { get; set; } = string.Empty;
         public string Phone { get; set; } = string.Empty;
         public string Email { get; set; } = string.Empty;
@@ -43,6 +48,8 @@ namespace WashGo.Application.Contracts.Features.ShipperContracts.Commands
         public string? VehiclePlate { get; set; }
         /// <summary>true = Đang làm việc, false = Tạm nghỉ (không được phân công).</summary>
         public bool IsActive { get; set; } = true;
+        /// <summary>`revision` lúc người dùng mở form (hoặc header If-Match); khác bản hiện tại → 409 kèm dữ liệu mới.</summary>
+        public long? ExpectedRevision { get; set; }
         /// <summary>Số CMND/CCCD: null = giữ nguyên, chuỗi rỗng = xóa.</summary>
         public string? IdentityNumber { get; set; }
         /// <summary>
