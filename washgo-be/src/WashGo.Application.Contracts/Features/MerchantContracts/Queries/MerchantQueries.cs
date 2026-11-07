@@ -14,5 +14,43 @@ namespace WashGo.Application.Contracts.Features.MerchantContracts.Queries
         public string? District { get; set; }
         public Guid? ServiceAreaId { get; set; }
     }
+
+    /// <summary>
+    /// Tham số lọc thời gian cho Merchant Dashboard (UC 2.2.1).
+    /// </summary>
+    public class MerchantDashboardQuery
+    {
+        /// <summary>
+        /// Kỳ lọc thời gian: "today" (hôm nay), "week" (7 ngày qua), "month" (tháng này), "custom" (tùy chọn khoảng ngày), hoặc "all" (toàn bộ lịch sử). Mặc định là "all".
+        /// </summary>
+        public string? Period { get; set; } = "all";
+
+        /// <summary>
+        /// Mốc bắt đầu (Unix timestamp tính bằng giây) khi chọn Period = "custom".
+        /// </summary>
+        public long? FromDate { get; set; }
+
+        /// <summary>
+        /// Mốc kết thúc (Unix timestamp tính bằng giây) khi chọn Period = "custom".
+        /// </summary>
+        public long? ToDate { get; set; }
+    }
+
+    /// <summary>
+    /// Tham số lọc thời gian cho Báo cáo doanh thu & tăng trưởng Merchant (UC 2.2.3).
+    /// </summary>
+    public class MerchantRevenueReportQuery
+    {
+        /// <summary>
+        /// Kỳ báo cáo: "today", "week" (7 ngày qua), "month" (tháng này), "custom" (tùy chọn khoảng ngày), hoặc "all". Mặc định là "month".
+        /// </summary>
+        public string? Period { get; set; } = "month";
+
+        /// <summary>Mốc bắt đầu (Unix timestamp tính bằng giây) khi chọn Period = "custom".</summary>
+        public long? FromDate { get; set; }
+
+        /// <summary>Mốc kết thúc (Unix timestamp tính bằng giây) khi chọn Period = "custom".</summary>
+        public long? ToDate { get; set; }
+    }
 }
 

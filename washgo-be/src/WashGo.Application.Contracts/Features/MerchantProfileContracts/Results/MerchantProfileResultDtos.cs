@@ -8,6 +8,9 @@ namespace WashGo.Application.Contracts.Features.MerchantProfileContracts.Results
     {
         public string BusinessName { get; set; } = string.Empty;
         public string Address { get; set; } = string.Empty;
+        public string City { get; set; } = string.Empty;
+        public decimal? Latitude { get; set; }
+        public decimal? Longitude { get; set; }
         public string Phone { get; set; } = string.Empty;
         public string? OpeningHours { get; set; }
         public List<string> ImageUrls { get; set; } = [];
@@ -49,6 +52,8 @@ namespace WashGo.Application.Contracts.Features.MerchantProfileContracts.Results
         public int MaxCapacity { get; set; }
         public DateTime? ContractStartDate { get; set; }
         public DateTime? ContractEndDate { get; set; }
+        public DateTime? JoinedAt { get; set; }
+        public int PublicRatingCount { get; set; }
         public MerchantProfileRequestDto? PendingRequest { get; set; }
     }
 }

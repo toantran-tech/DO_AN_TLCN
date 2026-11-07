@@ -57,6 +57,8 @@ namespace WashGo.Domain.Entities.WashOrder
         public decimal TotalAmount { get; set; }
         public decimal DiscountAmount { get; set; }
         public decimal FinalAmount { get; set; }
+        /// <summary>Tỷ lệ hoa hồng (%) chốt cố định theo đơn tại thời điểm gán Merchant (UC 2.3.2, UC 3.8).</summary>
+        public decimal CommissionRateApplied { get; set; }
         public decimal? ActualWeightKg { get; set; }
         public decimal? IncludedWeightKg { get; set; }
         public decimal WeightSurchargeAmount { get; set; }

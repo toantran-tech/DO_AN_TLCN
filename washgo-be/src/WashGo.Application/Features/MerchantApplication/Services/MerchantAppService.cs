@@ -17,8 +17,14 @@ using WashGo.Application.Features.NotificationApplication.Services;
 using WashGo.Core.Domain.Shared.Bases;
 using WashGo.Domain.Entities.Identity;
 using WashGo.Domain.Entities.Partner;
+using WashGo.Application.Contracts.Features.FinanceContracts.Results;
+using WashGo.Application.Contracts.Features.WashOrderContracts.Results;
+using WashGo.Application.Features.WashOrderApplication.Services;
+using WashGo.Domain.Entities.Finance;
+using WashGo.Domain.Entities.WashOrder;
 using WashGo.Domain.Entities.WashOrder.Interfaces;
 using WashGo.Domain.Shared.Enums;
+using WashGo.Core.Utils;
 
 using WashGo.Application.Features.SystemSettingApplication.Services;
 
@@ -28,6 +34,7 @@ namespace WashGo.Application.Features.MerchantApplication.Services
     public class MerchantAppService : WashGoAppService, IMerchantAppService
     {
         private const string StoreImageType = "store";
+        private static readonly TimeSpan VietnamOffset = TimeSpan.FromHours(7);
 
         // Orders the Merchant still has to process (UC 3.2.4 6a).
         private static readonly WashOrderStatus[] UnfinishedStatuses =
@@ -45,6 +52,8 @@ namespace WashGo.Application.Features.MerchantApplication.Services
         private readonly IRepository<ServiceArea, Guid> _areaRepo;
         private readonly IRepository<MerchantImage, Guid> _imageRepo;
         private readonly IWashOrderRepository _orderRepo;
+        private readonly IRepository<MerchantSettlement, Guid> _settlementRepo;
+        private readonly OrderListEnricher _enricher;
         private readonly SystemSettingProvider _settings;
         private readonly IAuthEmailSender _emailSender;
         private readonly NotificationPublisher _notifications;
@@ -60,6 +69,8 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             IRepository<ServiceArea, Guid> areaRepo,
             IRepository<MerchantImage, Guid> imageRepo,
             IWashOrderRepository orderRepo,
+            IRepository<MerchantSettlement, Guid> settlementRepo,
+            OrderListEnricher enricher,
             SystemSettingProvider settings,
             IAuthEmailSender emailSender,
             NotificationPublisher notifications,
@@ -74,6 +85,8 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             _areaRepo = areaRepo;
             _imageRepo = imageRepo;
             _orderRepo = orderRepo;
+            _settlementRepo = settlementRepo;
+            _enricher = enricher;
             _settings = settings;
             _emailSender = emailSender;
             _notifications = notifications;
@@ -458,6 +471,368 @@ namespace WashGo.Application.Features.MerchantApplication.Services
                 dto.UnfinishedOrders = stat?.Unfinished ?? 0;
             }
             return dtos;
+        }
+
+        // UC 2.2.1: Merchant Dashboard
+        public async Task<BaseResponse<MerchantDashboardDto>> GetDashboardAsync(MerchantDashboardQuery query)
+        {
+            var merchantId = CurrentUser.Id;
+            if (!merchantId.HasValue)
+                return BadRequest<MerchantDashboardDto>("Không xác định được danh tính Merchant.");
+
+            var (period, fromUtc, toUtc, _, _, error) = DateTimePeriodHelper.ResolvePeriod(query.Period, query.FromDate, query.ToDate, "all");
+            if (error != null)
+                return BadRequest<MerchantDashboardDto>(error);
+
+            var ordersQuery = (await _orderRepo.GetQueryableAsync())
+                .Where(o => !o.IsDeleted && o.MerchantId == merchantId.Value);
+
+            if (fromUtc.HasValue && toUtc.HasValue)
+            {
+                var fromSec = ((DateTimeOffset)fromUtc.Value).ToUnixTimeSeconds();
+                var toSec = ((DateTimeOffset)toUtc.Value).ToUnixTimeSeconds();
+                ordersQuery = ordersQuery.Where(o => o.CreatedOn >= fromSec && o.CreatedOn <= toSec);
+            }
+
+            // Thống kê phân bố theo 14 trạng thái
+            var countsByStatus = (await AsyncExecuter.ToListAsync(
+                ordersQuery
+                    .GroupBy(o => o.Status)
+                    .Select(g => new { Status = g.Key, Count = g.Count() })
+            )).ToDictionary(x => x.Status, x => x.Count);
+
+            var statusCounts = new MerchantStatusCountsDto
+            {
+                Pending = countsByStatus.GetValueOrDefault(WashOrderStatus.Pending),
+                Deposited = countsByStatus.GetValueOrDefault(WashOrderStatus.Deposited),
+                Collected = countsByStatus.GetValueOrDefault(WashOrderStatus.Collected),
+                Washing = countsByStatus.GetValueOrDefault(WashOrderStatus.Washing),
+                Drying = countsByStatus.GetValueOrDefault(WashOrderStatus.Drying),
+                Ironing = countsByStatus.GetValueOrDefault(WashOrderStatus.Ironing),
+                Folding = countsByStatus.GetValueOrDefault(WashOrderStatus.Folding),
+                AwaitingPayment = countsByStatus.GetValueOrDefault(WashOrderStatus.AwaitingPayment),
+                Paid = countsByStatus.GetValueOrDefault(WashOrderStatus.Paid),
+                ReadyToReturn = countsByStatus.GetValueOrDefault(WashOrderStatus.ReadyToReturn),
+                Returned = countsByStatus.GetValueOrDefault(WashOrderStatus.Returned),
+                Completed = countsByStatus.GetValueOrDefault(WashOrderStatus.Completed),
+                MovedToStorage = countsByStatus.GetValueOrDefault(WashOrderStatus.MovedToStorage),
+                Cancelled = countsByStatus.GetValueOrDefault(WashOrderStatus.Cancelled)
+            };
+
+            var totalOrders = countsByStatus.Values.Sum();
+
+            // Lấy 5 đơn mới nhất của tiệm
+            var latestOrdersEntities = await AsyncExecuter.ToListAsync(
+                ordersQuery.OrderByDescending(o => o.CreatedOn).Take(5)
+            );
+
+            var latestDtos = latestOrdersEntities.Select(o =>
+            {
+                var dto = ObjectMapper.Map<WashOrder, WashOrderResultDto>(o);
+                dto.RedactForMerchant();
+                return dto;
+            }).ToList();
+
+            if (latestDtos.Count > 0)
+            {
+                await _enricher.FillAsync(latestDtos, "Merchant");
+            }
+
+            // Lấy tối đa 4 kỳ đối soát gần nhất của tiệm
+            var settlementsQuery = (await _settlementRepo.GetQueryableAsync())
+                .Where(s => !s.IsDeleted && s.MerchantId == merchantId.Value)
+                .OrderByDescending(s => s.PeriodTo)
+                .ThenByDescending(s => s.CreatedOn)
+                .Take(4);
+
+            var recentSettlements = (await AsyncExecuter.ToListAsync(settlementsQuery))
+                .Select(s => new SettlementDto
+                {
+                    Id = s.Id,
+                    MerchantId = s.MerchantId,
+                    MerchantName = s.MerchantName,
+                    PeriodFrom = s.PeriodFrom,
+                    PeriodTo = s.PeriodTo,
+                    OrderCount = s.OrderCount,
+                    GrossRevenue = s.GrossRevenue,
+                    RefundedAmount = s.RefundedAmount,
+                    NetRevenue = s.NetRevenue,
+                    CommissionRate = s.CommissionRate,
+                    CommissionAmount = s.CommissionAmount,
+                    PayoutAmount = s.PayoutAmount,
+                    Status = s.Status,
+                    PaymentReference = s.PaymentReference,
+                    PaidAt = s.PaidAt,
+                    CreatedOn = s.CreatedOn
+                }).ToList();
+
+            var result = new MerchantDashboardDto
+            {
+                Period = period,
+                FromDate = fromUtc.HasValue ? DateTimePeriodHelper.ToVietnamTime(fromUtc.Value) : null,
+                ToDate = toUtc.HasValue ? DateTimePeriodHelper.ToVietnamTime(toUtc.Value) : null,
+                TotalOrders = totalOrders,
+                StatusCounts = statusCounts,
+                LatestOrders = latestDtos,
+                RecentSettlements = recentSettlements,
+                GeneratedAt = DateTimePeriodHelper.NowVietnam
+            };
+
+            return Success(result);
+        }
+
+        // UC 2.2.3: Báo cáo Doanh thu & Tăng trưởng Merchant
+        public async Task<BaseResponse<MerchantRevenueReportDto>> GetRevenueReportAsync(MerchantRevenueReportQuery query)
+        {
+            var merchantId = CurrentUser.Id;
+            if (!merchantId.HasValue)
+                return BadRequest<MerchantRevenueReportDto>("Không xác định được danh tính Merchant.");
+
+            var merchant = await _merchantRepo.FindAsync(merchantId.Value);
+            if (merchant == null)
+                return NotFound<MerchantRevenueReportDto>("Không tìm thấy thông tin Merchant.");
+
+            var (period, fromUtc, toUtc, prevFromUtc, prevToUtc, error) = DateTimePeriodHelper.ResolvePeriod(query.Period, query.FromDate, query.ToDate, "month");
+            if (error != null)
+                return BadRequest<MerchantRevenueReportDto>(error);
+
+            var ordersQueryable = (await _orderRepo.GetQueryableAsync())
+                .Where(o => !o.IsDeleted && o.MerchantId == merchantId.Value);
+
+            // Fetch candidate orders for current period
+            var currentOrders = await AsyncExecuter.ToListAsync(ordersQueryable);
+
+            // Filter current period
+            var paidOrdersInPeriod = currentOrders.Where(o => o.PaymentStatus == PaymentStatus.Paid).ToList();
+            var cancelledOrdersInPeriod = currentOrders.Where(o => o.Status == WashOrderStatus.Cancelled).ToList();
+
+            if (fromUtc.HasValue && toUtc.HasValue)
+            {
+                paidOrdersInPeriod = paidOrdersInPeriod.Where(o =>
+                {
+                    var dt = o.PaidAt ?? DateTimeOffset.FromUnixTimeSeconds(o.CreatedOn).UtcDateTime;
+                    return dt >= fromUtc.Value && dt <= toUtc.Value;
+                }).ToList();
+
+                cancelledOrdersInPeriod = cancelledOrdersInPeriod.Where(o =>
+                {
+                    var dt = o.CancelledAt ?? DateTimeOffset.FromUnixTimeSeconds(o.CreatedOn).UtcDateTime;
+                    return dt >= fromUtc.Value && dt <= toUtc.Value;
+                }).ToList();
+            }
+
+            decimal totalGross = 0m;
+            decimal totalCommission = 0m;
+            decimal totalRefunded = 0m;
+
+            var dailyMap = new SortedDictionary<DateTime, (decimal Gross, decimal Commission, decimal Payout, int Count)>();
+
+            foreach (var o in paidOrdersInPeriod)
+            {
+                var rate = o.CommissionRateApplied > 0m ? o.CommissionRateApplied : merchant.CommissionRate;
+                var gross = o.FinalAmount;
+                var comm = decimal.Round(gross * rate / 100m, 0, MidpointRounding.AwayFromZero);
+                var payout = Math.Max(0m, gross - comm);
+
+                totalGross += gross;
+                totalCommission += comm;
+                if (o.CancellationRefundAmount > 0)
+                {
+                    totalRefunded += o.CancellationRefundAmount;
+                }
+
+                var paidDt = DateTimePeriodHelper.ToVietnamTime(o.PaidAt ?? DateTimeOffset.FromUnixTimeSeconds(o.CreatedOn).UtcDateTime);
+                var dayKey = paidDt.Date;
+
+                if (dailyMap.TryGetValue(dayKey, out var existingDay))
+                {
+                    dailyMap[dayKey] = (existingDay.Gross + gross, existingDay.Commission + comm, existingDay.Payout + payout, existingDay.Count + 1);
+                }
+                else
+                {
+                    dailyMap[dayKey] = (gross, comm, payout, 1);
+                }
+            }
+
+            decimal totalPayout = Math.Max(0m, totalGross - totalCommission);
+
+            // Calculate growth rate against previous period
+            decimal? prevPayout = null;
+            decimal? growthRate = null;
+
+            if (prevFromUtc.HasValue && prevToUtc.HasValue)
+            {
+                var prevPaidOrders = currentOrders.Where(o =>
+                {
+                    if (o.PaymentStatus != PaymentStatus.Paid) return false;
+                    var dt = o.PaidAt ?? DateTimeOffset.FromUnixTimeSeconds(o.CreatedOn).UtcDateTime;
+                    return dt >= prevFromUtc.Value && dt <= prevToUtc.Value;
+                }).ToList();
+
+                decimal pGross = 0m;
+                decimal pComm = 0m;
+                foreach (var po in prevPaidOrders)
+                {
+                    var prate = po.CommissionRateApplied > 0m ? po.CommissionRateApplied : merchant.CommissionRate;
+                    var pg = po.FinalAmount;
+                    var pc = decimal.Round(pg * prate / 100m, 0, MidpointRounding.AwayFromZero);
+                    pGross += pg;
+                    pComm += pc;
+                }
+                var pNet = Math.Max(0m, pGross - pComm);
+                prevPayout = pNet;
+
+                if (pNet > 0)
+                {
+                    growthRate = Math.Round(((totalPayout - pNet) / pNet) * 100m, 1);
+                }
+                else if (totalPayout > 0)
+                {
+                    growthRate = 100m;
+                }
+                else
+                {
+                    growthRate = 0m;
+                }
+            }
+
+            var dailySeries = dailyMap.Select(kv => new MerchantDailyRevenueDto
+            {
+                Date = kv.Key,
+                GrossRevenue = kv.Value.Gross,
+                Commission = kv.Value.Commission,
+                Payout = kv.Value.Payout,
+                OrderCount = kv.Value.Count
+            }).ToList();
+
+            var report = new MerchantRevenueReportDto
+            {
+                Period = period,
+                FromDate = fromUtc.HasValue ? DateTimePeriodHelper.ToVietnamTime(fromUtc.Value) : null,
+                ToDate = toUtc.HasValue ? DateTimePeriodHelper.ToVietnamTime(toUtc.Value) : null,
+                TotalGrossRevenue = totalGross,
+                TotalCommission = totalCommission,
+                TotalPayoutAmount = totalPayout,
+                RefundedAmount = totalRefunded,
+                PaidOrderCount = paidOrdersInPeriod.Count,
+                CancelledOrderCount = cancelledOrdersInPeriod.Count,
+                PreviousPayoutAmount = prevPayout,
+                GrowthRate = growthRate,
+                DailySeries = dailySeries,
+                GeneratedAt = DateTimePeriodHelper.NowVietnam
+            };
+
+            return Success(report);
+        }
+
+        // UC 2.2.2: Cảnh báo vi phạm SLA (Overdue Attention)
+        public async Task<BaseResponse<MerchantSlaAlertsDto>> GetSlaAlertsAsync()
+        {
+            var merchantId = CurrentUser.Id;
+            if (!merchantId.HasValue)
+                return BadRequest<MerchantSlaAlertsDto>("Không xác định được danh tính Merchant.");
+
+            var settings = await _settings.GetAsync();
+            int collectSlaHours = settings.MerchantCollectSlaHours > 0 ? settings.MerchantCollectSlaHours : 4;
+            int returnSlaHours = settings.MerchantReturnSlaHours > 0 ? settings.MerchantReturnSlaHours : 24;
+
+            var nowUtc = DateTime.UtcNow;
+            var nowVn = DateTimePeriodHelper.NowVietnam;
+
+            var activeOrders = await AsyncExecuter.ToListAsync(
+                (await _orderRepo.GetQueryableAsync())
+                    .Where(o => !o.IsDeleted && o.MerchantId == merchantId.Value
+                                && o.Status != WashOrderStatus.Completed
+                                && o.Status != WashOrderStatus.Cancelled
+                                && o.Status != WashOrderStatus.Returned)
+            );
+
+            var priorityOrders = new List<MerchantPriorityOrderDto>();
+            int collectionAlerts = 0;
+            int processingAlerts = 0;
+            int returnAlerts = 0;
+
+            foreach (var o in activeOrders)
+            {
+                // 1. Quá hạn lấy đồ: Đơn Deposited > collectSlaHours
+                if (o.Status == WashOrderStatus.Deposited)
+                {
+                    var depositedTime = o.DepositedAt ?? DateTimeOffset.FromUnixTimeSeconds(o.CreatedOn).UtcDateTime;
+                    var deadline = depositedTime.AddHours(collectSlaHours);
+                    if (nowUtc > deadline)
+                    {
+                        collectionAlerts++;
+                        var overdueMins = (int)(nowUtc - deadline).TotalMinutes;
+                        priorityOrders.Add(new MerchantPriorityOrderDto
+                        {
+                            OrderId = o.Id,
+                            OrderCode = o.OrderCode,
+                            MerchantOrderCode = o.MerchantOrderCode,
+                            Status = o.Status,
+                            AlertType = MerchantSlaAlertType.CollectionOverdue,
+                            Deadline = DateTimePeriodHelper.ToVietnamTime(deadline),
+                            OverdueMinutes = overdueMins,
+                            LockerName = o.LockerName,
+                            BoxNumber = o.BoxNumber
+                        });
+                    }
+                }
+                // 2. Quá hạn giặt sấy: Đơn đang xử lý (Washing/Drying/Ironing/Folding) quá EstimatedFinishAt
+                else if (o.Status is WashOrderStatus.Washing or WashOrderStatus.Drying or WashOrderStatus.Ironing or WashOrderStatus.Folding)
+                {
+                    if (o.EstimatedFinishAt.HasValue && nowUtc > o.EstimatedFinishAt.Value)
+                    {
+                        processingAlerts++;
+                        var overdueMins = (int)(nowUtc - o.EstimatedFinishAt.Value).TotalMinutes;
+                        priorityOrders.Add(new MerchantPriorityOrderDto
+                        {
+                            OrderId = o.Id,
+                            OrderCode = o.OrderCode,
+                            MerchantOrderCode = o.MerchantOrderCode,
+                            Status = o.Status,
+                            AlertType = MerchantSlaAlertType.ProcessingOverdue,
+                            Deadline = DateTimePeriodHelper.ToVietnamTime(o.EstimatedFinishAt.Value),
+                            OverdueMinutes = overdueMins,
+                            LockerName = o.LockerName,
+                            BoxNumber = o.BoxNumber
+                        });
+                    }
+                }
+                // 3. Quá hạn trả đồ: Đơn Paid > returnSlaHours chưa chuyển sang tủ trả
+                else if (o.Status == WashOrderStatus.Paid)
+                {
+                    var paidTime = o.PaidAt ?? DateTimeOffset.FromUnixTimeSeconds(o.CreatedOn).UtcDateTime;
+                    var deadline = paidTime.AddHours(returnSlaHours);
+                    if (nowUtc > deadline)
+                    {
+                        returnAlerts++;
+                        var overdueMins = (int)(nowUtc - deadline).TotalMinutes;
+                        priorityOrders.Add(new MerchantPriorityOrderDto
+                        {
+                            OrderId = o.Id,
+                            OrderCode = o.OrderCode,
+                            MerchantOrderCode = o.MerchantOrderCode,
+                            Status = o.Status,
+                            AlertType = MerchantSlaAlertType.ReturnOverdue,
+                            Deadline = DateTimePeriodHelper.ToVietnamTime(deadline),
+                            OverdueMinutes = overdueMins,
+                            LockerName = o.LockerName,
+                            BoxNumber = o.BoxNumber
+                        });
+                    }
+                }
+            }
+
+            var result = new MerchantSlaAlertsDto
+            {
+                CollectionAlertsCount = collectionAlerts,
+                ProcessingAlertsCount = processingAlerts,
+                ReturnAlertsCount = returnAlerts,
+                PriorityOrders = priorityOrders.OrderByDescending(x => x.OverdueMinutes).ToList(),
+                ServerNow = nowVn
+            };
+
+            return Success(result);
         }
     }
 }

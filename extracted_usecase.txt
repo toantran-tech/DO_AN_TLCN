@@ -1,6 +1,6 @@
-﻿1. CUSTOMER (KHÁCH HÀNG)
-1.1. Quản lý tài khoản
-1.1.1. Use Case Đăng ký
+1. CUSTOMER (KHÁCH HÀNG)1. CUSTOMER (KHÁCH HÀNG)1. CUSTOMER (KHÁCH HÀNG)
+1.1. Quản lý tài khoản1.1. Quản lý tài khoản1.1. Quản lý tài khoản
+1.1.1. Use Case Đăng ký1.1.1. Use Case Đăng ký1.1.1. Use Case Đăng ký
 Use Case Đăng ký tài khoản
 Mô tả
 Cho phép người dùng tạo tài khoản mới trên hệ thống WashGo bằng email, xác thực qua mã OTP gửi về email.
@@ -11,12 +11,30 @@ Người dùng chưa có tài khoản trên hệ thống.
 Điều kiện tiên quyết
 Người dùng truy cập vào trang Đăng ký.
 Luồng chính
-1. Người dùng truy cập trang Đăng ký.2. Hệ thống hiển thị form: Họ tên, Email, Số điện thoại, Mật khẩu, Xác nhận mật khẩu.3. Người dùng nhập thông tin và nhấn "Đăng ký".4. Hệ thống kiểm tra dữ liệu: email chưa được dùng, mật khẩu đủ mạnh, số điện thoại hợp lệ.5. Hệ thống tạo mã OTP 6 chữ số, có hiệu lực 5 phút.6. Hệ thống gửi OTP về email của người dùng.7. Hệ thống hiển thị form nhập OTP kèm nút "Gửi lại OTP".8. Người dùng nhập OTP và nhấn "Xác nhận".9. Hệ thống kiểm tra OTP hợp lệ (đúng mã, chưa hết hạn, chưa dùng, chưa vượt số lần nhập sai).10. Hệ thống tạo tài khoản Khách hàng với thông tin đã đăng ký.11. Hệ thống thông báo "Đăng ký thành công! Vui lòng đăng nhập." và chuyển hướng đến trang Đăng nhập.12. Kết thúc chức năng.
+1. Người dùng truy cập trang Đăng ký.
+2. Hệ thống hiển thị form: Họ tên, Email, Số điện thoại, Mật khẩu, Xác nhận mật khẩu.
+3. Người dùng nhập thông tin và nhấn "Đăng ký".
+4. Hệ thống kiểm tra dữ liệu: email chưa được dùng, mật khẩu đủ mạnh, số điện thoại gồm đúng 10 chữ số và bắt đầu bằng 0.
+5. Hệ thống tạo mã OTP 6 chữ số, có hiệu lực 5 phút.
+6. Hệ thống gửi OTP về email của người dùng.
+7. Hệ thống hiển thị form nhập OTP kèm nút "Gửi lại OTP".
+8. Người dùng nhập OTP và nhấn "Xác nhận".
+9. Hệ thống kiểm tra OTP hợp lệ (đúng mã, chưa hết hạn, chưa dùng, chưa vượt số lần nhập sai).
+10. Hệ thống tạo tài khoản Khách hàng với thông tin đã đăng ký.
+11. Hệ thống thông báo "Đăng ký thành công! Vui lòng đăng nhập." và chuyển hướng đến trang Đăng nhập.
+12. Kết thúc chức năng.
 Luồng thay thế
-4a. Email đã được dùng → "Email này đã được sử dụng."4b. Mật khẩu yếu → "Mật khẩu phải có ít nhất 8 ký tự, gồm chữ hoa, chữ thường và số."4c. Số điện thoại không hợp lệ → "Số điện thoại không hợp lệ."8a. Nhấn "Gửi lại OTP" → chỉ cho gửi lại sau khi hết thời gian chờ (60 giây); hệ thống tạo OTP mới và gửi lại.9a. OTP hết hạn → "Mã OTP đã hết hạn. Vui lòng gửi lại."9b. OTP sai → thông báo và đếm số lần sai; vượt 5 lần → "Bạn đã nhập sai quá nhiều lần. Vui lòng gửi lại OTP mới."9c. OTP đã dùng → "Mã OTP đã được sử dụng."
+4a. Email đã được dùng → "Email này đã được sử dụng."
+4b. Mật khẩu yếu → "Mật khẩu phải có ít nhất 8 ký tự, gồm chữ hoa, chữ thường và số."
+4c. Số điện thoại thiếu, không đủ 10 chữ số, không bắt đầu bằng 0 hoặc chứa ký tự khác chữ số → "Số điện thoại không hợp lệ."
+8a. Nhấn "Gửi lại OTP" → chỉ cho gửi lại sau khi hết thời gian chờ (60 giây); hệ thống tạo OTP mới và gửi lại.
+9a. OTP hết hạn → "Mã OTP đã hết hạn. Vui lòng gửi lại."
+9b. OTP sai → thông báo và đếm số lần sai; vượt 5 lần → "Bạn đã nhập sai quá nhiều lần. Vui lòng gửi lại OTP mới."
+9c. OTP đã dùng → "Mã OTP đã được sử dụng."
 Luồng ngoại lệ
-6a. Gửi email thất bại → "Không thể gửi email. Vui lòng thử lại sau."10a. Tạo tài khoản thất bại → "Có lỗi xảy ra. Vui lòng thử lại."
-1.1.2. Use Case Đăng nhập
+6a. Gửi email thất bại → "Không thể gửi email. Vui lòng thử lại sau."
+10a. Tạo tài khoản thất bại → "Có lỗi xảy ra. Vui lòng thử lại."
+1.1.2. Use Case Đăng nhập1.1.21.1.2. . Use Case Đăng nhậpUse Case Đăng nhập
 Use Case Đăng nhập
 Mô tả
 Cho phép người dùng đăng nhập vào hệ thống bằng email/mật khẩu hoặc Google.
@@ -27,12 +45,29 @@ Người dùng đã có tài khoản trên hệ thống.
 Điều kiện tiên quyết
 Người dùng truy cập trang Đăng nhập.
 Luồng chính
-1. Người dùng truy cập trang Đăng nhập.2. Hệ thống hiển thị form: Email, Mật khẩu và nút "Đăng nhập bằng Google".3. Người dùng nhập email/mật khẩu và nhấn "Đăng nhập".4. Hệ thống kiểm tra email tồn tại và mật khẩu đúng.5. Hệ thống kiểm tra tài khoản đang hoạt động.6. Hệ thống cấp phiên đăng nhập và chuyển người dùng về trang chủ.7. Kết thúc chức năng.
+1. Người dùng truy cập trang Đăng nhập.
+2. Hệ thống hiển thị form: Email, Mật khẩu và nút "Đăng nhập bằng Google".
+3. Người dùng nhập email/mật khẩu và nhấn "Đăng nhập".
+4. Hệ thống kiểm tra email tồn tại và mật khẩu đúng.
+5. Hệ thống kiểm tra tài khoản đang hoạt động.
+6. Hệ thống cấp phiên đăng nhập và chuyển người dùng về trang chủ.
+7. Kết thúc chức năng.
 Luồng thay thế
-3a. Nếu chọn "Đăng nhập bằng Google":• Hệ thống chuyển người dùng đến trang xác thực của Google.• Người dùng chọn tài khoản Google và đồng ý cấp quyền.• Google trả thông tin (email, tên, ảnh đại diện) về hệ thống.• Hệ thống kiểm tra email này đã có tài khoản chưa:- Nếu đã có → Đăng nhập luôn, cấp phiên và chuyển về trang chủ.- Nếu chưa có → Hệ thống tự động tạo tài khoản Khách hàng mới với thông tin từ Google (email, họ tên, avatar), sau đó cấp phiên và chuyển về trang chủ.• Sau khi đăng nhập lần đầu bằng Google, hệ thống hiển thị thông báo gợi ý: "Vui lòng bổ sung số điện thoại và địa chỉ để hoàn tất hồ sơ."4a. Sai email hoặc mật khẩu → "Email hoặc mật khẩu không đúng."5a. Tài khoản bị khóa → "Tài khoản của bạn đã bị khóa. Vui lòng liên hệ Admin."
+3a. Nếu chọn "Đăng nhập bằng Google":
+• Hệ thống chuyển người dùng đến trang xác thực của Google.
+• Người dùng chọn tài khoản Google và đồng ý cấp quyền.
+• Google trả thông tin (email, tên, ảnh đại diện) về hệ thống.
+• Hệ thống kiểm tra email này đã có tài khoản chưa:
+- Nếu đã có → Đăng nhập luôn, cấp phiên và chuyển về trang chủ.
+- Nếu chưa có → Hệ thống tự động tạo tài khoản Khách hàng mới với thông tin từ Google (email, họ tên, avatar), sau đó cấp phiên và chuyển về trang chủ.
+• Sau khi đăng nhập lần đầu bằng Google, hệ thống hiển thị thông báo gợi ý: "Vui lòng bổ sung số điện thoại và địa chỉ để hoàn tất hồ sơ."
+4a. Sai email hoặc mật khẩu → "Email hoặc mật khẩu không đúng."
+5a. Tài khoản bị khóa → "Tài khoản của bạn đã bị khóa. Vui lòng liên hệ Admin."
 Luồng ngoại lệ
-3a. Người dùng hủy cấp quyền Google → quay lại trang Đăng nhập.3b. Google trả lỗi xác thực → "Không thể đăng nhập bằng Google. Vui lòng thử lại."6a. Cấp phiên thất bại → "Có lỗi xảy ra. Vui lòng thử lại sau."
-1.1.3. Use Case Quên mật khẩu
+3a. Người dùng hủy cấp quyền Google → quay lại trang Đăng nhập.
+3b. Google trả lỗi xác thực → "Không thể đăng nhập bằng Google. Vui lòng thử lại."
+6a. Cấp phiên thất bại → "Có lỗi xảy ra. Vui lòng thử lại sau."
+1.1.3. Use Case Quên mật khẩu1.1.3. Use Case Quên mật khẩu1.1.3. Use Case Quên mật khẩu
 Use Case Quên mật khẩu
 Mô tả
 Cho phép người dùng đặt lại mật khẩu thông qua mã OTP gửi về email.
@@ -43,12 +78,29 @@ Người dùng đã có tài khoản với email đã đăng ký.
 Điều kiện tiên quyết
 Người dùng truy cập trang Quên mật khẩu.
 Luồng chính
-1. Người dùng truy cập trang Quên mật khẩu.2. Hệ thống hiển thị form nhập email.3. Người dùng nhập email và nhấn "Gửi OTP".4. Hệ thống tạo mã OTP 6 chữ số, có hiệu lực 5 phút.5. Hệ thống gửi OTP về email.6. Hệ thống hiển thị form nhập OTP và mật khẩu mới.7. Người dùng nhập OTP, mật khẩu mới và xác nhận mật khẩu, nhấn "Xác nhận".8. Hệ thống kiểm tra OTP hợp lệ và mật khẩu mới đủ mạnh.9. Hệ thống cập nhật mật khẩu mới.10. Hệ thống kết thúc tất cả phiên đăng nhập cũ.11. Hệ thống thông báo "Đặt lại mật khẩu thành công! Vui lòng đăng nhập."12. Kết thúc chức năng.
+1. Người dùng truy cập trang Quên mật khẩu.
+2. Hệ thống hiển thị form nhập email đã đăng ký.
+3. Người dùng nhập email và nhấn "Gửi OTP".
+4. Hệ thống tạo và gửi mã OTP gồm 6 chữ số về email; mã có hiệu lực 5 phút.
+5. Hệ thống hiển thị màn hình xác nhận OTP, địa chỉ email đã nhập và nút "Tiếp tục".
+6. Người dùng nhập mã OTP và nhấn "Tiếp tục".
+7. Hệ thống kiểm tra OTP đúng email, đúng mục đích quên mật khẩu, còn hạn, chưa xác minh và chưa vượt 5 lần nhập sai.
+8. Khi OTP hợp lệ, hệ thống cấp phiên xác minh có hiệu lực 10 phút và chuyển sang màn hình nhập mật khẩu mới, xác nhận mật khẩu mới.
+9. Người dùng nhập hai ô mật khẩu và nhấn "Hoàn tất"; hệ thống gửi kèm email và mã phiên xác minh đã nhận.
+10. Hệ thống kiểm tra phiên xác minh đúng email và mục đích, còn hạn, chưa dùng; mật khẩu có 8–128 ký tự, gồm chữ hoa, chữ thường, chữ số và hai ô khớp nhau.
+11. Hệ thống cập nhật mật khẩu, tiêu thụ phiên xác minh và thu hồi tất cả phiên đăng nhập cũ trong cùng giao dịch.
+12. Hệ thống thông báo "Đặt lại mật khẩu thành công! Vui lòng đăng nhập bằng mật khẩu mới." và chuyển về trang Đăng nhập.
 Luồng thay thế
-4a. Email không tồn tại → vẫn thông báo "Nếu email tồn tại, chúng tôi đã gửi OTP." (tránh lộ thông tin).7a. Nhấn "Gửi lại OTP" → chỉ gửi lại sau thời gian chờ; tạo OTP mới và gửi lại.8a. OTP hết hạn → "Mã OTP đã hết hạn. Vui lòng gửi lại."8b. OTP sai → đếm số lần sai; vượt 5 lần → yêu cầu gửi lại OTP mới.8c. Mật khẩu mới yếu → "Mật khẩu phải có ít nhất 8 ký tự, gồm chữ hoa, chữ thường và số."
+3a. Email chưa được đăng ký: thông báo email chưa được đăng ký trong hệ thống; không gửi OTP.
+6a. Nhấn "Gửi lại OTP": phải chờ 60 giây; khi gửi lại thành công, mã hoặc phiên xác minh trước đó bị vô hiệu hóa.
+7a. OTP sai: ghi nhận lượt nhập sai; sau 5 lần sai yêu cầu gửi mã mới.
+7b. OTP hết hạn hoặc đã xác minh: từ chối và yêu cầu bắt đầu lại khi cần.
+10a. Phiên xác minh thiếu, sai email/mục đích, hết hạn hoặc đã dùng: từ chối đặt lại mật khẩu.
+10b. Mật khẩu không đủ mạnh hoặc hai ô không khớp: cho phép sửa và gửi lại với phiên xác minh còn hạn; chưa đổi mật khẩu.
 Luồng ngoại lệ
-5a. Gửi email thất bại → "Không thể gửi email. Vui lòng thử lại sau."9a. Cập nhật mật khẩu thất bại → "Có lỗi xảy ra. Vui lòng thử lại sau."
-1.1.4. Use Case Xem hồ sơ
+4a. Gửi email thất bại: thông báo "Không thể gửi mã OTP lúc này. Vui lòng thử lại sau."
+11a. Cập nhật mật khẩu hoặc thu hồi phiên thất bại: hủy giao dịch, không ghi nhận đặt lại thành công.
+1.1.4. Use Case Xem hồ sơ1.1.1.1.44. Use Case Xem hồ sơ. Use Case Xem hồ sơ
 Use Case Xem hồ sơ
 Mô tả
 Cho phép khách hàng xem thông tin cá nhân.
@@ -59,12 +111,14 @@ Người dùng đã đăng nhập.
 Điều kiện tiên quyết
 Người dùng truy cập trang Hồ sơ cá nhân.
 Luồng chính
-1. Người dùng truy cập trang Hồ sơ cá nhân.2. Hệ thống hiển thị: Họ tên, Email, Số điện thoại, Địa chỉ, Quận/Huyện, Thành phố, Avatar, Điểm tích lũy, Tổng số đơn, Tổng chi tiêu.3. Kết thúc chức năng.
+1. Người dùng truy cập trang Hồ sơ cá nhân.
+2. Hệ thống hiển thị: Họ tên, Email, Số điện thoại, Địa chỉ, Tỉnh/Thành phố, Avatar, Điểm tích lũy, Tổng số đơn, Tổng chi tiêu.
+3. Kết thúc chức năng.
 Luồng thay thế
 Không có
 Luồng ngoại lệ
 Không có
-1.1.5. Use Case Cập nhật hồ sơ
+1.1.5. Use Case Cập nhật hồ sơ1.1.5.1.1.5.  Use Case Cập nhật hồ sơUse Case Cập nhật hồ sơ
 Use Case Cập nhật hồ sơ
 Mô tả
 Cho phép khách hàng cập nhật thông tin cá nhân.
@@ -75,17 +129,34 @@ Người dùng đã đăng nhập.
 Điều kiện tiên quyết
 Người dùng truy cập trang Hồ sơ cá nhân.
 Luồng chính
-1. Người dùng truy cập trang Hồ sơ cá nhân.2. Hệ thống hiển thị toàn bộ thông tin (Họ tên, Email, Số điện thoại, Địa chỉ, Quận/Huyện, Thành phố, Avatar) ở chế độ chỉ đọc — tất cả các trường đều bị vô hiệu hóa, chỉ có nút "Chỉnh sửa".3. Người dùng nhấn nút "Chỉnh sửa".4. Hệ thống bật chế độ chỉnh sửa cho các trường được phép sửa: Họ tên, Số điện thoại, Địa chỉ, Quận/Huyện, Thành phố, Avatar.5. Các trường không cho sửa vẫn giữ nguyên chế độ chỉ đọc: Email (dùng để đăng nhập và xác thực).6. Hệ thống hiển thị thêm 2 nút: "Lưu" và "Hủy".7. Người dùng thay đổi thông tin cần sửa.8. Người dùng nhấn "Lưu".9. Hệ thống kiểm tra dữ liệu hợp lệ (số điện thoại đúng định dạng, địa chỉ không để trống, ...).10. Hệ thống lưu thông tin mới.11. Hệ thống chuyển các trường về lại chế độ chỉ đọc.12. Hệ thống thông báo "Cập nhật hồ sơ thành công!"13. Kết thúc chức năng.
+1. Người dùng truy cập trang Hồ sơ cá nhân.
+2. Hệ thống hiển thị toàn bộ thông tin (Họ tên, Email, Số điện thoại, Địa chỉ, Tỉnh/Thành phố, Avatar) ở chế độ chỉ đọc — tất cả các trường đều bị vô hiệu hóa, chỉ có nút "Chỉnh sửa".
+3. Người dùng nhấn nút "Chỉnh sửa".
+4. Hệ thống bật chế độ chỉnh sửa cho các trường được phép sửa: Họ tên, Số điện thoại, Địa chỉ, Tỉnh/Thành phố, Avatar.
+5. Các trường không cho sửa vẫn giữ nguyên chế độ chỉ đọc: Email (dùng để đăng nhập và xác thực).
+6. Hệ thống hiển thị thêm 2 nút: "Lưu" và "Hủy".
+7. Người dùng thay đổi thông tin cần sửa.
+8. Người dùng nhấn "Lưu".
+9. Hệ thống kiểm tra dữ liệu hợp lệ (họ tên 2–100 ký tự; số điện thoại bắt buộc gồm đúng 10 chữ số bắt đầu bằng 0; địa chỉ và tỉnh/thành phố bắt buộc, tối đa lần lượt 500 và 100 ký tự).
+10. Hệ thống lưu thông tin mới.
+11. Hệ thống chuyển các trường về lại chế độ chỉ đọc.
+12. Hệ thống thông báo "Cập nhật hồ sơ thành công!"
+13. Kết thúc chức năng.
 Luồng thay thế
-7a. Người dùng nhấn "Hủy" → Hệ thống bỏ mọi thay đổi, khôi phục thông tin cũ và chuyển về chế độ chỉ đọc.9a. Số điện thoại không hợp lệ → "Số điện thoại không hợp lệ."9b. Địa chỉ để trống → "Vui lòng nhập địa chỉ."9c. Upload avatar thất bại → "Không thể upload ảnh. Vui lòng thử lại."
+7a. Người dùng nhấn "Hủy": bỏ thay đổi và quay về chế độ chỉ đọc.
+9a. Số điện thoại thiếu hoặc không gồm đúng 10 chữ số bắt đầu bằng 0: thông báo lỗi, không lưu dữ liệu.
+9b. Địa chỉ hoặc tỉnh/thành phố để trống: yêu cầu bổ sung trường tương ứng.
+9c. Địa chỉ vượt 500 ký tự hoặc tỉnh/thành phố vượt 100 ký tự: thông báo giới hạn, không lưu dữ liệu.
+9d. Avatar mới phải là ảnh do chính khách hàng upload; ảnh không hợp lệ hoặc của người khác bị từ chối. Không gửi avatar thì giữ ảnh cũ, gửi chuỗi rỗng thì xóa ảnh.
+9e. Bỏ khoảng trắng hai đầu dữ liệu. Không tự xóa chữ hoặc dấu phân cách để biến chuỗi điện thoại sai thành hợp lệ.
 Luồng ngoại lệ
 10a. Lưu thất bại → "Có lỗi xảy ra. Vui lòng thử lại sau."
 10b. Mất kết nối khi đang lưu → giữ nguyên chế độ chỉnh sửa để người dùng thử lại.
-1.2. Quản lý đơn hàng
-1.2.1. Use Case Tạo đơn hàng
+1.2. Quản lý đơn hàng1.2. Quản lý đơn hàng1.2. Quản lý đơn hàng
+1.2.1. Use Case Tạo đơn hàng1.2.1. Use Case Tạo đơn hàng1.2.1. Use Case Tạo đơn hàng
 Use Case Tạo đơn hàng
 Mô tả
-Cho phép khách hàng tạo đơn hàng: chọn dịch vụ, locker, ô trống, xác nhận và nhận QR Code để gửi đồ. Thanh toán sau khi nhận đồ.
+Cho phép khách hàng tạo đơn hàng: chọn dịch vụ, locker, ô trống, xác nhận và nhận QR Code để gửi đồ. Khách thanh toán sau khi giá cuối cùng được chốt và trước khi Shipper trả đồ đã giặt về locker.
 Tác nhân
 Khách hàng
 Điều kiện trước
@@ -93,12 +164,36 @@ Người dùng đã đăng nhập; có locker đang hoạt động với ô tr�
 Điều kiện tiên quyết
 Người dùng truy cập trang Tạo đơn hàng.
 Luồng chính
-1. Người dùng truy cập trang Tạo đơn hàng.2. Hệ thống hiển thị danh sách dịch vụ đang được cung cấp.3. Người dùng chọn dịch vụ.4. Hệ thống hiển thị các locker đang hoạt động trên bản đồ.5. Người dùng chọn locker.6. Hệ thống hiển thị các ô trống kèm kích thước và giá.7. Người dùng chọn ô trống.8. Hệ thống hiển thị form xác nhận: dịch vụ, locker, ô, danh sách mã giảm giá khả dụng.9. Hệ thống hiển thị danh sách mã giảm giá mà khách hàng có thể áp dụng, kèm thông tin: mã, mô tả, mức giảm, điều kiện áp dụng (giá trị đơn tối thiểu), hạn sử dụng.10. Người dùng chọn một mã giảm giá từ danh sách (hoặc bỏ qua nếu không dùng).11. Hệ thống kiểm tra mã hợp lệ với đơn hàng hiện tại.12. Hệ thống cập nhật giá sau giảm và hiển thị lại tóm tắt đơn hàng.13. Người dùng nhấn "Xác nhận đơn hàng".14. Hệ thống tạo đơn hàng ở trạng thái "Chờ gửi đồ", hạn gửi là 30 phút.15. Hệ thống ghi nhận lượt sử dụng mã giảm giá.16. Hệ thống sinh mã QR cho đơn hàng.17. Hệ thống giữ ô tủ cho đơn hàng này.18. Hệ thống ghi nhận lịch sử trạng thái đơn.19. Hệ thống gửi thông báo "Đơn hàng đã tạo" cho khách.20. Kết thúc chức năng.
+1. Người dùng truy cập trang Tạo đơn hàng.
+2. Hệ thống hiển thị danh sách dịch vụ đang hoạt động, đã được phê duyệt và có giá lớn hơn 0. Khách có thể tìm theo tên/mã, lọc loại dịch vụ và khoảng giá, sắp xếp theo tên hoặc giá tăng/giảm dần và phân trang. Khoảng giá tính theo giá cơ bản của dịch vụ, bao gồm hai đầu mút; cho phép chỉ nhập giá tối thiểu hoặc tối đa. Mặc định tên tăng dần, trang 1 và 20 dịch vụ/trang.
+3. Người dùng chọn dịch vụ.
+4. Hệ thống hiển thị các locker đang hoạt động trên bản đồ.
+5. Người dùng chọn locker.
+6. Hệ thống hiển thị các ô trống kèm kích thước và giá.
+7. Người dùng chọn ô trống.
+8. Hệ thống hiển thị form xác nhận: dịch vụ, locker, ô, danh sách mã giảm giá khả dụng.
+9. Hệ thống hiển thị danh sách mã giảm giá mà khách hàng có thể áp dụng, kèm thông tin: mã, mô tả, mức giảm, điều kiện áp dụng (giá trị đơn tối thiểu), hạn sử dụng.
+10. Người dùng chọn một mã giảm giá từ danh sách (hoặc bỏ qua nếu không dùng).
+11. Hệ thống kiểm tra mã hợp lệ với đơn hàng hiện tại.
+12. Hệ thống cập nhật giá sau giảm và hiển thị lại tóm tắt đơn hàng.
+13. Người dùng nhấn "Xác nhận đơn hàng".
+14. Hệ thống tạo đơn hàng ở trạng thái "Chờ gửi đồ", hạn gửi là 30 phút.
+15. Hệ thống ghi nhận lượt sử dụng mã giảm giá.
+16. Hệ thống sinh mã QR cho đơn hàng.
+17. Hệ thống giữ ô tủ cho đơn hàng này.
+18. Hệ thống ghi nhận lịch sử trạng thái đơn.
+19. Hệ thống gửi thông báo "Đơn hàng đã tạo" cho khách.
+20. Kết thúc chức năng.
 Luồng thay thế
-4a. Không có locker khả dụng → "Hiện tại không có locker khả dụng."9a. Không có mã giảm giá nào khả dụng → Hệ thống hiển thị "Hiện tại không có mã giảm giá khả dụng cho đơn hàng này." và cho phép bỏ qua bước chọn mã.11a. Mã không hợp lệ với đơn hiện tại (chưa đủ giá trị tối thiểu) → "Đơn hàng chưa đủ điều kiện áp dụng mã này." và hiển thị lại danh sách.
+2a. Không có dịch vụ phù hợp: trả danh sách rỗng; khách có thể thay đổi bộ lọc.
+2b. Giá lọc âm hoặc giá tối thiểu lớn hơn giá tối đa: thông báo lỗi và yêu cầu điều chỉnh.
+4a. Không có locker khả dụng → "Hiện tại không có locker khả dụng."
+9a. Không có mã giảm giá nào khả dụng → Hệ thống hiển thị "Hiện tại không có mã giảm giá khả dụng cho đơn hàng này." và cho phép bỏ qua bước chọn mã.
+11a. Mã không hợp lệ với đơn hiện tại (chưa đủ giá trị tối thiểu) → "Đơn hàng chưa đủ điều kiện áp dụng mã này." và hiển thị lại danh sách.
 Luồng ngoại lệ
-14a. Ô vừa bị người khác đặt → rollback, thông báo "Ô này vừa được đặt. Vui lòng chọn ô khác."16a. Sinh mã QR thất bại → hủy toàn bộ đơn vừa tạo.
-1.2.2. Use Case Xem danh sách locker
+14a. Ô vừa bị người khác đặt → rollback, thông báo "Ô này vừa được đặt. Vui lòng chọn ô khác."
+16a. Sinh mã QR thất bại → hủy toàn bộ đơn vừa tạo.
+1.2.2. Use Case Xem danh sách locker1.2.2. Use Case Xem danh sách locker1.2.2. Use Case Xem danh sách locker
 Use Case Xem danh sách locker
 Mô tả
 Cho phép khách hàng xem danh sách locker trên bản đồ.
@@ -109,12 +204,16 @@ Người dùng đã đăng nhập.
 Điều kiện tiên quyết
 Người dùng truy cập trang Danh sách locker.
 Luồng chính
-1. Người dùng truy cập trang Danh sách locker.2. Hệ thống hiển thị bản đồ với các điểm locker đang hoạt động.3. Hệ thống hiển thị: tên locker, địa chỉ, số ô trống, khoảng cách.4. Người dùng click vào một locker để xem chi tiết.5. Kết thúc chức năng.
+1. Người dùng truy cập trang Danh sách locker.
+2. Hệ thống hiển thị bản đồ với các điểm locker đang hoạt động.
+3. Hệ thống hiển thị: tên locker, địa chỉ, số ô trống, khoảng cách.
+4. Người dùng click vào một locker để xem chi tiết.
+5. Kết thúc chức năng.
 Luồng thay thế
 2a. Không có locker nào → "Hiện tại chưa có locker nào."
 Luồng ngoại lệ
 2a. Không tải được bản đồ → "Không thể tải bản đồ. Vui lòng thử lại."
-1.2.4. Use Case Thanh toán
+1.2.4. Use Case Thanh toán1.2.4. Use Case Thanh toán1.2.4. Use Case Thanh toán
 Use Case Thanh toán
 Mô tả
 Cho phép khách hàng thanh toán đơn hàng sau khi Merchant đã giặt xong và cân kg thực tế, chốt giá cuối cùng.
@@ -125,12 +224,24 @@ Khách hàng, Cổng thanh toán
 Điều kiện tiên quyết
 Người dùng nhận được thông báo "Nhắc nhở thanh toán" hoặc truy cập chi tiết đơn hàng.
 Luồng chính
-1. Người dùng nhấn "Thanh toán" từ chi tiết đơn hàng.2. Hệ thống hiển thị tóm tắt: dịch vụ, số kg thực tế, giá cơ bản, phụ phí vượt cân (nếu có), tổng tiền cuối cùng.3. Hệ thống hiển thị phương thức thanh toán: VNPay, MoMo.4. Người dùng chọn phương thức.5. Hệ thống chuyển người dùng đến cổng thanh toán.6. Người dùng hoàn tất thanh toán.7. Cổng thanh toán xác nhận về hệ thống.8. Hệ thống ghi nhận thanh toán thành công, cập nhật đơn sang trạng thái "Đã thanh toán".9. Hệ thống thông báo cho Merchant biết khách đã thanh toán để tiến hành trả đồ.10. Hệ thống gửi thông báo "Thanh toán thành công" cho khách.11. Kết thúc chức năng.
+1. Người dùng nhấn "Thanh toán" từ chi tiết đơn hàng.
+2. Hệ thống hiển thị tóm tắt: dịch vụ, số kg thực tế, giá cơ bản, phụ phí vượt cân (nếu có), tổng tiền cuối cùng.
+3. Hệ thống hiển thị phương thức thanh toán: VNPay, MoMo.
+4. Người dùng chọn phương thức.
+5. Hệ thống chuyển người dùng đến cổng thanh toán.
+6. Người dùng hoàn tất thanh toán.
+7. Cổng thanh toán xác nhận về hệ thống.
+8. Hệ thống ghi nhận thanh toán thành công, cập nhật đơn sang trạng thái "Đã thanh toán".
+9. Hệ thống thông báo cho Merchant biết khách đã thanh toán để tiến hành trả đồ.
+10. Hệ thống gửi thông báo "Thanh toán thành công" cho khách.
+11. Kết thúc chức năng.
 Luồng thay thế
-4a. Người dùng hủy giao dịch → quay lại chi tiết đơn.7a. Thanh toán thất bại → "Thanh toán thất bại. Vui lòng thử lại."7b. Quá hạn thanh toán → đơn chuyển sang trạng thái lưu kho sau 7 ngày.
+4a. Người dùng hủy giao dịch → quay lại chi tiết đơn.
+7a. Thanh toán thất bại → "Thanh toán thất bại. Vui lòng thử lại."
+7b. Quá hạn thanh toán → đơn chuyển sang trạng thái lưu kho sau 7 ngày.
 Luồng ngoại lệ
 7a. Cổng thanh toán trả kết quả không hợp lệ → ghi log lỗi, không cập nhật đơn.
-1.2.6. Use Case Theo dõi đơn hàng
+1.2.6. Use Case Theo dõi đơn hàng1.2.6. Use Case Theo dõi đơn hàng1.2.6. Use Case Theo dõi đơn hàng
 Use Case Theo dõi đơn hàng
 Mô tả
 Cho phép khách hàng xem trạng thái real-time và thời gian dự kiến hoàn thành của đơn hàng.
@@ -141,28 +252,64 @@ Người dùng đã đăng nhập và có ít nhất 1 đơn hàng.
 Điều kiện tiên quyết
 Người dùng truy cập trang Theo dõi đơn hàng.
 Luồng chính
-1. Người dùng truy cập trang Theo dõi.2. Hệ thống hiển thị danh sách đơn hàng, có bộ lọc theo trạng thái.3. Hệ thống hiển thị mỗi đơn: mã đơn, ngày tạo, dịch vụ, tổng tiền, trạng thái.4. Người dùng chọn một đơn.5. Hệ thống hiển thị chi tiết: mã đơn, locker, ô tủ, kích thước, số kg thực tế, giá, phụ phí, tổng tiền, thời gian dự kiến hoàn thành.6. Hệ thống hiển thị timeline các trạng thái đã đi qua.7. Hệ thống tự động cập nhật trạng thái real-time khi có thay đổi.8. Kết thúc chức năng.
+1. Người dùng truy cập trang Theo dõi.
+2. Hệ thống hiển thị danh sách đơn hàng, có bộ lọc theo trạng thái.
+3. Hệ thống hiển thị mỗi đơn: mã đơn, ngày tạo, dịch vụ, tổng tiền, trạng thái.
+4. Người dùng chọn một đơn.
+5. Hệ thống hiển thị chi tiết: mã đơn, locker, ô tủ, kích thước, số kg thực tế, giá, phụ phí, tổng tiền, thời gian dự kiến hoàn thành.
+6. Hệ thống hiển thị timeline các trạng thái đã đi qua.
+7. Hệ thống tự động cập nhật trạng thái real-time khi có thay đổi.
+8. Kết thúc chức năng.
 Luồng thay thế
-2a. Chưa có đơn → "Bạn chưa có đơn hàng nào."5a. Nếu đơn chưa hoàn thành → hiển thị QR Code để khách dùng khi gửi/lấy đồ.
+2a. Chưa có đơn → "Bạn chưa có đơn hàng nào."
+5a. Nếu đơn chưa hoàn thành → hiển thị QR Code để khách dùng khi gửi/lấy đồ.
 Luồng ngoại lệ
 7a. Mất kết nối real-time → "Đang mất kết nối. Vui lòng tải lại trang."
-1.2.7. Use Case Hủy đơn hàng
+1.2.7. Use Case Hủy đơn hàng1.2.7. Use Case Hủy đơn hàng1.2.7. Use Case Hủy đơn hàng
 Use Case Hủy đơn hàng
 Mô tả
-Cho phép khách hàng hủy đơn hàng trong một số giai đoạn nhất định, với mức phí hủy tùy theo trạng thái đơn hàng tại thời điểm hủy.
+Cho phép khách hủy đơn ở Pending, Deposited hoặc Collected đã cân, tính phí theo giai đoạn, thanh toán phí hủy và nhận lại đồ an toàn; hoàn phần tiền còn lại nếu đã có thanh toán gốc hợp lệ.
 Tác nhân
 Khách hàng
 Điều kiện trước
 Đơn hàng đang ở một trong các trạng thái cho phép hủy: Chờ gửi đồ, Đã gửi đồ, Đã lấy đồ (đã cân).
 Điều kiện tiên quyết
 Người dùng đang xem chi tiết đơn hàng.
+Quy tắc nghiệp vụ
+Phí hủy Pending/Deposited tính trên TotalAmount (giá tạm tính trước giảm); Collected tính trên FinalAmount đã chốt sau cân. Phí = giá làm căn cứ nhân tỷ lệ, làm tròn 2 chữ số thập phân. Tại đúng 30 phút vẫn miễn phí, quá 30 phút mới áp dụng 30%.
+Không tự động hủy chỉ vì quá 30 phút. Báo phí là giá trị tại lúc xem; hệ thống tính lại dưới khóa bản ghi khi khách xác nhận. Phí đã chốt sau hủy không bị tính lại khi gọi lặp hoặc sửa bảng giá.
+Phí hủy là khoản riêng với tiền giặt và phí lưu kho. Mục đích giao dịch CancellationFee không được đổi đơn sang Paid hoặc đánh dấu đã thanh toán tiền giặt. Callback lặp không cộng tiền/lịch sử lần hai.
+Đơn hủy theo dõi riêng vị trí/trạng thái đồ: không có đồ, tại ô gửi, tại tiệm, tại ô trả, đã giao lại khách. Không giải phóng ô đang có đồ chỉ vì trạng thái đơn đã Cancelled. Các thao tác quản trị ô cũng phải bảo vệ đồ của đơn hủy.
+Khách nhận lại đồ dùng mã nhận riêng, phiên 10 phút và xác nhận đã lấy hết đồ; kiểm tra lại phí hủy trước khi giải phóng ô. Sau bàn giao, lưu thời điểm nhận lại nhưng giữ trạng thái kinh doanh Cancelled.
+Nếu đã có tiền giặt được ghi nhận ở dữ liệu cũ, đối chiếu giao dịch thành công hoặc tiền mặt đã ghi nhận; giữ phí tối đa bằng số tiền đã trả, hoàn phần dư và thu phần phí còn thiếu nếu có. Không mở luồng trả tiền giặt trước khi giặt cho đơn mới.
+Hoàn tiền được tạo dưới dạng yêu cầu chờ Admin duyệt và xác nhận chuyển tiền thực tế theo quy trình hoàn tiền hiện có; không tự chuyển tiền ngân hàng. Không cho tạo yêu cầu hoàn toàn bộ giá đơn hủy để lấy lại cả phần phí đã giữ.
+Hiện chưa chốt quy tắc phí lưu kho/quá hạn riêng cho đồ của đơn hủy; không tự tính thêm phí hoặc tự chuyển kho cho Cancelled. Đồ vẫn được giữ an toàn đến khi giao lại hoặc có xử lý hỗ trợ. Không tính thêm phí giao lại trong luồng hủy này.
 Luồng chính
-1. Người dùng nhấn "Hủy đơn hàng".2. Hệ thống kiểm tra trạng thái đơn hàng hiện tại.3. Nếu đơn đang ở trạng thái cho phép hủy, hệ thống hiển thị popup xác nhận kèm:• Trạng thái đơn hiện tại• Mức phí hủy sẽ áp dụng• Số tiền sẽ được hoàn lại (nếu đã thanh toán)• Ô nhập lý do hủy4. Người dùng nhập lý do và nhấn "Xác nhận hủy".5. Hệ thống tính phí hủy dựa trên trạng thái đơn hàng:• Chờ gửi đồ (trong 30 phút): miễn phí.• Chờ gửi đồ (quá 30 phút): 30% giá tạm tính.• Đã gửi đồ (Merchant chưa lấy): 30% giá tạm tính.• Đã lấy đồ (đã cân): 50% giá thực tế.6. Hệ thống cập nhật đơn sang trạng thái "Đã hủy", ghi nhận lý do, người hủy, phí hủy.7. Hệ thống ghi nhận lịch sử trạng thái đơn.8. Nếu đơn chưa lấy đồ, hệ thống giải phóng ô tủ.9. Nếu đã thanh toán, hệ thống tạo yêu cầu hoàn tiền (số tiền hoàn = giá đơn − phí hủy).10. Hệ thống gửi thông báo "Đơn hàng đã bị hủy" cho khách và Merchant.11. Kết thúc chức năng.
+1. Khách mở chi tiết đơn của mình và nhấn Hủy đơn hàng.
+2. Hệ thống kiểm tra chủ đơn, trạng thái và hiển thị báo phí dự kiến: căn cứ tính, tỷ lệ phí, số phí, số tiền hoàn nếu có và phần phí còn thiếu.
+3. Khách xem thông tin, nhập lý do từ 1 đến 500 ký tự và nhấn Xác nhận hủy.
+4. Hệ thống khóa đơn, kiểm tra lại điều kiện và tính phí tại thời điểm xác nhận: Pending trong 30 phút miễn phí; Pending quá 30 phút hoặc Deposited là 30% giá tạm tính; Collected đã cân là 50% giá thực tế.
+5. Hệ thống lưu Cancelled, trạng thái trước khi hủy, thời điểm, người hủy, lý do và phí. Nếu Pending thì giải phóng ô Reserved. Nếu Deposited thì giữ ô Occupied và vị trí đồ tại tủ gửi. Nếu Collected thì ghi nhận đồ còn ở tiệm, không giải phóng thêm ô.
+6. Hệ thống ghi lịch sử hủy, vô hiệu nhiệm vụ/mã Shipper cũ và phiên nhận đồ cũ. Trạng thái đơn, ô, bộ đếm và lịch sử được lưu trong cùng giao dịch.
+7. Nếu có thanh toán gốc hợp lệ, hệ thống giữ lại phần phí hủy và tự tạo yêu cầu hoàn phần còn lại ở trạng thái chờ Admin duyệt. Việc hủy và tạo yêu cầu hoàn phải được lưu nhất quán.
+8. Nếu còn phí hủy chưa trả, khách tạo giao dịch thanh toán phí hủy riêng qua sandbox/VNPay. Hệ thống chỉ ghi nhận phí sau callback hợp lệ; không đánh dấu tiền giặt đã thanh toán.
+9. Đồ còn ở tủ gửi: khách dùng QR/PIN nhận và phiên xác nhận hai bước để nhận lại sau khi trả đủ phí hủy. Đồ ở tiệm: Merchant/Admin phân công riêng chuyến Return, Shipper trả lại locker bằng mã nhiệm vụ, khách nhận lại bằng QR/PIN sau khi trả đủ phí.
+10. Hệ thống chỉ giải phóng ô có đồ khi khách xác nhận đã lấy hết đồ và đóng cửa. Ghi nhận đã trả đồ cho khách; đơn vẫn Cancelled, không đổi sang Completed.
+11. Hệ thống gửi thông báo hủy và cập nhật giao nhận cho khách, Merchant và Shipper liên quan. Kết thúc chức năng.
 Luồng thay thế
-2a. Đơn đang ở trạng thái không cho phép hủy (đang giặt, đang sấy, đang ủi, đang gấp, chờ thanh toán, đã thanh toán, chờ trả, đã trả) → Hệ thống hiển thị: "Đơn hàng đang được xử lý, không thể hủy. Vui lòng liên hệ hỗ trợ nếu có vấn đề." và không hiển thị nút xác nhận hủy.4a. Người dùng nhấn "Quay lại" → đóng popup, không hủy đơn.
+2a. Đơn đã bắt đầu giặt hoặc ở các bước sau Collected, hoặc Collected chưa có cân thực tế: không cho hủy; thông báo liên hệ hỗ trợ nếu cần.
+3a. Khách nhấn Quay lại: đóng popup, không thay đổi đơn.
+4a. Đơn vừa đổi trạng thái do thao tác đồng thời: kiểm tra trên trạng thái mới và từ chối nếu không còn được hủy.
+5a. Đơn đã Cancelled, khách gửi lại đúng quyền: trả kết quả đã hủy, không tính lại phí, không giải phóng ô hoặc tạo thêm lịch sử/yêu cầu hoàn.
+7a. Không có giao dịch gốc hợp lệ để đối chiếu, hoặc đã có yêu cầu hoàn chưa bị từ chối: chưa hủy; yêu cầu xử lý đối chiếu trước.
+8a. Thanh toán phí hủy thất bại: phí vẫn còn thiếu; có thể thử lại theo luồng thanh toán. Không cho khách mở ô hoặc hoàn tất nhận lại khi chưa trả đủ phí.
+9a. Shipper có thể trả đồ về locker trước khi khách thanh toán phí hủy; điều kiện thanh toán áp dụng bắt buộc trước lúc khách nhận lại.
+9b. Tủ trả không có ô phù hợp: giữ đồ ở tiệm và nhiệm vụ chưa hoàn tất, thông báo liên hệ điều phối; không chiếm ô hoặc ghi nhận trả đồ dang dở.
 Luồng ngoại lệ
-6a. Cập nhật đơn thất bại → "Có lỗi xảy ra. Vui lòng thử lại."9a. Tạo yêu cầu hoàn tiền thất bại → ghi log, thông báo "Yêu cầu hoàn tiền sẽ được xử lý sau."
-1.2.8. Use Case Xem lịch sử đơn
+5b. Cập nhật đơn, ô, bộ đếm hoặc lịch sử thất bại: rollback toàn bộ thao tác và báo lỗi; không lưu trạng thái hủy dang dở.
+7b. Tạo yêu cầu hoàn tiền thất bại: không commit thao tác hủy; giữ trạng thái trước đó và thông báo lỗi để thử lại/đối chiếu.
+11a. Gửi thông báo thất bại: ghi log; không ảnh hưởng kết quả hủy hoặc nhận lại đồ đã xác nhận.
+1.2.8. Use Case Xem lịch sử đơn1.2.8. Use Case Xem lịch sử đơn1.2.8. Use Case Xem lịch sử đơn
 Use Case Xem lịch sử đơn
 Mô tả
 Cho phép khách hàng xem tất cả đơn hàng đã tạo.
@@ -173,13 +320,17 @@ Người dùng đã đăng nhập.
 Điều kiện tiên quyết
 Người dùng truy cập trang Lịch sử đơn hàng.
 Luồng chính
-1. Người dùng truy cập trang Lịch sử đơn.2. Hệ thống hiển thị danh sách đơn hàng, có bộ lọc theo trạng thái và khoảng thời gian.3. Hệ thống hiển thị mỗi đơn: mã đơn, ngày tạo, dịch vụ, tổng tiền, trạng thái.4. Người dùng click vào đơn để xem chi tiết.5. Kết thúc chức năng.
+1. Người dùng truy cập trang Lịch sử đơn.
+2. Hệ thống hiển thị danh sách đơn hàng, có bộ lọc theo trạng thái và khoảng thời gian.
+3. Hệ thống hiển thị mỗi đơn: mã đơn, ngày tạo, dịch vụ, tổng tiền, trạng thái.
+4. Người dùng click vào đơn để xem chi tiết.
+5. Kết thúc chức năng.
 Luồng thay thế
 2a. Chưa có đơn → "Bạn chưa có đơn hàng nào."
 Luồng ngoại lệ
 Không có
-1.3. Gửi/Nhận đồ với Locker
-1.3.1. Use Case Gửi đồ vào locker
+1.3. Gửi/Nhận đồ với Locker1.3. Gửi/Nhận đồ với Locker1.3. Gửi/Nhận đồ với Locker
+1.3.1. Use Case Hiển thị QR Code1.3.1. Use Case Hiển thị QR Code1.3.1. Use Case Hiển thị QR Code
 Use Case Hiển thị QR Code
 Mô tả
 Cập nhật trạng thái đơn hàng thành "Đã gửi đồ" sau khi khách hàng xác nhận đã bỏ đồ vào ô tủ (mô phỏng trên web).
@@ -190,60 +341,31 @@ Khách hàng
 Điều kiện tiên quyết
 Khách hàng đang xem chi tiết đơn hàng trên web.
 Luồng chính
-1. Khách hàng mở chi tiết đơn hàng trên web.2. Hệ thống hiển thị khu vực "Quét mã QR để mở ô tủ" kèm nút "Tải ảnh QR lên".3. Khách hàng tải ảnh QR Code lên web.4. Hệ thống nhận diện QR, kiểm tra hợp lệ và khớp với đơn hàng.5. Hệ thống hiển thị giao diện ô tủ (mô phỏng) với:• Thông tin ô tủ: số ô, kích thước.• Nút "Tôi đã gửi đồ".• Nút "Hủy".6. Khách hàng bỏ đồ vào ô tủ (thực tế) và nhấn "Tôi đã gửi đồ".7. Hệ thống cập nhật trạng thái đơn hàng thành "Đã gửi đồ".8. Hệ thống cập nhật trạng thái ô tủ thành "Đang có đồ".9. Hệ thống ghi nhận lịch sử trạng thái đơn.10. Hệ thống gửi thông báo "Bạn đã gửi đồ thành công!" cho khách.11. Hệ thống gửi thông báo cho Admin biết khách đã gửi đồ để phân công Merchant.12. Kết thúc chức năng.
+1. Khách hàng mở chi tiết đơn hàng trên web.
+2. Hệ thống hiển thị khu vực "Quét mã QR để mở ô tủ" kèm nút "Tải ảnh QR lên".
+3. Khách hàng tải ảnh QR Code lên web.
+4. Hệ thống nhận diện QR, kiểm tra hợp lệ và khớp với đơn hàng.
+5. Hệ thống hiển thị giao diện ô tủ (mô phỏng) với:
+• Thông tin ô tủ: số ô, kích thước.
+• Nút "Tôi đã gửi đồ".
+• Nút "Hủy".
+6. Khách hàng bỏ đồ vào ô tủ (thực tế) và nhấn "Tôi đã gửi đồ".
+7. Hệ thống cập nhật trạng thái đơn hàng thành "Đã gửi đồ".
+8. Hệ thống cập nhật trạng thái ô tủ thành "Đang có đồ".
+9. Hệ thống ghi nhận lịch sử trạng thái đơn.
+10. Hệ thống gửi thông báo "Bạn đã gửi đồ thành công!" cho khách.
+11. Hệ thống gửi thông báo cho Admin biết khách đã gửi đồ để phân công Merchant.
+12. Kết thúc chức năng.
 Luồng thay thế
-4a. QR không hợp lệ → "QR Code không hợp lệ hoặc không khớp với đơn hàng."4b. QR không khớp đơn hàng → "QR Code không thuộc đơn hàng này."4c. Đã quá hạn gửi đồ (quá 30 phút) → "Đã quá hạn gửi đồ. Đơn hàng sẽ bị hủy."6a. Khách hàng nhấn "Hủy" → Hệ thống đóng giao diện ô tủ, quay lại chi tiết đơn hàng, không cập nhật trạng thái.
+4a. QR không hợp lệ → "QR Code không hợp lệ hoặc không khớp với đơn hàng."
+4b. QR không khớp đơn hàng → "QR Code không thuộc đơn hàng này."
+4c. Đã quá hạn gửi đồ (quá 30 phút) → "Đã quá hạn gửi đồ. Đơn hàng sẽ bị hủy."
+6a. Khách hàng nhấn "Hủy" → Hệ thống đóng giao diện ô tủ, quay lại chi tiết đơn hàng, không cập nhật trạng thái.
 Luồng ngoại lệ
-3a. Upload ảnh thất bại → "Không thể tải ảnh lên. Vui lòng thử lại."7a. Cập nhật trạng thái thất bại → "Có lỗi xảy ra. Vui lòng thử lại."10a. Gửi thông báo thất bại → ghi log, không ảnh hưởng đến đơn hàng.
-1.3.1. Use Case Gửi đồ vào locker
-Use Case Hiển thị QR Code
-Mô tả
-Cập nhật trạng thái đơn hàng thành "Đã gửi đồ" sau khi khách hàng xác nhận đã bỏ đồ vào ô tủ (mô phỏng trên web).
-Tác nhân
-Khách hàng
-Điều kiện trước
-Đơn hàng đang ở trạng thái "Chờ gửi đồ"; khách hàng đã đến locker và bỏ đồ vào ô tủ.
-Điều kiện tiên quyết
-Khách hàng đang xem chi tiết đơn hàng trên web.
-Luồng chính
-1. Khách hàng mở chi tiết đơn hàng trên web.2. Hệ thống hiển thị khu vực "Quét mã QR để mở ô tủ" kèm nút "Tải ảnh QR lên".3. Khách hàng tải ảnh QR Code lên web.4. Hệ thống nhận diện QR, kiểm tra hợp lệ và khớp với đơn hàng.5. Hệ thống hiển thị giao diện ô tủ (mô phỏng) với:• Thông tin ô tủ: số ô, kích thước.• Nút "Tôi đã gửi đồ".• Nút "Hủy".6. Khách hàng bỏ đồ vào ô tủ (thực tế) và nhấn "Tôi đã gửi đồ".7. Hệ thống cập nhật trạng thái đơn hàng thành "Đã gửi đồ".8. Hệ thống cập nhật trạng thái ô tủ thành "Đang có đồ".9. Hệ thống ghi nhận lịch sử trạng thái đơn.10. Hệ thống gửi thông báo "Bạn đã gửi đồ thành công!" cho khách.11. Hệ thống gửi thông báo cho Admin biết khách đã gửi đồ để phân công Merchant.12. Kết thúc chức năng.
-Luồng thay thế
-4a. QR không hợp lệ → "QR Code không hợp lệ hoặc không khớp với đơn hàng."4b. QR không khớp đơn hàng → "QR Code không thuộc đơn hàng này."4c. Đã quá hạn gửi đồ (quá 30 phút) → "Đã quá hạn gửi đồ. Đơn hàng sẽ bị hủy."6a. Khách hàng nhấn "Hủy" → Hệ thống đóng giao diện ô tủ, quay lại chi tiết đơn hàng, không cập nhật trạng thái.
-Luồng ngoại lệ
-3a. Upload ảnh thất bại → "Không thể tải ảnh lên. Vui lòng thử lại."7a. Cập nhật trạng thái thất bại → "Có lỗi xảy ra. Vui lòng thử lại."10a. Gửi thông báo thất bại → ghi log, không ảnh hưởng đến đơn hàng.
-1.3.1. Use Case Gửi đồ vào locker
-Use Case Hiển thị QR Code
-Mô tả
-Cập nhật trạng thái đơn hàng thành "Đã gửi đồ" sau khi khách hàng xác nhận đã bỏ đồ vào ô tủ (mô phỏng trên web).
-Tác nhân
-Khách hàng
-Điều kiện trước
-Đơn hàng đang ở trạng thái "Chờ gửi đồ"; khách hàng đã đến locker và bỏ đồ vào ô tủ.
-Điều kiện tiên quyết
-Khách hàng đang xem chi tiết đơn hàng trên web.
-Luồng chính
-1. Khách hàng mở chi tiết đơn hàng trên web.2. Hệ thống hiển thị khu vực "Quét mã QR để mở ô tủ" kèm nút "Tải ảnh QR lên".3. Khách hàng tải ảnh QR Code lên web.4. Hệ thống nhận diện QR, kiểm tra hợp lệ và khớp với đơn hàng.5. Hệ thống hiển thị giao diện ô tủ (mô phỏng) với:• Thông tin ô tủ: số ô, kích thước.• Nút "Tôi đã gửi đồ".• Nút "Hủy".6. Khách hàng bỏ đồ vào ô tủ (thực tế) và nhấn "Tôi đã gửi đồ".7. Hệ thống cập nhật trạng thái đơn hàng thành "Đã gửi đồ".8. Hệ thống cập nhật trạng thái ô tủ thành "Đang có đồ".9. Hệ thống ghi nhận lịch sử trạng thái đơn.10. Hệ thống gửi thông báo "Bạn đã gửi đồ thành công!" cho khách.11. Hệ thống gửi thông báo cho Admin biết khách đã gửi đồ để phân công Merchant.12. Kết thúc chức năng.
-Luồng thay thế
-4a. QR không hợp lệ → "QR Code không hợp lệ hoặc không khớp với đơn hàng."4b. QR không khớp đơn hàng → "QR Code không thuộc đơn hàng này."4c. Đã quá hạn gửi đồ (quá 30 phút) → "Đã quá hạn gửi đồ. Đơn hàng sẽ bị hủy."6a. Khách hàng nhấn "Hủy" → Hệ thống đóng giao diện ô tủ, quay lại chi tiết đơn hàng, không cập nhật trạng thái.
-Luồng ngoại lệ
-3a. Upload ảnh thất bại → "Không thể tải ảnh lên. Vui lòng thử lại."7a. Cập nhật trạng thái thất bại → "Có lỗi xảy ra. Vui lòng thử lại."10a. Gửi thông báo thất bại → ghi log, không ảnh hưởng đến đơn hàng.
-1.3.1. Use Case Gửi đồ vào locker
-Use Case Hiển thị QR Code
-Mô tả
-Cập nhật trạng thái đơn hàng thành "Đã gửi đồ" sau khi khách hàng xác nhận đã bỏ đồ vào ô tủ (mô phỏng trên web).
-Tác nhân
-Khách hàng
-Điều kiện trước
-Đơn hàng đang ở trạng thái "Chờ gửi đồ"; khách hàng đã đến locker và bỏ đồ vào ô tủ.
-Điều kiện tiên quyết
-Khách hàng đang xem chi tiết đơn hàng trên web.
-Luồng chính
-1. Khách hàng mở chi tiết đơn hàng trên web.2. Hệ thống hiển thị khu vực "Quét mã QR để mở ô tủ" kèm nút "Tải ảnh QR lên".3. Khách hàng tải ảnh QR Code lên web.4. Hệ thống nhận diện QR, kiểm tra hợp lệ và khớp với đơn hàng.5. Hệ thống hiển thị giao diện ô tủ (mô phỏng) với:• Thông tin ô tủ: số ô, kích thước.• Nút "Tôi đã gửi đồ".• Nút "Hủy".6. Khách hàng bỏ đồ vào ô tủ (thực tế) và nhấn "Tôi đã gửi đồ".7. Hệ thống cập nhật trạng thái đơn hàng thành "Đã gửi đồ".8. Hệ thống cập nhật trạng thái ô tủ thành "Đang có đồ".9. Hệ thống ghi nhận lịch sử trạng thái đơn.10. Hệ thống gửi thông báo "Bạn đã gửi đồ thành công!" cho khách.11. Hệ thống gửi thông báo cho Admin biết khách đã gửi đồ để phân công Merchant.12. Kết thúc chức năng.
-Luồng thay thế
-4a. QR không hợp lệ → "QR Code không hợp lệ hoặc không khớp với đơn hàng."4b. QR không khớp đơn hàng → "QR Code không thuộc đơn hàng này."4c. Đã quá hạn gửi đồ (quá 30 phút) → "Đã quá hạn gửi đồ. Đơn hàng sẽ bị hủy."6a. Khách hàng nhấn "Hủy" → Hệ thống đóng giao diện ô tủ, quay lại chi tiết đơn hàng, không cập nhật trạng thái.
-Luồng ngoại lệ
-3a. Upload ảnh thất bại → "Không thể tải ảnh lên. Vui lòng thử lại."7a. Cập nhật trạng thái thất bại → "Có lỗi xảy ra. Vui lòng thử lại."10a. Gửi thông báo thất bại → ghi log, không ảnh hưởng đến đơn hàng.
-1.3.1. Use Case Gửi đồ vào locker
+3a. Upload ảnh thất bại → "Không thể tải ảnh lên. Vui lòng thử lại."
+7a. Cập nhật trạng thái thất bại → "Có lỗi xảy ra. Vui lòng thử lại."
+10a. Gửi thông báo thất bại → ghi log, không ảnh hưởng đến đơn hàng.
+1.3.2. Use Case Gửi đồ vào locker1.3.2. Use Case Gửi đồ vào locker1.3.2. Use Case Gửi đồ vào locker
 Use Case Gửi đồ vào locker
 Mô tả
 Cập nhật trạng thái đơn hàng thành "Đã gửi đồ" sau khi khách hàng xác nhận đã bỏ đồ vào ô tủ (mô phỏng trên web).
@@ -253,30 +375,112 @@ Khách hàng
 Đơn hàng đang ở trạng thái "Chờ gửi đồ"; khách hàng đã đến locker và bỏ đồ vào ô tủ.
 Điều kiện tiên quyết
 Khách hàng đang xem chi tiết đơn hàng trên web.
+Quy tắc nghiệp vụ
+Phạm vi đồ án là mô phỏng trên web, không có cảm biến xác nhận đồ trong tủ. Khách chỉ gọi xác nhận gửi sau khi nhấn Tôi đã gửi đồ; hệ thống kiểm tra quyền, trạng thái Pending, mã và hạn 30 phút trước khi ghi nhận.
+Mã gửi riêng gồm PIN 6 số hoặc QR dạng WASHGO:DEPOSIT:{mã đơn}:{PIN gửi}; không dùng mã gửi để nhận đồ. Chỉ khách sở hữu đơn được xem mã gửi và mã nhận.
+Sai QR/PIN 5 lần liên tiếp khóa xác thực gửi trong 5 phút; hết khóa thì bắt đầu lại số lượt sai. PIN được sinh ngẫu nhiên an toàn.
+Xác nhận hợp lệ chuyển đơn Pending sang Deposited, ghi thời điểm gửi, chuyển ô Reserved sang Occupied và ghi lịch sử trong một giao dịch. Request lặp của đúng chủ đơn khi đã Deposited chỉ báo đã thực hiện, không cập nhật ô hoặc lịch sử lần nữa.
 Luồng chính
-1. Khách hàng mở chi tiết đơn hàng trên web.2. Hệ thống hiển thị khu vực "Quét mã QR để mở ô tủ" kèm nút "Tải ảnh QR lên".3. Khách hàng tải ảnh QR Code lên web.4. Hệ thống nhận diện QR, kiểm tra hợp lệ và khớp với đơn hàng.5. Hệ thống hiển thị giao diện ô tủ (mô phỏng) với:• Thông tin ô tủ: số ô, kích thước.• Nút "Tôi đã gửi đồ".• Nút "Hủy".6. Khách hàng bỏ đồ vào ô tủ (thực tế) và nhấn "Tôi đã gửi đồ".7. Hệ thống cập nhật trạng thái đơn hàng thành "Đã gửi đồ".8. Hệ thống cập nhật trạng thái ô tủ thành "Đang có đồ".9. Hệ thống ghi nhận lịch sử trạng thái đơn.10. Hệ thống gửi thông báo "Bạn đã gửi đồ thành công!" cho khách.11. Hệ thống gửi thông báo cho Admin biết khách đã gửi đồ để phân công Merchant.12. Kết thúc chức năng.
+1. Khách hàng mở chi tiết đơn hàng trên web.
+2. Hệ thống hiển thị khu vực "Quét mã QR để mở ô tủ" kèm nút "Tải ảnh QR lên".
+3. Khách hàng tải ảnh QR Code lên web.
+4. Hệ thống nhận diện QR, kiểm tra hợp lệ và khớp với đơn hàng.
+5. Hệ thống hiển thị giao diện ô tủ (mô phỏng) với:
+• Thông tin ô tủ: số ô, kích thước.
+• Nút "Tôi đã gửi đồ".
+• Nút "Hủy".
+6. Khách hàng bỏ đồ vào ô tủ (thực tế) và nhấn "Tôi đã gửi đồ".
+7. Hệ thống cập nhật trạng thái đơn hàng thành "Đã gửi đồ".
+8. Hệ thống cập nhật trạng thái ô tủ thành "Đang có đồ".
+9. Hệ thống ghi nhận lịch sử trạng thái đơn.
+10. Hệ thống gửi thông báo "Bạn đã gửi đồ thành công!" cho khách.
+11. Hệ thống gửi thông báo cho Admin biết khách đã gửi đồ để phân công Merchant.
+12. Kết thúc chức năng.
 Luồng thay thế
-4a. QR không hợp lệ → "QR Code không hợp lệ hoặc không khớp với đơn hàng."4b. QR không khớp đơn hàng → "QR Code không thuộc đơn hàng này."4c. Đã quá hạn gửi đồ (quá 30 phút) → "Đã quá hạn gửi đồ. Đơn hàng sẽ bị hủy."6a. Khách hàng nhấn "Hủy" → Hệ thống đóng giao diện ô tủ, quay lại chi tiết đơn hàng, không cập nhật trạng thái.
+4a. Không đọc được nội dung QR: hệ thống thông báo QR Code không hợp lệ.
+6a. QR/PIN không khớp với đơn hoặc khách không sở hữu đơn: từ chối ghi nhận gửi đồ.
+6b. Quá 30 phút kể từ khi tạo đơn: hệ thống thông báo Đã quá hạn gửi đồ. Vui lòng hủy đơn để giải phóng ô và tạo đơn mới. Không tự hủy đơn ở bước xác nhận gửi.
+6c. Khách nhấn Hủy: đóng giao diện mô phỏng, không cập nhật trạng thái đơn hoặc ô tủ.
 Luồng ngoại lệ
-3a. Upload ảnh thất bại → "Không thể tải ảnh lên. Vui lòng thử lại."7a. Cập nhật trạng thái thất bại → "Có lỗi xảy ra. Vui lòng thử lại."10a. Gửi thông báo thất bại → ghi log, không ảnh hưởng đến đơn hàng.
-1.3.1. Use Case Lấy đồ từ locker
+3a. Upload ảnh thất bại → "Không thể tải ảnh lên. Vui lòng thử lại."
+7a. Cập nhật trạng thái thất bại → "Có lỗi xảy ra. Vui lòng thử lại."
+10a. Gửi thông báo thất bại → ghi log, không ảnh hưởng đến đơn hàng.
+1.3.3. Use Case Lấy đồ từ locker1.3.3. Use Case Lấy đồ từ locker1.3.3. Use Case Lấy đồ từ locker
 Use Case Lấy đồ từ locker
 Mô tả
 Cho phép khách hàng quét mã QR để mở ô tủ, sau đó xác nhận đã lấy đồ hoặc hủy thao tác.
 Tác nhân
 Khách hàng
 Điều kiện trước
-Đơn hàng đang ở trạng thái "Đã trả đồ"; khách hàng đã đến locker.
+Khách đăng nhập, sở hữu đơn và đến đúng locker. Đơn giặt bình thường ở ReadyToReturn và tiền giặt đã thanh toán. Nhánh đơn hủy: đơn Cancelled, đồ đang ở ô gửi hoặc ô trả và phí hủy đã thanh toán đủ.
 Điều kiện tiên quyết
 Khách hàng đang xem chi tiết đơn hàng trên web.
+Quy tắc nghiệp vụ
+Mã nhận là PIN 6 số riêng hoặc QR WASHGO:PICKUP:{mã đơn}:{PIN nhận}; không chấp nhận QR gửi đồ. Merchant/Shipper không được xem mã nhận của khách.
+Sai QR/PIN 5 lần liên tiếp khóa xác thực nhận trong 5 phút; hết khóa cho thử lại từ lượt đầu. Phiên nhận chỉ thuộc đúng khách và đúng đơn, lưu dưới dạng hash, có hạn 10 phút và chỉ được dùng hoàn tất một lần.
+Quét mã thành công chỉ mở cửa mô phỏng, chưa giải phóng ô. Hệ thống dựa vào xác nhận trung thực của khách rằng đã lấy hết đồ và đóng cửa; không có cảm biến vật lý. Nếu xác nhận nhầm, khách liên hệ hỗ trợ, không tự mở lại đơn đã hoàn tất.
+Miễn phí 24 giờ kể từ khi đồ được xác nhận đặt vào ô trả. Hạn nhận bằng thời điểm trả vào ô cộng 24 giờ; phí quá hạn tính lại khi mở và khi xác nhận nhận. Phí từng ngày quá hạn bắt đầu: ngày 1 là 10.000đ, ngày 2 thêm 20.000đ, ngày 3 thêm 50.000đ; sau đó mỗi ngày bắt đầu thêm 100.000đ nếu chưa chuyển kho.
+Khi quá 72 giờ kể từ hạn nhận, nhân viên có thể xác nhận chuyển kho theo quy trình riêng. Đơn MovedToStorage phải dùng chức năng Nhận đồ tại kho, không dùng phiên mở locker.
+Nhánh nhận lại đồ của đơn hủy: chấp nhận Cancelled khi đồ còn ở ô gửi hoặc ô trả, kiểm tra phí hủy đã trả đủ thay cho điều kiện tiền giặt Paid. Vẫn cần mã nhận và phiên hai bước. Sau xác nhận mới giải phóng ô, ghi nhận đã giao lại khách và thời điểm bàn giao, giữ Cancelled thay vì Returned/Completed. Không tự áp dụng phí lưu kho thường cho đơn hủy khi chưa có quy tắc riêng.
 Luồng chính
-1. Khách hàng mở chi tiết đơn hàng trên web.2. Hệ thống hiển thị khu vực "Quét mã QR để mở ô tủ" kèm nút "Tải ảnh QR lên".3. Khách hàng tải ảnh QR Code lên web.4. Hệ thống nhận diện QR, kiểm tra hợp lệ và khớp với đơn hàng.5. Hệ thống kiểm tra khách đã thanh toán chưa.6. Hệ thống hiển thị giao diện ô tủ (mô phỏng) với:• Thông tin ô tủ: số ô, kích thước.• Nút "Tôi đã lấy đồ".• Nút "Hủy".7. Khách hàng lấy đồ ra khỏi ô tủ (thực tế) và nhấn "Tôi đã lấy đồ".8. Hệ thống cập nhật trạng thái đơn hàng thành "Hoàn thành".9. Hệ thống cập nhật trạng thái ô tủ thành "Trống".10. Hệ thống ghi nhận lịch sử trạng thái đơn.11. Hệ thống gửi thông báo "Bạn đã lấy đồ thành công! Cảm ơn bạn đã sử dụng dịch vụ." cho khách.12. Hệ thống hiển thị "Đánh giá dịch vụ" cho khách.13. Kết thúc chức năng.
+1. Khách hàng mở chi tiết đơn của mình đang ở ReadyToReturn.
+2. Khách quét QR, tải ảnh QR để giao diện đọc nội dung mã, hoặc nhập PIN nhận đồ.
+3. Hệ thống kiểm tra chủ đơn, trạng thái ReadyToReturn, mã nhận, tiền giặt đã thanh toán và phí quá hạn tính tại thời điểm mở ô đã thanh toán đủ.
+4. Hệ thống mở cửa ô tủ mô phỏng, trả vị trí và số ô kèm phiên nhận đồ có hạn 10 phút. Ô vẫn ở Occupied, đơn chưa đổi trạng thái.
+5. Giao diện hiển thị nút Tôi đã lấy hết đồ và đóng cửa và nút Hủy.
+6. Khách xác nhận đã lấy hết đồ và đóng cửa; giao diện gửi phiên nhận đồ vừa được cấp.
+7. Hệ thống kiểm tra lại quyền, phiên chưa hết hạn và chưa dùng, trạng thái đơn, tiền giặt và phí quá hạn mới phát sinh đã được trả đủ.
+8. Hệ thống ghi nhận Khách đã nhận đồ (Returned), giải phóng đúng ô trả về Available, tăng số ô trống đúng một lần và vô hiệu phiên đã dùng.
+9. Hệ thống tự chuyển đơn sang Completed và ghi cả lịch sử nhận đồ lẫn hoàn tất trong cùng giao dịch; không cần Admin duyệt thêm.
+10. Hệ thống gửi thông báo Bạn đã lấy đồ thành công! Cảm ơn bạn đã sử dụng dịch vụ.
+11. Hệ thống hiển thị Đánh giá dịch vụ cho khách.
+12. Kết thúc chức năng.
 Luồng thay thế
-4a. QR không hợp lệ → "QR Code không hợp lệ hoặc không khớp với đơn hàng."4b. QR không khớp đơn hàng → "QR Code không thuộc đơn hàng này."5a. Khách chưa thanh toán → "Vui lòng thanh toán trước khi lấy đồ." và chuyển hướng đến trang thanh toán.7a. Khách hàng nhấn "Hủy" → Hệ thống đóng giao diện ô tủ, quay lại chi tiết đơn hàng, không cập nhật trạng thái.
+3a. QR/PIN sai, không thuộc đơn hoặc khách không sở hữu đơn: từ chối mở ô.
+3b. Chưa thanh toán đủ tiền giặt hoặc phí quá hạn: yêu cầu thanh toán trước khi mở ô.
+3c. Đã quá 72 giờ kể từ hạn nhận: chuyển sang quy trình xử lý kho, không mở ô bằng chức năng này; việc chuyển kho phải do nhân viên xác nhận riêng.
+5a. Khách nhấn Hủy: đóng giao diện, không đổi trạng thái đơn hoặc giải phóng ô. Phiên chưa dùng tự hết hạn.
+7a. Thiếu phiên, sai phiên hoặc phiên hết 10 phút: yêu cầu xác thực mở ô lại; mở lại cấp phiên mới và vô hiệu phiên trước.
+7b. Có phí mới phát sinh chưa thanh toán hoặc tiền giặt chưa được thanh toán: chưa hoàn tất, yêu cầu thanh toán đủ.
+8a. Chủ đơn gửi lại xác nhận sau khi đơn đã hoàn tất: trả thông báo đã thực hiện, không giải phóng ô hoặc ghi lịch sử thêm lần nữa.
 Luồng ngoại lệ
-3a. Upload ảnh thất bại → "Không thể tải ảnh lên. Vui lòng thử lại."8a. Cập nhật trạng thái thất bại → "Có lỗi xảy ra. Vui lòng thử lại."11a. Gửi thông báo thất bại → ghi log, không ảnh hưởng đến đơn hàng.
-1.4. Đánh giá và dịch vụ
-1.4.1. Use Case Đánh giá 
+2a. Upload/đọc ảnh QR thất bại: thông báo Không thể đọc mã QR. Vui lòng thử lại hoặc nhập PIN.
+8b. Cập nhật ô, đơn hoặc lịch sử thất bại: hủy toàn bộ giao dịch, không để trạng thái dang dở.
+10a. Gửi thông báo thất bại: ghi log, không ảnh hưởng đến việc nhận đồ đã xác nhận.
+1.3.4. Use Case Nhận đồ tại kho1.3.4. Use Case Nhận đồ tại kho1.3.4. Use Case Nhận đồ tại kho
+Use Case Nhận đồ tại kho
+Mô tả
+Cho phép khách xác nhận nhận lại đồ đã chuyển kho sau khi thanh toán đầy đủ tiền giặt và phí quá hạn/lưu kho; đây là mô phỏng bàn giao tại kho, không mở ô locker.
+Tác nhân
+Khách hàng
+Điều kiện trước
+Khách đã đăng nhập, sở hữu đơn MovedToStorage, có thông tin địa điểm/mã lưu kho. Nhân viên đã chuyển đồ ra khỏi locker và giải phóng ô ở bước chuyển kho.
+Điều kiện tiên quyết
+Khách xem chi tiết đơn đã chuyển kho và đến địa điểm kho để nhận đồ.
+Quy tắc nghiệp vụ
+Lúc nhân viên xác nhận chuyển kho sau hơn 72 giờ quá hạn nhận: chốt phí locker tại MovedToStorageAt và giải phóng ô đúng một lần. Không tự chuyển kho chỉ vì thời gian trôi qua.
+Phí kho bằng 100.000đ nhân số chu kỳ 24 giờ đã bắt đầu kể từ MovedToStorageAt. Làm tròn lên: ceil(tổng giờ ở kho / 24); đúng thời điểm chuyển kho phí kho bằng 0, sau đó dù chỉ một phút cũng tính ngày đầu.
+Tổng phí phải trả bằng phí locker đã chốt cộng phí kho hiện tại; trừ số phí khách đã thanh toán để xác định khoản còn thiếu. Tạo giao dịch phí và xác nhận bàn giao phải dùng cùng công thức.
+Khách xác nhận trung thực đã được bàn giao đồ tại kho trong bản mô phỏng; nếu xác nhận nhầm thì liên hệ hỗ trợ. Nhận tại kho không dùng phiên mở locker và tuyệt đối không giải phóng ô lần hai.
+Luồng chính
+1. Khách mở chi tiết đơn MovedToStorage và xem địa điểm, mã lưu kho, phí đã thanh toán và phí còn thiếu.
+2. Hệ thống tính tổng phí hiện tại bằng phí locker đã chốt lúc chuyển kho cộng phí phát sinh tại kho.
+3. Khách thanh toán đủ khoản còn thiếu theo quy trình thanh toán phí quá hạn.
+4. Sau khi nhận bàn giao đồ tại kho, khách nhấn Tôi đã nhận đồ tại kho để xác nhận mô phỏng.
+5. Hệ thống kiểm tra lại chủ đơn, trạng thái MovedToStorage, tiền giặt đã thanh toán và tổng phí tính tại thời điểm xác nhận đã được trả đủ.
+6. Hệ thống ghi lịch sử Returned rồi tự chuyển Completed và ghi lịch sử hoàn tất trong cùng giao dịch; không thay đổi bất kỳ ô tủ hoặc bộ đếm locker nào.
+7. Hệ thống thông báo nhận đồ thành công và hoàn tất đơn; gửi thông báo cho các bên theo quy trình giao nhận.
+8. Kết thúc chức năng.
+Luồng thay thế
+3a. Khách chưa thanh toán đủ hoặc phát sinh phí mới trước khi xác nhận: hiển thị khoản còn thiếu và chưa hoàn tất đơn.
+4a. Khách hủy xác nhận: không thay đổi trạng thái đơn.
+5a. Sai chủ đơn hoặc đơn chưa chuyển kho: từ chối nhận tại kho.
+6a. Chủ đơn gửi lại sau khi đơn đã hoàn tất: thông báo đã thực hiện, không ghi lịch sử hay thay đổi ô lần nữa.
+Luồng ngoại lệ
+6b. Lưu trạng thái hoặc lịch sử thất bại: rollback toàn bộ thao tác, không lưu kết quả dang dở.
+7a. Gửi thông báo thất bại: ghi log, không ảnh hưởng kết quả bàn giao đã xác nhận.
+1.4. Đánh giá và dịch vụ1.4. Đánh giá và dịch vụ1.4. Đánh giá và dịch vụ
+1.4.1. Use Case Đánh giá 1.4.1. Use Case Đánh giá 1.4.1. Use Case Đánh giá
 Use Case Đánh giá
 Mô tả
 Cho phép khách hàng đánh giá chất lượng dịch vụ WashGo (bao gồm chấm sao và viết nhận xét) sau khi đơn hàng hoàn thành.
@@ -287,12 +491,27 @@ Khách hàng
 Điều kiện tiên quyết
 Người dùng nhấn "Đánh giá" từ chi tiết đơn hàng hoặc từ thông báo gợi ý.
 Luồng chính
-1. Người dùng nhấn "Đánh giá dịch vụ".2. Hệ thống hiển thị form đánh giá gồm:• Chấm điểm tổng thể: Chọn số sao (1-5 sao).• Tiêu chí chi tiết: Chất lượng giặt, Tốc độ xử lý, Thái độ phục vụ, Đóng gói.• Ô nhận xét: Cho phép nhập nội dung nhận xét chi tiết (không bắt buộc).• Đính kèm hình ảnh: Cho phép upload ảnh minh chứng (không bắt buộc).3. Người dùng chọn số sao, chấm điểm các tiêu chí, nhập nhận xét và đính kèm ảnh (nếu có).4. Người dùng nhấn "Gửi đánh giá".5. Hệ thống kiểm tra dữ liệu: số sao đã chọn, đơn hàng chưa được đánh giá.6. Hệ thống ghi nhận đánh giá (số sao + tiêu chí + nhận xét + ảnh) vào đơn hàng.7. Hệ thống thông báo "Cảm ơn bạn đã đánh giá!"8. Kết thúc chức năng.
+1. Người dùng nhấn "Đánh giá dịch vụ".
+2. Hệ thống hiển thị form đánh giá gồm:
+• Chấm điểm tổng thể: Chọn số sao (1-5 sao).
+• Tiêu chí chi tiết: Chất lượng giặt, Tốc độ xử lý, Thái độ phục vụ, Đóng gói.
+• Ô nhận xét: Cho phép nhập nội dung nhận xét chi tiết (không bắt buộc).
+• Đính kèm hình ảnh: Cho phép upload ảnh minh chứng (không bắt buộc).
+3. Người dùng chọn số sao, chấm điểm các tiêu chí, nhập nhận xét và đính kèm ảnh (nếu có).
+4. Người dùng nhấn "Gửi đánh giá".
+5. Hệ thống kiểm tra dữ liệu: số sao đã chọn, đơn hàng chưa được đánh giá.
+6. Hệ thống ghi nhận đánh giá (số sao + tiêu chí + nhận xét + ảnh) vào đơn hàng.
+7. Hệ thống thông báo "Cảm ơn bạn đã đánh giá!"
+8. Kết thúc chức năng.
 Luồng thay thế
-3a. Người dùng không nhập nhận xét → Vẫn cho gửi đánh giá (nhận xét không bắt buộc).3b. Người dùng không đính kèm ảnh → Vẫn cho gửi đánh giá (ảnh không bắt buộc).5a. Người dùng chưa chọn số sao → "Vui lòng chọn số sao đánh giá."5b. Đơn hàng đã được đánh giá trước đó → "Bạn đã đánh giá đơn hàng này rồi." và không cho gửi lại.
+3a. Người dùng không nhập nhận xét → Vẫn cho gửi đánh giá (nhận xét không bắt buộc).
+3b. Người dùng không đính kèm ảnh → Vẫn cho gửi đánh giá (ảnh không bắt buộc).
+5a. Người dùng chưa chọn số sao → "Vui lòng chọn số sao đánh giá."
+5b. Đơn hàng đã được đánh giá trước đó → "Bạn đã đánh giá đơn hàng này rồi." và không cho gửi lại.
 Luồng ngoại lệ
-6a. Ghi nhận đánh giá thất bại → "Có lỗi xảy ra. Vui lòng thử lại."6b. Upload ảnh thất bại → "Không thể upload ảnh. Vui lòng thử lại."
-1.4.2. Use Case Báo cáo sự cố
+6a. Ghi nhận đánh giá thất bại → "Có lỗi xảy ra. Vui lòng thử lại."
+6b. Upload ảnh thất bại → "Không thể upload ảnh. Vui lòng thử lại."
+1.4.2. Use Case Báo cáo sự cố1.4.1.4.22. Use Case Báo cáo sự cố. Use Case Báo cáo sự cố
 Use Case Báo cáo sự cố
 Mô tả
 Cho phép khách hàng báo cáo hư hỏng hoặc mất đồ sau khi nhận đồ.
@@ -303,12 +522,25 @@ Khách hàng
 Điều kiện tiên quyết
 Người dùng truy cập chi tiết đơn hàng và nhấn "Báo cáo sự cố".
 Luồng chính
-1. Người dùng nhấn "Báo cáo sự cố".2. Hệ thống hiển thị form báo cáo gồm:• Loại sự cố: Hư hỏng, Mất đồ, Khác.• Mức độ: Nhẹ, Trung bình, Nặng.• Mô tả chi tiết.• Hình ảnh minh chứng (bắt buộc).3. Người dùng điền thông tin và upload ảnh.4. Người dùng nhấn "Gửi báo cáo".5. Hệ thống ghi nhận báo cáo sự cố ở trạng thái "Chờ xử lý".6. Hệ thống thông báo "Báo cáo của bạn đã được gửi. Chúng tôi sẽ xử lý trong thời gian sớm nhất."7. Hệ thống gửi thông báo cho Admin biết có khiếu nại mới.8. Kết thúc chức năng.
+1. Người dùng nhấn "Báo cáo sự cố".
+2. Hệ thống hiển thị form báo cáo gồm:
+• Loại sự cố: Hư hỏng, Mất đồ, Khác.
+• Mức độ: Nhẹ, Trung bình, Nặng.
+• Mô tả chi tiết.
+• Hình ảnh minh chứng (bắt buộc).
+3. Người dùng điền thông tin và upload ảnh.
+4. Người dùng nhấn "Gửi báo cáo".
+5. Hệ thống ghi nhận báo cáo sự cố ở trạng thái "Chờ xử lý".
+6. Hệ thống thông báo "Báo cáo của bạn đã được gửi. Chúng tôi sẽ xử lý trong thời gian sớm nhất."
+7. Hệ thống gửi thông báo cho Admin biết có khiếu nại mới.
+8. Kết thúc chức năng.
 Luồng thay thế
-3a. Người dùng không upload ảnh → "Vui lòng upload ít nhất 1 ảnh minh chứng."4a. Quá thời hạn báo cáo (quá 3 ngày từ khi nhận đồ) → "Đã quá thời hạn báo cáo sự cố."
+3a. Người dùng không upload ảnh → "Vui lòng upload ít nhất 1 ảnh minh chứng."
+4a. Quá thời hạn báo cáo (quá 3 ngày từ khi nhận đồ) → "Đã quá thời hạn báo cáo sự cố."
 Luồng ngoại lệ
-5a. Ghi nhận báo cáo thất bại → "Có lỗi xảy ra. Vui lòng thử lại."7a. Gửi thông báo cho Admin thất bại → ghi log, không ảnh hưởng đến báo cáo.
-1.4.3. Use Case Xem danh sách khiếu nại
+5a. Ghi nhận báo cáo thất bại → "Có lỗi xảy ra. Vui lòng thử lại."
+7a. Gửi thông báo cho Admin thất bại → ghi log, không ảnh hưởng đến báo cáo.
+1.4.3. Use Case Xem danh sách khiếu nại1.4.1.4.33. Use Case Xem danh sách khiếu nại. Use Case Xem danh sách khiếu nại
 Use Case Xem danh sách khiếu nại
 Mô tả
 Cho phép khách hàng xem trạng thái các khiếu nại đã gửi.
@@ -319,14 +551,18 @@ Người dùng đã đăng nhập.
 Điều kiện tiên quyết
 Người dùng truy cập trang Khiếu nại của tôi.
 Luồng chính
-1. Người dùng truy cập trang Khiếu nại của tôi.2. Hệ thống hiển thị danh sách các khiếu nại đã gửi, kèm thông tin: Mã đơn hàng, Loại sự cố, Mức độ, Ngày gửi, Trạng thái xử lý.3. Người dùng click vào một khiếu nại để xem chi tiết.4. Hệ thống hiển thị chi tiết khiếu nại: mô tả, ảnh, kết quả xử lý (nếu đã xử lý), số tiền bồi thường (nếu có).5. Kết thúc chức năng.
+1. Người dùng truy cập trang Khiếu nại của tôi.
+2. Hệ thống hiển thị danh sách các khiếu nại đã gửi, kèm thông tin: Mã đơn hàng, Loại sự cố, Mức độ, Ngày gửi, Trạng thái xử lý.
+3. Người dùng click vào một khiếu nại để xem chi tiết.
+4. Hệ thống hiển thị chi tiết khiếu nại: mô tả, ảnh, kết quả xử lý (nếu đã xử lý), số tiền bồi thường (nếu có).
+5. Kết thúc chức năng.
 Luồng thay thế
 2a. Chưa có khiếu nại → "Bạn chưa có khiếu nại nào."
 Luồng ngoại lệ
 Không có
-2. MERCHANT (TIỆM GIẶT)
-2.1. Đăng nhập & Hồ sơ
-2.1.1. Use Case Đăng nhập
+2. MERCHANT (TIỆM GIẶT)2. MERCHANT (TIỆM GIẶT)2. MERCHANT (TIỆM GIẶT)
+2.1. Đăng nhập & Hồ sơ2.1. Đăng nhập & Hồ sơ2.1. Đăng nhập & Hồ sơ
+2.1.1. Use Case Đăng nhập2.1.1. Use Case Đăng nhập2.1.1. Use Case Đăng nhập
 Use Case Đăng nhập
 Mô tả
 Cho phép Merchant đăng nhập vào Dashboard bằng tài khoản do Admin cấp.
@@ -337,29 +573,164 @@ Merchant đã có tài khoản do Admin tạo.
 Điều kiện tiên quyết
 Merchant truy cập trang Đăng nhập của Merchant.
 Luồng chính
-1. Merchant truy cập trang Đăng nhập.2. Hệ thống hiển thị form: Email, Mật khẩu.3. Merchant nhập thông tin và nhấn "Đăng nhập".4. Hệ thống kiểm tra email tồn tại và mật khẩu đúng.5. Hệ thống kiểm tra tài khoản đang hoạt động.6. Hệ thống kiểm tra tài khoản có role là Merchant.7. Hệ thống cấp phiên đăng nhập và chuyển Merchant về Dashboard.8. Kết thúc chức năng.
+1. Merchant truy cập trang Đăng nhập.
+2. Hệ thống hiển thị form: Email, Mật khẩu.
+3. Merchant nhập thông tin và nhấn "Đăng nhập".
+4. Hệ thống kiểm tra email tồn tại và mật khẩu đúng.
+5. Hệ thống kiểm tra tài khoản đang hoạt động.
+6. Hệ thống kiểm tra tài khoản có role là Merchant.
+7. Hệ thống cấp phiên đăng nhập và chuyển Merchant về Dashboard.
+8. Kết thúc chức năng.
 Luồng thay thế
-4a. Sai email hoặc mật khẩu → "Email hoặc mật khẩu không đúng."5a. Tài khoản bị khóa → "Tài khoản của bạn đã bị khóa. Vui lòng liên hệ Admin."6a. Tài khoản không phải Merchant → "Bạn không có quyền truy cập trang này."
+4a. Sai email hoặc mật khẩu → "Email hoặc mật khẩu không đúng."
+5a. Tài khoản bị khóa → "Tài khoản của bạn đã bị khóa. Vui lòng liên hệ Admin."
+6a. Tài khoản không phải Merchant → "Bạn không có quyền truy cập trang này."
 Luồng ngoại lệ
 7a. Cấp phiên thất bại → "Có lỗi xảy ra. Vui lòng thử lại sau."
-2.1.2. Use Case Cập nhật hồ sơ
+2.1.2. Use Case Cập nhật hồ sơ2.1.2.1.22. Use Case Cập nhật hồ sơ. Use Case Cập nhật hồ sơ
 Use Case Cập nhật hồ sơ
 Mô tả
-Cho phép Merchant cập nhật thông tin cửa hàng. Thông tin sau khi sửa cần Admin phê duyệt.
+Cho phép Merchant gửi yêu cầu cập nhật thông tin cửa hàng (Tên cửa hàng, Địa chỉ, Tỉnh/Thành phố, Tọa độ bản đồ, Số điện thoại, Giờ mở cửa, Danh sách ảnh cửa hàng). Thông tin sau khi sửa cần Admin phê duyệt mới có hiệu lực chính thức trên hệ thống.
+Tác nhân
+Merchant
+Điều kiện trước
+Merchant đã đăng nhập, tài khoản ở trạng thái Hoạt động (Active), và hiện tại không có yêu cầu cập nhật hồ sơ nào đang ở trạng thái Chờ duyệt (Pending).
+Điều kiện tiên quyết
+Merchant truy cập trang Hồ sơ cửa hàng (/merchant/profile) và nhấn "Chỉnh sửa".
+Quy tắc nghiệp vụ
+Yêu cầu cập nhật được gửi qua endpoint POST /merchant-profile/update-requests và lưu ở trạng thái Chờ duyệt; hồ sơ chính thức chỉ thay đổi sau khi Admin phê duyệt. Trường Tỉnh/Thành phố (City) là bắt buộc, giới hạn 1–100 ký tự. Cho phép chọn vị trí trực quan trên bản đồ (AddressPickerDialog/AddressMap) để cập nhật đồng thời Địa chỉ, Tỉnh/Thành phố và Tọa độ (Latitude/Longitude) phục vụ điều phối và tính bán kính phục vụ. Upload hình ảnh cửa hàng qua API /files/images: tối đa 5 ảnh (JPG, PNG, WEBP), dung lượng tối đa 5MB/ảnh. Các trường pháp lý gồm Mã số thuế, Giấy phép kinh doanh, Email đăng nhập được hiển thị ở chế độ chỉ đọc; nếu có thay đổi pháp lý, Merchant liên hệ trực tiếp Admin để xác minh và cập nhật.
+Luồng chính
+1. Merchant truy cập trang Hồ sơ cửa hàng (/merchant/profile).
+2. Hệ thống hiển thị toàn bộ thông tin cửa hàng ở chế độ chỉ đọc kèm nút "Chỉnh sửa".
+3. Merchant nhấn "Chỉnh sửa".
+4. Hệ thống kiểm tra tài khoản đang hoạt động và không có yêu cầu cập nhật nào đang chờ duyệt, sau đó hiển thị modal chỉnh sửa thông tin.
+5. Hệ thống bật chế độ chỉnh sửa cho các trường: Tên cửa hàng, Địa chỉ, Tỉnh/Thành phố, Vị trí tọa độ trên bản đồ, Số điện thoại, Giờ mở cửa, Danh sách ảnh cửa hàng (upload tối đa 5 ảnh).
+6. Merchant cập nhật các thông tin cần thay đổi (có thể bấm mở bản đồ để chọn lại vị trí tâm/địa chỉ và áp dụng).
+7. Merchant nhấn "Lưu" (Gửi yêu cầu duyệt).
+8. Hệ thống kiểm tra tính hợp lệ của dữ liệu (Tên cửa hàng 2-100 ký tự, Tỉnh/Thành phố bắt buộc 1-100 ký tự, Địa chỉ tối đa 500 ký tự, Số điện thoại gồm 10 chữ số bắt đầu bằng 0, giờ mở cửa hợp lệ, số lượng ảnh <= 5).
+9. Hệ thống ghi nhận yêu cầu cập nhật ở trạng thái "Chờ duyệt" (Pending) cùng các trường thay đổi (Changes) và thời điểm gửi.
+10. Hệ thống đóng modal, chuyển trạng thái hiển thị sang "Đang chờ Admin duyệt".
+11. Hệ thống gửi thông báo cho Admin về yêu cầu cập nhật hồ sơ mới của Merchant.
+12. Kết thúc chức năng.
+Luồng thay thế
+4a. Đang có yêu cầu cập nhật chờ duyệt: Hệ thống vô hiệu hóa nút Chỉnh sửa và hiển thị thông báo "Hồ sơ đang có yêu cầu cập nhật chờ Admin phê duyệt."
+5a. Merchant nhấn "Hủy" hoặc đóng modal: Hệ thống bỏ mọi thay đổi và quay về chế độ chỉ đọc.
+8a. Tỉnh/Thành phố để trống hoặc vượt 100 ký tự: Thông báo "Vui lòng nhập/chọn Tỉnh/Thành phố (tối đa 100 ký tự)."
+8b. Số điện thoại không hợp lệ: Thông báo "Số điện thoại không hợp lệ (phải gồm 10 chữ số bắt đầu bằng 0)."
+8c. Upload ảnh vượt quá 5 ảnh hoặc file quá 5MB/sai định dạng: Thông báo lỗi và yêu cầu điều chỉnh.
+Luồng ngoại lệ
+9a. Ghi nhận yêu cầu thất bại: Thông báo "Có lỗi xảy ra. Vui lòng thử lại sau."
+11a. Gửi thông báo cho Admin thất bại: Ghi log, yêu cầu cập nhật đã tạo vẫn có hiệu lực.
+2.1.3. Use Case Xem hồ sơ cửa hàng2.1.3. Use Case Xem hồ sơ cửa hàng2.1.3. Use Case Xem hồ sơ cửa hàng
+Use Case Xem hồ sơ cửa hàng
+Mô tả
+Cho phép Merchant xem thông tin chi tiết hồ sơ cửa hàng, trạng thái hoạt động, điểm đánh giá và các chỉ số kinh doanh tổng quan.
+Tác nhân
+Merchant
+Điều kiện trước
+Merchant đã đăng nhập vào hệ thống.
+Điều kiện tiên quyết
+Merchant truy cập trang Hồ sơ cửa hàng (/merchant/profile) từ menu điều hướng tài khoản.
+Luồng chính
+1. Merchant truy cập trang Hồ sơ cửa hàng (/merchant/profile).
+2. Hệ thống gọi API lấy thông tin hồ sơ của Merchant hiện tại (dựa trên JWT token).
+3. Hệ thống hiển thị đầy đủ thông tin hồ sơ cửa hàng:
+• Tên cửa hàng, Trạng thái tài khoản (Hoạt động / Tạm khóa).
+• Ngày tham gia đối tác (joinedAt).
+• Thông tin liên hệ: Số điện thoại, Email, Địa chỉ, Tỉnh/Thành phố, Tọa độ bản đồ (Latitude/Longitude).
+• Giờ mở cửa / đóng cửa các ngày trong tuần.
+• Mã số thuế, Thông tin giấy phép kinh doanh.
+• Danh sách hình ảnh không gian và bảng hiệu cửa hàng.
+• Thống kê vận hành & đánh giá: Điểm đánh giá sao trung bình (Rating), Số lượt đánh giá công khai (publicRatingCount), Tổng số đơn hàng đã hoàn tất (TotalOrders), Doanh thu tạm tính.
+4. Nếu đang có yêu cầu cập nhật hồ sơ chờ duyệt, hệ thống hiển thị banner trạng thái "Đang chờ Admin duyệt cập nhật".
+5. Kết thúc chức năng.
+Luồng thay thế
+3a. Trường thông tin chưa được cập nhật (chưa có mã số thuế hoặc chưa có lượt đánh giá): Hệ thống hiển thị "Chưa cập nhật" thay vì để trống hoặc hiển thị dữ liệu mẫu.
+Luồng ngoại lệ
+2a. Tải dữ liệu hồ sơ thất bại: Thông báo "Không thể tải thông tin hồ sơ. Vui lòng tải lại trang."
+2.2. Dashboard & Báo cáo2.2. Dashboard & Báo cáo2.2. Dashboard & Báo cáo
+2.2.1. Use Case Xem Dashboard tổng quan2.2.1. Use Case Xem Dashboard tổng quan2.2.1. Use Case Xem Dashboard tổng quan
+Use Case Xem Dashboard tổng quan
+Mô tả
+Cho phép Merchant xem bảng điều khiển tổng hợp tình hình vận hành đơn hàng, số liệu thống kê tức thời và các đơn hàng mới nhất cần xử lý trong một snapshot nhất quán, hỗ trợ bộ lọc linh hoạt theo thời gian (Ngày/Hôm nay, Tuần này, Tháng này, hoặc Tùy chọn khoảng ngày).
 Tác nhân
 Merchant
 Điều kiện trước
 Merchant đã đăng nhập.
 Điều kiện tiên quyết
-Merchant truy cập trang Hồ sơ cửa hàng.
+Merchant truy cập trang Dashboard của tiệm (/merchant).
+Quy tắc nghiệp vụ
+Hỗ trợ bộ lọc thời gian: Mặc định hiển thị tổng quan toàn bộ hoặc chu kỳ hiện tại; Merchant có thể chọn lọc số liệu theo Ngày (Hôm nay), Tuần này (7 ngày gần nhất hoặc tuần hiện tại), Tháng này (tháng hiện tại), hoặc Tùy chọn khoảng ngày (Từ ngày - Đến ngày). Thống kê số lượng đơn và biểu đồ trạng thái tự động cập nhật bám sát khoảng thời gian lọc (theo múi giờ Asia/Ho_Chi_Minh), trong khi danh sách các đơn hàng mới nhất và các cảnh báo SLA cần xử lý khẩn cấp vẫn luôn hiển thị snapshot thời gian thực.
 Luồng chính
-1. Merchant truy cập trang Hồ sơ cửa hàng.2. Hệ thống hiển thị toàn bộ thông tin ở chế độ chỉ đọc, kèm nút "Chỉnh sửa".3. Merchant nhấn "Chỉnh sửa".4. Hệ thống bật chế độ chỉnh sửa cho các trường: Tên cửa hàng, Địa chỉ, Số điện thoại, Giờ mở cửa, Hình ảnh.5. Merchant thay đổi thông tin và nhấn "Lưu".6. Hệ thống kiểm tra dữ liệu hợp lệ.7. Hệ thống ghi nhận yêu cầu cập nhật ở trạng thái "Chờ duyệt".8. Hệ thống thông báo "Yêu cầu cập nhật đã được gửi. Vui lòng chờ Admin phê duyệt."9. Hệ thống gửi thông báo cho Admin.10. Kết thúc chức năng.
+1. Merchant truy cập trang Dashboard (/merchant).
+2. Hệ thống hiển thị bộ lọc thời gian: Ngày (Hôm nay), Tuần này, Tháng này, hoặc Tùy chọn (Từ ngày - Đến ngày). Mặc định hệ thống tải dữ liệu tổng quan mới nhất.
+3. Merchant có thể chọn hoặc thay đổi khoảng thời gian cần lọc.
+4. Hệ thống tải dữ liệu tổng hợp dựa trên phạm vi Merchant (CurrentUser.Id từ JWT) và khoảng thời gian đã chọn:
+• Thống kê tổng số đơn hàng phân loại theo 14 trạng thái kinh doanh phát sinh trong khoảng thời gian đã chọn: Chờ gửi đồ (Pending), Đã gửi đồ (Deposited), Đã gán Shipper, Đã lấy đồ về tiệm (Collected), Đang giặt/sấy/ủi/đóng gói, Chờ thanh toán (AwaitingPayment), Đã thanh toán (Paid), Sẵn sàng trả đồ (ReadyToReturn), Hoàn thành (Completed), Hủy đơn (Cancelled), Chuyển lưu kho (MovedToStorage)...
+• Biểu đồ phân bổ trạng thái đơn hàng (donut chart / bar chart) trực quan theo kỳ lọc.
+• Danh sách 5 đơn hàng mới nhất được gán cho tiệm cần xử lý gấp (Mã đơn, Locker, Ô tủ, Dịch vụ, Trạng thái, Thời gian tạo).
+• Thẻ tóm tắt 4 kỳ đối soát tài chính gần nhất (mã kỳ, khoảng thời gian, số tiền thực nhận, trạng thái).
+5. Hệ thống hiển thị thời gian dữ liệu được tổng hợp (generatedAt).
+6. Merchant có thể nhấn vào từng nhóm trạng thái để chuyển nhanh đến danh sách đơn hàng đã lọc tương ứng.
+7. Kết thúc chức năng.
 Luồng thay thế
-5a. Merchant nhấn "Hủy" → Bỏ thay đổi, quay về chế độ chỉ đọc.6a. Số điện thoại không hợp lệ → "Số điện thoại không hợp lệ."6b. Upload ảnh thất bại → "Không thể upload ảnh. Vui lòng thử lại."
+3a. Merchant chọn Tùy chọn khoảng ngày nhưng ngày kết thúc trước ngày bắt đầu: Hệ thống báo lỗi "Ngày kết thúc phải lớn hơn hoặc bằng ngày bắt đầu."
+4a. Không có đơn hàng nào trong khoảng thời gian đã chọn: Hệ thống hiển thị các số liệu bằng 0 và thông báo "Không có đơn hàng nào phát sinh trong khoảng thời gian này."
 Luồng ngoại lệ
-7a. Ghi nhận yêu cầu thất bại → "Có lỗi xảy ra. Vui lòng thử lại."
-2.3. Quản lý đơn hàng
-2.3.1. Use Case Quản lý đơn hàng
+4b. Lỗi tải dữ liệu: Thông báo "Không thể tải dữ liệu bảng điều khiển. Vui lòng thử lại sau."
+2.2.2. Use Case Cảnh báo quá hạn SLA (Overdue Attention)2.2.2. Use Case Cảnh báo quá hạn SLA (Overdue Attention)2.2.2. Use Case Cảnh báo quá hạn SLA (Overdue Attention)
+Use Case Cảnh báo quá hạn SLA (Overdue Attention)
+Mô tả
+Cho phép Merchant theo dõi danh sách cảnh báo các đơn hàng sắp hoặc đã vi phạm thời hạn cam kết dịch vụ (SLA) tại các khâu xử lý của tiệm để kịp thời xử lý ưu tiên.
+Tác nhân
+Merchant
+Điều kiện trước
+Merchant đã đăng nhập.
+Điều kiện tiên quyết
+Merchant đang xem Dashboard hoặc trang Cảnh báo vận hành.
+Quy tắc nghiệp vụ
+Mốc cảnh báo SLA bao gồm: Quá hạn lấy đồ: Quá 4 giờ kể từ thời điểm khách gửi đồ vào tủ (DepositedAt) mà chưa phân công Shipper hoặc chưa lấy đồ về tiệm. Quá hạn xử lý giặt sấy: Quá thời gian xử lý dự kiến (ProcessingDeadline/ETA) tính từ khi tiệm chốt cân nặng. Quá hạn trả đồ về locker: Quá 24 giờ kể từ thời điểm khách thanh toán thành công (PaidAt) mà đồ sạch chưa được trả vào locker. Phân loại mức độ cảnh báo: Sắp đến hạn (còn dưới 30 phút), Đã trễ hạn (trễ dưới 2 giờ), Quá hạn nghiêm trọng (trễ trên 2 giờ).
+Luồng chính
+1. Merchant xem panel "Cần chú ý quá hạn" (Overdue Attention) trên Dashboard.
+2. Hệ thống hiển thị:
+• Tổng số đơn hàng đang bị cảnh báo hoặc vi phạm SLA.
+• Phân loại số lượng theo từng giai đoạn (Lấy đồ, Giặt sấy, Trả đồ).
+• Danh sách các đơn hàng ưu tiên xử lý gấp kèm các thông tin: Mã đơn hàng, Giai đoạn hiện tại, Thời hạn cam kết (Deadline), Thời gian server hiện tại (serverNow), Thời gian trễ hạn, Nút thao tác nhanh (Phân công Shipper, Cập nhật tiến trình, Trả đồ).
+3. Merchant nhấn vào một đơn hàng để mở chi tiết và tiến hành xử lý ngay.
+4. Kết thúc chức năng.
+Luồng thay thế
+2a. Không có đơn nào bị cảnh báo hoặc trễ SLA: Hệ thống hiển thị "Tất cả đơn hàng đang được xử lý đúng tiến độ cam kết."
+Luồng ngoại lệ
+Không có
+2.2.3. Use Case Xem báo cáo doanh thu & tăng trưởng2.2.3. Use Case Xem báo cáo doanh thu & tăng trưởng2.2.3. Use Case Xem báo cáo doanh thu & tăng trưởng
+Use Case Xem báo cáo doanh thu & tăng trưởng
+Mô tả
+Cho phép Merchant xem báo cáo doanh thu, chiết khấu hoa hồng, thực nhận và phân tích tăng trưởng của tiệm theo thời gian.
+Tác nhân
+Merchant
+Điều kiện trước
+Merchant đã đăng nhập.
+Điều kiện tiên quyết
+Merchant truy cập trang Báo cáo doanh thu của tiệm.
+Quy tắc nghiệp vụ
+Phạm vi dữ liệu gắn chặt với MerchantId từ JWT token, múi giờ thống nhất Asia/Ho_Chi_Minh. Mốc tính doanh thu dựa trên thời điểm đơn hàng thanh toán thành công (PaidAt) hoặc hoàn thành (CompletedAt). Phân định rõ ràng các chỉ số tài chính: Doanh thu gốc trước giảm (TotalAmount), Chiết khấu/giảm giá, Phí hoa hồng hệ thống giữ lại (CommissionAmount), Tiền hoàn do hủy/khiếu nại (RefundAmount), Doanh thu thực nhận của tiệm (MerchantNetAmount).
+Luồng chính
+1. Merchant truy cập trang Báo cáo doanh thu.
+2. Hệ thống hiển thị bộ lọc thời gian: Hôm nay, 7 ngày qua, Tuần này, Tháng này, hoặc Tùy chọn khoảng ngày (Từ ngày - Đến ngày).
+3. Merchant chọn khoảng thời gian cần xem.
+4. Hệ thống tổng hợp và hiển thị:
+• Thẻ chỉ số tổng quan: Tổng doanh thu, Phí hoa hồng hệ thống, Doanh thu thực nhận của tiệm, Tỷ lệ tăng trưởng so với kỳ trước.
+• Biểu đồ chuỗi thời gian (Daily series chart): Diễn biến doanh thu và số lượng đơn hàng qua từng ngày trong kỳ.
+• Thống kê cơ cấu đơn: Số đơn hoàn thành, số đơn hủy, số đơn khiếu nại/hoàn tiền.
+• Danh sách tóm tắt các đơn hàng tạo doanh thu trong kỳ.
+5. Merchant có thể xuất báo cáo ra file Excel để lưu trữ.
+6. Kết thúc chức năng.
+Luồng thay thế
+4a. Không có dữ liệu phát sinh trong kỳ: Hệ thống hiển thị các chỉ số bằng 0 và thông báo "Không có doanh thu trong khoảng thời gian này."
+Luồng ngoại lệ
+4b. Lỗi tổng hợp báo cáo: Thông báo "Có lỗi xảy ra khi tổng hợp báo cáo. Vui lòng thử lại sau."
+2.3. Quản lý đơn hàng2.3. Quản lý đơn hàng2.3. Quản lý đơn hàng
+2.3.1. Use Case Quản lý đơn hàng2.3.1. Use Case 2.3.1. Use Case Quản lý đơn hàngQuản lý đơn hàng
 Use Case Quản lý đơn hàng
 Mô tả
 Cho phép Merchant xem danh sách đơn hàng được Admin gán cho mình.
@@ -370,28 +741,66 @@ Merchant đã đăng nhập.
 Điều kiện tiên quyết
 Merchant truy cập trang Quản lý đơn hàng.
 Luồng chính
-1. Merchant truy cập trang Quản lý đơn hàng.2. Hệ thống hiển thị danh sách đơn hàng được gán cho Merchant, có bộ lọc theo trạng thái.3. Mỗi đơn hiển thị: Mã đơn, Mã đơn Merchant, Locker, Ô tủ, Dịch vụ, Trạng thái, Thời gian tạo.4. Hệ thống highlight các đơn mới chưa xử lý.5. Merchant click vào đơn để xem chi tiết.6. Kết thúc chức năng.
+1. Merchant truy cập trang Quản lý đơn hàng.
+2. Hệ thống hiển thị danh sách đơn hàng được gán cho Merchant, có bộ lọc theo trạng thái.
+3. Mỗi đơn hiển thị: Mã đơn, Mã đơn Merchant, Locker, Ô tủ, Dịch vụ, Trạng thái, Thời gian tạo.
+4. Hệ thống highlight các đơn mới chưa xử lý.
+5. Merchant click vào đơn để xem chi tiết.
+6. Kết thúc chức năng.
 Luồng thay thế
 2a. Chưa có đơn nào → "Bạn chưa có đơn hàng nào."
 Luồng ngoại lệ
 Không có
-2.3.2. Use Case Xem chi tiết đơn
+2.3.2. Use Case Xem chi tiết đơn2.3.2. Use Case Xem chi tiết đơn2.3.2. Use Case Xem chi tiết đơn
 Use Case Xem chi tiết đơn
 Mô tả
-Cho phép Merchant xem chi tiết đơn hàng (không thấy tên khách hàng).
+Cho phép Merchant xem chi tiết đơn hàng (không thấy thông tin nhạy cảm của khách hàng, không thấy mã PIN/QR của khách; hiển thị thông tin tài chính và hoa hồng áp dụng theo đơn).
 Tác nhân
-Merchant 
+Merchant
 Điều kiện trước
 Merchant đã đăng nhập và có ít nhất 1 đơn hàng.
 Điều kiện tiên quyết
 Merchant chọn một đơn từ danh sách.
+Quy tắc nghiệp vụ
+Bảo mật thông tin: Hệ thống ẩn toàn bộ thông tin nhạy cảm của khách hàng (họ tên, số điện thoại, địa chỉ đã redact), không hiển thị mã PIN hoặc mã QR mở tủ của khách hàng để đảm bảo an toàn. Tài chính theo đơn: Hiển thị minh bạch Doanh thu gốc (CommissionBaseAmount), Tỷ lệ hoa hồng snapshot áp dụng cho đơn (CommissionRateApplied), Tiền hoa hồng chiết khấu hệ thống (CommissionAmount), và Tiền thực nhận của tiệm (MerchantNetAmount). Tỷ lệ hoa hồng được chốt cố định theo đơn tại thời điểm gán đơn/tiệm tiếp nhận xử lý; việc thay đổi cấu hình hoa hồng của Merchant sau này không làm thay đổi tỷ lệ của các đơn đã tạo.
 Luồng chính
-1. Merchant chọn một đơn hàng.2. Hệ thống hiển thị: Mã đơn, Mã đơn Merchant, Locker, Ô tủ, Kích thước, Dịch vụ, Trạng thái, QR Code, Thời gian tạo, Lịch sử trạng thái.3. Hệ thống không hiển thị tên, số điện thoại, địa chỉ của khách hàng.4. Merchant có thể xem timeline trạng thái.5. Kết thúc chức năng.
+1. Merchant chọn một đơn hàng.
+2. Hệ thống hiển thị: Mã đơn, Mã đơn Merchant, Locker, Ô tủ, Kích thước, Dịch vụ, Số lượng, Khối lượng thực tế, Giá cơ bản, Phụ phí, Tổng tiền, Trạng thái, Thời gian tạo, Thời gian xử lý dự kiến (ETA), Lịch sử trạng thái.
+3. Hệ thống hiển thị thông tin tài chính của đơn: Doanh thu gốc, Tỷ lệ hoa hồng áp dụng (%), Tiền hoa hồng hệ thống, Số tiền tiệm thực nhận.
+4. Hệ thống không hiển thị tên, số điện thoại, địa chỉ của khách hàng và mã PIN/QR mở tủ của khách.
+5. Merchant có thể xem timeline trạng thái.
+6. Kết thúc chức năng.
 Luồng thay thế
 Không có
 Luồng ngoại lệ
 Không có
-2.3.4. Use Case Cập nhật số kg thực tế
+2.3.3. Use Case Cập nhật tiến trình xử lý đơn hàng2.3.3. Use Case Cập nhật tiến trình xử lý đơn hàng2.3.3. Use Case Cập nhật tiến trình xử lý đơn hàng
+Use Case Cập nhật tiến trình xử lý đơn hàng
+Mô tả
+Cho phép Merchant cập nhật từng công đoạn giặt sấy sau khi đã lấy đồ về tiệm (Collected) và cân chốt giá, tự động kích hoạt thông báo Realtime SignalR cho khách hàng.
+Tác nhân
+Merchant
+Điều kiện trước
+Đơn hàng đang ở trạng thái Đã lấy đồ (Collected) hoặc các công đoạn đang giặt sấy; đơn hàng thuộc quyền xử lý của Merchant.
+Điều kiện tiên quyết
+Merchant đang xem chi tiết đơn hàng.
+Quy tắc nghiệp vụ
+Các bước công đoạn giặt sấy gồm tuần tự: 1. Phân loại đồ (Sorting) -> 2. Đang giặt (Washing) -> 3. Đang sấy (Drying) -> 4. Đang ủi/là (Ironing) -> 5. Gấp & Đóng gói hoàn tất (Folding/Packing). Sau khi đóng gói hoàn tất, Merchant chuyển đơn sang trạng thái Chờ thanh toán (AwaitingPayment) để hệ thống gửi thông báo và link thanh toán cho khách hàng. Ở mỗi bước cập nhật tiến trình, hệ thống tự động phát sự kiện SignalR ("notification") tức thời đến ứng dụng của khách hàng để cập nhật trạng thái đơn hàng theo thời gian thực mà không cần tải lại trang.
+Luồng chính
+1. Merchant mở chi tiết đơn hàng đang xử lý tại tiệm.
+2. Hệ thống hiển thị thanh tiến trình các bước xử lý (Phân loại, Giặt, Sấy, Ủi, Đóng gói) và nút "Cập nhật tiến trình".
+3. Merchant chọn bước công đoạn tiếp theo vừa hoàn thành (hoặc chọn Đóng gói hoàn tất -> Chuyển sang Chờ thanh toán) và nhấn "Cập nhật".
+4. Hệ thống kiểm tra quyền Merchant và tính hợp lệ của bước chuyển tiến trình.
+5. Hệ thống ghi nhận tiến trình mới, thời điểm cập nhật và lịch sử trạng thái đơn hàng.
+6. Hệ thống kích hoạt thông báo Realtime (SignalR) gửi đến khách hàng sở hữu đơn.
+7. Hệ thống cập nhật hiển thị tiến trình mới trên màn hình chi tiết đơn của Merchant.
+8. Kết thúc chức năng.
+Luồng thay thế
+3a. Đơn chưa được cập nhật số kg thực tế: Hệ thống yêu cầu Merchant thực hiện cân đồ và cập nhật số kg thực tế trước khi hoàn tất đóng gói và chuyển sang Chờ thanh toán.
+Luồng ngoại lệ
+5a. Cập nhật tiến trình thất bại: Thông báo "Có lỗi xảy ra. Vui lòng thử lại" và giữ nguyên trạng thái trước đó.
+6a. Gửi thông báo Realtime thất bại: Ghi log, trạng thái đơn hàng đã lưu trong database vẫn có hiệu lực.
+2.3.4. Use Case Cập nhật số kg thực tế2.3.4. Use Case Cập nhật số kg thực tế2.3.4. Use Case Cập nhật số kg thực tế
 Use Case Cập nhật số kg thực tế
 Mô tả
 Cho phép Merchant nhập số kg thực tế sau khi cân đồ, hệ thống tính giá cuối cùng và cập nhật ETA mới.
@@ -401,15 +810,39 @@ Merchant
 Đơn hàng đang ở trạng thái "Đã lấy đồ" (COLLECTED).
 Điều kiện tiên quyết
 Merchant đã cân đồ và biết số kg thực tế.
+Quy tắc nghiệp vụ
+Mức khối lượng bao gồm trong giá cơ bản: Small = 3 kg; Standard = 5 kg; Large = 10 kg.
+Các mốc 3/5/10 kg là ngưỡng tính phụ phí của mô hình đồ án, không phải giới hạn vật lý tối đa của ô tủ. Giới hạn vật lý cần được quy định riêng theo thiết bị.
+Khối lượng vượt = max(0, số kg thực tế - mức khối lượng bao gồm của kích cỡ ô đã chọn).
+Đơn giá vượt: 15.000 VNĐ/kg. Phụ phí = khối lượng vượt thực tế x 15.000 VNĐ. Không làm tròn số kg vượt lên khi tính tiền.
+Giá cuối cùng = giá cơ bản của gói dịch vụ + phụ phí vượt kg. Không cộng tiền theo kg thêm một lần cho phần khối lượng đã được bao gồm trong giá cơ bản.
+Thời gian xử lý dự kiến = thời gian xử lý cơ bản của gói dịch vụ + 2 giờ x số kg vượt làm tròn lên. Nếu không vượt mức bao gồm thì không cộng thêm thời gian.
+Ví dụ: ô Standard bao gồm 5 kg, giá cơ bản 100.000 VNĐ, cân thực tế 6,5 kg: vượt 1,5 kg, phụ phí 22.500 VNĐ, giá cuối cùng 122.500 VNĐ. Gói cơ bản 24 giờ được cộng 2 x ceil(1,5) = 4 giờ, thành 28 giờ xử lý dự kiến.
+Cân và chốt giá được thực hiện trước khi giặt, khi đơn ở Collected. Sau khi giặt xong, Merchant mới chuyển đơn sang AwaitingPayment để khách thanh toán; không chuyển sang AwaitingPayment chỉ vì đã cân xong.
+Với gói theo kg, giá cơ bản lấy từ UnitPrice của dịch vụ và được lưu khi đặt đơn; mỗi loại gói theo kg có số lượng 1. Khối lượng ước tính khi đặt đơn không nhân thêm vào giá gói.
+Dịch vụ theo chiếc/đôi giữ cách tính số lượng nhân đơn giá theo chiếc/đôi. Đơn nhiều dịch vụ cộng các giá cơ bản nhưng chỉ tính phụ phí vượt kg một lần cho cả đơn có dịch vụ theo kg.
+Thời gian cơ bản của đơn nhiều dịch vụ là thời lượng lớn nhất trong các dịch vụ được chọn, lưu tại lúc đặt đơn. ETA được tính từ thời điểm Merchant xác nhận cân và chốt giá.
+Merchant có thể sửa cân nặng khi đơn còn Collected và chưa thanh toán; hệ thống tính lại từ giá cơ bản, không cộng dồn phụ phí cũ. Gửi lại cùng số kg không tạo lịch sử hoặc gia hạn ETA lần nữa. Sau khi bắt đầu giặt hoặc đã thanh toán thì không được sửa cân nặng. Tỷ lệ hoa hồng áp dụng (CommissionRateApplied) được lưu cố định (snapshot) vào bản ghi đơn hàng ngay tại thời điểm đơn hàng được gán cho Merchant hoặc Merchant xác nhận tiếp nhận đơn. Tỷ lệ này lấy từ cấu hình CommissionRate hiện hành của Merchant tại thời điểm đó (từ 0% đến 100%). Việc thay đổi tỷ lệ hoa hồng của Merchant trong tương lai chỉ có hiệu lực với các đơn hàng mới phát sinh sau thời điểm thay đổi; tuyệt đối không áp dụng hồi tố lên các đơn hàng cũ đã chốt tỷ lệ. Cơ sở tính hoa hồng (CommissionBaseAmount), số tiền hoa hồng (CommissionAmount = CommissionBaseAmount * CommissionRateApplied), và số tiền thực nhận của tiệm (MerchantNetAmount = CommissionBaseAmount - CommissionAmount) được bảo lưu nguyên vẹn để phục vụ đối soát định kỳ chính xác và chống sai lệch số liệu.
 Luồng chính
-1. Merchant xem chi tiết đơn hàng.2. Hệ thống hiển thị nút "Cập nhật số kg thực tế".3. Merchant nhập số kg thực tế và nhấn "Xác nhận".4. Hệ thống kiểm tra số kg hợp lệ (> 0).5. Hệ thống tính giá cuối cùng:• Nếu số kg ≤ sức chứa ô tủ → Giá = Giá cơ bản.• Nếu số kg > sức chứa ô tủ → Giá = Giá cơ bản + (Số kg vượt × Đơn giá vượt).6. Hệ thống tính lại ETA dựa trên số kg thực tế.7. Hệ thống cập nhật trạng thái đơn sang "Chờ thanh toán" (AWAITING_PAYMENT).8. Hệ thống ghi nhận lịch sử trạng thái đơn.9. Hệ thống gửi thông báo "Nhắc nhở thanh toán" cho khách kèm số tiền cuối cùng.10. Kết thúc chức năng.
+1. Merchant xem chi tiết đơn hàng thuộc tiệm.
+2. Hệ thống hiển thị nút Cập nhật số kg thực tế.
+3. Merchant nhập số kg thực tế sau khi cân đồ và nhấn Xác nhận.
+4. Hệ thống kiểm tra số kg thực tế hợp lệ và lớn hơn 0.
+5. Hệ thống tính khối lượng vượt mức bao gồm, phụ phí và giá cuối cùng theo quy tắc nghiệp vụ.
+6. Hệ thống tính lại thời gian xử lý dự kiến và cập nhật ETA theo số kg thực tế.
+7. Hệ thống giữ đơn ở trạng thái Đã lấy đồ (Collected); việc cân và chốt giá chưa cho phép khách thanh toán.
+8. Hệ thống lưu số kg thực tế, giá cuối cùng, ETA và lịch sử trạng thái đơn hàng.
+9. Hệ thống hiển thị số kg thực tế, giá cuối cùng và ETA đã cập nhật để Merchant và khách hàng theo dõi.
+10. Kết thúc chức năng.
 Luồng thay thế
-4a. Số kg ≤ 0 → "Số kg không hợp lệ."4b. Số kg vượt quá sức chứa tối đa của locker → Hệ thống vẫn cho nhập nhưng cảnh báo "Đồ vượt quá sức chứa. Phụ phí sẽ được áp dụng."
+4a. Số kg không hợp lệ hoặc không lớn hơn 0: hệ thống thông báo Số kg không hợp lệ và không cập nhật đơn.
+5a. Số kg vượt mức bao gồm trong giá: hệ thống hiển thị số kg vượt và phụ phí tương ứng. Việc tính phụ phí không có nghĩa hệ thống cho phép vượt giới hạn vật lý an toàn của ô tủ.
 Luồng ngoại lệ
-5a. Tính giá thất bại → "Có lỗi xảy ra. Vui lòng thử lại."9a. Gửi thông báo thất bại → ghi log, không ảnh hưởng đến đơn hàng.
-2.4. Quản lý Shipper
-2.4.1. Use Case Xem danh sách Shipper
-Use Case Hiển thị QR Code
+5b. Tính giá hoặc lưu kết quả thất bại: hệ thống thông báo Có lỗi xảy ra. Vui lòng thử lại và không lưu cập nhật dang dở.
+9a. Không tải lại được thông tin sau khi lưu: hệ thống thông báo lỗi tải dữ liệu; không ghi nhận lại phí khi người dùng gửi lại cùng số kg.
+2.4. Quản lý Shipper2.4. Quản lý Shipper2.4. Quản lý Shipper
+2.4.1. Use Case Xem danh sách Shipper2.4.1. Use Case Xem danh sách Shipper2.4.1. Use Case Xem danh sách Shipper
+Use Case Xem danh sách Shipper
 Mô tả
 Cho phép Merchant xem danh sách Shipper của cửa hàng.
 Tác nhân
@@ -419,12 +852,15 @@ Merchant đã đăng nhập.
 Điều kiện tiên quyết
 Merchant truy cập trang Quản lý Shipper.
 Luồng chính
-1. Merchant truy cập trang Quản lý Shipper.2. Hệ thống hiển thị danh sách Shipper: Họ tên, Số điện thoại, Phương tiện, Biển số xe, Trạng thái, Số đơn đã giao, Đánh giá.3. Merchant có thể tìm kiếm, lọc theo trạng thái.4. Kết thúc chức năng.
+1. Merchant truy cập trang Quản lý Shipper.
+2. Hệ thống hiển thị danh sách Shipper: Họ tên, Số điện thoại, Phương tiện, Biển số xe, Trạng thái, Số đơn đã giao, Đánh giá.
+3. Merchant có thể tìm kiếm, lọc theo trạng thái.
+4. Kết thúc chức năng.
 Luồng thay thế
 2a. Chưa có Shipper nào → "Bạn chưa có Shipper nào."
 Luồng ngoại lệ
 Không có
-2.4.2. Use Case Thêm mới Shipper
+2.4.2. Use Case Thêm mới Shipper2.4.2. Use Case Thêm mới Shipper2.4.2. Use Case Thêm mới Shipper
 Use Case Thêm mới Shipper
 Mô tả
 Cho phép Merchant thêm Shipper mới.
@@ -435,12 +871,22 @@ Merchant đã đăng nhập.
 Điều kiện tiên quyết
 Merchant nhấn "Thêm mới".
 Luồng chính
-1. Merchant nhấn "Thêm mới".2. Hệ thống hiển thị form: Họ tên, Số điện thoại, Email, Phương tiện, Biển số xe, CMND/CCCD, Ảnh CMND.3. Merchant điền thông tin và nhấn "Lưu".4. Hệ thống kiểm tra dữ liệu hợp lệ.5. Hệ thống tạo tài khoản Shipper với role là Shipper.6. Hệ thống gửi thông tin đăng nhập cho Shipper qua email/SMS.7. Hệ thống thông báo "Thêm Shipper thành công!"8. Kết thúc chức năng.
+1. Merchant nhấn "Thêm mới".
+2. Hệ thống hiển thị form: Họ tên, Số điện thoại, Email, Phương tiện, Biển số xe, CMND/CCCD, Ảnh CMND.
+3. Merchant điền thông tin và nhấn "Lưu".
+4. Hệ thống kiểm tra dữ liệu hợp lệ.
+5. Hệ thống tạo tài khoản Shipper với role là Shipper.
+6. Hệ thống gửi thông tin đăng nhập cho Shipper qua email/SMS.
+7. Hệ thống thông báo "Thêm Shipper thành công!"
+8. Kết thúc chức năng.
 Luồng thay thế
-4a. Số điện thoại đã tồn tại → "Số điện thoại này đã được sử dụng."4b. Email đã tồn tại → "Email này đã được sử dụng."4c. Upload ảnh thất bại → "Không thể upload ảnh. Vui lòng thử lại."
+4a. Số điện thoại đã tồn tại → "Số điện thoại này đã được sử dụng."
+4b. Email đã tồn tại → "Email này đã được sử dụng."
+4c. Upload ảnh thất bại → "Không thể upload ảnh. Vui lòng thử lại."
 Luồng ngoại lệ
-5a. Tạo tài khoản thất bại → "Có lỗi xảy ra. Vui lòng thử lại."6a. Gửi thông tin thất bại → ghi log, vẫn tạo thành công.
-2.4.3. Use Case Chỉnh sửa Shipper
+5a. Tạo tài khoản thất bại → "Có lỗi xảy ra. Vui lòng thử lại."
+6a. Gửi thông tin thất bại → ghi log, vẫn tạo thành công.
+2.4.3. Use Case Chỉnh sửa Shipper2.4.3. Use Case Chỉnh sửa Shipper2.4.3. Use Case Chỉnh sửa Shipper
 Use Case Chỉnh sửa Shipper
 Mô tả
 Cho phép Merchant cập nhật thông tin Shipper.
@@ -451,29 +897,71 @@ Merchant đã đăng nhập và có ít nhất 1 Shipper.
 Điều kiện tiên quyết
 Merchant đang ở trang Quản lý Shipper.
 Luồng chính
-1. Merchant truy cập trang Quản lý Shipper.2. Hệ thống hiển thị danh sách Shipper dưới dạng bảng, mỗi dòng có icon cây bút (chỉnh sửa) ở cột hành động.3. Merchant nhấn icon cây bút trên dòng của Shipper cần sửa.4. Hệ thống hiển thị modal chỉnh sửa với thông tin hiện tại của Shipper đã được điền sẵn:• Họ tên• Số điện thoại• Email• Phương tiện• Biển số xe• Trạng thái (Đang làm việc / Tạm nghỉ)5. Merchant thay đổi thông tin cần sửa trong modal.6. Merchant nhấn "Lưu".7. Hệ thống kiểm tra dữ liệu hợp lệ.8. Hệ thống cập nhật thông tin Shipper.9. Hệ thống đóng modal và làm mới danh sách Shipper.10. Hệ thống thông báo "Cập nhật Shipper thành công!"11. Kết thúc chức năng.
+1. Merchant truy cập trang Quản lý Shipper.
+2. Hệ thống hiển thị danh sách Shipper dưới dạng bảng, mỗi dòng có icon cây bút (chỉnh sửa) ở cột hành động.
+3. Merchant nhấn icon cây bút trên dòng của Shipper cần sửa.
+4. Hệ thống hiển thị modal chỉnh sửa với thông tin hiện tại của Shipper đã được điền sẵn:
+• Họ tên
+• Số điện thoại
+• Email
+• Phương tiện
+• Biển số xe
+• Trạng thái (Đang làm việc / Tạm nghỉ)
+5. Merchant thay đổi thông tin cần sửa trong modal.
+6. Merchant nhấn "Lưu".
+7. Hệ thống kiểm tra dữ liệu hợp lệ.
+8. Hệ thống cập nhật thông tin Shipper.
+9. Hệ thống đóng modal và làm mới danh sách Shipper.
+10. Hệ thống thông báo "Cập nhật Shipper thành công!"
+11. Kết thúc chức năng.
 Luồng thay thế
-6a. Merchant nhấn "Hủy" hoặc nhấn ra ngoài modal → Hệ thống đóng modal, bỏ mọi thay đổi.7a. Số điện thoại không hợp lệ → "Số điện thoại không hợp lệ."7b. Số điện thoại đã tồn tại (của Shipper khác) → "Số điện thoại này đã được sử dụng."7c. Email không hợp lệ → "Email không hợp lệ."7d. Email đã tồn tại (của Shipper khác) → "Email này đã được sử dụng."7e. Họ tên để trống → "Vui lòng nhập họ tên Shipper."
+6a. Merchant nhấn "Hủy" hoặc nhấn ra ngoài modal → Hệ thống đóng modal, bỏ mọi thay đổi.
+7a. Số điện thoại không hợp lệ → "Số điện thoại không hợp lệ."
+7b. Số điện thoại đã tồn tại (của Shipper khác) → "Số điện thoại này đã được sử dụng."
+7c. Email không hợp lệ → "Email không hợp lệ."
+7d. Email đã tồn tại (của Shipper khác) → "Email này đã được sử dụng."
+7e. Họ tên để trống → "Vui lòng nhập họ tên Shipper."
 Luồng ngoại lệ
-8a. Cập nhật thất bại → "Có lỗi xảy ra. Vui lòng thử lại."8b. Mất kết nối khi đang lưu → Giữ nguyên modal để Merchant thử lại.
-2.4.4. Use Case Phân công đơn cho Shipper
+8a. Cập nhật thất bại → "Có lỗi xảy ra. Vui lòng thử lại."
+8b. Mất kết nối khi đang lưu → Giữ nguyên modal để Merchant thử lại.
+2.4.4. Use Case Phân công đơn cho Shipper2.4.4. Use Case Phân công đơn cho Shipper2.4.4. Use Case Phân công đơn cho Shipper
 Use Case Phân công đơn cho Shipper
 Mô tả
-Cho phép Merchant gán Shipper cho từng đơn hàng (lấy đồ hoặc trả đồ).
+Cho phép Merchant phân công Shipper thực hiện chuyến lấy đồ từ locker về tiệm hoặc chuyến trả đồ đã giặt từ tiệm về locker.
 Tác nhân
 Merchant
 Điều kiện trước
-Đơn hàng đang ở trạng thái cần phân công Shipper (Đã gửi đồ hoặc Chờ trả đồ).
+Merchant đã đăng nhập và đơn thuộc tiệm: Deposited để phân công Collect; Paid đã giặt/đóng gói để phân công Return bình thường; hoặc Cancelled có đồ tại tiệm để phân công Return của đơn hủy. Shipper được gán phải cùng tiệm, đang hoạt động và không bận chuyến khác.
 Điều kiện tiên quyết
 Merchant đang xem chi tiết đơn hàng.
+Quy tắc nghiệp vụ
+Đơn ở trạng thái Deposited được phân công nhiệm vụ lấy đồ (Collect); đơn ở trạng thái Paid được phân công nhiệm vụ trả đồ (Return).
+Mỗi chuyến phải được phân công riêng, kể cả khi sử dụng cùng một Shipper. Phân công chuyến lấy không tự động có hiệu lực cho chuyến trả.
+Shipper phải thuộc cùng tiệm với đơn, có tài khoản và hồ sơ đang hoạt động, đang sẵn sàng và không bận chuyến chưa hoàn tất của đơn khác.
+Tại một thời điểm, một Shipper chỉ nhận một chuyến đang chờ thực hiện; hệ thống kiểm tra lại điều kiện này khi ghi nhận phân công.
+ReadyToReturn nghĩa là đồ đã về locker và đang chờ khách nhận; không dùng trạng thái này để bắt đầu phân công chuyến trả.
+Bổ sung chuyến trả đồ của đơn hủy: khi đơn Cancelled và đồ đang ở tiệm, Merchant/Admin được phân công Return cho Shipper cùng tiệm. Chuyến này không cần tiền giặt ở trạng thái Paid; khách phải thanh toán đủ phí hủy trước khi nhận lại đồ. Shipper vẫn được tính bận đến khi xác nhận trả vào locker.
 Luồng chính
-1. Merchant truy cập trang Quản lý đơn hàng.2. Hệ thống hiển thị danh sách đơn hàng dưới dạng bảng, mỗi dòng có icon phân công ở cột hành động.3. Merchant nhấn icon phân công trên dòng của đơn hàng cần gán Shipper.4. Hệ thống hiển thị modal chọn Shipper với:• Thông tin đơn hàng: Mã đơn, Locker, Ô tủ, Loại nhiệm vụ (Lấy đồ / Trả đồ).• Danh sách Shipper đang rảnh (kèm thông tin: Họ tên, Số điện thoại, Phương tiện, Số đơn đang giao, Đánh giá).5. Merchant chọn Shipper từ danh sách.6. Merchant nhấn "Xác nhận phân công".7. Hệ thống ghi nhận phân công.8. Hệ thống đóng modal và làm mới danh sách đơn hàng.9. Hệ thống gửi thông báo cho Shipper về đơn mới.10. Kết thúc chức năng.
+1. Merchant truy cập trang Quản lý đơn hàng.
+2. Hệ thống hiển thị danh sách đơn hàng của tiệm với thao tác phân công.
+3. Merchant nhấn thao tác phân công trên đơn hàng cần xử lý.
+4. Hệ thống xác định và hiển thị loại nhiệm vụ phù hợp với trạng thái đơn hàng.
+5. Hệ thống hiển thị modal gồm thông tin đơn hàng và danh sách Shipper khả dụng của tiệm, kèm họ tên, số điện thoại, phương tiện, số chuyến đang xử lý và đánh giá.
+6. Merchant chọn Shipper từ danh sách.
+7. Merchant nhấn Xác nhận phân công.
+8. Hệ thống kiểm tra lại quyền phân công, trạng thái đơn và khả năng nhận chuyến của Shipper, sau đó ghi nhận phân công và lịch sử thao tác.
+9. Hệ thống đóng modal và làm mới danh sách đơn hàng.
+10. Hệ thống gửi thông báo cho Shipper về nhiệm vụ mới.
+11. Kết thúc chức năng.
 Luồng thay thế
-6a. Merchant nhấn "Hủy" hoặc nhấn ra ngoài modal → Hệ thống đóng modal, không phân công.4a. Không có Shipper nào rảnh → Modal hiển thị "Hiện tại không có Shipper rảnh." và ẩn nút "Xác nhận phân công".
+5a. Không có Shipper khả dụng: hệ thống hiển thị Hiện tại không có Shipper rảnh và không cho xác nhận phân công.
+7a. Merchant nhấn Hủy: hệ thống đóng modal, không ghi nhận phân công.
+8a. Đơn hoặc khả năng nhận chuyến của Shipper vừa thay đổi: hệ thống từ chối phân công và yêu cầu làm mới danh sách.
 Luồng ngoại lệ
-7a. Ghi nhận phân công thất bại → "Có lỗi xảy ra. Vui lòng thử lại."9a. Gửi thông báo thất bại → ghi log, không ảnh hưởng đến phân công.
-2.5. Quản lý Locker (Chỉ xem)
-2.5.1. Use Case Xem danh sách locker được gán
+8b. Ghi nhận phân công thất bại: hệ thống thông báo Có lỗi xảy ra. Vui lòng thử lại; không lưu phân công dang dở.
+10a. Gửi thông báo thất bại: hệ thống ghi log; phân công đã ghi nhận vẫn có hiệu lực.
+2.5. Quản lý Locker (Chỉ xem)2.5. Quản lý Locker (Chỉ xem)2.5. Quản lý Locker (Chỉ xem)
+2.5.1. Use Case Xem danh sách locker được gán2.5.1. Use Case Xem danh sách locker được gán2.5.1. Use Case Xem danh sách locker được gán
 Use Case Xem danh sách locker được gán
 Mô tả
 Cho phép Merchant xem danh sách locker mà mình phụ trách.
@@ -484,12 +972,15 @@ Merchant đã đăng nhập.
 Điều kiện tiên quyết
 Merchant truy cập trang Quản lý Locker.
 Luồng chính
-1. Merchant truy cập trang Quản lý Locker.2. Hệ thống hiển thị danh sách locker được gán cho Merchant: Tên locker, Địa chỉ, Số ô, Số ô trống, Trạng thái.3. Merchant click vào locker để xem chi tiết.4. Kết thúc chức năng.
+1. Merchant truy cập trang Quản lý Locker.
+2. Hệ thống hiển thị danh sách locker được gán cho Merchant: Tên locker, Địa chỉ, Số ô, Số ô trống, Trạng thái.
+3. Merchant click vào locker để xem chi tiết.
+4. Kết thúc chức năng.
 Luồng thay thế
 2a. Chưa có locker nào → "Bạn chưa được gán locker nào."
 Luồng ngoại lệ
 Không có
-2.5.2. Use Case Xem trạng thái ô tủ
+2.5.2. Use Case Xem trạng thái ô tủ2.5.2. Use Case Xem trạng thái ô tủ2.5.2. Use Case Xem trạng thái ô tủ
 Use Case Xem trạng thái ô tủ
 Mô tả
 Cho phép Merchant xem trạng thái các ô tủ trong locker mình phụ trách.
@@ -500,12 +991,15 @@ Merchant đã đăng nhập và có locker được gán.
 Điều kiện tiên quyết
 Merchant chọn một locker.
 Luồng chính
-1. Merchant chọn một locker.2. Hệ thống hiển thị danh sách ô tủ: Số ô, Kích thước, Trạng thái (Trống/Đang có đồ/Đang bảo trì).3. Hệ thống highlight các ô đang có đồ.4. Kết thúc chức năng.
+1. Merchant chọn một locker.
+2. Hệ thống hiển thị danh sách ô tủ: Số ô, Kích thước, Trạng thái (Trống/Đang có đồ/Đang bảo trì).
+3. Hệ thống highlight các ô đang có đồ.
+4. Kết thúc chức năng.
 Luồng thay thế
 Không có
 Luồng ngoại lệ
 Không có
-2.5.3. Use Case Xem lịch sử sử dụng locker
+2.5.3. Use Case Xem lịch sử sử dụng locker2.5.3. Use Case Xem lịch sử sử dụng locker2.5.3. Use Case Xem lịch sử sử dụng locker
 Use Case Xem lịch sử sử dụng locker
 Mô tả
 Cho phép Merchant xem lịch sử các đơn hàng đã sử dụng locker mình phụ trách.
@@ -516,13 +1010,17 @@ Merchant đã đăng nhập và có locker được gán.
 Điều kiện tiên quyết
 Merchant chọn một locker và nhấn "Lịch sử".
 Luồng chính
-1. Merchant chọn một locker.2. Merchant nhấn "Xem lịch sử sử dụng".3. Hệ thống hiển thị danh sách các đơn hàng đã dùng locker: Mã đơn, Ô tủ, Thời gian gửi, Thời gian lấy, Trạng thái.4. Merchant có thể lọc theo khoảng thời gian.5. Kết thúc chức năng.
+1. Merchant chọn một locker.
+2. Merchant nhấn "Xem lịch sử sử dụng".
+3. Hệ thống hiển thị danh sách các đơn hàng đã dùng locker: Mã đơn, Ô tủ, Thời gian gửi, Thời gian lấy, Trạng thái.
+4. Merchant có thể lọc theo khoảng thời gian.
+5. Kết thúc chức năng.
 Luồng thay thế
 3a. Chưa có lịch sử → "Locker này chưa được sử dụng."
 Luồng ngoại lệ
 Không có
-2.6. Quản lý Dịch vụ (Có phê duyệt)
-2.6.1. Use Case Xem danh sách dịch vụ
+2.6. Quản lý Dịch vụ (Có phê duyệt)2.6. Quản lý Dịch vụ (Có phê duyệt)2.6. Quản lý Dịch vụ (Có phê duyệt)
+2.6.1. Use Case Xem danh sách dịch vụ2.6.1. Use Case Xem danh sách dịch vụ2.6.1. Use Case Xem danh sách dịch vụ
 Use Case Xem danh sách dịch vụ
 Mô tả
 Cho phép Merchant xem danh sách các gói dịch vụ đang được cung cấp.
@@ -533,12 +1031,14 @@ Merchant đã đăng nhập.
 Điều kiện tiên quyết
 Merchant truy cập trang Quản lý Dịch vụ.
 Luồng chính
-1. Merchant truy cập trang Quản lý Dịch vụ.2. Hệ thống hiển thị danh sách dịch vụ đã được Admin phê duyệt: Tên dịch vụ, Mô tả, Giá cơ bản, Thời gian xử lý, Danh mục, Trạng thái.3. Kết thúc chức năng.
+1. Merchant truy cập trang Quản lý Dịch vụ.
+2. Hệ thống hiển thị danh sách dịch vụ đã được Admin phê duyệt: Tên dịch vụ, Mô tả, Giá cơ bản, Thời gian xử lý, Danh mục, Trạng thái.
+3. Kết thúc chức năng.
 Luồng thay thế
 2a. Chưa có dịch vụ nào → "Chưa có dịch vụ nào được cung cấp."
 Luồng ngoại lệ
 Không có
-2.6.2. Use Case Đề xuất dịch vụ mới
+2.6.2. Use Case Đề xuất dịch vụ mới2.6.2. Use Case Đề xuất dịch vụ mới2.6.2. Use Case Đề xuất dịch vụ mới
 Use Case Đề xuất dịch vụ mới
 Mô tả
 Cho phép Merchant đề xuất thêm gói dịch vụ mới. Yêu cầu cần Admin phê duyệt.
@@ -549,12 +1049,21 @@ Merchant đã đăng nhập.
 Điều kiện tiên quyết
 Merchant nhấn "Đề xuất dịch vụ mới".
 Luồng chính
-1. Merchant nhấn "Đề xuất dịch vụ mới".2. Hệ thống hiển thị form: Tên dịch vụ, Mô tả, Giá cơ bản, Giá theo kg (nếu có), Thời gian xử lý, Danh mục, Hình ảnh.3. Merchant điền thông tin và nhấn "Gửi đề xuất".4. Hệ thống kiểm tra dữ liệu hợp lệ.5. Hệ thống ghi nhận đề xuất ở trạng thái "Chờ duyệt".6. Hệ thống thông báo "Đề xuất đã được gửi. Vui lòng chờ Admin phê duyệt."7. Hệ thống gửi thông báo cho Admin.8. Kết thúc chức năng.
+1. Merchant nhấn "Đề xuất dịch vụ mới".
+2. Hệ thống hiển thị form: Tên dịch vụ, Mô tả, Giá cơ bản, Giá theo kg (nếu có), Thời gian xử lý, Danh mục, Hình ảnh.
+3. Merchant điền thông tin và nhấn "Gửi đề xuất".
+4. Hệ thống kiểm tra dữ liệu hợp lệ.
+5. Hệ thống ghi nhận đề xuất ở trạng thái "Chờ duyệt".
+6. Hệ thống thông báo "Đề xuất đã được gửi. Vui lòng chờ Admin phê duyệt."
+7. Hệ thống gửi thông báo cho Admin.
+8. Kết thúc chức năng.
 Luồng thay thế
-4a. Tên dịch vụ đã tồn tại → "Tên dịch vụ này đã tồn tại."4b. Giá không hợp lệ → "Giá dịch vụ không hợp lệ."
+4a. Tên dịch vụ đã tồn tại → "Tên dịch vụ này đã tồn tại."
+4b. Giá không hợp lệ → "Giá dịch vụ không hợp lệ."
 Luồng ngoại lệ
-5a. Ghi nhận đề xuất thất bại → "Có lỗi xảy ra. Vui lòng thử lại."7a. Gửi thông báo thất bại → ghi log, không ảnh hưởng đến đề xuất.
-2.6.3. Use Case Đề xuất chỉnh sửa dịch vụ
+5a. Ghi nhận đề xuất thất bại → "Có lỗi xảy ra. Vui lòng thử lại."
+7a. Gửi thông báo thất bại → ghi log, không ảnh hưởng đến đề xuất.
+2.6.3. Use Case Đề xuất chỉnh sửa dịch vụ2.6.3. Use Case Đề xuất chỉnh sửa dịch vụ2.6.3. Use Case Đề xuất chỉnh sửa dịch vụ
 Use Case Đề xuất chỉnh sửa dịch vụ
 Mô tả
 Cho phép Merchant đề xuất chỉnh sửa gói dịch vụ hiện có. Yêu cầu cần Admin phê duyệt.
@@ -565,15 +1074,82 @@ Merchant đã đăng nhập và có ít nhất 1 dịch vụ.
 Điều kiện tiên quyết
 Merchant chọn dịch vụ và nhấn "Đề xuất chỉnh sửa".
 Luồng chính
-1. Merchant chọn dịch vụ cần chỉnh sửa.2. Merchant nhấn "Đề xuất chỉnh sửa".3. Hệ thống hiển thị form với thông tin hiện tại, cho phép sửa: Tên, Mô tả, Giá, Thời gian xử lý.4. Merchant thay đổi thông tin và nhấn "Gửi đề xuất".5. Hệ thống kiểm tra dữ liệu hợp lệ.6. Hệ thống ghi nhận đề xuất ở trạng thái "Chờ duyệt".7. Hệ thống thông báo "Đề xuất đã được gửi. Vui lòng chờ Admin phê duyệt."8. Hệ thống gửi thông báo cho Admin.9. Kết thúc chức năng.
+1. Merchant chọn dịch vụ cần chỉnh sửa.
+2. Merchant nhấn "Đề xuất chỉnh sửa".
+3. Hệ thống hiển thị form với thông tin hiện tại, cho phép sửa: Tên, Mô tả, Giá, Thời gian xử lý.
+4. Merchant thay đổi thông tin và nhấn "Gửi đề xuất".
+5. Hệ thống kiểm tra dữ liệu hợp lệ.
+6. Hệ thống ghi nhận đề xuất ở trạng thái "Chờ duyệt".
+7. Hệ thống thông báo "Đề xuất đã được gửi. Vui lòng chờ Admin phê duyệt."
+8. Hệ thống gửi thông báo cho Admin.
+9. Kết thúc chức năng.
 Luồng thay thế
-5a. Giá không hợp lệ → "Giá dịch vụ không hợp lệ."5b. Merchant nhấn "Hủy" → Bỏ thay đổi.
+5a. Giá không hợp lệ → "Giá dịch vụ không hợp lệ."
+5b. Merchant nhấn "Hủy" → Bỏ thay đổi.
 Luồng ngoại lệ
 6a. Ghi nhận đề xuất thất bại → "Có lỗi xảy ra. Vui lòng thử lại."
-3. ADMIN (QUẢN TRỊ VIÊN)
-3.2. Quản lý Merchant (Đối tác)
-3.2.1. Use Case Xem danh sách 
-Use Case Xem danh sách 
+2.7. Quản lý Tài chính & Đối soát2.7. Quản lý Tài chính & Đối soát2.7. Quản lý Tài chính & Đối soát
+2.7.1. Use Case Xem danh sách kỳ đối soát2.7.1. Use Case Xem danh sách kỳ đối soát2.7.1. Use Case Xem danh sách kỳ đối soát
+Use Case Xem danh sách kỳ đối soát
+Mô tả
+Cho phép Merchant xem danh sách các kỳ đối soát thanh toán doanh thu (MerchantSettlement) giữa hệ thống WashGo và cửa hàng.
+Tác nhân
+Merchant
+Điều kiện trước
+Merchant đã đăng nhập.
+Điều kiện tiên quyết
+Merchant truy cập trang Đối soát tài chính (/merchant/settlements).
+Luồng chính
+1. Merchant truy cập trang Đối soát tài chính.
+2. Hệ thống gọi API POST /finance/settlements/filter với phạm vi giới hạn theo Merchant hiện tại (CurrentUser.Id).
+3. Hệ thống hiển thị danh sách các kỳ đối soát dưới dạng bảng:
+• Mã kỳ đối soát (Settlement Code)
+• Khoảng thời gian kỳ đối soát: Từ ngày đến ngày (periodFrom - periodTo)
+• Tổng doanh thu các đơn trong kỳ
+• Tỷ lệ hoa hồng chiết khấu
+• Số tiền hoa hồng hệ thống giữ lại
+• Số tiền thực nhận được chi trả (payoutAmount)
+• Trạng thái kỳ đối soát: Chờ thanh toán (PendingPayment), Đã thanh toán (Paid), Đang khiếu nại (Disputed)
+• Ngày thanh toán thực tế (nếu đã chi trả)
+4. Merchant có thể lọc theo trạng thái kỳ đối soát và khoảng thời gian.
+5. Merchant có thể nhấn vào một kỳ đối soát để xem bảng kê chi tiết các đơn hàng thuộc kỳ.
+6. Kết thúc chức năng.
+Luồng thay thế
+3a. Chưa có kỳ đối soát nào: Hệ thống hiển thị "Chưa có kỳ đối soát nào được tạo cho cửa hàng."
+Luồng ngoại lệ
+2a. Lỗi tải dữ liệu: Thông báo "Không thể tải danh sách đối soát. Vui lòng thử lại sau."
+2.7.2. Use Case Xem chi tiết kỳ đối soát2.7.2. Use Case Xem chi tiết kỳ đối soát2.7.2. Use Case Xem chi tiết kỳ đối soát
+Use Case Xem chi tiết kỳ đối soát
+Mô tả
+Cho phép Merchant xem bảng kê chi tiết toàn bộ các đơn hàng và giao dịch được quyết toán trong một kỳ đối soát cụ thể.
+Tác nhân
+Merchant
+Điều kiện trước
+Merchant đã đăng nhập và đang xem danh sách kỳ đối soát.
+Điều kiện tiên quyết
+Merchant chọn một kỳ đối soát từ danh sách.
+Luồng chính
+1. Merchant nhấn chọn xem chi tiết một kỳ đối soát.
+2. Hệ thống kiểm tra quyền sở hữu kỳ đối soát của Merchant.
+3. Hệ thống hiển thị thông tin tổng hợp của kỳ: Mã kỳ, Khoảng thời gian đối soát, Tổng số đơn hàng, Tổng doanh thu, Tổng hoa hồng khấu trừ, Số tiền thực nhận (payoutAmount), Trạng thái thanh toán, Phương thức/chứng từ chuyển khoản.
+4. Hệ thống hiển thị bảng kê chi tiết từng đơn hàng trong kỳ:
+• Mã đơn hàng (WashOrder Code)
+• Dịch vụ giặt
+• Thời gian hoàn tất đơn
+• Giá trị đơn hàng (FinalAmount)
+• Tỷ lệ hoa hồng áp dụng của đơn (CommissionRateApplied)
+• Tiền hoa hồng khấu trừ
+• Số tiền thực nhận của tiệm cho đơn đó (MerchantNetAmount)
+5. Merchant có thể xuất bảng kê chi tiết ra file Excel/PDF để đối chiếu kế toán nội bộ.
+6. Kết thúc chức năng.
+Luồng thay thế
+2a. Kỳ đối soát không thuộc quyền sở hữu của Merchant: Hệ thống từ chối và thông báo "Bạn không có quyền xem kỳ đối soát này."
+Luồng ngoại lệ
+3a. Không tải được chi tiết kỳ đối soát: Thông báo "Có lỗi xảy ra khi tải dữ liệu chi tiết. Vui lòng thử lại."
+3. ADMIN (QUẢN TRỊ VIÊN)3. ADMIN (QUẢN TRỊ VIÊN)3. ADMIN (QUẢN TRỊ VIÊN)
+3.2. Quản lý Merchant (Đối tác)3.2. Quản lý Merchant (Đối tác)3.2. Quản lý Merchant (Đối tác)
+3.2.1. Use Case Xem danh sách 3.2.1. Use Case Xem danh sách 3.2.1. Use Case Xem danh sách
+Use Case Xem danh sách
 Mô tả
 Cho phép Admin xem danh sách tất cả Merchant đối tác.
 Tác nhân
@@ -583,12 +1159,16 @@ Admin đã đăng nhập.
 Điều kiện tiên quyết
 Admin truy cập trang Quản lý Merchant.
 Luồng chính
-1. Admin truy cập trang Quản lý Merchant.2. Hệ thống hiển thị danh sách Merchant dưới dạng bảng: Tên cửa hàng, Địa chỉ, Số điện thoại, Trạng thái, Đánh giá, Tổng đơn, Doanh thu.3. Admin có thể tìm kiếm, lọc theo trạng thái, khu vực.4. Admin nhấn vào một Merchant để xem chi tiết.5. Kết thúc chức năng.
+1. Admin truy cập trang Quản lý Merchant.
+2. Hệ thống hiển thị danh sách Merchant dưới dạng bảng: Tên cửa hàng, Địa chỉ, Số điện thoại, Trạng thái, Đánh giá, Tổng đơn, Doanh thu.
+3. Admin có thể tìm kiếm, lọc theo trạng thái, khu vực.
+4. Admin nhấn vào một Merchant để xem chi tiết.
+5. Kết thúc chức năng.
 Luồng thay thế
 2a. Chưa có Merchant nào → "Chưa có Merchant nào."
 Luồng ngoại lệ
 Không có
-3.2.2. Use Case Thêm mới
+3.2.2. Use Case Thêm mới3.2.2. Use Case Thêm mới3.2.2. Use Case Thêm mới
 Use Case Thêm mới
 Mô tả
 Cho phép Admin tạo tài khoản và hồ sơ cho Merchant mới sau khi ký hợp đồng.
@@ -599,12 +1179,22 @@ Admin đã đăng nhập; đã ký hợp đồng với Merchant.
 Điều kiện tiên quyết
 Admin nhấn "Thêm mới".
 Luồng chính
-1. Admin nhấn "Thêm Merchant".2. Hệ thống hiển thị form: Tên cửa hàng, Mã số thuế, Địa chỉ, Quận/Huyện, Thành phố, Tọa độ, Số điện thoại, Email, Giờ mở cửa, Hình ảnh cửa hàng, Giấy phép kinh doanh.3. Admin điền thông tin và nhấn "Lưu".4. Hệ thống kiểm tra dữ liệu hợp lệ.5. Hệ thống tạo tài khoản Merchant với role là Merchant.6. Hệ thống gửi thông tin đăng nhập cho Merchant qua email.7. Hệ thống thông báo "Thêm Merchant thành công!"8. Kết thúc chức năng.
+1. Admin nhấn "Thêm Merchant".
+2. Hệ thống hiển thị form: Tên cửa hàng, Mã số thuế, Địa chỉ, Quận/Huyện, Thành phố, Tọa độ, Số điện thoại, Email, Giờ mở cửa, Hình ảnh cửa hàng, Giấy phép kinh doanh.
+3. Admin điền thông tin và nhấn "Lưu".
+4. Hệ thống kiểm tra dữ liệu hợp lệ.
+5. Hệ thống tạo tài khoản Merchant với role là Merchant.
+6. Hệ thống gửi thông tin đăng nhập cho Merchant qua email.
+7. Hệ thống thông báo "Thêm Merchant thành công!"
+8. Kết thúc chức năng.
 Luồng thay thế
-4a. Email đã tồn tại → "Email này đã được sử dụng."4b. Mã số thuế đã tồn tại → "Mã số thuế này đã được sử dụng."4c. Tọa độ không hợp lệ → "Tọa độ không hợp lệ."
+4a. Email đã tồn tại → "Email này đã được sử dụng."
+4b. Mã số thuế đã tồn tại → "Mã số thuế này đã được sử dụng."
+4c. Tọa độ không hợp lệ → "Tọa độ không hợp lệ."
 Luồng ngoại lệ
-5a. Tạo tài khoản thất bại → "Có lỗi xảy ra. Vui lòng thử lại."6a. Gửi thông tin thất bại → ghi log, vẫn tạo thành công.
-3.2.3. Use Case Chỉnh sửa
+5a. Tạo tài khoản thất bại → "Có lỗi xảy ra. Vui lòng thử lại."
+6a. Gửi thông tin thất bại → ghi log, vẫn tạo thành công.
+3.2.3. Use Case Chỉnh sửa3.2.3. Use Case Chỉnh sửa3.2.3. Use Case Chỉnh sửa
 Use Case Chỉnh sửa
 Mô tả
 Cho phép Admin cập nhật thông tin Merchant, SLA, chiết khấu thông qua modal chỉnh sửa.
@@ -615,12 +1205,34 @@ Admin đã đăng nhập và có ít nhất 1 Merchant.
 Điều kiện tiên quyết
 Admin đang ở trang Quản lý Merchant.
 Luồng chính
-1. Admin truy cập trang Quản lý Merchant.2. Hệ thống hiển thị danh sách Merchant dưới dạng bảng, mỗi dòng có icon cây bút ở cột hành động.3. Admin nhấn icon cây bút trên dòng của Merchant cần sửa.4. Hệ thống hiển thị modal chỉnh sửa với thông tin hiện tại:• Tên cửa hàng• Địa chỉ, Quận/Huyện, Thành phố• Số điện thoại, Email• Giờ mở cửa• Tỷ lệ chiết khấu (commission_rate)• Bán kính phục vụ (service_radius_km)• Sức chứa tối đa (max_capacity)• Ngày bắt đầu/kết thúc hợp đồng• File SLA5. Admin thay đổi thông tin cần sửa.6. Admin nhấn "Lưu".7. Hệ thống kiểm tra dữ liệu hợp lệ.8. Hệ thống cập nhật thông tin Merchant.9. Hệ thống đóng modal và làm mới danh sách.10. Hệ thống thông báo "Cập nhật Merchant thành công!"11. Kết thúc chức năng.
+1. Admin truy cập trang Quản lý Merchant.
+2. Hệ thống hiển thị danh sách Merchant dưới dạng bảng, mỗi dòng có icon cây bút ở cột hành động.
+3. Admin nhấn icon cây bút trên dòng của Merchant cần sửa.
+4. Hệ thống hiển thị modal chỉnh sửa với thông tin hiện tại:
+• Tên cửa hàng
+• Địa chỉ, Quận/Huyện, Thành phố
+• Số điện thoại, Email
+• Giờ mở cửa
+• Tỷ lệ chiết khấu (commission_rate)
+• Bán kính phục vụ (service_radius_km)
+• Sức chứa tối đa (max_capacity)
+• Ngày bắt đầu/kết thúc hợp đồng
+• File SLA
+5. Admin thay đổi thông tin cần sửa.
+6. Admin nhấn "Lưu".
+7. Hệ thống kiểm tra dữ liệu hợp lệ.
+8. Hệ thống cập nhật thông tin Merchant.
+9. Hệ thống đóng modal và làm mới danh sách.
+10. Hệ thống thông báo "Cập nhật Merchant thành công!"
+11. Kết thúc chức năng.
 Luồng thay thế
-6a. Admin nhấn "Hủy" → Đóng modal, bỏ thay đổi.7a. Số điện thoại không hợp lệ → "Số điện thoại không hợp lệ."7b. Tỷ lệ chiết khấu không hợp lệ → "Tỷ lệ chiết khấu phải từ 0-100%."7c. Upload file SLA thất bại → "Không thể upload file. Vui lòng thử lại."
+6a. Admin nhấn "Hủy" → Đóng modal, bỏ thay đổi.
+7a. Số điện thoại không hợp lệ → "Số điện thoại không hợp lệ."
+7b. Tỷ lệ chiết khấu không hợp lệ → "Tỷ lệ chiết khấu phải từ 0-100%."
+7c. Upload file SLA thất bại → "Không thể upload file. Vui lòng thử lại."
 Luồng ngoại lệ
 8a. Cập nhật thất bại → "Có lỗi xảy ra. Vui lòng thử lại."
-3.2.4. Use Case Cập nhật trạng thái
+3.2.4. Use Case Cập nhật trạng thái3.2.4. Use Case 3.2.4. Use Case Cập nhật trạng tháiCập nhật trạng thái
 Use Case Cập nhật trạng thái
 Mô tả
 Cho phép Admin tạm ngưng hoặc kích hoạt lại tài khoản Merchant.
@@ -631,12 +1243,23 @@ Admin đã đăng nhập và có ít nhất 1 Merchant.
 Điều kiện tiên quyết
 Admin đang ở trang Quản lý Merchant.
 Luồng chính
-1. Admin truy cập trang Quản lý Merchant.2. Hệ thống hiển thị danh sách Merchant, mỗi dòng có icon khóa/mở khóa ở cột hành động.3. Admin nhấn icon khóa trên dòng của Merchant cần khóa.4. Hệ thống hiển thị popup xác nhận: "Bạn có chắc muốn khóa Merchant này?"5. Admin nhập lý do khóa và nhấn "Xác nhận".6. Hệ thống cập nhật trạng thái Merchant thành "Tạm khóa".7. Hệ thống gửi thông báo cho Merchant.8. Hệ thống thông báo "Đã khóa Merchant thành công!"9. Kết thúc chức năng.
+1. Admin truy cập trang Quản lý Merchant.
+2. Hệ thống hiển thị danh sách Merchant, mỗi dòng có icon khóa/mở khóa ở cột hành động.
+3. Admin nhấn icon khóa trên dòng của Merchant cần khóa.
+4. Hệ thống hiển thị popup xác nhận: "Bạn có chắc muốn khóa Merchant này?"
+5. Admin nhập lý do khóa và nhấn "Xác nhận".
+6. Hệ thống cập nhật trạng thái Merchant thành "Tạm khóa".
+7. Hệ thống gửi thông báo cho Merchant.
+8. Hệ thống thông báo "Đã khóa Merchant thành công!"
+9. Kết thúc chức năng.
 Luồng thay thế
-5a. Admin nhấn "Hủy" → Đóng popup, không khóa.3a. Admin nhấn icon mở khóa trên Merchant đang bị khóa → Hệ thống kích hoạt lại Merchant.6a. Merchant đang có đơn hàng chưa xử lý → Hệ thống cảnh báo "Merchant đang có X đơn chưa xử lý. Vẫn muốn khóa?"
+5a. Admin nhấn "Hủy" → Đóng popup, không khóa.
+3a. Admin nhấn icon mở khóa trên Merchant đang bị khóa → Hệ thống kích hoạt lại Merchant.
+6a. Merchant đang có đơn hàng chưa xử lý → Hệ thống cảnh báo "Merchant đang có X đơn chưa xử lý. Vẫn muốn khóa?"
 Luồng ngoại lệ
-6a. Cập nhật thất bại → "Có lỗi xảy ra. Vui lòng thử lại."7a. Gửi thông báo thất bại → ghi log, không ảnh hưởng.
-3.2.5. Use Case Thiết lập vùng phục vụ
+6a. Cập nhật thất bại → "Có lỗi xảy ra. Vui lòng thử lại."
+7a. Gửi thông báo thất bại → ghi log, không ảnh hưởng.
+3.2.5. Use Case Thiết lập vùng phục vụ3.2.5. Use Case Thiết lập vùng phục vụ3.2.5. Use Case Thiết lập vùng phục vụ
 Use Case Thiết lập vùng phục vụ
 Mô tả
 Cho phép Admin gán Merchant cho từng khu vực chung cư mà Merchant phụ trách.
@@ -647,13 +1270,53 @@ Admin đã đăng nhập và có ít nhất 1 Merchant, 1 vùng phục vụ.
 Điều kiện tiên quyết
 Admin truy cập trang Thiết lập vùng phục vụ.
 Luồng chính
-1. Admin truy cập trang Thiết lập vùng phục vụ.2. Hệ thống hiển thị danh sách các vùng phục vụ (khu vực/chung cư).3. Admin chọn một vùng phục vụ.4. Hệ thống hiển thị danh sách Merchant đang hoạt động.5. Admin chọn 1 hoặc nhiều Merchant để gán cho vùng này.6. Admin thiết lập độ ưu tiên cho từng Merchant (nếu có nhiều Merchant cùng phục vụ 1 vùng).7. Admin nhấn "Lưu".8. Hệ thống ghi nhận phân công.9. Hệ thống thông báo "Thiết lập vùng phục vụ thành công!"10. Kết thúc chức năng.
+1. Admin truy cập trang Thiết lập vùng phục vụ.
+2. Hệ thống hiển thị danh sách các vùng phục vụ (khu vực/chung cư).
+3. Admin chọn một vùng phục vụ.
+4. Hệ thống hiển thị danh sách Merchant đang hoạt động.
+5. Admin chọn 1 hoặc nhiều Merchant để gán cho vùng này.
+6. Admin thiết lập độ ưu tiên cho từng Merchant (nếu có nhiều Merchant cùng phục vụ 1 vùng).
+7. Admin nhấn "Lưu".
+8. Hệ thống ghi nhận phân công.
+9. Hệ thống thông báo "Thiết lập vùng phục vụ thành công!"
+10. Kết thúc chức năng.
 Luồng thay thế
 5a. Admin bỏ chọn tất cả Merchant → Hệ thống cảnh báo "Vùng này chưa có Merchant nào phục vụ. Bạn có chắc muốn lưu?"
 Luồng ngoại lệ
 8a. Ghi nhận thất bại → "Có lỗi xảy ra. Vui lòng thử lại."
-3.3. Phân công Đơn hàng
-3.3.1. Use Case Xem danh sách đơn chờ phân công
+3.2.6. Use Case Phê duyệt yêu cầu cập nhật hồ sơ Merchant3.2.6. Use Case Phê duyệt yêu cầu cập nhật hồ sơ Merchant3.2.6. Use Case Phê duyệt yêu cầu cập nhật hồ sơ Merchant
+Use Case Phê duyệt yêu cầu cập nhật hồ sơ Merchant
+Mô tả
+Cho phép Admin xem xét, đối chiếu và phê duyệt hoặc từ chối các yêu cầu cập nhật thông tin cửa hàng do Merchant gửi lên.
+Tác nhân
+Admin
+Điều kiện trước
+Admin đã đăng nhập; có yêu cầu cập nhật hồ sơ từ Merchant đang ở trạng thái "Chờ duyệt" (Pending).
+Điều kiện tiên quyết
+Admin truy cập trang Phê duyệt hồ sơ đối tác hoặc nhấn vào thông báo yêu cầu cập nhật hồ sơ.
+Luồng chính
+1. Admin truy cập danh sách yêu cầu cập nhật hồ sơ Merchant.
+2. Hệ thống hiển thị danh sách các yêu cầu đang chờ duyệt: Tên cửa hàng, Ngày gửi yêu cầu, Danh sách các trường có thay đổi (Changes), Trạng thái.
+3. Admin chọn một yêu cầu để xem chi tiết đối chiếu:
+• Màn hình hiển thị song song hai cột: Thông tin hiện tại (Current) và Thông tin đề xuất mới (Proposed).
+• Các trường đối chiếu: Tên cửa hàng, Địa chỉ, Tỉnh/Thành phố (City), Tọa độ vị trí (Latitude, Longitude hiển thị trực quan trên bản đồ đối chiếu), Số điện thoại, Giờ mở cửa, Danh sách ảnh cửa hàng mới so với ảnh cũ.
+4. Admin kiểm tra tính chính xác và hợp lệ của thông tin mới.
+5. Admin nhấn "Phê duyệt" để chấp thuận.
+6. Hệ thống thực hiện cập nhật đồng thời trong một giao dịch: cập nhật thông tin hồ sơ cửa hàng, thay thế tọa độ mới, cập nhật danh sách ảnh cửa hàng (ReplaceStoreImagesAsync), và chuyển trạng thái yêu cầu sang "Đã duyệt" (Approved).
+7. Hệ thống gửi thông báo cho Merchant thông báo hồ sơ đã được phê duyệt.
+8. Hệ thống thông báo cho Admin "Đã phê duyệt yêu cầu cập nhật hồ sơ thành công!"
+9. Kết thúc chức năng.
+Luồng thay thế
+5a. Admin nhận thấy thông tin không hợp lệ, nhấn "Từ chối":
+• Hệ thống yêu cầu Admin nhập lý do từ chối.
+• Admin nhập lý do và nhấn "Xác nhận từ chối".
+• Hệ thống chuyển trạng thái yêu cầu sang "Từ chối" (Rejected) và lưu lý do.
+• Hệ thống gửi thông báo kèm lý do từ chối cho Merchant; giữ nguyên thông tin hồ sơ cửa hàng hiện tại.
+Luồng ngoại lệ
+6a. Cập nhật hồ sơ thất bại: Rollback giao dịch, thông báo "Có lỗi xảy ra trong quá trình phê duyệt. Vui lòng thử lại."
+7a. Gửi thông báo cho Merchant thất bại: Ghi log, kết quả phê duyệt đã lưu vẫn có hiệu lực.
+3.3. Phân công Đơn hàng3.3. Phân công Đơn hàng3.3. Phân công Đơn hàng
+3.3.1. Use Case Xem danh sách đơn chờ phân công3.3.1. Use Case Xem danh sách đơn chờ phân công3.3.1. Use Case Xem danh sách đơn chờ phân công
 Use Case Xem danh sách đơn chờ phân công
 Mô tả
 Cho phép Admin xem danh sách các đơn hàng mới chưa được gán cho Merchant.
@@ -664,12 +1327,17 @@ Admin đã đăng nhập.
 Điều kiện tiên quyết
 Admin truy cập trang Phân công đơn hàng.
 Luồng chính
-1. Admin truy cập trang Phân công đơn hàng.2. Hệ thống hiển thị danh sách đơn hàng ở trạng thái "Đã gửi đồ" nhưng chưa có Merchant.3. Mỗi đơn hiển thị: Mã đơn, Locker, Ô tủ, Dịch vụ, Kích thước, Thời gian gửi, Khu vực.4. Hệ thống highlight các đơn quá hạn chưa phân công.5. Admin có thể lọc theo khu vực, thời gian.6. Kết thúc chức năng.
+1. Admin truy cập trang Phân công đơn hàng.
+2. Hệ thống hiển thị danh sách đơn hàng ở trạng thái "Đã gửi đồ" nhưng chưa có Merchant.
+3. Mỗi đơn hiển thị: Mã đơn, Locker, Ô tủ, Dịch vụ, Kích thước, Thời gian gửi, Khu vực.
+4. Hệ thống highlight các đơn quá hạn chưa phân công.
+5. Admin có thể lọc theo khu vực, thời gian.
+6. Kết thúc chức năng.
 Luồng thay thế
 2a. Không có đơn nào → "Không có đơn hàng nào chờ phân công."
 Luồng ngoại lệ
 Không có
-3.3.2. Use Case Gán đơn cho Merchant (thủ công)
+3.3.2. Use Case Gán đơn cho Merchant (thủ công)3.3.2. Use Case Gán đơn cho Merchant (thủ công)3.3.2. Use Case Gán đơn cho Merchant (thủ công)
 Use Case Gán đơn cho Merchant (thủ công)
 Mô tả
 Cho phép Admin chọn Merchant phù hợp và gán đơn hàng cho Merchant đó.
@@ -680,12 +1348,26 @@ Admin
 Điều kiện tiên quyết
 Admin đang ở trang Phân công đơn hàng.
 Luồng chính
-1. Admin truy cập trang Phân công đơn hàng.2. Hệ thống hiển thị danh sách đơn chờ phân công, mỗi dòng có icon phân công ở cột hành động.3. Admin nhấn icon phân công trên dòng của đơn cần gán.4. Hệ thống hiển thị modal chọn Merchant với:• Thông tin đơn: Mã đơn, Locker, Khu vực, Kích thước.• Danh sách Merchant đang hoạt động trong khu vực, kèm: Tên, Đánh giá, Tải lượng hiện tại (X/Y đơn), Khoảng cách.5. Admin chọn Merchant từ danh sách.6. Admin nhấn "Xác nhận phân công".7. Hệ thống ghi nhận Merchant cho đơn hàng.8. Hệ thống gửi thông báo cho Merchant về đơn mới.9. Hệ thống đóng modal và làm mới danh sách.10. Hệ thống thông báo "Phân công thành công!"11. Kết thúc chức năng.
+1. Admin truy cập trang Phân công đơn hàng.
+2. Hệ thống hiển thị danh sách đơn chờ phân công, mỗi dòng có icon phân công ở cột hành động.
+3. Admin nhấn icon phân công trên dòng của đơn cần gán.
+4. Hệ thống hiển thị modal chọn Merchant với:
+• Thông tin đơn: Mã đơn, Locker, Khu vực, Kích thước.
+• Danh sách Merchant đang hoạt động trong khu vực, kèm: Tên, Đánh giá, Tải lượng hiện tại (X/Y đơn), Khoảng cách.
+5. Admin chọn Merchant từ danh sách.
+6. Admin nhấn "Xác nhận phân công".
+7. Hệ thống ghi nhận Merchant cho đơn hàng.
+8. Hệ thống gửi thông báo cho Merchant về đơn mới.
+9. Hệ thống đóng modal và làm mới danh sách.
+10. Hệ thống thông báo "Phân công thành công!"
+11. Kết thúc chức năng.
 Luồng thay thế
-6a. Admin nhấn "Hủy" → Đóng modal, không phân công.4a. Không có Merchant nào trong khu vực → "Không có Merchant nào phục vụ khu vực này."
+6a. Admin nhấn "Hủy" → Đóng modal, không phân công.
+4a. Không có Merchant nào trong khu vực → "Không có Merchant nào phục vụ khu vực này."
 Luồng ngoại lệ
-7a. Ghi nhận thất bại → "Có lỗi xảy ra. Vui lòng thử lại."8a. Gửi thông báo thất bại → ghi log, không ảnh hưởng.
-3.3.3. Use Case Gán đơn tự động (AI)
+7a. Ghi nhận thất bại → "Có lỗi xảy ra. Vui lòng thử lại."
+8a. Gửi thông báo thất bại → ghi log, không ảnh hưởng.
+3.3.3. Use Case Gán đơn tự động (AI)3.3.3. Use Case Gán đơn tự động (AI)3.3.3. Use Case Gán đơn tự động (AI)
 Use Case Gán đơn tự động (AI)
 Mô tả
 Cho phép Admin sử dụng AI để tự động gán đơn hàng cho Merchant phù hợp nhất.
@@ -696,14 +1378,29 @@ Admin
 Điều kiện tiên quyết
 Admin đang ở trang Phân công đơn hàng.
 Luồng chính
-1. Admin truy cập trang Phân công đơn hàng.2. Admin chọn một hoặc nhiều đơn hàng cần phân công.3. Admin nhấn "Gán tự động (AI)".4. Hệ thống phân tích các yếu tố:• Vùng phục vụ của Merchant• Tải lượng hiện tại của Merchant• Đánh giá và hiệu suất của Merchant• Khoảng cách từ Merchant đến Locker5. Hệ thống đề xuất Merchant phù hợp nhất cho từng đơn.6. Admin xem xét và nhấn "Xác nhận".7. Hệ thống ghi nhận phân công.8. Hệ thống gửi thông báo cho các Merchant được gán.9. Hệ thống thông báo "Phân công tự động thành công!"10. Kết thúc chức năng.
+1. Admin truy cập trang Phân công đơn hàng.
+2. Admin chọn một hoặc nhiều đơn hàng cần phân công.
+3. Admin nhấn "Gán tự động (AI)".
+4. Hệ thống phân tích các yếu tố:
+• Vùng phục vụ của Merchant
+• Tải lượng hiện tại của Merchant
+• Đánh giá và hiệu suất của Merchant
+• Khoảng cách từ Merchant đến Locker
+5. Hệ thống đề xuất Merchant phù hợp nhất cho từng đơn.
+6. Admin xem xét và nhấn "Xác nhận".
+7. Hệ thống ghi nhận phân công.
+8. Hệ thống gửi thông báo cho các Merchant được gán.
+9. Hệ thống thông báo "Phân công tự động thành công!"
+10. Kết thúc chức năng.
 Luồng thay thế
-6a. Admin không đồng ý với đề xuất → Admin có thể gán thủ công.5a. Không có Merchant phù hợp → Hệ thống thông báo "Không tìm thấy Merchant phù hợp cho đơn này."
+6a. Admin không đồng ý với đề xuất → Admin có thể gán thủ công.
+5a. Không có Merchant phù hợp → Hệ thống thông báo "Không tìm thấy Merchant phù hợp cho đơn này."
 Luồng ngoại lệ
-7a. Ghi nhận thất bại → "Có lỗi xảy ra. Vui lòng thử lại."8a. Gửi thông báo thất bại → ghi log, không ảnh hưởng.
-3.4. Quản lý Locker
-3.4.1. Use Case Xem danh sách 
-Use Case Xem danh sách 
+7a. Ghi nhận thất bại → "Có lỗi xảy ra. Vui lòng thử lại."
+8a. Gửi thông báo thất bại → ghi log, không ảnh hưởng.
+3.4. Quản lý Locker3.4. Quản lý Locker3.4. Quản lý Locker
+3.4.1. Use Case Xem danh sách 3.4.1. Use Case Xem danh sách 3.4.1. Use Case Xem danh sách
+Use Case Xem danh sách
 Mô tả
 Cho phép Admin xem danh sách tất cả locker trong hệ thống.
 Tác nhân
@@ -713,13 +1410,17 @@ Admin đã đăng nhập.
 Điều kiện tiên quyết
 Admin truy cập trang Quản lý Locker.
 Luồng chính
-1. Admin truy cập trang Quản lý Locker.2. Hệ thống hiển thị danh sách locker: Tên, Địa chỉ, Khu vực, Số ô, Số ô trống, Merchant phụ trách, Trạng thái.3. Admin có thể tìm kiếm, lọc theo khu vực, trạng thái.4. Admin click vào một locker để xem chi tiết.5. Kết thúc chức năng.
+1. Admin truy cập trang Quản lý Locker.
+2. Hệ thống hiển thị danh sách locker: Tên, Địa chỉ, Khu vực, Số ô, Số ô trống, Merchant phụ trách, Trạng thái.
+3. Admin có thể tìm kiếm, lọc theo khu vực, trạng thái.
+4. Admin click vào một locker để xem chi tiết.
+5. Kết thúc chức năng.
 Luồng thay thế
 2a. Chưa có locker nào → "Chưa có locker nào."
 Luồng ngoại lệ
 Không có
-3.4.2. Use Case Thêm mới 
-Use Case Thêm mới 
+3.4.2. Use Case Thêm mới 3.4.2. Use Case Thêm mới 3.4.2. Use Case Thêm mới
+Use Case Thêm mới
 Mô tả
 Cho phép Admin tạo locker mới tại chung cư.
 Tác nhân
@@ -729,13 +1430,21 @@ Admin đã đăng nhập.
 Điều kiện tiên quyết
 Admin nhấn "Thêm mới".
 Luồng chính
-1. Admin nhấn "Thêm mới".2. Hệ thống hiển thị form: Tên locker, Địa chỉ, Khu vực, Tọa độ, Số ô, Loại locker, Mô tả, Hình ảnh.3. Admin điền thông tin và nhấn "Lưu".4. Hệ thống kiểm tra dữ liệu hợp lệ.5. Hệ thống tạo locker mới với trạng thái "Đang hoạt động".6. Hệ thống tạo các ô tủ theo số lượng đã nhập.7. Hệ thống thông báo "Thêm Locker thành công!"8. Kết thúc chức năng.
+1. Admin nhấn "Thêm mới".
+2. Hệ thống hiển thị form: Tên locker, Địa chỉ, Khu vực, Tọa độ, Số ô, Loại locker, Mô tả, Hình ảnh.
+3. Admin điền thông tin và nhấn "Lưu".
+4. Hệ thống kiểm tra dữ liệu hợp lệ.
+5. Hệ thống tạo locker mới với trạng thái "Đang hoạt động".
+6. Hệ thống tạo các ô tủ theo số lượng đã nhập.
+7. Hệ thống thông báo "Thêm Locker thành công!"
+8. Kết thúc chức năng.
 Luồng thay thế
-4a. Tên locker đã tồn tại → "Tên locker này đã được sử dụng."4b. Tọa độ không hợp lệ → "Tọa độ không hợp lệ."
+4a. Tên locker đã tồn tại → "Tên locker này đã được sử dụng."
+4b. Tọa độ không hợp lệ → "Tọa độ không hợp lệ."
 Luồng ngoại lệ
 5a. Tạo locker thất bại → "Có lỗi xảy ra. Vui lòng thử lại."
-3.4.3. Use Case Chỉnh sửa 
-Use Case Chỉnh sửa 
+3.4.3. Use Case Chỉnh sửa 3.4.3. Use Case Chỉnh sửa 3.4.3. Use Case Chỉnh sửa
+Use Case Chỉnh sửa
 Mô tả
 Cho phép Admin cập nhật thông tin locker thông qua modal chỉnh sửa.
 Tác nhân
@@ -745,12 +1454,23 @@ Admin đã đăng nhập và có ít nhất 1 locker.
 Điều kiện tiên quyết
 Admin đang ở trang Quản lý Locker.
 Luồng chính
-1. Admin truy cập trang Quản lý Locker.2. Hệ thống hiển thị danh sách locker dưới dạng bảng, mỗi dòng có icon cây bút.3. Admin nhấn icon cây bút trên dòng của locker cần sửa.4. Hệ thống hiển thị modal chỉnh sửa với thông tin hiện tại: Tên, Địa chỉ, Khu vực, Tọa độ, Loại locker, Mô tả, Trạng thái.5. Admin thay đổi thông tin cần sửa.6. Admin nhấn "Lưu".7. Hệ thống kiểm tra dữ liệu hợp lệ.8. Hệ thống cập nhật thông tin locker.9. Hệ thống đóng modal và làm mới danh sách.10. Hệ thống thông báo "Cập nhật Locker thành công!"11. Kết thúc chức năng.
+1. Admin truy cập trang Quản lý Locker.
+2. Hệ thống hiển thị danh sách locker dưới dạng bảng, mỗi dòng có icon cây bút.
+3. Admin nhấn icon cây bút trên dòng của locker cần sửa.
+4. Hệ thống hiển thị modal chỉnh sửa với thông tin hiện tại: Tên, Địa chỉ, Khu vực, Tọa độ, Loại locker, Mô tả, Trạng thái.
+5. Admin thay đổi thông tin cần sửa.
+6. Admin nhấn "Lưu".
+7. Hệ thống kiểm tra dữ liệu hợp lệ.
+8. Hệ thống cập nhật thông tin locker.
+9. Hệ thống đóng modal và làm mới danh sách.
+10. Hệ thống thông báo "Cập nhật Locker thành công!"
+11. Kết thúc chức năng.
 Luồng thay thế
-6a. Admin nhấn "Hủy" → Đóng modal, bỏ thay đổi.7a. Tên locker đã tồn tại → "Tên locker này đã được sử dụng."
+6a. Admin nhấn "Hủy" → Đóng modal, bỏ thay đổi.
+7a. Tên locker đã tồn tại → "Tên locker này đã được sử dụng."
 Luồng ngoại lệ
 8a. Cập nhật thất bại → "Có lỗi xảy ra. Vui lòng thử lại."
-3.4.4. Use Case Xóa 
+3.4.4. Use Case Xóa 3.4.4. Use Case Xóa 3.4.4. Use Case Xóa
 Use Case Xóa
 Mô tả
 Cho phép Admin xóa locker khỏi hệ thống.
@@ -761,12 +1481,21 @@ Admin đã đăng nhập và có ít nhất 1 locker.
 Điều kiện tiên quyết
 Admin đang ở trang Quản lý Locker.
 Luồng chính
-1. Admin truy cập trang Quản lý Locker.2. Hệ thống hiển thị danh sách locker, mỗi dòng có icon thùng rác.3. Admin nhấn icon thùng rác trên dòng của locker cần xóa.4. Hệ thống hiển thị popup xác nhận: "Bạn có chắc muốn xóa locker này?"5. Admin nhấn "Xác nhận".6. Hệ thống kiểm tra locker có đang được sử dụng không.7. Hệ thống xóa locker và các ô tủ liên quan.8. Hệ thống thông báo "Xóa Locker thành công!"9. Kết thúc chức năng.
+1. Admin truy cập trang Quản lý Locker.
+2. Hệ thống hiển thị danh sách locker, mỗi dòng có icon thùng rác.
+3. Admin nhấn icon thùng rác trên dòng của locker cần xóa.
+4. Hệ thống hiển thị popup xác nhận: "Bạn có chắc muốn xóa locker này?"
+5. Admin nhấn "Xác nhận".
+6. Hệ thống kiểm tra locker có đang được sử dụng không.
+7. Hệ thống xóa locker và các ô tủ liên quan.
+8. Hệ thống thông báo "Xóa Locker thành công!"
+9. Kết thúc chức năng.
 Luồng thay thế
-5a. Admin nhấn "Hủy" → Đóng popup, không xóa.6a. Locker đang có đơn hàng chưa hoàn thành → "Không thể xóa locker đang có đơn hàng chưa xử lý."
+5a. Admin nhấn "Hủy" → Đóng popup, không xóa.
+6a. Locker đang có đơn hàng chưa hoàn thành → "Không thể xóa locker đang có đơn hàng chưa xử lý."
 Luồng ngoại lệ
 7a. Xóa thất bại → "Có lỗi xảy ra. Vui lòng thử lại."
-3.4.5. Use Case Quản lý ô tủ
+3.4.5. Use Case Quản lý ô tủ3.4.5. Use Case Quản lý ô tủ3.4.5. Use Case Quản lý ô tủ
 Use Case Quản lý ô tủ
 Mô tả
 Cho phép Admin xem và bảo trì các ô tủ trong locker.
@@ -777,13 +1506,21 @@ Admin đã đăng nhập và có ít nhất 1 locker.
 Điều kiện tiên quyết
 Admin chọn một locker.
 Luồng chính
-1. Admin chọn một locker.2. Hệ thống hiển thị danh sách ô tủ: Số ô, Kích thước, Trạng thái.3. Admin có thể:• Chuyển ô tủ sang trạng thái "Bảo trì" (nếu hỏng).• Chuyển ô tủ về trạng thái "Trống" (sau khi sửa).• Xem lịch sử sử dụng ô tủ.4. Admin nhấn "Lưu" sau khi thay đổi.5. Hệ thống thông báo "Cập nhật ô tủ thành công!"6. Kết thúc chức năng.
+1. Admin chọn một locker.
+2. Hệ thống hiển thị danh sách ô tủ: Số ô, Kích thước, Trạng thái.
+3. Admin có thể:
+• Chuyển ô tủ sang trạng thái "Bảo trì" (nếu hỏng).
+• Chuyển ô tủ về trạng thái "Trống" (sau khi sửa).
+• Xem lịch sử sử dụng ô tủ.
+4. Admin nhấn "Lưu" sau khi thay đổi.
+5. Hệ thống thông báo "Cập nhật ô tủ thành công!"
+6. Kết thúc chức năng.
 Luồng thay thế
 3a. Ô tủ đang có đồ → Không cho chuyển sang "Bảo trì".
 Luồng ngoại lệ
 4a. Cập nhật thất bại → "Có lỗi xảy ra. Vui lòng thử lại."
-3.5. Quản lý Dịch vụ
-3.5.1. Use Case Xem danh sách 
+3.5. Quản lý Dịch vụ3.5. Quản lý Dịch vụ3.5. Quản lý Dịch vụ
+3.5.1. Use Case Xem danh sách 3.5.1. Use Case Xem danh sách 3.5.1. Use Case Xem danh sách
 Use Case Xem danh sách
 Mô tả
 Cho phép Admin xem tất cả dịch vụ trong hệ thống.
@@ -794,12 +1531,16 @@ Admin đã đăng nhập.
 Điều kiện tiên quyết
 Admin truy cập trang Quản lý Dịch vụ.
 Luồng chính
-1. Admin truy cập trang Quản lý Dịch vụ.2. Hệ thống hiển thị danh sách dịch vụ: Tên, Mô tả, Giá cơ bản, Thời gian xử lý, Danh mục, Merchant, Trạng thái.3. Admin có thể lọc theo Merchant, danh mục, trạng thái.4. Admin click vào một dịch vụ để xem chi tiết.5. Kết thúc chức năng.
+1. Admin truy cập trang Quản lý Dịch vụ.
+2. Hệ thống hiển thị danh sách dịch vụ: Tên, Mô tả, Giá cơ bản, Thời gian xử lý, Danh mục, Merchant, Trạng thái.
+3. Admin có thể lọc theo Merchant, danh mục, trạng thái.
+4. Admin click vào một dịch vụ để xem chi tiết.
+5. Kết thúc chức năng.
 Luồng thay thế
 2a. Chưa có dịch vụ nào → "Chưa có dịch vụ nào."
 Luồng ngoại lệ
 Không có
-3.5.2. Use Case Thêm mới
+3.5.2. Use Case Thêm mới3.5.2. Use Case Thêm mới3.5.2. Use Case Thêm mới
 Use Case Thêm mới
 Mô tả
 Cho phép Admin tạo gói dịch vụ chuẩn cho hệ thống.
@@ -810,12 +1551,19 @@ Admin đã đăng nhập.
 Điều kiện tiên quyết
 Admin nhấn "Thêm Dịch vụ".
 Luồng chính
-1. Admin nhấn "Thêm Dịch vụ".2. Hệ thống hiển thị form: Tên dịch vụ, Mô tả, Giá cơ bản, Giá theo kg (nếu có), Thời gian xử lý, Danh mục, Merchant áp dụng, Hình ảnh.3. Admin điền thông tin và nhấn "Lưu".4. Hệ thống kiểm tra dữ liệu hợp lệ.5. Hệ thống tạo dịch vụ mới với trạng thái "Đã duyệt".6. Hệ thống thông báo "Thêm Dịch vụ thành công!"7. Kết thúc chức năng.
+1. Admin nhấn "Thêm Dịch vụ".
+2. Hệ thống hiển thị form: Tên dịch vụ, Mô tả, Giá cơ bản, Giá theo kg (nếu có), Thời gian xử lý, Danh mục, Merchant áp dụng, Hình ảnh.
+3. Admin điền thông tin và nhấn "Lưu".
+4. Hệ thống kiểm tra dữ liệu hợp lệ.
+5. Hệ thống tạo dịch vụ mới với trạng thái "Đã duyệt".
+6. Hệ thống thông báo "Thêm Dịch vụ thành công!"
+7. Kết thúc chức năng.
 Luồng thay thế
-4a. Tên dịch vụ đã tồn tại → "Tên dịch vụ này đã tồn tại."4b. Giá không hợp lệ → "Giá dịch vụ không hợp lệ."
+4a. Tên dịch vụ đã tồn tại → "Tên dịch vụ này đã tồn tại."
+4b. Giá không hợp lệ → "Giá dịch vụ không hợp lệ."
 Luồng ngoại lệ
 5a. Tạo dịch vụ thất bại → "Có lỗi xảy ra. Vui lòng thử lại."
-3.5.3. Use Case Chỉnh sửa
+3.5.3. Use Case Chỉnh sửa3.5.3. Use Case Chỉnh sửa3.5.3. Use Case Chỉnh sửa
 Use Case Chỉnh sửa
 Mô tả
 Cho phép Admin cập nhật giá, mô tả dịch vụ thông qua modal chỉnh sửa.
@@ -826,12 +1574,23 @@ Admin đã đăng nhập và có ít nhất 1 dịch vụ.
 Điều kiện tiên quyết
 Admin đang ở trang Quản lý Dịch vụ.
 Luồng chính
-1. Admin truy cập trang Quản lý Dịch vụ.2. Hệ thống hiển thị danh sách dịch vụ dưới dạng bảng, mỗi dòng có icon cây bút.3. Admin nhấn icon cây bút trên dòng của dịch vụ cần sửa.4. Hệ thống hiển thị modal chỉnh sửa với thông tin hiện tại.5. Admin thay đổi thông tin cần sửa.6. Admin nhấn "Lưu".7. Hệ thống kiểm tra dữ liệu hợp lệ.8. Hệ thống cập nhật thông tin dịch vụ.9. Hệ thống đóng modal và làm mới danh sách.10. Hệ thống thông báo "Cập nhật Dịch vụ thành công!"11. Kết thúc chức năng.
+1. Admin truy cập trang Quản lý Dịch vụ.
+2. Hệ thống hiển thị danh sách dịch vụ dưới dạng bảng, mỗi dòng có icon cây bút.
+3. Admin nhấn icon cây bút trên dòng của dịch vụ cần sửa.
+4. Hệ thống hiển thị modal chỉnh sửa với thông tin hiện tại.
+5. Admin thay đổi thông tin cần sửa.
+6. Admin nhấn "Lưu".
+7. Hệ thống kiểm tra dữ liệu hợp lệ.
+8. Hệ thống cập nhật thông tin dịch vụ.
+9. Hệ thống đóng modal và làm mới danh sách.
+10. Hệ thống thông báo "Cập nhật Dịch vụ thành công!"
+11. Kết thúc chức năng.
 Luồng thay thế
-6a. Admin nhấn "Hủy" → Đóng modal, bỏ thay đổi.7a. Giá không hợp lệ → "Giá dịch vụ không hợp lệ."
+6a. Admin nhấn "Hủy" → Đóng modal, bỏ thay đổi.
+7a. Giá không hợp lệ → "Giá dịch vụ không hợp lệ."
 Luồng ngoại lệ
 8a. Cập nhật thất bại → "Có lỗi xảy ra. Vui lòng thử lại."
-3.5.4. Use Case Xóa
+3.5.4. Use Case Xóa3.5.4. Use Case Xóa3.5.4. Use Case Xóa
 Use Case Xóa
 Mô tả
 Cho phép Admin xóa dịch vụ khỏi hệ thống.
@@ -842,12 +1601,21 @@ Admin đã đăng nhập và có ít nhất 1 dịch vụ.
 Điều kiện tiên quyết
 Admin đang ở trang Quản lý Dịch vụ.
 Luồng chính
-1. Admin truy cập trang Quản lý Dịch vụ.2. Hệ thống hiển thị danh sách dịch vụ, mỗi dòng có icon thùng rác.3. Admin nhấn icon thùng rác trên dòng của dịch vụ cần xóa.4. Hệ thống hiển thị popup xác nhận.5. Admin nhấn "Xác nhận".6. Hệ thống kiểm tra dịch vụ có đang được sử dụng không.7. Hệ thống xóa dịch vụ.8. Hệ thống thông báo "Xóa Dịch vụ thành công!"9. Kết thúc chức năng.
+1. Admin truy cập trang Quản lý Dịch vụ.
+2. Hệ thống hiển thị danh sách dịch vụ, mỗi dòng có icon thùng rác.
+3. Admin nhấn icon thùng rác trên dòng của dịch vụ cần xóa.
+4. Hệ thống hiển thị popup xác nhận.
+5. Admin nhấn "Xác nhận".
+6. Hệ thống kiểm tra dịch vụ có đang được sử dụng không.
+7. Hệ thống xóa dịch vụ.
+8. Hệ thống thông báo "Xóa Dịch vụ thành công!"
+9. Kết thúc chức năng.
 Luồng thay thế
-5a. Admin nhấn "Hủy" → Đóng popup, không xóa.6a. Dịch vụ đang có đơn hàng → "Không thể xóa dịch vụ đang có đơn hàng."
+5a. Admin nhấn "Hủy" → Đóng popup, không xóa.
+6a. Dịch vụ đang có đơn hàng → "Không thể xóa dịch vụ đang có đơn hàng."
 Luồng ngoại lệ
 7a. Xóa thất bại → "Có lỗi xảy ra. Vui lòng thử lại."
-3.5.5. Use Case Phê duyệt dịch vụ
+3.5.5. Use Case Phê duyệt dịch vụ3.5.5. Use Case Phê duyệt dịch vụ3.5.5. Use Case Phê duyệt dịch vụ
 Use Case Phê duyệt dịch vụ
 Mô tả
 Cho phép Admin duyệt đề xuất dịch vụ từ Merchant.
@@ -858,12 +1626,21 @@ Có đề xuất dịch vụ từ Merchant đang chờ duyệt.
 Điều kiện tiên quyết
 Admin truy cập trang Phê duyệt dịch vụ.
 Luồng chính
-1. Admin truy cập trang Phê duyệt dịch vụ.2. Hệ thống hiển thị danh sách đề xuất từ Merchant: Merchant, Loại đề xuất (Thêm mới/Chỉnh sửa), Tên dịch vụ, Giá đề xuất, Lý do, Ngày gửi.3. Admin click vào một đề xuất để xem chi tiết.4. Hệ thống hiển thị chi tiết đề xuất, bao gồm cả dữ liệu hiện tại (nếu là chỉnh sửa).5. Admin nhấn "Phê duyệt".6. Hệ thống áp dụng đề xuất vào dịch vụ (tạo mới hoặc cập nhật).7. Hệ thống gửi thông báo cho Merchant.8. Hệ thống thông báo "Đã phê duyệt đề xuất!"9. Kết thúc chức năng.
+1. Admin truy cập trang Phê duyệt dịch vụ.
+2. Hệ thống hiển thị danh sách đề xuất từ Merchant: Merchant, Loại đề xuất (Thêm mới/Chỉnh sửa), Tên dịch vụ, Giá đề xuất, Lý do, Ngày gửi.
+3. Admin click vào một đề xuất để xem chi tiết.
+4. Hệ thống hiển thị chi tiết đề xuất, bao gồm cả dữ liệu hiện tại (nếu là chỉnh sửa).
+5. Admin nhấn "Phê duyệt".
+6. Hệ thống áp dụng đề xuất vào dịch vụ (tạo mới hoặc cập nhật).
+7. Hệ thống gửi thông báo cho Merchant.
+8. Hệ thống thông báo "Đã phê duyệt đề xuất!"
+9. Kết thúc chức năng.
 Luồng thay thế
 5a. Admin nhấn "Từ chối" → Chuyển sang Use Case Từ chối dịch vụ.
 Luồng ngoại lệ
-6a. Áp dụng đề xuất thất bại → "Có lỗi xảy ra. Vui lòng thử lại."7a. Gửi thông báo thất bại → ghi log.
-3.5.6. Use Case Từ chối dịch vụ
+6a. Áp dụng đề xuất thất bại → "Có lỗi xảy ra. Vui lòng thử lại."
+7a. Gửi thông báo thất bại → ghi log.
+3.5.6. Use Case Từ chối dịch vụ3.5.6. Use Case Từ chối dịch vụ3.5.6. Use Case Từ chối dịch vụ
 Use Case Từ chối dịch vụ
 Mô tả
 Cho phép Admin từ chối đề xuất dịch vụ từ Merchant kèm lý do.
@@ -874,13 +1651,21 @@ Có đề xuất dịch vụ từ Merchant đang chờ duyệt.
 Điều kiện tiên quyết
 Admin đang xem chi tiết đề xuất.
 Luồng chính
-1. Admin xem chi tiết đề xuất.2. Admin nhấn "Từ chối".3. Hệ thống hiển thị popup yêu cầu nhập lý do từ chối.4. Admin nhập lý do và nhấn "Xác nhận".5. Hệ thống cập nhật trạng thái đề xuất thành "Từ chối".6. Hệ thống gửi thông báo cho Merchant kèm lý do.7. Hệ thống thông báo "Đã từ chối đề xuất!"8. Kết thúc chức năng.
+1. Admin xem chi tiết đề xuất.
+2. Admin nhấn "Từ chối".
+3. Hệ thống hiển thị popup yêu cầu nhập lý do từ chối.
+4. Admin nhập lý do và nhấn "Xác nhận".
+5. Hệ thống cập nhật trạng thái đề xuất thành "Từ chối".
+6. Hệ thống gửi thông báo cho Merchant kèm lý do.
+7. Hệ thống thông báo "Đã từ chối đề xuất!"
+8. Kết thúc chức năng.
 Luồng thay thế
 4a. Admin nhấn "Hủy" → Đóng popup, không từ chối.
 Luồng ngoại lệ
-5a. Cập nhật thất bại → "Có lỗi xảy ra. Vui lòng thử lại."6a. Gửi thông báo thất bại → ghi log.
-3.6. Quản lý Khuyến mãi
-3.6.1. Use Case Xem danh sách 
+5a. Cập nhật thất bại → "Có lỗi xảy ra. Vui lòng thử lại."
+6a. Gửi thông báo thất bại → ghi log.
+3.6. Quản lý Khuyến mãi3.6. Quản lý Khuyến mãi3.6. Quản lý Khuyến mãi
+3.6.1. Use Case Xem danh sách 3.6.1. Use Case Xem danh sách 3.6.1. Use Case Xem danh sách
 Use Case Xem danh sách
 Mô tả
 Cho phép Admin xem tất cả mã giảm giá trong hệ thống.
@@ -891,12 +1676,15 @@ Admin đã đăng nhập.
 Điều kiện tiên quyết
 Admin truy cập trang Quản lý Khuyến mãi.
 Luồng chính
-1. Admin truy cập trang Quản lý Khuyến mãi.2. Hệ thống hiển thị danh sách mã giảm giá: Mã, Mô tả, Loại giảm, Mức giảm, Thời gian, Lượt dùng, Trạng thái.3. Admin có thể lọc theo trạng thái, thời gian.4. Kết thúc chức năng.
+1. Admin truy cập trang Quản lý Khuyến mãi.
+2. Hệ thống hiển thị danh sách mã giảm giá: Mã, Mô tả, Loại giảm, Mức giảm, Thời gian, Lượt dùng, Trạng thái.
+3. Admin có thể lọc theo trạng thái, thời gian.
+4. Kết thúc chức năng.
 Luồng thay thế
 2a. Chưa có mã nào → "Chưa có mã giảm giá nào."
 Luồng ngoại lệ
 Không có
-3.6.2. Use Case Thêm mới 
+3.6.2. Use Case Thêm mới 3.6.2. Use Case Thêm mới 3.6.2. Use Case Thêm mới
 Use Case Thêm mới
 Mô tả
 Cho phép Admin tạo mã giảm giá mới cho toàn hệ thống.
@@ -907,12 +1695,20 @@ Admin đã đăng nhập.
 Điều kiện tiên quyết
 Admin nhấn "Thêm mới".
 Luồng chính
-1. Admin nhấn "Thêm mới".2. Hệ thống hiển thị form: Mã, Mô tả, Loại giảm (%, cố định), Mức giảm, Giá trị đơn tối thiểu, Giảm tối đa, Thời gian bắt đầu/kết thúc, Số lượt dùng, Số lượt dùng mỗi khách.3. Admin điền thông tin và nhấn "Lưu".4. Hệ thống kiểm tra dữ liệu hợp lệ.5. Hệ thống tạo mã giảm giá mới.6. Hệ thống thông báo "Thêm Khuyến mãi thành công!"7. Kết thúc chức năng.
+1. Admin nhấn "Thêm mới".
+2. Hệ thống hiển thị form: Mã, Mô tả, Loại giảm (%, cố định), Mức giảm, Giá trị đơn tối thiểu, Giảm tối đa, Thời gian bắt đầu/kết thúc, Số lượt dùng, Số lượt dùng mỗi khách.
+3. Admin điền thông tin và nhấn "Lưu".
+4. Hệ thống kiểm tra dữ liệu hợp lệ.
+5. Hệ thống tạo mã giảm giá mới.
+6. Hệ thống thông báo "Thêm Khuyến mãi thành công!"
+7. Kết thúc chức năng.
 Luồng thay thế
-4a. Mã đã tồn tại → "Mã giảm giá này đã tồn tại."4b. Thời gian không hợp lệ → "Thời gian kết thúc phải sau thời gian bắt đầu."4c. Mức giảm không hợp lệ → "Mức giảm không hợp lệ."
+4a. Mã đã tồn tại → "Mã giảm giá này đã tồn tại."
+4b. Thời gian không hợp lệ → "Thời gian kết thúc phải sau thời gian bắt đầu."
+4c. Mức giảm không hợp lệ → "Mức giảm không hợp lệ."
 Luồng ngoại lệ
 5a. Tạo mã thất bại → "Có lỗi xảy ra. Vui lòng thử lại."
-3.6.3. Use Case Chỉnh sửa
+3.6.3. Use Case Chỉnh sửa3.6.3. Use Case Chỉnh sửa3.6.3. Use Case Chỉnh sửa
 Use Case Chỉnh sửa
 Mô tả
 Cho phép Admin cập nhật thông tin mã giảm giá thông qua modal chỉnh sửa.
@@ -923,12 +1719,23 @@ Admin đã đăng nhập và có ít nhất 1 mã giảm giá.
 Điều kiện tiên quyết
 Admin đang ở trang Quản lý Khuyến mãi.
 Luồng chính
-1. Admin truy cập trang Quản lý Khuyến mãi.2. Hệ thống hiển thị danh sách mã giảm giá dưới dạng bảng, mỗi dòng có icon cây bút.3. Admin nhấn icon cây bút trên dòng của mã cần sửa.4. Hệ thống hiển thị modal chỉnh sửa với thông tin hiện tại.5. Admin thay đổi thông tin cần sửa.6. Admin nhấn "Lưu".7. Hệ thống kiểm tra dữ liệu hợp lệ.8. Hệ thống cập nhật thông tin mã giảm giá.9. Hệ thống đóng modal và làm mới danh sách.10. Hệ thống thông báo "Cập nhật Khuyến mãi thành công!"11. Kết thúc chức năng.
+1. Admin truy cập trang Quản lý Khuyến mãi.
+2. Hệ thống hiển thị danh sách mã giảm giá dưới dạng bảng, mỗi dòng có icon cây bút.
+3. Admin nhấn icon cây bút trên dòng của mã cần sửa.
+4. Hệ thống hiển thị modal chỉnh sửa với thông tin hiện tại.
+5. Admin thay đổi thông tin cần sửa.
+6. Admin nhấn "Lưu".
+7. Hệ thống kiểm tra dữ liệu hợp lệ.
+8. Hệ thống cập nhật thông tin mã giảm giá.
+9. Hệ thống đóng modal và làm mới danh sách.
+10. Hệ thống thông báo "Cập nhật Khuyến mãi thành công!"
+11. Kết thúc chức năng.
 Luồng thay thế
-6a. Admin nhấn "Hủy" → Đóng modal, bỏ thay đổi.7a. Thời gian không hợp lệ → "Thời gian kết thúc phải sau thời gian bắt đầu."
+6a. Admin nhấn "Hủy" → Đóng modal, bỏ thay đổi.
+7a. Thời gian không hợp lệ → "Thời gian kết thúc phải sau thời gian bắt đầu."
 Luồng ngoại lệ
 8a. Cập nhật thất bại → "Có lỗi xảy ra. Vui lòng thử lại."
-3.6.4. Use Case Xóa
+3.6.4. Use Case Xóa3.6.4. Use Case Xóa3.6.4. Use Case Xóa
 Use Case Xóa
 Mô tả
 Cho phép Admin xóa mã giảm giá khỏi hệ thống.
@@ -939,12 +1746,20 @@ Admin đã đăng nhập và có ít nhất 1 mã giảm giá.
 Điều kiện tiên quyết
 Admin đang ở trang Quản lý Khuyến mãi.
 Luồng chính
-1. Admin truy cập trang Quản lý Khuyến mãi.2. Hệ thống hiển thị danh sách mã giảm giá, mỗi dòng có icon thùng rác.3. Admin nhấn icon thùng rác trên dòng của mã cần xóa.4. Hệ thống hiển thị popup xác nhận.5. Admin nhấn "Xác nhận".6. Hệ thống xóa mã giảm giá.7. Hệ thống thông báo "Xóa Khuyến mãi thành công!"8. Kết thúc chức năng.
+1. Admin truy cập trang Quản lý Khuyến mãi.
+2. Hệ thống hiển thị danh sách mã giảm giá, mỗi dòng có icon thùng rác.
+3. Admin nhấn icon thùng rác trên dòng của mã cần xóa.
+4. Hệ thống hiển thị popup xác nhận.
+5. Admin nhấn "Xác nhận".
+6. Hệ thống xóa mã giảm giá.
+7. Hệ thống thông báo "Xóa Khuyến mãi thành công!"
+8. Kết thúc chức năng.
 Luồng thay thế
-5a. Admin nhấn "Hủy" → Đóng popup, không xóa.6a. Mã đã được sử dụng → "Không thể xóa mã đã có lượt sử dụng."
+5a. Admin nhấn "Hủy" → Đóng popup, không xóa.
+6a. Mã đã được sử dụng → "Không thể xóa mã đã có lượt sử dụng."
 Luồng ngoại lệ
 6a. Xóa thất bại → "Có lỗi xảy ra. Vui lòng thử lại."
-3.6.5. Use Case Xem thống kê sử dụng
+3.6.5. Use Case Xem thống kê sử dụng3.6.5. Use Case Xem thống kê sử dụng3.6.5. Use Case Xem thống kê sử dụng
 Use Case Xem thống kê sử dụng
 Mô tả
 Cho phép Admin xem báo cáo hiệu quả của từng mã giảm giá.
@@ -955,13 +1770,16 @@ Admin đã đăng nhập.
 Điều kiện tiên quyết
 Admin đang ở trang Quản lý Khuyến mãi và nhấn "Thống kê".
 Luồng chính
-1. Admin nhấn "Thống kê" ở một mã giảm giá.2. Hệ thống hiển thị: Số lượt đã dùng, Tổng tiền đã giảm, Doanh thu từ các đơn dùng mã, Biểu đồ theo thời gian.3. Admin có thể xuất báo cáo.4. Kết thúc chức năng.
+1. Admin nhấn "Thống kê" ở một mã giảm giá.
+2. Hệ thống hiển thị: Số lượt đã dùng, Tổng tiền đã giảm, Doanh thu từ các đơn dùng mã, Biểu đồ theo thời gian.
+3. Admin có thể xuất báo cáo.
+4. Kết thúc chức năng.
 Luồng thay thế
 2a. Mã chưa được dùng → "Mã này chưa được sử dụng lần nào."
 Luồng ngoại lệ
 3a. Xuất báo cáo thất bại → "Không thể xuất báo cáo. Vui lòng thử lại."
-3.7. Quản lý Khiếu nại & Đánh giá
-3.7.1. Use Case Xem danh sách khiếu nại 
+3.7. Quản lý Khiếu nại & Đánh giá3.7. Quản lý Khiếu nại & Đánh giá3.7. Quản lý Khiếu nại & Đánh giá
+3.7.1. Use Case Xem danh sách khiếu nại 3.7.1. Use Case Xem danh sách khiếu nạ3.7.1. Use Case Xem danh sách khiếu nạii
 Use Case Xem danh sách khiếu nại
 Mô tả
 Cho phép Admin xem tất cả khiếu nại từ khách hàng.
@@ -972,12 +1790,16 @@ Admin đã đăng nhập.
 Điều kiện tiên quyết
 Admin truy cập trang Quản lý Khiếu nại.
 Luồng chính
-1. Admin truy cập trang Quản lý Khiếu nại.2. Hệ thống hiển thị danh sách khiếu nại: Mã đơn, Khách hàng, Loại sự cố, Mức độ, Merchant, Ngày gửi, Trạng thái.3. Admin có thể lọc theo trạng thái, mức độ, Merchant.4. Admin click vào một khiếu nại để xem chi tiết.5. Kết thúc chức năng.
+1. Admin truy cập trang Quản lý Khiếu nại.
+2. Hệ thống hiển thị danh sách khiếu nại: Mã đơn, Khách hàng, Loại sự cố, Mức độ, Merchant, Ngày gửi, Trạng thái.
+3. Admin có thể lọc theo trạng thái, mức độ, Merchant.
+4. Admin click vào một khiếu nại để xem chi tiết.
+5. Kết thúc chức năng.
 Luồng thay thế
 2a. Không có khiếu nại → "Chưa có khiếu nại nào."
 Luồng ngoại lệ
 Không có
-3.7.2. Use Case Xử lý khiếu nại
+3.7.2. Use Case Xử lý khiếu nại3.7.2. Use Case Xử lý khiếu nại3.7.2. Use Case Xử lý khiếu nại
 Use Case Xử lý khiếu nại
 Mô tả
 Cho phép Admin xem xét và xử lý khiếu nại từ khách hàng.
@@ -988,13 +1810,27 @@ Có khiếu nại đang chờ xử lý.
 Điều kiện tiên quyết
 Admin đang xem chi tiết khiếu nại.
 Luồng chính
-1. Admin xem chi tiết khiếu nại: mô tả, ảnh, đơn hàng liên quan, Merchant.2. Admin so sánh ảnh từ các giai đoạn (gửi đồ, lấy đồ, trả đồ, nhận đồ) để xác định bên chịu trách nhiệm.3. Admin xác định mức độ bồi thường:• Hư nhẹ: 30% giá trị đồ• Hư trung bình: 70% giá trị đồ• Hư nặng: 100% giá trị đồ• Mất đồ: 200% giá trị đồ4. Admin nhập kết quả xử lý và số tiền bồi thường.5. Admin nhấn "Xác nhận xử lý".6. Hệ thống cập nhật trạng thái khiếu nại thành "Đã xử lý".7. Hệ thống tạo yêu cầu bồi thường cho khách hàng.8. Hệ thống gửi thông báo kết quả cho khách và Merchant.9. Kết thúc chức năng.
+1. Admin xem chi tiết khiếu nại: mô tả, ảnh, đơn hàng liên quan, Merchant.
+2. Admin so sánh ảnh từ các giai đoạn (gửi đồ, lấy đồ, trả đồ, nhận đồ) để xác định bên chịu trách nhiệm.
+3. Admin xác định mức độ bồi thường:
+• Hư nhẹ: 30% giá trị đồ
+• Hư trung bình: 70% giá trị đồ
+• Hư nặng: 100% giá trị đồ
+• Mất đồ: 200% giá trị đồ
+4. Admin nhập kết quả xử lý và số tiền bồi thường.
+5. Admin nhấn "Xác nhận xử lý".
+6. Hệ thống cập nhật trạng thái khiếu nại thành "Đã xử lý".
+7. Hệ thống tạo yêu cầu bồi thường cho khách hàng.
+8. Hệ thống gửi thông báo kết quả cho khách và Merchant.
+9. Kết thúc chức năng.
 Luồng thay thế
-3a. Admin xác định khiếu nại không hợp lệ → Admin nhấn "Từ chối" và nhập lý do.5a. Admin nhấn "Hủy" → Đóng form, không xử lý.
+3a. Admin xác định khiếu nại không hợp lệ → Admin nhấn "Từ chối" và nhập lý do.
+5a. Admin nhấn "Hủy" → Đóng form, không xử lý.
 Luồng ngoại lệ
-6a. Cập nhật thất bại → "Có lỗi xảy ra. Vui lòng thử lại."8a. Gửi thông báo thất bại → ghi log.
-3.7.3. Use Case Xem đánh giá
-Use Case Xem đánh giá 
+6a. Cập nhật thất bại → "Có lỗi xảy ra. Vui lòng thử lại."
+8a. Gửi thông báo thất bại → ghi log.
+3.7.3. Use Case Xem đánh giá3.7.3. Use Case Xem đánh giá3.7.3. Use Case Xem đánh giá
+Use Case Xem đánh giá
 Mô tả
 Cho phép Admin xem đánh giá từ khách hàng.
 Tác nhân
@@ -1004,13 +1840,18 @@ Admin đã đăng nhập.
 Điều kiện tiên quyết
 Admin truy cập trang Quản lý Đánh giá.
 Luồng chính
-1. Admin truy cập trang Quản lý Đánh giá.2. Hệ thống hiển thị danh sách đánh giá: Mã đơn, Khách hàng, Merchant, Số sao, Nhận xét, Ngày đánh giá.3. Admin có thể lọc theo số sao, Merchant, khoảng thời gian.4. Admin click vào một đánh giá để xem chi tiết.5. Admin có thể ẩn đánh giá không phù hợp.6. Kết thúc chức năng.
+1. Admin truy cập trang Quản lý Đánh giá.
+2. Hệ thống hiển thị danh sách đánh giá: Mã đơn, Khách hàng, Merchant, Số sao, Nhận xét, Ngày đánh giá.
+3. Admin có thể lọc theo số sao, Merchant, khoảng thời gian.
+4. Admin click vào một đánh giá để xem chi tiết.
+5. Admin có thể ẩn đánh giá không phù hợp.
+6. Kết thúc chức năng.
 Luồng thay thế
 2a. Chưa có đánh giá → "Chưa có đánh giá nào."
 Luồng ngoại lệ
 5a. Ẩn đánh giá thất bại → "Có lỗi xảy ra. Vui lòng thử lại."
-3.8. Quản lý Tài chính
-3.8.1. Use Case Xem báo cáo doanh thu
+3.8. Quản lý Tài chính3.8. Quản lý Tài chính3.8. Quản lý Tài chính
+3.8.1. Use Case Xem báo cáo doanh thu3.8.1. Use Case Xem báo cáo doanh thu3.8.1. Use Case Xem báo cáo doanh thu
 Use Case Xem báo cáo doanh thu
 Mô tả
 Cho phép Admin xem báo cáo doanh thu toàn hệ thống.
@@ -1021,12 +1862,17 @@ Admin đã đăng nhập.
 Điều kiện tiên quyết
 Admin truy cập trang Báo cáo doanh thu.
 Luồng chính
-1. Admin truy cập trang Báo cáo doanh thu.2. Hệ thống hiển thị bộ lọc: Khoảng thời gian, Merchant.3. Admin chọn bộ lọc.4. Hệ thống hiển thị: Tổng doanh thu, Doanh thu theo Merchant, Doanh thu theo dịch vụ, Biểu đồ.5. Admin có thể xuất báo cáo.6. Kết thúc chức năng.
+1. Admin truy cập trang Báo cáo doanh thu.
+2. Hệ thống hiển thị bộ lọc: Khoảng thời gian, Merchant.
+3. Admin chọn bộ lọc.
+4. Hệ thống hiển thị: Tổng doanh thu, Doanh thu theo Merchant, Doanh thu theo dịch vụ, Biểu đồ.
+5. Admin có thể xuất báo cáo.
+6. Kết thúc chức năng.
 Luồng thay thế
 4a. Không có dữ liệu → "Không có dữ liệu trong khoảng thời gian này."
 Luồng ngoại lệ
 5a. Xuất báo cáo thất bại → "Không thể xuất báo cáo. Vui lòng thử lại."
-3.8.2. Use Case Xem phí hoa hồng
+3.8.2. Use Case Xem phí hoa hồng3.8.2. Use Case Xem phí hoa hồng3.8.2. Use Case Xem phí hoa hồng
 Use Case Xem phí hoa hồng
 Mô tả
 Cho phép Admin xem phí hoa hồng thu được từ mỗi Merchant.
@@ -1037,12 +1883,16 @@ Admin đã đăng nhập.
 Điều kiện tiên quyết
 Admin truy cập trang Phí hoa hồng.
 Luồng chính
-1. Admin truy cập trang Phí hoa hồng.2. Hệ thống hiển thị danh sách Merchant kèm: Tổng doanh thu, Tỷ lệ hoa hồng, Phí hoa hồng thu được, Số tiền thực trả Merchant.3. Admin có thể lọc theo kỳ.4. Admin có thể tạo kỳ đối soát cho từng Merchant.5. Kết thúc chức năng.
+1. Admin truy cập trang Phí hoa hồng.
+2. Hệ thống hiển thị danh sách Merchant kèm: Tổng doanh thu, Tỷ lệ hoa hồng, Phí hoa hồng thu được, Số tiền thực trả Merchant.
+3. Admin có thể lọc theo kỳ.
+4. Admin có thể tạo kỳ đối soát cho từng Merchant.
+5. Kết thúc chức năng.
 Luồng thay thế
 Không có
 Luồng ngoại lệ
 4a. Tạo kỳ đối soát thất bại → "Có lỗi xảy ra. Vui lòng thử lại."
-3.8.3. Use Case Xem danh sách refund
+3.8.3. Use Case Xem danh sách refund3.8.3. Use Case Xem danh sách refund3.8.3. Use Case Xem danh sách refund
 Use Case Xem danh sách refund
 Mô tả
 Cho phép Admin xem tất cả yêu cầu hoàn tiền.
@@ -1053,13 +1903,17 @@ Admin đã đăng nhập.
 Điều kiện tiên quyết
 Admin truy cập trang Quản lý Hoàn tiền.
 Luồng chính
-1. Admin truy cập trang Quản lý Hoàn tiền.2. Hệ thống hiển thị danh sách yêu cầu hoàn tiền: Mã đơn, Khách hàng, Số tiền, Lý do, Ngày yêu cầu, Trạng thái.3. Admin có thể lọc theo trạng thái.4. Admin click vào một yêu cầu để xem chi tiết.5. Kết thúc chức năng.
+1. Admin truy cập trang Quản lý Hoàn tiền.
+2. Hệ thống hiển thị danh sách yêu cầu hoàn tiền: Mã đơn, Khách hàng, Số tiền, Lý do, Ngày yêu cầu, Trạng thái.
+3. Admin có thể lọc theo trạng thái.
+4. Admin click vào một yêu cầu để xem chi tiết.
+5. Kết thúc chức năng.
 Luồng thay thế
 2a. Chưa có yêu cầu → "Chưa có yêu cầu hoàn tiền nào."
 Luồng ngoại lệ
 Không có
-3.9. Cài đặt hệ thống
-3.9.1. Use Case Cấu hình SLA
+3.9. Cài đặt hệ thống3.9. Cài đặt hệ thống3.9. Cài đặt hệ thống
+3.9.1. Use Case Cấu hình SLA3.9.1. Use Case Cấu hình SLA3.9.1. Use Case Cấu hình SLA
 Use Case Cấu hình SLA
 Mô tả
 Cho phép Admin thiết lập thời gian xử lý tối đa cho từng giai đoạn.
@@ -1070,12 +1924,23 @@ Admin đã đăng nhập.
 Điều kiện tiên quyết
 Admin truy cập trang Cấu hình SLA.
 Luồng chính
-1. Admin truy cập trang Cấu hình SLA.2. Hệ thống hiển thị các thông số hiện tại:• Thời gian gửi đồ tối đa (phút)• Thời gian Merchant lấy đồ tối đa (giờ)• Thời gian Merchant trả đồ tối đa (giờ)• Thời gian khách lấy đồ miễn phí (giờ)3. Admin thay đổi thông số.4. Admin nhấn "Lưu".5. Hệ thống kiểm tra dữ liệu hợp lệ.6. Hệ thống lưu cấu hình mới.7. Hệ thống thông báo "Cấu hình SLA thành công!"8. Kết thúc chức năng.
+1. Admin truy cập trang Cấu hình SLA.
+2. Hệ thống hiển thị các thông số hiện tại:
+• Thời gian gửi đồ tối đa (phút)
+• Thời gian Merchant lấy đồ tối đa (giờ)
+• Thời gian Merchant trả đồ tối đa (giờ)
+• Thời gian khách lấy đồ miễn phí (giờ)
+3. Admin thay đổi thông số.
+4. Admin nhấn "Lưu".
+5. Hệ thống kiểm tra dữ liệu hợp lệ.
+6. Hệ thống lưu cấu hình mới.
+7. Hệ thống thông báo "Cấu hình SLA thành công!"
+8. Kết thúc chức năng.
 Luồng thay thế
 5a. Thông số không hợp lệ → "Thông số không hợp lệ."
 Luồng ngoại lệ
 6a. Lưu thất bại → "Có lỗi xảy ra. Vui lòng thử lại."
-3.9.2. Use Case Cấu hình phí hoa hồng
+3.9.2. Use Case Cấu hình phí hoa hồng3.9.2. Use Case Cấu hình phí hoa hồng3.9.2. Use Case Cấu hình phí hoa hồng
 Use Case Cấu hình phí hoa hồng
 Mô tả
 Cho phép Admin thiết lập % phí hoa hồng mặc định cho Merchant.
@@ -1086,12 +1951,19 @@ Admin đã đăng nhập.
 Điều kiện tiên quyết
 Admin truy cập trang Cấu hình phí hoa hồng.
 Luồng chính
-1. Admin truy cập trang Cấu hình phí hoa hồng.2. Hệ thống hiển thị % phí hoa hồng mặc định hiện tại.3. Admin thay đổi % phí.4. Admin nhấn "Lưu".5. Hệ thống kiểm tra dữ liệu hợp lệ (0-100%).6. Hệ thống lưu cấu hình mới.7. Hệ thống thông báo "Cấu hình phí hoa hồng thành công!"8. Kết thúc chức năng.
+1. Admin truy cập trang Cấu hình phí hoa hồng.
+2. Hệ thống hiển thị % phí hoa hồng mặc định hiện tại.
+3. Admin thay đổi % phí.
+4. Admin nhấn "Lưu".
+5. Hệ thống kiểm tra dữ liệu hợp lệ (0-100%).
+6. Hệ thống lưu cấu hình mới.
+7. Hệ thống thông báo "Cấu hình phí hoa hồng thành công!"
+8. Kết thúc chức năng.
 Luồng thay thế
 5a. % phí không hợp lệ → "Tỷ lệ phí phải từ 0-100%."
 Luồng ngoại lệ
 6a. Lưu thất bại → "Có lỗi xảy ra. Vui lòng thử lại."
-3.9.4. Use Case Cấu hình phí phạt & bồi thường
+3.9.4. Use Case Cấu hình phí phạt & bồi thường3.9.4. Use Case Cấu hình phí phạt & bồi thường3.9.4. Use Case Cấu hình phí phạt & bồi thường
 Use Case Cấu hình phí phạt & bồi thường
 Mô tả
 Cho phép Admin thiết lập thời gian quy định, mức phí phạt và mức bồi thường.
@@ -1102,14 +1974,35 @@ Admin đã đăng nhập.
 Điều kiện tiên quyết
 Admin truy cập trang Cấu hình phí phạt & bồi thường.
 Luồng chính
-1. Admin truy cập trang Cấu hình phí phạt & bồi thường.2. Hệ thống hiển thị các thông số:• Phí phạt lưu locker quá hạn:- 0-24h: X đồng/ngày- 24-48h: Y đồng/ngày- 48-72h: Z đồng/ngày- >72h: Chuyển kho, phí lưu kho W đồng/ngày• Phí hủy đơn:- Trong 30 phút: 0%- 30 phút - 24h: 30%- Sau 24h: 100%• Bồi thường hư hỏng:- Hư nhẹ: 30%- Hư trung bình: 70%- Hư nặng: 100%- Mất đồ: 200%3. Admin thay đổi các thông số.4. Admin nhấn "Lưu".5. Hệ thống kiểm tra dữ liệu hợp lệ.6. Hệ thống lưu cấu hình mới.7. Hệ thống thông báo "Cấu hình thành công!"8. Kết thúc chức năng.
+1. Admin truy cập trang Cấu hình phí phạt & bồi thường.
+2. Hệ thống hiển thị các thông số:
+• Phí phạt lưu locker quá hạn:
+- 0-24h: X đồng/ngày
+- 24-48h: Y đồng/ngày
+- 48-72h: Z đồng/ngày
+- >72h: Chuyển kho, phí lưu kho W đồng/ngày
+• Phí hủy đơn:
+- Trong 30 phút: 0%
+- 30 phút - 24h: 30%
+- Sau 24h: 100%
+• Bồi thường hư hỏng:
+- Hư nhẹ: 30%
+- Hư trung bình: 70%
+- Hư nặng: 100%
+- Mất đồ: 200%
+3. Admin thay đổi các thông số.
+4. Admin nhấn "Lưu".
+5. Hệ thống kiểm tra dữ liệu hợp lệ.
+6. Hệ thống lưu cấu hình mới.
+7. Hệ thống thông báo "Cấu hình thành công!"
+8. Kết thúc chức năng.
 Luồng thay thế
 5a. Thông số không hợp lệ → "Thông số không hợp lệ."
 Luồng ngoại lệ
 6a. Lưu thất bại → "Có lỗi xảy ra. Vui lòng thử lại."
-4. SHIPPER (NHÂN VIÊN GIAO NHẬN)
-4.1. Đăng nhập & Hồ sơ
-4.1.1. Use Case Đăng nhập
+4. SHIPPER (NHÂN VIÊN GIAO NHẬN)4. SHIPPER (NHÂN VIÊN GIAO NHẬN)4. SHIPPER (NHÂN VIÊN GIAO NHẬN)
+4.1. Đăng nhập & Hồ sơ4.1. Đăng nhập & Hồ sơ4.1. Đăng nhập & Hồ sơ
+4.1.1. Use Case Đăng nhập4.1.1. Use Case Đăng nhập4.1.1. Use Case Đăng nhập
 Use Case Đăng nhập
 Mô tả
 Cho phép Shipper đăng nhập vào Dashboard bằng tài khoản do Merchant cấp.
@@ -1120,12 +2013,21 @@ Shipper đã có tài khoản do Merchant tạo.
 Điều kiện tiên quyết
 Shipper truy cập trang Đăng nhập của Shipper.
 Luồng chính
-1. Shipper truy cập trang Đăng nhập.2. Hệ thống hiển thị form: Email, Mật khẩu.3. Shipper nhập thông tin và nhấn "Đăng nhập".4. Hệ thống kiểm tra email tồn tại và mật khẩu đúng.5. Hệ thống kiểm tra tài khoản đang hoạt động.6. Hệ thống kiểm tra tài khoản có role là Shipper.7. Hệ thống cấp phiên đăng nhập và chuyển Shipper về Dashboard.8. Kết thúc chức năng.
+1. Shipper truy cập trang Đăng nhập.
+2. Hệ thống hiển thị form: Email, Mật khẩu.
+3. Shipper nhập thông tin và nhấn "Đăng nhập".
+4. Hệ thống kiểm tra email tồn tại và mật khẩu đúng.
+5. Hệ thống kiểm tra tài khoản đang hoạt động.
+6. Hệ thống kiểm tra tài khoản có role là Shipper.
+7. Hệ thống cấp phiên đăng nhập và chuyển Shipper về Dashboard.
+8. Kết thúc chức năng.
 Luồng thay thế
-4a. Sai email hoặc mật khẩu → "Email hoặc mật khẩu không đúng."5a. Tài khoản bị khóa → "Tài khoản của bạn đã bị khóa. Vui lòng liên hệ Merchant."6a. Tài khoản không phải Shipper → "Bạn không có quyền truy cập trang này."
+4a. Sai email hoặc mật khẩu → "Email hoặc mật khẩu không đúng."
+5a. Tài khoản bị khóa → "Tài khoản của bạn đã bị khóa. Vui lòng liên hệ Merchant."
+6a. Tài khoản không phải Shipper → "Bạn không có quyền truy cập trang này."
 Luồng ngoại lệ
 7a. Cấp phiên thất bại → "Có lỗi xảy ra. Vui lòng thử lại sau."
-4.1.3. Use Case Xem hồ sơ
+4.1.3. Use Case Xem hồ sơ4.1.3. Use Case Xem hồ sơ4.1.3. Use Case Xem hồ sơ
 Use Case Xem hồ sơ
 Mô tả
 Cho phép Shipper xem thông tin cá nhân.
@@ -1143,7 +2045,7 @@ Luồng thay thế
 Không có
 Luồng ngoại lệ
 Không có
-4.1.4. Use Case Cập nhật hồ sơ
+4.1.4. Use Case Cập nhật hồ sơ4.1.4. Use Case Cập nhật hồ sơ4.1.4. Use Case Cập nhật hồ sơ
 Use Case Cập nhật hồ sơ
 Mô tả
 Cho phép Shipper cập nhật thông tin cá nhân thông qua modal chỉnh sửa.
@@ -1154,13 +2056,30 @@ Shipper đã đăng nhập.
 Điều kiện tiên quyết
 Shipper đang ở trang Hồ sơ cá nhân.
 Luồng chính
-1. Shipper truy cập trang Hồ sơ cá nhân.2. Hệ thống hiển thị thông tin ở chế độ chỉ đọc, kèm icon cây bút.3. Shipper nhấn icon cây bút.4. Hệ thống hiển thị modal chỉnh sửa với các trường được phép sửa:• Họ tên• Số điện thoại• Avatar• Phương tiện• Biển số xe5. Các trường không cho sửa: Email, Merchant phụ trách.6. Shipper thay đổi thông tin và nhấn "Lưu".7. Hệ thống kiểm tra dữ liệu hợp lệ.8. Hệ thống cập nhật thông tin Shipper.9. Hệ thống đóng modal và làm mới trang hồ sơ.10. Hệ thống thông báo "Cập nhật hồ sơ thành công!"11. Kết thúc chức năng.
+1. Shipper truy cập trang Hồ sơ cá nhân.
+2. Hệ thống hiển thị thông tin ở chế độ chỉ đọc, kèm icon cây bút.
+3. Shipper nhấn icon cây bút.
+4. Hệ thống hiển thị modal chỉnh sửa với các trường được phép sửa:
+• Họ tên
+• Số điện thoại
+• Avatar
+• Phương tiện
+• Biển số xe
+5. Các trường không cho sửa: Email, Merchant phụ trách.
+6. Shipper thay đổi thông tin và nhấn "Lưu".
+7. Hệ thống kiểm tra dữ liệu hợp lệ.
+8. Hệ thống cập nhật thông tin Shipper.
+9. Hệ thống đóng modal và làm mới trang hồ sơ.
+10. Hệ thống thông báo "Cập nhật hồ sơ thành công!"
+11. Kết thúc chức năng.
 Luồng thay thế
-6a. Shipper nhấn "Hủy" → Đóng modal, bỏ thay đổi.7a. Số điện thoại không hợp lệ → "Số điện thoại không hợp lệ."7b. Upload avatar thất bại → "Không thể upload ảnh. Vui lòng thử lại."
+6a. Shipper nhấn "Hủy" → Đóng modal, bỏ thay đổi.
+7a. Số điện thoại không hợp lệ → "Số điện thoại không hợp lệ."
+7b. Upload avatar thất bại → "Không thể upload ảnh. Vui lòng thử lại."
 Luồng ngoại lệ
 8a. Cập nhật thất bại → "Có lỗi xảy ra. Vui lòng thử lại."
-4.3. Quản lý đơn hàng
-4.3.1. Use Case Xem đơn được gán
+4.3. Quản lý đơn hàng4.3. Quản lý đơn hàng4.3. Quản lý đơn hàng
+4.3.1. Use Case Xem đơn được gán4.3.1. Use Case Xem đơn được 4.3.1. Use Case Xem đơn được gángán
 Use Case Xem đơn được gán
 Mô tả
 Cho phép Shipper xem danh sách các đơn hàng được Merchant phân công.
@@ -1171,12 +2090,18 @@ Shipper đã đăng nhập.
 Điều kiện tiên quyết
 Shipper truy cập trang Đơn hàng của tôi.
 Luồng chính
-1. Shipper truy cập trang Đơn hàng của tôi.2. Hệ thống hiển thị danh sách đơn hàng được phân công, có bộ lọc theo trạng thái và loại nhiệm vụ.3. Mỗi đơn hiển thị: Mã đơn, Locker, Ô tủ, Loại nhiệm vụ (Lấy đồ / Trả đồ), Trạng thái, Thời gian phân công.4. Hệ thống highlight các đơn mới chưa xử lý.5. Hệ thống hiển thị icon xử lý trên mỗi đơn.6. Shipper click vào đơn để xem chi tiết.7. Kết thúc chức năng.
+1. Shipper truy cập trang Đơn hàng của tôi.
+2. Hệ thống hiển thị danh sách đơn hàng được phân công, có bộ lọc theo trạng thái và loại nhiệm vụ.
+3. Mỗi đơn hiển thị: Mã đơn, Locker, Ô tủ, Loại nhiệm vụ (Lấy đồ / Trả đồ), Trạng thái, Thời gian phân công.
+4. Hệ thống highlight các đơn mới chưa xử lý.
+5. Hệ thống hiển thị icon xử lý trên mỗi đơn.
+6. Shipper click vào đơn để xem chi tiết.
+7. Kết thúc chức năng.
 Luồng thay thế
 2a. Chưa có đơn nào → "Bạn chưa có đơn hàng nào được phân công."
 Luồng ngoại lệ
 Không có
-4.3.2. Use Case Xem chi tiết đơn
+4.3.2. Use Case Xem chi tiết đơn4.3.2. Use Case Xem chi tiết đơn4.3.2. Use Case Xem chi tiết đơn
 Use Case Xem chi tiết đơn
 Mô tả
 Cho phép Shipper xem chi tiết đơn hàng được phân công.
@@ -1187,44 +2112,101 @@ Shipper đã đăng nhập và có ít nhất 1 đơn hàng.
 Điều kiện tiên quyết
 Shipper chọn một đơn từ danh sách.
 Luồng chính
-1. Shipper chọn một đơn hàng.2. Hệ thống hiển thị: Mã đơn, Locker, Địa chỉ Locker, Ô tủ, Kích thước, Loại nhiệm vụ (Lấy đồ / Trả đồ), Trạng thái, Thời gian phân công, Ghi chú từ Merchant.3. Hệ thống không hiển thị tên, số điện thoại, địa chỉ của khách hàng.4. Hệ thống hiển thị nút hành động tương ứng: "Lấy đồ" hoặc "Trả đồ".5. Kết thúc chức năng.
+1. Shipper chọn một đơn hàng.
+2. Hệ thống hiển thị: Mã đơn, Locker, Địa chỉ Locker, Ô tủ, Kích thước, Loại nhiệm vụ (Lấy đồ / Trả đồ), Trạng thái, Thời gian phân công, Ghi chú từ Merchant.
+3. Hệ thống không hiển thị tên, số điện thoại, địa chỉ của khách hàng.
+4. Hệ thống hiển thị nút hành động tương ứng: "Lấy đồ" hoặc "Trả đồ".
+5. Kết thúc chức năng.
 Luồng thay thế
 Không có
 Luồng ngoại lệ
 Không có
-4.3.3. Use Case Lấy đồ từ locker
+4.3.3. Use Case Lấy đồ từ locker4.3.3. Use Case Lấy đồ từ locker4.3.3. Use Case Lấy đồ từ locker
 Use Case Lấy đồ từ locker
 Mô tả
 Cho phép Shipper quét mã QR để mở ô tủ, lấy đồ về tiệm, sau đó xác nhận hoặc hủy thao tác.
 Tác nhân
 Shipper
 Điều kiện trước
-Đơn hàng đang ở trạng thái "Đã gửi đồ" (khách đã bỏ đồ vào ô tủ); Shipper đã đến locker.
+Đơn ở Deposited; Shipper đang đăng nhập được phân công nhiệm vụ Collect của đơn và đã đến locker. Admin có thể thao tác thay theo quyền, nhưng phải ghi đúng danh tính Admin vào lịch sử.
 Điều kiện tiên quyết
 Shipper đang xem chi tiết đơn hàng trên web.
+Quy tắc nghiệp vụ
+Mỗi nhiệm vụ lấy có mã riêng: PIN 6 số hoặc QR WASHGO:COLLECT:{mã đơn}:{PIN nhiệm vụ}, được cấp khi phân công Collect. Shipper chỉ xem mã nhiệm vụ hiện được gán cho mình; không xem mã gửi/nhận của khách.
+Phân công sang Shipper khác đổi mã và vô hiệu mã cũ, reset lượt sai/khóa. Gửi lại đúng phân công hiện tại không đổi mã đang có. Sai mã 5 lần khóa nhiệm vụ 5 phút, hết khóa cho thử lại từ lượt đầu.
+SLA lấy là 4 giờ tính từ DepositedAt, chỉ cảnh báo khi trễ, vẫn cho phép thao tác. Đơn cũ không có mốc xác thực thì không tự suy đoán thời gian trễ.
+Sau xác nhận Tôi đã lấy đồ và xác thực hợp lệ, chuyển Deposited sang Collected, giải phóng ô gửi và ghi lịch sử trong một giao dịch. Chuyến lấy hết bận theo trạng thái đơn; không ghi đè trạng thái Offline/Busy thủ công của Shipper. Gọi lặp đúng quyền khi đã Collected không xử lý ô lần hai.
 Luồng chính
-1. Shipper mở chi tiết đơn hàng trên web.2. Hệ thống hiển thị khu vực "Quét mã QR để mở ô tủ" kèm nút "Tải ảnh QR lên".3. Shipper tải ảnh QR Code lên web.4. Hệ thống nhận diện QR, kiểm tra hợp lệ và khớp với đơn hàng.5. Hệ thống hiển thị giao diện ô tủ (mô phỏng) với:• Thông tin ô tủ: số ô, kích thước.• Nút "Tôi đã lấy đồ".• Nút "Hủy".6. Shipper lấy đồ ra khỏi ô tủ (thực tế) và nhấn "Tôi đã lấy đồ".7. Hệ thống cập nhật trạng thái đơn hàng thành "Đã lấy đồ".8. Hệ thống cập nhật trạng thái ô tủ thành "Trống".9. Hệ thống ghi nhận lịch sử trạng thái đơn.10. Hệ thống gửi thông báo cho Merchant biết Shipper đã lấy đồ.11. Hệ thống gửi thông báo cập nhật trạng thái cho khách hàng.12. Kết thúc chức năng.
+1. Shipper mở chi tiết đơn hàng trên web.
+2. Hệ thống hiển thị khu vực "Quét mã QR để mở ô tủ" kèm nút "Tải ảnh QR lên".
+3. Shipper tải ảnh QR Code lên web.
+4. Hệ thống nhận diện QR, kiểm tra hợp lệ và khớp với đơn hàng.
+5. Hệ thống hiển thị giao diện ô tủ (mô phỏng) với:
+• Thông tin ô tủ: số ô, kích thước.
+• Nút "Tôi đã lấy đồ".
+• Nút "Hủy".
+6. Shipper lấy đồ ra khỏi ô tủ (thực tế) và nhấn "Tôi đã lấy đồ".
+7. Hệ thống cập nhật trạng thái đơn hàng thành "Đã lấy đồ".
+8. Hệ thống cập nhật trạng thái ô tủ thành "Trống".
+9. Hệ thống ghi nhận lịch sử trạng thái đơn.
+10. Hệ thống gửi thông báo cho Merchant biết Shipper đã lấy đồ.
+11. Hệ thống gửi thông báo cập nhật trạng thái cho khách hàng.
+12. Kết thúc chức năng.
 Luồng thay thế
-4a. QR không hợp lệ → "QR Code không hợp lệ hoặc không khớp với đơn hàng."4b. QR không khớp đơn hàng → "QR Code không thuộc đơn hàng này."4c. Đã quá hạn lấy đồ (quá 4 giờ từ khi khách gửi) → "Đã quá hạn lấy đồ. Vui lòng liên hệ Merchant."4d. Đơn không ở trạng thái "Đã gửi đồ" → "Đơn hàng không ở trạng thái cho phép lấy đồ."6a. Shipper nhấn "Hủy" → Hệ thống đóng giao diện ô tủ, quay lại chi tiết đơn hàng, không cập nhật trạng thái.
+4a. QR không hợp lệ → "QR Code không hợp lệ hoặc không khớp với đơn hàng."
+4b. QR không khớp đơn hàng → "QR Code không thuộc đơn hàng này."
+4c. Quá 4 giờ từ thời điểm khách xác nhận gửi đồ: vẫn cho phép lấy đồ, ghi chú Trễ SLA lấy đồ trong lịch sử; không chặn để tránh kẹt đồ.
+4d. Đơn không ở trạng thái "Đã gửi đồ" → "Đơn hàng không ở trạng thái cho phép lấy đồ."
+6a. Shipper nhấn "Hủy" → Hệ thống đóng giao diện ô tủ, quay lại chi tiết đơn hàng, không cập nhật trạng thái.
 Luồng ngoại lệ
-3a. Upload ảnh thất bại → "Không thể tải ảnh lên. Vui lòng thử lại."7a. Cập nhật trạng thái thất bại → "Có lỗi xảy ra. Vui lòng thử lại."10a. Gửi thông báo thất bại → ghi log, không ảnh hưởng đến đơn hàng.
-4.3.4. Use Case Trả đồ vào locker
+3a. Upload ảnh thất bại → "Không thể tải ảnh lên. Vui lòng thử lại."
+7a. Cập nhật trạng thái thất bại → "Có lỗi xảy ra. Vui lòng thử lại."
+10a. Gửi thông báo thất bại → ghi log, không ảnh hưởng đến đơn hàng.
+4.3.4. Use Case Trả đồ vào locker4.3.4. Use Case Trả đồ vào locker4.3.4. Use Case Trả đồ vào locker
 Use Case Trả đồ vào locker
 Mô tả
-Cho phép Shipper quét mã QR để mở ô tủ, trả đồ đã giặt xong vào locker, sau đó xác nhận hoặc hủy thao tác.
+Cho phép Shipper đã được phân công quét mã QR, bỏ đồ đã giặt vào ô trả tại locker và xác nhận đã trả đồ.
 Tác nhân
 Shipper
 Điều kiện trước
-Đơn hàng đang ở trạng thái "Chờ trả đồ" (Merchant đã giặt xong và đóng gói); Shipper đã đến locker.
+Shipper đang đăng nhập được phân công Return và đã đến tủ trả. Với đơn giặt bình thường: đơn Paid, đã thanh toán tiền giặt, đã giặt/đóng gói. Với đơn hủy: đơn Cancelled và đồ ở tiệm; không yêu cầu thanh toán tiền giặt, phí hủy phải trả đủ trước khi khách nhận lại. Admin thao tác thay phải ghi đúng danh tính Admin.
 Điều kiện tiên quyết
 Shipper đang xem chi tiết đơn hàng trên web.
+Quy tắc nghiệp vụ
+Phải phân công riêng chuyến Return sau khi đơn Paid, kể cả dùng lại Shipper của chuyến Collect. Dùng PIN nhiệm vụ riêng hoặc QR WASHGO:RETURN:{mã đơn}:{PIN nhiệm vụ}; không dùng QR/PIN của khách hoặc mã chuyến Collect.
+Tủ trả phải đang hoạt động và thuộc Merchant của đơn; ô thuộc tủ trả, chưa xóa, đang Available và có kích cỡ bằng hoặc lớn hơn ô gửi. Hệ thống chỉ giữ/chiếm ô bằng cập nhật có điều kiện trong giao dịch xác nhận; hết ô hoặc lỗi thì rollback, không thay đổi đơn hoặc bộ đếm.
+Xác nhận trả hợp lệ lưu tủ/ô trả, chuyển Paid sang ReadyToReturn, ô trả sang Occupied, đặt PickupDeadline bằng thời điểm trả cộng 24 giờ và ghi lịch sử trong cùng giao dịch. SLA trễ chỉ cảnh báo, không ngăn trả.
+Chuyến Return hết bận khi đơn ReadyToReturn, không ghi đè trạng thái Offline/Busy thủ công. Actor trong lịch sử lấy từ tài khoản thực hiện; Admin thao tác thay phải ghi Admin, không giả Shipper. Gọi lặp đúng quyền khi đã ReadyToReturn không chiếm thêm ô hoặc ghi lịch sử trùng.
+Sai mã nhiệm vụ 5 lần khóa trong 5 phút. Khi gán lại Shipper đổi mã và reset khóa; chỉ Shipper hiện được gán và Admin được xem mã nhiệm vụ.
+Ngoại lệ cho đơn hủy: đơn Cancelled có đồ ở tiệm được phân công Return và xác thực mã nhiệm vụ riêng để đưa đồ về ô trả phù hợp, kể cả khi phí hủy chưa trả. Lưu vị trí AtReturnLocker và giữ Cancelled; không chuyển ReadyToReturn. Điều kiện Paid của tiền giặt chỉ áp dụng chuyến trả đồ giặt bình thường.
 Luồng chính
-1. Shipper mở chi tiết đơn hàng trên web.2. Hệ thống hiển thị khu vực "Quét mã QR để mở ô tủ" kèm nút "Tải ảnh QR lên".3. Shipper tải ảnh QR Code lên web.4. Hệ thống nhận diện QR, kiểm tra hợp lệ và khớp với đơn hàng.5. Hệ thống tự động chọn một ô trống trong locker.6. Hệ thống hiển thị giao diện ô tủ (mô phỏng) với:• Thông tin ô tủ mới: số ô, kích thước.• Nút "Tôi đã trả đồ".• Nút "Hủy".7. Shipper bỏ đồ vào ô tủ (thực tế) và nhấn "Tôi đã trả đồ".8. Hệ thống cập nhật trạng thái đơn hàng thành "Đã trả đồ".9. Hệ thống cập nhật trạng thái ô tủ thành "Đang có đồ".10. Hệ thống ghi nhận lịch sử trạng thái đơn.11. Hệ thống gửi thông báo cho Merchant biết Shipper đã trả đồ.12. Hệ thống gửi thông báo "Đồ của bạn đã sẵn sàng tại Locker ABC, ô số X" cho khách hàng.13. Kết thúc chức năng.
+1. Shipper mở chi tiết đơn hàng được phân công trên web.
+2. Hệ thống hiển thị khu vực quét mã QR để mở ô tủ, kèm nút tải ảnh QR lên.
+3. Shipper tải ảnh QR Code lên web.
+4. Hệ thống nhận diện QR và kiểm tra mã, quyền thực hiện nhiệm vụ, trạng thái đơn và thời hạn trả đồ.
+5. Hệ thống chọn một ô trống phù hợp tại locker trả.
+6. Hệ thống hiển thị giao diện ô tủ mô phỏng gồm thông tin ô, nút Tôi đã trả đồ và nút Hủy.
+7. Shipper bỏ đồ vào ô tủ thực tế và nhấn Tôi đã trả đồ.
+8. Hệ thống lưu locker trả, ID ô trả và số ô trả của đơn hàng.
+9. Hệ thống chuyển đơn sang Đồ đã về locker - chờ khách nhận (ReadyToReturn).
+10. Hệ thống chuyển trạng thái ô trả sang Đang có đồ (Occupied).
+11. Hệ thống ghi nhận lịch sử trả đồ và hoàn tất nhiệm vụ trả của Shipper.
+12. Hệ thống gửi thông báo cho Merchant biết Shipper đã trả đồ.
+13. Hệ thống thông báo cho khách vị trí locker và số ô để đến nhận đồ.
+14. Kết thúc chức năng.
 Luồng thay thế
-4a. QR không hợp lệ → "QR Code không hợp lệ hoặc không khớp với đơn hàng."4b. QR không khớp đơn hàng → "QR Code không thuộc đơn hàng này."4c. Đã quá hạn trả đồ (quá 24 giờ từ khi giặt xong) → "Đã quá hạn trả đồ. Vui lòng liên hệ Merchant."4d. Đơn không ở trạng thái "Chờ trả đồ" → "Đơn hàng không ở trạng thái cho phép trả đồ."5a. Không còn ô trống trong locker → "Locker đã hết ô trống. Vui lòng liên hệ Merchant."7a. Shipper nhấn "Hủy" → Hệ thống đóng giao diện ô tủ, quay lại chi tiết đơn hàng, không cập nhật trạng thái.
+4a. QR/PIN không hợp lệ hoặc không khớp nhiệm vụ: từ chối thao tác.
+4b. Shipper chưa được phân công nhiệm vụ Return của đơn: từ chối thao tác.
+4c. Quá 24 giờ từ khi đơn thanh toán thành công (PaidAt): vẫn cho trả đồ, ghi chú Trễ SLA trả đồ vào lịch sử. Mốc này không tính từ lúc giặt xong.
+4d. Đơn không ở Paid hoặc chưa thanh toán tiền giặt: không cho trả đồ.
+5a. Không có ô trống phù hợp tại tủ trả: thông báo Locker đã hết ô trống phù hợp. Vui lòng liên hệ Merchant; giữ đơn Paid và nhiệm vụ chưa hoàn tất.
+7a. Shipper nhấn Hủy trước khi xác nhận: đóng giao diện, không chuyển trạng thái hoặc xác nhận ô đang có đồ.
 Luồng ngoại lệ
-3a. Upload ảnh thất bại → "Không thể tải ảnh lên. Vui lòng thử lại."8a. Cập nhật trạng thái thất bại → "Có lỗi xảy ra. Vui lòng thử lại."12a. Gửi thông báo thất bại → ghi log, không ảnh hưởng đến đơn hàng.
-4.3.5. Use Case Cập nhật trạng thái giao nhận
+3a. Upload ảnh thất bại: hệ thống thông báo Không thể tải ảnh lên. Vui lòng thử lại.
+9a. Lưu trạng thái hoặc vị trí ô trả thất bại: hệ thống không ghi nhận giao nhận dang dở và thông báo Có lỗi xảy ra. Vui lòng thử lại.
+12a. Gửi thông báo cho Merchant thất bại: ghi log, không ảnh hưởng đến giao nhận đã xác nhận.
+13a. Gửi thông báo cho khách thất bại: ghi log, không ảnh hưởng đến giao nhận đã xác nhận.
+4.3.5. Use Case Cập nhật trạng thái giao nhận4.3.5. Use Case Cập nhật trạng thái giao nhận4.3.5. Use Case Cập nhật trạng thái giao nhận
 Use Case Cập nhật trạng thái giao nhận
 Mô tả
 Cho phép Shipper cập nhật trạng thái giao nhận (đã lấy đồ / đã trả đồ) trên hệ thống.
@@ -1235,12 +2217,19 @@ Shipper
 Điều kiện tiên quyết
 Shipper đã quét QR thành công tại locker.
 Luồng chính
-1. Shipper đã quét QR và mở được ô tủ.2. Shipper nhấn nút "Tôi đã lấy đồ" hoặc "Tôi đã trả đồ".3. Hệ thống ghi nhận trạng thái mới cho đơn hàng.4. Hệ thống ghi nhận lịch sử giao nhận.5. Hệ thống cập nhật thống kê Shipper (tổng đơn đã giao).6. Hệ thống gửi thông báo cho Merchant và Khách hàng.7. Kết thúc chức năng.
+1. Shipper đã quét QR và mở được ô tủ.
+2. Shipper nhấn nút "Tôi đã lấy đồ" hoặc "Tôi đã trả đồ".
+3. Hệ thống ghi nhận trạng thái mới cho đơn hàng.
+4. Hệ thống ghi nhận lịch sử giao nhận.
+5. Hệ thống cập nhật thống kê Shipper (tổng đơn đã giao).
+6. Hệ thống gửi thông báo cho Merchant và Khách hàng.
+7. Kết thúc chức năng.
 Luồng thay thế
 2a. Shipper nhấn "Hủy" → Không cập nhật trạng thái.
 Luồng ngoại lệ
-3a. Ghi nhận thất bại → "Có lỗi xảy ra. Vui lòng thử lại."6a. Gửi thông báo thất bại → ghi log.
-4.3.6. Use Case Xem lịch sử giao nhận
+3a. Ghi nhận thất bại → "Có lỗi xảy ra. Vui lòng thử lại."
+6a. Gửi thông báo thất bại → ghi log.
+4.3.6. Use Case Xem lịch sử giao nhận4.3.6. Use Case Xem lịch sử giao nhận4.3.6. Use Case Xem lịch sử giao nhận
 Use Case Xem lịch sử giao nhận
 Mô tả
 Cho phép Shipper xem lịch sử các đơn hàng đã giao nhận.
@@ -1251,13 +2240,17 @@ Shipper đã đăng nhập.
 Điều kiện tiên quyết
 Shipper truy cập trang Lịch sử giao nhận.
 Luồng chính
-1. Shipper truy cập trang Lịch sử giao nhận.2. Hệ thống hiển thị danh sách các đơn hàng đã hoàn thành, có bộ lọc theo khoảng thời gian và loại nhiệm vụ.3. Mỗi đơn hiển thị: Mã đơn, Locker, Loại nhiệm vụ, Thời gian lấy/trả, Trạng thái.4. Shipper click vào một đơn để xem chi tiết.5. Kết thúc chức năng.
+1. Shipper truy cập trang Lịch sử giao nhận.
+2. Hệ thống hiển thị danh sách các đơn hàng đã hoàn thành, có bộ lọc theo khoảng thời gian và loại nhiệm vụ.
+3. Mỗi đơn hiển thị: Mã đơn, Locker, Loại nhiệm vụ, Thời gian lấy/trả, Trạng thái.
+4. Shipper click vào một đơn để xem chi tiết.
+5. Kết thúc chức năng.
 Luồng thay thế
 2a. Chưa có lịch sử → "Bạn chưa có lịch sử giao nhận."
 Luồng ngoại lệ
 Không có
-5. THÔNG BÁO (DÙNG CHUNG CHO 4 ROLE)
-5.1. Use Case Xem thông báo
+5. THÔNG BÁO (DÙNG CHUNG CHO 4 ROLE)5. THÔNG BÁO (DÙNG CHUNG CHO 4 ROLE)5. THÔNG BÁO (DÙNG CHUNG CHO 4 ROLE)
+5.1. Use Case Xem thông báo5.1. Use Case Xem thông báo5.1. Use Case Xem thông báo
 Use Case Xem thông báo
 Mô tả
 Cho phép người dùng xem danh sách các thông báo từ hệ thống.
@@ -1268,12 +2261,21 @@ Người dùng đã đăng nhập.
 Điều kiện tiên quyết
 Người dùng nhấn vào biểu tượng Thông báo trên thanh điều hướng.
 Luồng chính
-1. Người dùng nhấn vào biểu tượng Thông báo.2. Hệ thống hiển thị danh sách thông báo, sắp xếp theo thời gian mới nhất.3. Mỗi thông báo hiển thị: Tiêu đề, Nội dung tóm tắt, Thời gian, Trạng thái đã đọc/chưa đọc.4. Hệ thống hiển thị số lượng thông báo chưa đọc trên biểu tượng.5. Người dùng click vào một thông báo để xem chi tiết.6. Nếu thông báo có liên kết đến đơn hàng/dịch vụ, hệ thống chuyển hướng đến trang tương ứng.7. Hệ thống tự động đánh dấu thông báo là đã đọc.8. Kết thúc chức năng.
+1. Người dùng nhấn vào biểu tượng Thông báo.
+2. Hệ thống hiển thị danh sách thông báo, sắp xếp theo thời gian mới nhất.
+3. Mỗi thông báo hiển thị: Tiêu đề, Nội dung tóm tắt, Thời gian, Trạng thái đã đọc/chưa đọc.
+4. Hệ thống hiển thị số lượng thông báo chưa đọc trên biểu tượng.
+5. Người dùng click vào một thông báo để xem chi tiết.
+6. Nếu thông báo có liên kết đến đơn hàng/dịch vụ, hệ thống chuyển hướng đến trang tương ứng.
+7. Hệ thống tự động đánh dấu thông báo là đã đọc.
+8. Kết thúc chức năng.
 Luồng thay thế
-2a. Chưa có thông báo → "Bạn chưa có thông báo nào."5a. Thông báo không có liên kết → Hệ thống chỉ hiển thị nội dung chi tiết.6a. Thông báo đã đọc → Hệ thống vẫn hiển thị nhưng không đánh dấu lại.
+2a. Chưa có thông báo → "Bạn chưa có thông báo nào."
+5a. Thông báo không có liên kết → Hệ thống chỉ hiển thị nội dung chi tiết.
+6a. Thông báo đã đọc → Hệ thống vẫn hiển thị nhưng không đánh dấu lại.
 Luồng ngoại lệ
 Không có
-5.2. Use Case Đánh dấu đã đọc
+5.2. Use Case Đánh dấu đã đọc5.2. Use Case Đánh dấu đã đọc5.2. Use Case Đánh dấu đã đọc
 Use Case Xem lịch sử giao nhận
 Mô tả
 Cho phép người dùng đánh dấu một hoặc tất cả thông báo là đã đọc.
@@ -1284,12 +2286,16 @@ Người dùng đang xem danh sách thông báo.
 Điều kiện tiên quyết
 Có ít nhất 1 thông báo chưa đọc.
 Luồng chính
-1. Người dùng nhấn vào một thông báo chưa đọc → Hệ thống tự động đánh dấu đã đọc.2. Hoặc người dùng nhấn "Đánh dấu tất cả đã đọc" → Hệ thống đánh dấu tất cả thông báo là đã đọc.3. Hệ thống cập nhật số lượng thông báo chưa đọc trên biểu tượng.4. Hệ thống thông báo "Đã đánh dấu tất cả là đã đọc." (nếu chọn tất cả).5. Kết thúc chức năng.
+1. Người dùng nhấn vào một thông báo chưa đọc → Hệ thống tự động đánh dấu đã đọc.
+2. Hoặc người dùng nhấn "Đánh dấu tất cả đã đọc" → Hệ thống đánh dấu tất cả thông báo là đã đọc.
+3. Hệ thống cập nhật số lượng thông báo chưa đọc trên biểu tượng.
+4. Hệ thống thông báo "Đã đánh dấu tất cả là đã đọc." (nếu chọn tất cả).
+5. Kết thúc chức năng.
 Luồng thay thế
 2a. Không có thông báo chưa đọc → Nút "Đánh dấu tất cả đã đọc" bị vô hiệu hóa.
 Luồng ngoại lệ
 3a. Cập nhật trạng thái thất bại → "Có lỗi xảy ra. Vui lòng thử lại."
-5.3. Use Case Xóa thông báo
+5.3. Use Case Xóa thông báo5.3. Use Case Xóa thông báo5.3. Use Case Xóa thông báo
 Use Case Xóa thông báo
 Mô tả
 Cho phép người dùng xóa một hoặc tất cả thông báo.
@@ -1300,7 +2306,11 @@ Người dùng đang xem danh sách thông báo.
 Điều kiện tiên quyết
 Có ít nhất 1 thông báo trong danh sách.
 Luồng chính
-1. Người dùng nhấn vào biểu tượng "Xóa" trên một thông báo → Hệ thống xóa thông báo đó.2. Hoặc người dùng nhấn "Xóa tất cả" → Hệ thống hiển thị popup xác nhận.3. Người dùng xác nhận → Hệ thống xóa tất cả thông báo.4. Hệ thống cập nhật danh sách thông báo.5. Kết thúc chức năng.
+1. Người dùng nhấn vào biểu tượng "Xóa" trên một thông báo → Hệ thống xóa thông báo đó.
+2. Hoặc người dùng nhấn "Xóa tất cả" → Hệ thống hiển thị popup xác nhận.
+3. Người dùng xác nhận → Hệ thống xóa tất cả thông báo.
+4. Hệ thống cập nhật danh sách thông báo.
+5. Kết thúc chức năng.
 Luồng thay thế
 2a. Người dùng hủy xác nhận → Không xóa thông báo.
 Luồng ngoại lệ
