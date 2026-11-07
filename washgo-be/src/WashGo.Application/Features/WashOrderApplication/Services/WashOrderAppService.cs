@@ -322,6 +322,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             await _eta.FillAsync(dto);
             if (scope.Role is "Shipper" or "Merchant" or "Admin")
                 await _enricher.FillTaskAsync(dto);
+            dto.AllowedActions = OrderActionRules.Build(order, scope.Role);
             return Success(RedactStaffData(dto, scope));
         }
 
@@ -783,12 +784,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             var order = await _orderRepo.GetWithDetailsAsync(orderId);
             if (order == null || scope.Role != "Merchant" || !CanAccess(order, scope))
                 return NotFound<WashOrderDetailDto>("Không tìm thấy đơn hàng thuộc tiệm để cập nhật cân nặng.");
-            if (order.Status != WashOrderStatus.Collected || order.PaymentStatus != PaymentStatus.Unpaid)
-                return BadRequest<WashOrderDetailDto>("Chỉ cân và chốt giá khi đơn đã lấy về tiệm, chưa bắt đầu giặt và chưa thanh toán.");
-            if (order.IncludedWeightKg is null || order.BaseProcessingHours is null)
-                return BadRequest<WashOrderDetailDto>("Đơn cũ chưa có thông tin giá gói; không tự áp dụng quy tắc mới để đổi giá đơn này.");
-            if (order.IncludedWeightKg <= 0 || !order.Items.Any(x => x.IsWeightBased))
-                return BadRequest<WashOrderDetailDto>("Đơn chỉ có dịch vụ theo chiếc/đôi, không áp dụng chốt giá theo kg.");
+            if (OrderActionRules.Weigh(order, scope.Role) is { } blocked)
+                return BadRequest<WashOrderDetailDto>(blocked.Message);
             if (order.ActualWeightKg == command.WeightKg)
             {
                 await uow.CompleteAsync();
@@ -840,23 +837,9 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 return NotFound<WashOrderDetailDto>("Không tìm thấy đơn hàng được phép cập nhật.");
             }
 
-            if (scope.Role is not ("Merchant" or "Admin"))
-                return BadRequest<WashOrderDetailDto>("Chỉ Merchant hoặc Admin được cập nhật các bước xử lý giặt.");
-
-            if (scope.Role == "Merchant" && command.NewStatus is not
-                (WashOrderStatus.Washing or WashOrderStatus.Drying or WashOrderStatus.Ironing or
-                 WashOrderStatus.Folding or WashOrderStatus.AwaitingPayment))
-                return BadRequest<WashOrderDetailDto>("Vai trò hiện tại không được thực hiện bước này.");
-
             var previousStatus = order.Status;
-            if (order.IncludedWeightKg > 0 && !order.ActualWeightKg.HasValue &&
-                command.NewStatus is WashOrderStatus.Washing or WashOrderStatus.AwaitingPayment)
-                return BadRequest<WashOrderDetailDto>("Merchant cần cập nhật số kg thực tế và chốt giá trước khi giặt hoặc yêu cầu thanh toán.");
-            if (!IsValidTransition(previousStatus, command.NewStatus))
-            {
-                return BadRequest<WashOrderDetailDto>(
-                    $"Không thể chuyển trạng thái từ {previousStatus} sang {command.NewStatus}.");
-            }
+            if (OrderActionRules.StatusChange(order, scope.Role, command.NewStatus) is { } blocked)
+                return BadRequest<WashOrderDetailDto>(blocked.Message);
 
             if (!await _orderRepo.TryChangeStatusAsync(order.Id, previousStatus, command.NewStatus))
                 return BadRequest<WashOrderDetailDto>("Đơn hàng vừa đổi trạng thái; vui lòng tải lại trước khi cập nhật.");
@@ -952,11 +935,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 return NotFound<WashOrderDetailDto>("Không tìm thấy đơn hàng được phép phân công.");
             }
 
-            if (order.MerchantId == null)
-                return BadRequest<WashOrderDetailDto>("Đơn chưa được Admin phân công cho Merchant.");
-            var task = GetAssignableTask(order);
-            if (!task.HasValue)
-                return BadRequest<WashOrderDetailDto>("Chỉ phân công khi đơn đã gửi đồ hoặc đã thanh toán và chờ mang đồ về tủ.");
+            if (OrderActionRules.Assign(order, scope.Role, out var task) is { } blocked)
+                return BadRequest<WashOrderDetailDto>(blocked.Message);
             var note = string.IsNullOrWhiteSpace(command.Note) ? null : command.Note.Trim();
             if (note?.Length > 500)
                 return BadRequest<WashOrderDetailDto>("Ghi chú cho Shipper tối đa 500 ký tự.");
@@ -1032,7 +1012,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             var order = await _orderRepo.FindAsync(orderId);
             if (order == null || scope.Role is not ("Admin" or "Merchant") || !CanAccess(order, scope))
                 return NotFound<List<AvailableShipperDto>>("Không tìm thấy đơn hàng được phép phân công.");
-            var task = GetAssignableTask(order);
+            var task = OrderActionRules.AssignableTask(order);
             if (!task.HasValue)
                 return BadRequest<List<AvailableShipperDto>>("Đơn chưa ở giai đoạn phân công giao nhận.");
 
@@ -1714,14 +1694,6 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             return (false, 0);
         }
 
-        private static DeliveryTaskType? GetAssignableTask(WashOrder order) => order.Status switch
-        {
-            WashOrderStatus.Deposited => DeliveryTaskType.Collect,
-            WashOrderStatus.Paid when order.PaymentStatus == PaymentStatus.Paid => DeliveryTaskType.Return,
-            WashOrderStatus.Cancelled when order.CancelledGoodsStatus == CancelledGoodsStatus.AtMerchant => DeliveryTaskType.Return,
-            _ => null
-        };
-
         private async Task CountDeliveryAsync(Guid? shipperId)
         {
             if (!shipperId.HasValue) return;
@@ -1729,19 +1701,6 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             if (shipper == null) return;
             shipper.TotalDeliveries++;
             await _shipperRepo.UpdateAsync(shipper, autoSave: true);
-        }
-
-        private static bool IsValidTransition(WashOrderStatus current, WashOrderStatus next)
-        {
-            return current switch
-            {
-                WashOrderStatus.Collected => next == WashOrderStatus.Washing,
-                WashOrderStatus.Washing => next is WashOrderStatus.Drying or WashOrderStatus.Ironing or WashOrderStatus.Folding or WashOrderStatus.AwaitingPayment,
-                WashOrderStatus.Drying => next is WashOrderStatus.Ironing or WashOrderStatus.Folding or WashOrderStatus.AwaitingPayment,
-                WashOrderStatus.Ironing => next is WashOrderStatus.Folding or WashOrderStatus.AwaitingPayment,
-                WashOrderStatus.Folding => next == WashOrderStatus.AwaitingPayment,
-                _ => false
-            };
         }
 
         private static (Guid LockerId, Guid BoxId) GetReturnSlot(WashOrder order) =>

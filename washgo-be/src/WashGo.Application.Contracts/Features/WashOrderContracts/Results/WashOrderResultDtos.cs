@@ -181,6 +181,8 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Results
         /// <summary>Hệ số tải của tiệm (1 = bình thường, tối đa 1.5).</summary>
         public double? PredictionLoadFactor { get; set; }
         public DateTime? PredictionUpdatedAt { get; set; }
+        /// <summary>Thao tác Merchant/Admin được làm lúc này (status/cân/phân công) kèm lý do; null với Customer, Shipper.</summary>
+        public OrderAllowedActionsDto? AllowedActions { get; set; }
         public List<WashOrderItemDto> Items { get; set; } = [];
         public List<WashOrderTimelineDto> Timeline { get; set; } = [];
     }
