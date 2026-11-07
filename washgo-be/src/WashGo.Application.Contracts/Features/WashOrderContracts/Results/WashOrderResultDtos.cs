@@ -80,6 +80,31 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Results
         public DateTime? DepositedAt { get; set; }
         public DateTime? PaidAt { get; set; }
         public DateTime? PickupDeadline { get; set; }
+        /// <summary>Hạn thanh toán (UTC), đặt khi đơn chuyển sang Chờ thanh toán; quá hạn thì đồ được chuyển về kho.</summary>
+        public DateTime? PaymentDeadline { get; set; }
+        /// <summary>Đơn chờ thanh toán, chưa trả tiền và đã quá hạn thanh toán.</summary>
+        public bool IsPaymentOverdue => Status == WashOrderStatus.AwaitingPayment && PaymentStatus == PaymentStatus.Unpaid &&
+            PaymentDeadline.HasValue && ServerNow > PaymentDeadline.Value;
+        /// <summary>Số giây còn lại để thanh toán (chỉ khi đơn đang chờ thanh toán và chưa trả tiền).</summary>
+        public long? PaymentSecondsLeft => Status == WashOrderStatus.AwaitingPayment && PaymentStatus == PaymentStatus.Unpaid &&
+            PaymentDeadline.HasValue ? Math.Max(0, (long)(PaymentDeadline.Value - ServerNow).TotalSeconds) : null;
+        /// <summary>Đồ đã ở tủ nhận nhưng khách chưa lấy và đã quá hạn lấy đồ (bắt đầu tính phí quá hạn).</summary>
+        public bool IsPickupOverdue => Status == WashOrderStatus.ReadyToReturn && PickupDeadline.HasValue && ServerNow > PickupDeadline.Value;
+        /// <summary>
+        /// Các loại quá hạn đang áp dụng: DepositExpired (quá hạn gửi đồ), PaymentOverdue (quá hạn thanh toán),
+        /// PickupOverdue (quá hạn lấy đồ). Rỗng khi đơn không quá hạn mốc nào.
+        /// </summary>
+        public List<string> OverdueTypes
+        {
+            get
+            {
+                var types = new List<string>();
+                if (IsDepositExpired) types.Add("DepositExpired");
+                if (IsPaymentOverdue) types.Add("PaymentOverdue");
+                if (IsPickupOverdue) types.Add("PickupOverdue");
+                return types;
+            }
+        }
         public decimal OverdueFeeTotal { get; set; }
         public decimal StorageFeeTotal { get; set; }
         public DateTime? MovedToStorageAt { get; set; }
