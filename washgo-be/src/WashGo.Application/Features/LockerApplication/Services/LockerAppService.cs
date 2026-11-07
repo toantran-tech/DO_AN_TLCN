@@ -357,6 +357,10 @@ namespace WashGo.Application.Features.LockerApplication.Services
             var merchants = (await _merchantRepo.GetListAsync(x => merchantIds.Contains(x.Id))).ToDictionary(x => x.Id, x => x.BusinessName);
             var areas = (await _areaRepo.GetListAsync(x => areaIds.Contains(x.Id))).ToDictionary(x => x.Id, x => x.Name);
             var lockerIds = lockers.Select(x => x.Id).ToList();
+            // Projected list rows skip the images column: read it for this page only, keeping the stored order.
+            var images = (await AsyncExecuter.ToListAsync((await _lockerRepo.GetQueryableAsync())
+                    .Where(x => lockerIds.Contains(x.Id)).Select(x => new { x.Id, x.Images })))
+                .ToDictionary(x => x.Id, x => ReadImages(x.Images));
             // Projected list rows do not load boxes, so count empty boxes here (UC 3.4.1 "Số ô trống").
             var empty = (await AsyncExecuter.ToListAsync((await _boxRepo.GetQueryableAsync())
                     .Where(b => lockerIds.Contains(b.LockerId) && !b.IsDeleted && b.Status == LockerBoxStatus.Available)
@@ -365,6 +369,7 @@ namespace WashGo.Application.Features.LockerApplication.Services
             foreach (var dto in lockers)
             {
                 dto.EmptyBoxesCount = empty.GetValueOrDefault(dto.Id);
+                dto.ImageUrls = images.GetValueOrDefault(dto.Id) ?? [];
                 dto.Merchants = links.Where(x => x.LockerId == dto.Id).OrderBy(x => x.Priority)
                     .Select(x => new LockerMerchantDto
                     {
@@ -390,20 +395,68 @@ namespace WashGo.Application.Features.LockerApplication.Services
             }
         }
 
+        public async Task<BaseResponse<LockerSummaryDto>> GetSummaryAsync(Guid? merchantId)
+        {
+            var scope = ScopeMerchantId ?? merchantId;
+            // Both counts in one repeatable-read transaction so lockers and boxes describe the same moment.
+            using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true,
+                isolationLevel: System.Data.IsolationLevel.RepeatableRead);
+            var links = await _linkRepo.GetQueryableAsync();
+            var lockers = (await _lockerRepo.GetQueryableAsync()).Where(x => !x.IsDeleted);
+            if (scope.HasValue)
+                lockers = lockers.Where(x => links.Any(l => l.LockerId == x.Id && l.MerchantId == scope.Value));
+            var byStatus = await AsyncExecuter.ToListAsync(lockers.GroupBy(x => x.Status)
+                .Select(g => new { Status = g.Key, Count = g.Count() }));
+            var lockerIds = lockers.Select(x => x.Id);
+            var boxes = await AsyncExecuter.ToListAsync((await _boxRepo.GetQueryableAsync())
+                .Where(b => !b.IsDeleted && lockerIds.Contains(b.LockerId))
+                .GroupBy(b => b.Status).Select(g => new { Status = g.Key, Count = g.Count() }));
+            await uow.CompleteAsync();
+            int L(LockerStatus s) => byStatus.Where(x => x.Status == s).Sum(x => x.Count);
+            int B(LockerBoxStatus s) => boxes.Where(x => x.Status == s).Sum(x => x.Count);
+            return Success(new LockerSummaryDto
+            {
+                TotalLockers = byStatus.Sum(x => x.Count),
+                ActiveLockers = L(LockerStatus.Active),
+                MaintenanceLockers = L(LockerStatus.Maintenance),
+                InactiveLockers = L(LockerStatus.Inactive),
+                TotalBoxes = boxes.Sum(x => x.Count),
+                AvailableBoxes = B(LockerBoxStatus.Available),
+                OccupiedBoxes = B(LockerBoxStatus.Occupied),
+                ReservedBoxes = B(LockerBoxStatus.Reserved),
+                MaintenanceBoxes = B(LockerBoxStatus.Maintenance),
+                GeneratedAt = DateTime.UtcNow
+            });
+        }
+
+        private static PaginatedResult<LockerUsageDto> UsageError(System.Net.HttpStatusCode status, string message) => new()
+        {
+            Succeeded = false, StatusCode = status, Message = message
+        };
+
         public async Task<PaginatedResult<LockerUsageDto>> GetUsageHistoryAsync(Guid id, LockerUsageQuery query)
         {
+            const long maxUnix = BaseFilterQuery.MaxUnixSeconds;
+            if (query.FromDate is < 0 or > maxUnix || query.ToDate is < 0 or > maxUnix)
+                return UsageError(System.Net.HttpStatusCode.BadRequest, "Khoảng ngày không hợp lệ (fromDate/toDate là Unix giây, không âm).");
+            if (query.FromDate is > 0 && query.ToDate is > 0 && query.FromDate > query.ToDate)
+                return UsageError(System.Net.HttpStatusCode.BadRequest, "Ngày bắt đầu phải trước hoặc bằng ngày kết thúc.");
             var locker = await _lockerRepo.FindAsync(id);
             if (locker == null || locker.IsDeleted || !await InScopeAsync(locker.Id))
-                return new PaginatedResult<LockerUsageDto>
-                {
-                    Succeeded = false,
-                    StatusCode = System.Net.HttpStatusCode.NotFound,
-                    Message = "Không tìm thấy thông tin tủ Locker!"
-                };
+                return UsageError(System.Net.HttpStatusCode.NotFound, "Không tìm thấy thông tin tủ Locker!");
+            // A box of another locker is an input error, not an empty history; deleted boxes keep their history.
+            if (query.BoxId.HasValue && !await _boxRepo.AnyAsync(x => x.Id == query.BoxId.Value && x.LockerId == id))
+                return UsageError(System.Net.HttpStatusCode.BadRequest, "Ô tủ không thuộc locker này.");
 
-            var orders = await AsyncExecuter.ToListAsync((await _orderRepo.GetQueryableAsync())
+            var orderQuery = (await _orderRepo.GetQueryableAsync())
                 .Where(x => !x.IsDeleted && ((x.LockerId == id && x.DepositedAt != null) ||
-                                             (x.ReturnLockerId == id && x.ReturnBoxNumber != null))));
+                                             (x.ReturnLockerId == id && x.ReturnBoxNumber != null)));
+            // Shared lockers: a Merchant only sees the uses of its own orders.
+            if (ScopeMerchantId.HasValue)
+                orderQuery = orderQuery.Where(x => x.MerchantId == ScopeMerchantId.Value);
+            if (query.BoxId.HasValue)
+                orderQuery = orderQuery.Where(x => x.BoxId == query.BoxId.Value || x.ReturnBoxId == query.BoxId.Value);
+            var orders = await AsyncExecuter.ToListAsync(orderQuery);
             var orderIds = orders.Select(x => x.Id).ToList();
             var timeline = (await AsyncExecuter.ToListAsync((await _timelineRepo.GetQueryableAsync())
                     .Where(x => orderIds.Contains(x.WashOrderId) &&
@@ -424,6 +477,7 @@ namespace WashGo.Application.Features.LockerApplication.Services
                 if (o.LockerId == id && o.DepositedAt != null)
                     rows.Add(new LockerUsageDto
                     {
+                        UsageId = $"{o.Id}:1", BoxId = o.BoxId,
                         OrderId = o.Id, OrderCode = o.OrderCode, BoxNumber = o.BoxNumber, UsageType = 1,
                         // Timeline times share one precision, so put-in and taken-out compare correctly.
                         PutInAt = At(o.Id, WashOrderStatus.Deposited) ?? o.DepositedAt,
@@ -438,6 +492,7 @@ namespace WashGo.Application.Features.LockerApplication.Services
                         continue;
                     rows.Add(new LockerUsageDto
                     {
+                        UsageId = $"{o.Id}:2", BoxId = o.ReturnBoxId,
                         OrderId = o.Id, OrderCode = o.OrderCode, BoxNumber = o.ReturnBoxNumber, UsageType = 2,
                         PutInAt = putIn,
                         TakenOutAt = cancelledReturn ? o.CancelledGoodsReturnedAt
@@ -449,11 +504,7 @@ namespace WashGo.Application.Features.LockerApplication.Services
 
             IEnumerable<LockerUsageDto> filtered = rows;
             if (query.BoxId.HasValue)
-            {
-                var box = await _boxRepo.FirstOrDefaultAsync(x => x.Id == query.BoxId.Value && x.LockerId == id);
-                var number = box?.BoxNumber;
-                filtered = filtered.Where(x => x.BoxNumber == number);
-            }
+                filtered = filtered.Where(x => x.BoxId == query.BoxId.Value);
             if (query.FromDate is > 0)
             {
                 var from = DateTimeOffset.FromUnixTimeSeconds(query.FromDate.Value).UtcDateTime;
@@ -464,7 +515,9 @@ namespace WashGo.Application.Features.LockerApplication.Services
                 var to = DateTimeOffset.FromUnixTimeSeconds(query.ToDate.Value).UtcDateTime;
                 filtered = filtered.Where(x => x.PutInAt <= to);
             }
-            var list = filtered.OrderByDescending(x => x.PutInAt ?? DateTime.MinValue).ToList();
+            // Stable order across pages: time, then order code, then usage type (ties and missing times included).
+            var list = filtered.OrderByDescending(x => x.PutInAt ?? DateTime.MinValue)
+                .ThenBy(x => x.OrderCode, StringComparer.Ordinal).ThenBy(x => x.UsageType).ToList();
             var page = Math.Max(1, query.Page);
             var take = Math.Clamp(query.Take, 1, 100);
             return Success(list.Skip((page - 1) * take).Take(take).ToList(), list.Count, page, take,
