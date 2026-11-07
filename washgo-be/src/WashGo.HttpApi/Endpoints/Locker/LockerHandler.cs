@@ -26,6 +26,12 @@ namespace WashGo.HttpApi.Endpoints.Locker
                 .WithSummary("Admin xem mọi locker; Merchant chỉ xem locker được gán (tên, địa chỉ, số ô, số ô trống, trạng thái).")
                 .WithOpenApi();
 
+            group.MapGet("/summary", async (Guid? merchantId, ILockerAppService svc) =>
+                (await svc.GetSummaryAsync(merchantId)).CustomResult())
+                .WithName("Thống kê Locker")
+                .WithSummary("Tổng locker được gán (đang hoạt động/bảo trì/ngừng) và tổng ô chưa xóa theo trạng thái (trống/có đồ/giữ chỗ/bảo trì), một lần đếm, không theo bộ lọc bảng. Merchant theo JWT; merchantId chỉ dành cho Admin.")
+                .WithOpenApi();
+
             group.MapGet("/{id:guid}", async (Guid id, ILockerAppService svc) =>
                 (await svc.GetByIdAsync(id)).CustomResult())
                 .WithName("Xem chi tiết Locker")
@@ -42,7 +48,7 @@ namespace WashGo.HttpApi.Endpoints.Locker
                 return result.StatusCode == System.Net.HttpStatusCode.NotFound ? Results.NotFound(result) : result.CustomResult();
             })
                 .WithName("Lịch sử sử dụng Locker")
-                .WithSummary("Các lượt dùng ô: mã đơn, ô, gửi/trả, thời gian đặt vào, thời gian lấy ra, trạng thái đơn; lọc theo thời gian và theo ô (boxId).")
+                .WithSummary("Các lượt dùng ô (usageId, boxId, mã đơn, ô, gửi/trả, thời gian đặt vào/lấy ra, trạng thái đơn); lọc theo thời gian đặt vào và theo ô. Merchant chỉ thấy lượt của đơn thuộc tiệm mình (locker dùng chung). Khoảng ngày sai hoặc boxId không thuộc locker → 400.")
                 .WithOpenApi();
 
             group.MapPost("/", async (CreateLockerCommand command, ILockerAppService svc) =>
