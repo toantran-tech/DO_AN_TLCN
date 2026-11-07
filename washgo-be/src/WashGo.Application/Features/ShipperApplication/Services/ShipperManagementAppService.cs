@@ -9,6 +9,8 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Volo.Abp;
+using Volo.Abp.Data;
 using Volo.Abp.Domain.Repositories;
 using Volo.Abp.Uow;
 using WashGo.Application.Contracts.Features.ShipperContracts.Commands;
@@ -43,6 +45,7 @@ namespace WashGo.Application.Features.ShipperApplication.Services
         private readonly IAuthEmailSender _emailSender;
         private readonly IRepository<RefreshToken, Guid> _refreshTokenRepo;
         private readonly IRepository<ShipperAudit, Guid> _auditRepo;
+        private readonly IDataFilter _dataFilter;
         private readonly IConfiguration _configuration;
         private readonly ILogger<ShipperManagementAppService> _logger;
 
@@ -55,6 +58,7 @@ namespace WashGo.Application.Features.ShipperApplication.Services
             IAuthEmailSender emailSender,
             IRepository<RefreshToken, Guid> refreshTokenRepo,
             IRepository<ShipperAudit, Guid> auditRepo,
+            IDataFilter dataFilter,
             IConfiguration configuration,
             ILogger<ShipperManagementAppService> logger)
         {
@@ -66,6 +70,7 @@ namespace WashGo.Application.Features.ShipperApplication.Services
             _emailSender = emailSender;
             _refreshTokenRepo = refreshTokenRepo;
             _auditRepo = auditRepo;
+            _dataFilter = dataFilter;
             _configuration = configuration;
             _logger = logger;
         }
@@ -294,8 +299,10 @@ namespace WashGo.Application.Features.ShipperApplication.Services
 
         public async Task<BaseResponse<List<ShipperAuditDto>>> GetAuditsAsync(Guid id)
         {
-            var (shipper, _) = await FindOwnedAsync(id);
-            if (shipper == null)
+            Shipper? shipper;
+            using (_dataFilter.Disable<ISoftDelete>())
+                shipper = await _shipperRepo.FindAsync(id);
+            if (shipper == null || !IsAdmin && shipper.MerchantId != CurrentUser.Id)
                 return NotFound<List<ShipperAuditDto>>("Không tìm thấy Shipper!");
             var rows = await AsyncExecuter.ToListAsync((await _auditRepo.GetQueryableAsync())
                 .Where(x => x.ShipperId == id).OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id));
@@ -304,6 +311,87 @@ namespace WashGo.Application.Features.ShipperApplication.Services
                 Id = x.Id, Action = x.Action, Reason = x.Reason, ActorId = x.ActorId, ActorRole = x.ActorRole,
                 ActorName = x.ActorName, Details = x.Details, CreatedAt = x.CreatedAt
             }).ToList());
+        }
+
+        public const int MaxBatchSize = 50;
+
+        public async Task<BaseResponse<ShipperDto>> DeleteAsync(Guid id, string? reason)
+        {
+            reason = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim();
+            if (reason == null || reason.Length > 500)
+                return BadRequest<ShipperDto>("Vui lòng nhập lý do xóa Shipper (tối đa 500 ký tự).");
+            return (await DeleteCoreAsync(id, reason)).ToResponse();
+        }
+
+        public Task<BaseResponse<ShipperBatchResultDto>> BatchLockAsync(ShipperBatchActionCommand command) =>
+            BatchAsync(command, "khóa", LockCoreAsync);
+
+        public Task<BaseResponse<ShipperBatchResultDto>> BatchDeleteAsync(ShipperBatchActionCommand command) =>
+            BatchAsync(command, "xóa", DeleteCoreAsync);
+
+        // Partial success: every shipper runs the single-item rule in its own transaction and gets its own result.
+        private async Task<BaseResponse<ShipperBatchResultDto>> BatchAsync(ShipperBatchActionCommand command, string verb,
+            Func<Guid, string, Task<AccountActionResult>> action)
+        {
+            var reason = command.Reason?.Trim();
+            if (string.IsNullOrEmpty(reason) || reason.Length > 500)
+                return BadRequest<ShipperBatchResultDto>($"Vui lòng nhập lý do {verb} (tối đa 500 ký tự).");
+            var requested = command.ShipperIds ?? [];
+            var ids = requested.Where(x => x != Guid.Empty).Distinct().ToList();
+            if (ids.Count == 0 || requested.Count > MaxBatchSize)
+                return BadRequest<ShipperBatchResultDto>($"Chọn từ 1 đến {MaxBatchSize} Shipper.");
+            var result = new ShipperBatchResultDto { Requested = requested.Count, DuplicatesIgnored = requested.Count - ids.Count - requested.Count(x => x == Guid.Empty) };
+            foreach (var id in ids)
+            {
+                var item = await action(id, reason);
+                result.Results.Add(new ShipperBatchItemDto
+                {
+                    ShipperId = id, Succeeded = item.Status == HttpStatusCode.OK, Code = item.Code, Message = item.Message
+                });
+            }
+            result.Succeeded = result.Results.Count(x => x.Succeeded);
+            result.Failed = result.Results.Count - result.Succeeded;
+            return Success(result, $"Đã {verb} {result.Succeeded}/{result.Results.Count} Shipper.");
+        }
+
+        // Soft delete: hidden from lists/assignment, sign-in revoked; orders and delivery history keep the shipper.
+        // Identity data stays on the hidden row for reconciliation and is no longer returned by any API.
+        private async Task<AccountActionResult> DeleteCoreAsync(Guid id, string reason)
+        {
+            using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            Shipper? shipper;
+            using (_dataFilter.Disable<ISoftDelete>())
+                shipper = await _shipperRepo.GetForUpdateAsync(id);
+            if (shipper == null || !IsAdmin && shipper.MerchantId != CurrentUser.Id)
+                return new(HttpStatusCode.NotFound, "NotFound", "Không tìm thấy Shipper!", null);
+            if (shipper.IsDeleted)
+            {
+                await uow.CompleteAsync();
+                return new(HttpStatusCode.OK, "AlreadyDeleted", "Shipper đã được xóa trước đó.", null);
+            }
+            var user = await _userRepo.FindAsync(shipper.UserId);
+            if (user == null || !await _roleRepo.AnyAsync(x => x.Id == user.RoleId && x.Name == "Shipper"))
+                return new(HttpStatusCode.BadRequest, "NotShipper", "Tài khoản này không phải tài khoản Shipper.", null);
+            var active = (await ActiveTaskCountsAsync([shipper.Id])).GetValueOrDefault(shipper.Id);
+            if (active > 0)
+                return new(HttpStatusCode.Conflict, "HasActiveTasks",
+                    $"Shipper đang có {active} nhiệm vụ lấy/trả chưa hoàn tất; hãy để Shipper hoàn tất hoặc phân công người khác trước khi xóa.",
+                    ToDto(shipper, user, active));
+
+            var now = DateTime.UtcNow;
+            shipper.IsDeleted = true;
+            shipper.DeletedAt = now;
+            shipper.DeletedBy = CurrentUser.Id;
+            shipper.IsActive = false;
+            shipper.UpdatedAt = now;
+            user.IsActive = false;
+            user.UpdatedAt = now;
+            await _userRepo.UpdateAsync(user, autoSave: true);
+            await _shipperRepo.UpdateAsync(shipper, autoSave: true);
+            await RevokeSessionsAsync(user.Id);
+            await AuditAsync(shipper, ShipperAuditAction.Deleted, reason, null);
+            await uow.CompleteAsync();
+            return new(HttpStatusCode.OK, "Deleted", "Đã xóa Shipper; tài khoản không còn đăng nhập được, lịch sử đơn hàng được giữ nguyên.", null);
         }
 
         /// <summary>Result of one account action, shared by the single and the batch endpoints.</summary>

@@ -1,4 +1,5 @@
 using System;
+using Volo.Abp;
 using Volo.Abp.Domain.Entities;
 using WashGo.Core.Domain.Attributes;
 using WashGo.Domain.Shared.Constants;
@@ -8,7 +9,8 @@ namespace WashGo.Domain.Entities.Partner
 {
 
     [SevagoTable(WashGoDbProperties.Shippers, Schema = WashGoDbProperties.Schema)]
-    public class Shipper : Entity<Guid>
+    /// <summary>Xóa = xóa mềm (ISoftDelete): ẩn khỏi danh sách/phân công, giữ liên kết đơn hàng và lịch sử giao nhận.</summary>
+    public class Shipper : Entity<Guid>, ISoftDelete
     {
         public Shipper() { }
         public Shipper(Guid id) : base(id) { }
@@ -26,6 +28,9 @@ namespace WashGo.Domain.Entities.Partner
         /// <summary>Thời điểm và lý do khóa tài khoản (User.IsActive = false) gần nhất; null khi không bị khóa.</summary>
         public DateTime? LockedAt { get; set; }
         public string? LockReason { get; set; }
+        public bool IsDeleted { get; set; }
+        public DateTime? DeletedAt { get; set; }
+        public Guid? DeletedBy { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     }
