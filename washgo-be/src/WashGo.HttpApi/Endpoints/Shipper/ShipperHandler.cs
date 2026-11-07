@@ -62,6 +62,24 @@ namespace WashGo.HttpApi.Endpoints.Shipper
                 .WithSummary("Ai đã khóa/mở khóa/xóa/sửa giấy tờ Shipper, lúc nào, lý do (mới nhất trước).")
                 .WithOpenApi();
 
+            group.MapDelete("/{id:guid}", async (Guid id, string? reason, IShipperManagementAppService svc) =>
+                (await svc.DeleteAsync(id, reason)).CustomResult())
+                .WithName("Xóa Shipper")
+                .WithSummary("Xóa mềm Shipper của tiệm (?reason= bắt buộc): ẩn khỏi danh sách/thống kê/phân công, khóa đăng nhập và thu hồi phiên; giữ đơn hàng và lịch sử giao nhận. Còn nhiệm vụ chưa xong → 409 HasActiveTasks. Xóa lại → 200 AlreadyDeleted. Có audit.")
+                .WithOpenApi();
+
+            group.MapPost("/batch/lock", async (ShipperBatchActionCommand command, IShipperManagementAppService svc) =>
+                (await svc.BatchLockAsync(command)).CustomResult())
+                .WithName("Khóa nhiều Shipper")
+                .WithSummary("Khóa tối đa 50 Shipper (ID trùng bỏ qua), mỗi người một transaction theo cùng luật khóa đơn lẻ; trả kết quả/lý do theo từng ID (thành công từng phần). Gửi lại an toàn.")
+                .WithOpenApi();
+
+            group.MapPost("/batch/delete", async (ShipperBatchActionCommand command, IShipperManagementAppService svc) =>
+                (await svc.BatchDeleteAsync(command)).CustomResult())
+                .WithName("Xóa nhiều Shipper")
+                .WithSummary("Xóa mềm tối đa 50 Shipper (ID trùng bỏ qua), mỗi người một transaction theo cùng luật xóa đơn lẻ; trả kết quả/lý do theo từng ID. Gửi lại an toàn.")
+                .WithOpenApi();
+
             group.MapPut("/{id:guid}", async (Guid id, UpdateShipperCommand command, IShipperManagementAppService svc) =>
                 (await svc.UpdateAsync(id, command)).CustomResult())
                 .WithName("Chỉnh sửa Shipper")
