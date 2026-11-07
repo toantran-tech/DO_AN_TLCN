@@ -169,6 +169,11 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("type");
 
+                    b.Property<List<string>>("VideoUrls")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("video_urls");
+
                     b.HasKey("Id");
 
                     b.HasIndex("CustomerId");
@@ -303,6 +308,11 @@ namespace WashGo.EntityFrameworkCore.Migrations
                     b.Property<int?>("SpeedStars")
                         .HasColumnType("integer")
                         .HasColumnName("speed_stars");
+
+                    b.Property<List<string>>("VideoUrls")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("video_urls");
 
                     b.HasKey("Id");
 

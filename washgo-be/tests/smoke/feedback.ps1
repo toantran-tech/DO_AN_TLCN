@@ -13,6 +13,25 @@ $sessions=@{}; $lockerId=$null
 $kgServiceId=[Guid]::NewGuid(); $customerB=[Guid]::NewGuid()
 $fixtureUser=[Guid]::NewGuid(); $fixtureShipper=[Guid]::NewGuid()
 
+function Upload-Video($Token,[byte[]]$Bytes,$Name='evidence.mp4') {
+    $client=New-Object System.Net.Http.HttpClient
+    try {
+        if($Token){$client.DefaultRequestHeaders.Authorization=New-Object System.Net.Http.Headers.AuthenticationHeaderValue('Bearer',$Token)}
+        $form=New-Object System.Net.Http.MultipartFormDataContent
+        $content=New-Object System.Net.Http.ByteArrayContent(,$Bytes)
+        $content.Headers.ContentType=[System.Net.Http.Headers.MediaTypeHeaderValue]::Parse('video/mp4')
+        $form.Add($content,'file',$Name)
+        $response=$client.PostAsync("$BaseUrl/files/videos",$form).Result
+        $body=$response.Content.ReadAsStringAsync().Result
+        [pscustomobject]@{status=[int]$response.StatusCode;data=if($body){($body|ConvertFrom-Json).data}else{$null}}
+    } finally {$client.Dispose()}
+}
+function Mp4-Bytes([int]$Size=256) {
+    # ISO base media header: box size 0x18, 'ftyp', brand 'mp42'.
+    $bytes=New-Object byte[] $Size
+    [byte[]](0,0,0,0x18,0x66,0x74,0x79,0x70,0x6D,0x70,0x34,0x32) | ForEach-Object -Begin {$i=0} -Process {$bytes[$i]=$_;$i++}
+    return ,$bytes
+}
 function Upload-Image($Token,[byte[]]$Bytes,$Name='evidence.png') {
     $client=New-Object System.Net.Http.HttpClient
     try {
@@ -108,6 +127,14 @@ INSERT INTO washgo.services SELECT (jsonb_populate_record(NULL::washgo.services,
     if($served.StatusCode -ne 200 -or $served.Headers['Content-Type'] -ne 'image/png'){throw 'Uploaded image not served.'}
     $imgB=(Upload-Image $tokenB (Png-Bytes)).data.url
     $imgUrl=$img.data.url
+    if((Upload-Video $null (Mp4-Bytes)).status -ne 401){throw 'Anonymous video upload allowed.'}
+    if((Upload-Video $customer (Png-Bytes)).status -ne 400){throw 'Image accepted as a video.'}
+    $vid=Upload-Video $customer (Mp4-Bytes (35MB))
+    if($vid.status -ne 201 -or $vid.data.url -notmatch "^/uploads/$($seedCustomer.ToString('N'))/[0-9a-f]{32}\.mp4$" -or $vid.data.contentType -ne 'video/mp4'){throw "Video upload failed: $($vid.status)"}
+    $servedVideo=Invoke-WebRequest "$BaseUrl$($vid.data.url)" -UseBasicParsing -Method Head
+    if($servedVideo.StatusCode -ne 200 -or $servedVideo.Headers['Content-Type'] -ne 'video/mp4'){throw 'Uploaded video not served.'}
+    $vidUrl=$vid.data.url
+    $vidB=(Upload-Video $tokenB (Mp4-Bytes)).data.url
 
     Write-Output '2. Prepare orders: two Completed, one Pending'
     $o1=New-CompletedOrder; $o2=New-CompletedOrder
@@ -123,14 +150,16 @@ INSERT INTO washgo.services SELECT (jsonb_populate_record(NULL::washgo.services,
     Assert-Status 400 Post '/rating/' @{orderId=$o1.id;overallStars=5;qualityStars=0} $customer
     Assert-Status 400 Post '/rating/' @{orderId=$o1.id;overallStars=5;imageUrls=@($imgB)} $customer
     Assert-Status 400 Post '/rating/' @{orderId=$o1.id;overallStars=5;imageUrls=@('/uploads/../appsettings.json')} $customer
+    Assert-Status 400 Post '/rating/' @{orderId=$o1.id;overallStars=5;videoUrls=@($vidB)} $customer
+    Assert-Status 400 Post '/rating/' @{orderId=$o1.id;overallStars=5;videoUrls=@($imgUrl)} $customer
     Assert-Status 404 Post '/rating/' @{orderId=$o1.id;overallStars=5} $tokenB
     $none=(Call-Api Get "/rating/order/$($o1.id)" $null $customer)
     if($null -ne $none.data){throw 'Unrated order returned a rating.'}
 
     Write-Output '4. Submit rating, duplicate guard and merchant average'
     $rating=(Call-Api Post '/rating/' @{orderId=$o1.id;overallStars=4;qualityStars=5;speedStars=3;attitudeStars=4;packagingStars=5
-        comment='  Giat sach, giao hoi cham  ';imageUrls=@($imgUrl)} $customer).data
-    if(!$rating.merchantName -or $rating.overallStars -ne 4 -or $rating.comment -ne 'Giat sach, giao hoi cham' -or $rating.imageUrls[0] -ne $imgUrl){throw 'Rating not stored.'}
+        comment='  Giat sach, giao hoi cham  ';imageUrls=@($imgUrl);videoUrls=@($vidUrl)} $customer).data
+    if(!$rating.merchantName -or $rating.overallStars -ne 4 -or $rating.comment -ne 'Giat sach, giao hoi cham' -or $rating.imageUrls[0] -ne $imgUrl -or $rating.videoUrls[0] -ne $vidUrl){throw 'Rating not stored.'}
     Assert-Status 400 Post '/rating/' @{orderId=$o1.id;overallStars=5} $customer
     if((Call-Api Get "/rating/order/$($o1.id)" $null $customer).data.id -ne $rating.id){throw 'Rating lookup failed.'}
     Assert-MerchantRating
@@ -157,7 +186,8 @@ INSERT INTO washgo.services SELECT (jsonb_populate_record(NULL::washgo.services,
     Assert-MerchantRating
 
     Write-Output '6. Incident validation (UC 1.4.2)'
-    $incBody=@{orderId=$o1.id;type=1;severity=2;description='Ao bi rach o tay';imageUrls=@($imgUrl)}
+    # Video-only evidence is enough (UC 1.4.2 with video).
+    $incBody=@{orderId=$o1.id;type=1;severity=2;description='Ao bi rach o tay';videoUrls=@($vidUrl)}
     Assert-Status 403 Post '/incident/' $incBody $admin
     Assert-Status 400 Post '/incident/' @{orderId=$o3.id;type=1;severity=2;description='x';imageUrls=@($imgUrl)} $customer
     Assert-Status 400 Post '/incident/' @{orderId=$o1.id;type=1;severity=2;description='x'} $customer
@@ -169,7 +199,7 @@ INSERT INTO washgo.services SELECT (jsonb_populate_record(NULL::washgo.services,
 
     Write-Output '7. Submit incident and customer views (UC 1.4.3)'
     $inc=(Call-Api Post '/incident/' $incBody $customer).data
-    if(!$inc.merchantName -or $inc.status -ne 1 -or $inc.orderCode -ne $o1.orderCode -or $inc.imageUrls.Count -ne 1){throw 'Incident not stored as Pending.'}
+    if(!$inc.merchantName -or $inc.status -ne 1 -or $inc.orderCode -ne $o1.orderCode -or $inc.imageUrls.Count -ne 0 -or $inc.videoUrls[0] -ne $vidUrl){throw 'Incident not stored as Pending.'}
     Assert-Status 400 Post '/incident/' $incBody $customer
     $mineInc=Call-Api Get '/incident/mine?page=1&take=50' $null $customer
     if(!($mineInc.list|Where-Object{$_.id -eq $inc.id})){throw 'Customer list missing incident.'}
@@ -205,7 +235,7 @@ INSERT INTO washgo.services SELECT (jsonb_populate_record(NULL::washgo.services,
     $lost=(Call-Api Post "/incident/$($inc3.id)/resolve" @{resolutionNote='Mat do tai tiem';responsibleParty=1;compensationLevel=4;itemValue=150000} $admin).data
     if($lost.compensationAmount -ne 300000){throw 'Lost-goods compensation not 200%.'}
 
-    Write-Output 'PASS: image upload checks, rating validation/ownership/once-per-order/race, merchant average, admin hide, merchant privacy, incident window/images/ownership, customer list, admin resolve/reject, server-side compensation and payment record.'
+    Write-Output 'PASS: image upload checks, video upload (35MB over the default body limit, signature, ownership) on ratings and video-only incident evidence, rating validation/ownership/once-per-order/race, merchant average, admin hide, merchant privacy, incident window/images/ownership, customer list, admin resolve/reject, server-side compensation and payment record.'
 }
 finally {
     foreach($session in $sessions.Values){try{Call-Api Post '/auth/logout' @{refreshToken=$session.refreshToken} $session.accessToken|Out-Null}catch{Write-Warning 'Smoke session logout failed.'}}
