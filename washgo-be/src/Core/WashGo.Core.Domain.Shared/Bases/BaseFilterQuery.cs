@@ -13,6 +13,17 @@ namespace WashGo.Core.Domain.Shared.Bases
         public string? Keyword { get; set; }
         public Dictionary<string, string> Filters { get; set; } = [];
         public List<ColumnFilterDto> ColumnFilters { get; set; } = [];
+
+        /// <summary>Latest accepted Unix second (31/12/9999 23:59:59 UTC).</summary>
+        public const long MaxUnixSeconds = 253402300799;
+
+        /// <summary>FromDate/ToDate are Unix seconds, inclusive, 0 = no bound; null when the range is valid.</summary>
+        public string? DateRangeError() =>
+            FromDate < 0 || ToDate < 0 || FromDate > MaxUnixSeconds || ToDate > MaxUnixSeconds
+                ? "Khoảng ngày không hợp lệ (fromDate/toDate là Unix giây, không âm)."
+                : FromDate > 0 && ToDate > 0 && FromDate > ToDate
+                    ? "Ngày bắt đầu phải trước hoặc bằng ngày kết thúc."
+                    : null;
     }
 
     public class ColumnFilterDto

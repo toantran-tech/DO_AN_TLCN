@@ -6,6 +6,7 @@ using System.Text;
 using System.Threading.Tasks;
 using Volo.Abp.Domain.Repositories;
 using Volo.Abp.Uow;
+using WashGo.Application.Contracts.Features.MerchantContracts.Results;
 using WashGo.Application.Contracts.Features.WashOrderContracts.Commands;
 using WashGo.Application.Contracts.Features.WashOrderContracts.Queries;
 using WashGo.Application.Contracts.Features.WashOrderContracts.Results;
@@ -187,45 +188,60 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             return dto;
         }
 
+        // Shared by the list and the summary: scope first, then the list filters (status only for the list).
+        private static IQueryable<WashOrder> ApplyListFilters(IQueryable<WashOrder> q, WashOrderFilterQuery query,
+            OrderScope scope, bool includeStatus)
+        {
+            var isStaff = scope.Role is "Merchant" or "Shipper";
+            q = ApplyScope(q, scope);
+            if (includeStatus && query.Status.HasValue)
+                q = q.Where(x => x.Status == query.Status.Value);
+            if (query.PaymentStatus.HasValue)
+                q = q.Where(x => x.PaymentStatus == query.PaymentStatus.Value);
+            if (query.LockerId.HasValue)
+                q = q.Where(x => x.LockerId == query.LockerId.Value);
+            if (query.CustomerId.HasValue)
+                q = q.Where(x => x.CustomerId == query.CustomerId.Value);
+            if (query.ShipperId.HasValue)
+                q = q.Where(x => x.ShipperId == query.ShipperId.Value);
+            if (query.MerchantId.HasValue)
+                q = q.Where(x => x.MerchantId == query.MerchantId.Value);
+            if (query.TaskType.HasValue)
+                q = q.Where(x => x.AssignedTaskType == query.TaskType.Value);
+            if (query.PendingOnly == true)
+                q = DeliveryTaskRules.ActiveDeliveries(q);
+            if (!string.IsNullOrWhiteSpace(query.Keyword))
+            {
+                var kw = query.Keyword.Trim().ToLower();
+                q = q.Where(x => x.OrderCode.ToLower().Contains(kw) ||
+                                 x.MerchantOrderCode != null && x.MerchantOrderCode.ToLower().Contains(kw) || !isStaff && (
+                                 x.CustomerName.ToLower().Contains(kw) ||
+                                 x.CustomerPhoneNumber.Contains(kw)));
+            }
+            return q;
+        }
+
+        private static void RestrictStaffQuery(WashOrderFilterQuery query, OrderScope scope)
+        {
+            if (scope.Role is not ("Merchant" or "Shipper"))
+                return;
+            query.CustomerId = null;
+            query.ColumnFilters = query.ColumnFilters.Where(x => IsStaffField(x.Field)).ToList();
+            query.SortBy = query.SortBy.Where(x => IsStaffField(x.Field)).ToArray();
+        }
+
         public async Task<PaginatedResult<WashOrderResultDto>> GetListAsync(WashOrderFilterQuery query)
         {
             var scope = await GetOrderScopeAsync();
-            var isStaff = scope.Role is "Merchant" or "Shipper";
-            if (isStaff)
-            {
-                query.CustomerId = null;
-                query.ColumnFilters = query.ColumnFilters.Where(x => IsStaffField(x.Field)).ToList();
-                query.SortBy = query.SortBy.Where(x => IsStaffField(x.Field)).ToArray();
-            }
-            var (data, total) = await _orderRepo.FilterProjectedDataAsync<WashOrderResultDto>(
-                filterFunc: q =>
+            if (query.DateRangeError() is { } dateError)
+                return new PaginatedResult<WashOrderResultDto>
                 {
-                    q = ApplyScope(q, scope);
-                    if (query.Status.HasValue)
-                        q = q.Where(x => x.Status == query.Status.Value);
-                    if (query.PaymentStatus.HasValue)
-                        q = q.Where(x => x.PaymentStatus == query.PaymentStatus.Value);
-                    if (query.LockerId.HasValue)
-                        q = q.Where(x => x.LockerId == query.LockerId.Value);
-                    if (query.CustomerId.HasValue)
-                        q = q.Where(x => x.CustomerId == query.CustomerId.Value);
-                    if (query.ShipperId.HasValue)
-                        q = q.Where(x => x.ShipperId == query.ShipperId.Value);
-                    if (query.MerchantId.HasValue)
-                        q = q.Where(x => x.MerchantId == query.MerchantId.Value);
-                    if (query.TaskType.HasValue)
-                        q = q.Where(x => x.AssignedTaskType == query.TaskType.Value);
-                    if (query.PendingOnly == true)
-                        q = DeliveryTaskRules.ActiveDeliveries(q);
-                    if (!string.IsNullOrWhiteSpace(query.Keyword))
-                    {
-                        var kw = query.Keyword.Trim().ToLower();
-                        q = q.Where(x => x.OrderCode.ToLower().Contains(kw) || !isStaff && (
-                                         x.CustomerName.ToLower().Contains(kw) ||
-                                         x.CustomerPhoneNumber.Contains(kw)));
-                    }
-                    return q;
-                },
+                    Succeeded = false, StatusCode = System.Net.HttpStatusCode.BadRequest, Message = dateError,
+                    CurrentPage = query.Page, PageSize = query.Take
+                };
+            RestrictStaffQuery(query, scope);
+            var (data, total) = await _orderRepo.FilterProjectedDataAsync<WashOrderResultDto>(
+                filterFunc: q => ApplyListFilters(q, query, scope, includeStatus: true),
                 parameters: query,
                 defaultOrder: q => q.OrderByDescending(x => x.CreatedOn)
             );
@@ -246,6 +262,44 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 return Task.FromResult(Success(Array.Empty<WashOrderResultDto>(), 0, query.Page, query.Take));
             query.CustomerId = CurrentUser.Id ?? Guid.Empty;
             return GetListAsync(query);
+        }
+
+        public async Task<BaseResponse<WashOrderSummaryDto>> GetSummaryAsync(WashOrderFilterQuery query)
+        {
+            var scope = await GetOrderScopeAsync();
+            if (scope.Role is "None" or "Customer")
+                return NotFound<WashOrderSummaryDto>("Không tìm thấy dữ liệu được phép xem.");
+            if (query.DateRangeError() is { } dateError)
+                return BadRequest<WashOrderSummaryDto>(dateError);
+            RestrictStaffQuery(query, scope);
+            var q = ApplyListFilters(await _orderRepo.GetQueryableAsync(), query, scope, includeStatus: false);
+            if (query.FromDate > 0)
+                q = q.Where(x => x.CreatedOn >= query.FromDate);
+            if (query.ToDate > 0)
+                q = q.Where(x => x.CreatedOn <= query.ToDate);
+
+            // One grouped query: the total and every status count come from the same snapshot.
+            var rows = await AsyncExecuter.ToListAsync(q.GroupBy(x => x.Status)
+                .Select(g => new { Status = g.Key, Count = g.Count() }));
+            var counts = rows.ToDictionary(x => x.Status, x => x.Count);
+            int C(WashOrderStatus status) => counts.GetValueOrDefault(status);
+            return Success(new WashOrderSummaryDto
+            {
+                Total = rows.Sum(x => x.Count),
+                StatusCounts = new MerchantStatusCountsDto
+                {
+                    Pending = C(WashOrderStatus.Pending), Deposited = C(WashOrderStatus.Deposited),
+                    Collected = C(WashOrderStatus.Collected), Washing = C(WashOrderStatus.Washing),
+                    Drying = C(WashOrderStatus.Drying), Ironing = C(WashOrderStatus.Ironing),
+                    Folding = C(WashOrderStatus.Folding), AwaitingPayment = C(WashOrderStatus.AwaitingPayment),
+                    Paid = C(WashOrderStatus.Paid), ReadyToReturn = C(WashOrderStatus.ReadyToReturn),
+                    Returned = C(WashOrderStatus.Returned), Completed = C(WashOrderStatus.Completed),
+                    MovedToStorage = C(WashOrderStatus.MovedToStorage), Cancelled = C(WashOrderStatus.Cancelled)
+                },
+                FromDate = query.FromDate,
+                ToDate = query.ToDate,
+                GeneratedAt = DateTime.UtcNow
+            });
         }
 
         public async Task<BaseResponse<WashOrderDetailDto>> GetByIdAsync(Guid id)
@@ -1702,6 +1756,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 return NotFound<List<ColumnFilterDistinctValueDto>>("Không tìm thấy dữ liệu được phép xem.");
             if ((scope.Role is "Merchant" or "Shipper") && !IsStaffField(fieldName))
                 return BadRequest<List<ColumnFilterDistinctValueDto>>("Không được lọc theo thông tin riêng tư của khách hàng.");
+            if (query.DateRangeError() is { } dateError)
+                return BadRequest<List<ColumnFilterDistinctValueDto>>(dateError);
             var result = await _orderRepo.GetColumnDistinctValuesAsync(fieldName, query,
                 baseFilter: q => ApplyScope(q, scope));
             return Success(result);

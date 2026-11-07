@@ -22,7 +22,14 @@ namespace WashGo.HttpApi.Endpoints.WashOrder
                 (await svc.GetListAsync(request)).CustomResult())
                 .RequireAuthorization("OrderStatusUpdater")
                 .WithName("Lọc danh sách đơn WashGo")
-                .WithSummary("Lọc và phân trang đơn hàng trong phạm vi quyền của Admin, Merchant hoặc Shipper.")
+                .WithSummary("Lọc và phân trang đơn hàng trong phạm vi quyền của Admin, Merchant hoặc Shipper. keyword tìm mã đơn WashGo hoặc mã nội bộ Merchant; fromDate/toDate là Unix giây (ngày tạo đơn, tính cả hai đầu), khoảng ngược trả 400.")
+                .WithOpenApi();
+
+            group.MapPost("/summary", async (WashOrderFilterQuery request, IWashOrderAppService svc) =>
+                (await svc.GetSummaryAsync(request)).CustomResult())
+                .RequireAuthorization("OrderStatusUpdater")
+                .WithName("Thống kê đơn theo bộ lọc")
+                .WithSummary("Tổng và số đơn từng trạng thái trong một lần đếm, theo cùng keyword/paymentStatus/fromDate/toDate của danh sách (không áp dụng status, trang, sắp xếp). Merchant chỉ thấy đơn của tiệm mình.")
                 .WithOpenApi();
 
             group.MapPost("/mine", async (WashOrderFilterQuery request, IWashOrderAppService svc) =>
