@@ -23,6 +23,9 @@ namespace WashGo.Domain.Entities.Partner
         public string? IdentityImages { get; set; }
         public int TotalDeliveries { get; set; }
         public decimal Rating { get; set; }
+        /// <summary>Thời điểm và lý do khóa tài khoản (User.IsActive = false) gần nhất; null khi không bị khóa.</summary>
+        public DateTime? LockedAt { get; set; }
+        public string? LockReason { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     }

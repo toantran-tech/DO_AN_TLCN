@@ -20,6 +20,7 @@ namespace WashGo.EntityFrameworkCore.BuilderConfiguration
             builder.Property(x => x.IdentityNumber).HasMaxLength(20);
             builder.Property(x => x.IdentityImages).HasColumnType("jsonb");
             builder.Property(x => x.Rating).HasPrecision(2, 1);
+            builder.Property(x => x.LockReason).HasMaxLength(500);
             builder.HasIndex(x => x.UserId).IsUnique();
             builder.HasIndex(x => x.MerchantId);
             builder.HasIndex(x => x.Status);

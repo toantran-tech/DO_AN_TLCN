@@ -33,6 +33,23 @@ function Read-TempPassword($Email) {
     throw "No credentials email for $Email."
 }
 
+function Upload-TestImage($Token) {
+    Add-Type -AssemblyName System.Net.Http
+    $client = New-Object System.Net.Http.HttpClient
+    try {
+        $client.DefaultRequestHeaders.Authorization = New-Object System.Net.Http.Headers.AuthenticationHeaderValue('Bearer', $Token)
+        $bytes = New-Object byte[] 64
+        [byte[]](0x89,0x50,0x4E,0x47,0x0D,0x0A,0x1A,0x0A) | ForEach-Object -Begin {$i=0} -Process {$bytes[$i]=$_;$i++}
+        $bytes[20] = [byte](Get-Random -Maximum 255)
+        $form = New-Object System.Net.Http.MultipartFormDataContent
+        $content = New-Object System.Net.Http.ByteArrayContent(,$bytes)
+        $content.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::Parse('image/png')
+        $form.Add($content, 'file', 'identity.png')
+        $body = $client.PostAsync("$BaseUrl/files/images", $form).Result.Content.ReadAsStringAsync().Result
+        return ($body | ConvertFrom-Json).data.url
+    } finally { $client.Dispose() }
+}
+
 function Remove-FixtureMerchant($MerchantId) {
     if (-not $MerchantId) { return }
     Sql @"

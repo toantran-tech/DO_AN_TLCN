@@ -44,6 +44,24 @@ namespace WashGo.HttpApi.Endpoints.Shipper
                 .WithSummary("Tạo tài khoản role Shipper cho tiệm; mật khẩu tạm được gửi qua email (không trả về trong API).")
                 .WithOpenApi();
 
+            group.MapPost("/{id:guid}/lock", async (Guid id, ShipperAccountActionCommand command, IShipperManagementAppService svc) =>
+                (await svc.LockAsync(id, command)).CustomResult())
+                .WithName("Khóa tài khoản Shipper")
+                .WithSummary("Khóa tài khoản đăng nhập (User) của Shipper trong tiệm, lý do bắt buộc. Thu hồi mọi phiên; access token cũ bị từ chối ngay; không đăng nhập/nhận phân công được. Còn nhiệm vụ lấy/trả chưa xong → 409 HasActiveTasks. Khóa lại tài khoản đã khóa → 200 AlreadyLocked. Có audit.")
+                .WithOpenApi();
+
+            group.MapPost("/{id:guid}/unlock", async (Guid id, ShipperAccountActionCommand command, IShipperManagementAppService svc) =>
+                (await svc.UnlockAsync(id, command)).CustomResult())
+                .WithName("Mở khóa tài khoản Shipper")
+                .WithSummary("Mở khóa tài khoản; không tự đổi trạng thái làm việc/vận hành, không khôi phục nhiệm vụ cũ. Có audit.")
+                .WithOpenApi();
+
+            group.MapGet("/{id:guid}/audits", async (Guid id, IShipperManagementAppService svc) =>
+                (await svc.GetAuditsAsync(id)).CustomResult())
+                .WithName("Lịch sử thao tác quản trị Shipper")
+                .WithSummary("Ai đã khóa/mở khóa/xóa/sửa giấy tờ Shipper, lúc nào, lý do (mới nhất trước).")
+                .WithOpenApi();
+
             group.MapPut("/{id:guid}", async (Guid id, UpdateShipperCommand command, IShipperManagementAppService svc) =>
                 (await svc.UpdateAsync(id, command)).CustomResult())
                 .WithName("Chỉnh sửa Shipper")

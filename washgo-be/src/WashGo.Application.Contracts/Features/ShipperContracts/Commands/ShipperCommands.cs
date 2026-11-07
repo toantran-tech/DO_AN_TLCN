@@ -18,6 +18,12 @@ namespace WashGo.Application.Contracts.Features.ShipperContracts.Commands
         public List<string> IdentityImageUrls { get; set; } = [];
     }
 
+    /// <summary>Khóa (lý do bắt buộc) / mở khóa (lý do tùy chọn) tài khoản Shipper; tối đa 500 ký tự.</summary>
+    public class ShipperAccountActionCommand
+    {
+        public string? Reason { get; set; }
+    }
+
     public class UpdateShipperCommand
     {
         public string FullName { get; set; } = string.Empty;

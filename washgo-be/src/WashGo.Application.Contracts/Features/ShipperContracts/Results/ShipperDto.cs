@@ -17,7 +17,14 @@ namespace WashGo.Application.Contracts.Features.ShipperContracts.Results
         public VehicleType VehicleType { get; set; }
         public string? VehiclePlate { get; set; }
         public ShipperStatus Status { get; set; }
+        /// <summary>Đang làm việc (true) / Tạm nghỉ (false). Khác với khóa tài khoản.</summary>
         public bool IsActive { get; set; }
+        /// <summary>Tài khoản đăng nhập còn hiệu lực (User.IsActive).</summary>
+        public bool AccountActive { get; set; }
+        /// <summary>Tài khoản bị khóa: không đăng nhập, phiên cũ hết hiệu lực, không được phân công.</summary>
+        public bool IsLocked => !AccountActive;
+        public DateTime? LockedAt { get; set; }
+        public string? LockReason { get; set; }
         public int TotalDeliveries { get; set; }
         public int ActiveTaskCount { get; set; }
         public decimal Rating { get; set; }

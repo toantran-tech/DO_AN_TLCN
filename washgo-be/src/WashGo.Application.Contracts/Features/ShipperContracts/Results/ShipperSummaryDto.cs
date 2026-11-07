@@ -16,6 +16,8 @@ namespace WashGo.Application.Contracts.Features.ShipperContracts.Results
         public int Available { get; set; }
         public int Busy { get; set; }
         public int Offline { get; set; }
+        /// <summary>Tài khoản đang bị khóa (vẫn được tính trong các nhóm trên theo trạng thái lưu của hồ sơ).</summary>
+        public int Locked { get; set; }
         /// <summary>Thời điểm đếm (UTC); mọi số liệu cùng một truy vấn.</summary>
         public DateTime GeneratedAt { get; set; }
     }

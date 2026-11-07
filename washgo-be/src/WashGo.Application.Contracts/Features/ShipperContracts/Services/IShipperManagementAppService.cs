@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Volo.Abp.Application.Services;
 using WashGo.Application.Contracts.Features.ShipperContracts.Commands;
@@ -15,5 +16,8 @@ namespace WashGo.Application.Contracts.Features.ShipperContracts.Services
         Task<BaseResponse<ShipperSummaryDto>> GetSummaryAsync(Guid? merchantId);
         Task<BaseResponse<ShipperDto>> CreateAsync(CreateShipperCommand command);
         Task<BaseResponse<ShipperDto>> UpdateAsync(Guid id, UpdateShipperCommand command);
+        Task<BaseResponse<ShipperDto>> LockAsync(Guid id, ShipperAccountActionCommand command);
+        Task<BaseResponse<ShipperDto>> UnlockAsync(Guid id, ShipperAccountActionCommand command);
+        Task<BaseResponse<List<ShipperAuditDto>>> GetAuditsAsync(Guid id);
     }
 }
