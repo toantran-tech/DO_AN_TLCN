@@ -81,6 +81,7 @@ namespace WashGo.Core.DataAccess.Repository
             long totalCount = await query.LongCountAsync();
 
             // Ordering
+            var ordered = false;
             if (parameters.SortBy != null && parameters.SortBy.Length > 0)
             {
                 var sort = parameters.SortBy[0];
@@ -90,16 +91,22 @@ namespace WashGo.Core.DataAccess.Repository
                     query = sort.IsDescending
                         ? query.OrderByDescending(e => EF.Property<object>(e, prop.Name))
                         : query.OrderBy(e => EF.Property<object>(e, prop.Name));
+                    ordered = true;
                 }
                 else if (defaultOrder != null)
                 {
                     query = defaultOrder(query);
+                    ordered = true;
                 }
             }
             else if (defaultOrder != null)
             {
                 query = defaultOrder(query);
+                ordered = true;
             }
+            // Stable paging: rows with the same sort value keep one order across pages.
+            if (ordered && query is IOrderedQueryable<TEntity> sorted && typeof(TEntity).GetProperty("Id") != null)
+                query = sorted.ThenBy(e => EF.Property<object>(e, "Id"));
 
             // Paging (1-indexed or 0-indexed tolerance)
             int pageIndex = parameters.Page > 1 ? parameters.Page - 1 : 0;

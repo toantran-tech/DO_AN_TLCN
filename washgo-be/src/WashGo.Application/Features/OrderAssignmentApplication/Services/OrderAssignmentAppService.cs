@@ -98,7 +98,7 @@ namespace WashGo.Application.Features.OrderAssignmentApplication.Services
             var page = Math.Max(1, query.Page);
             var take = Math.Clamp(query.Take, 1, 100);
             var total = await AsyncExecuter.CountAsync(queryable);
-            var orders = await AsyncExecuter.ToListAsync(queryable.OrderBy(o => o.DepositedAt).Skip((page - 1) * take).Take(take));
+            var orders = await AsyncExecuter.ToListAsync(queryable.OrderBy(o => o.DepositedAt).ThenBy(o => o.Id).Skip((page - 1) * take).Take(take));
             return Success(await ToWaitingDtosAsync(orders, overdueBefore, now), total, page, take,
                 total == 0 ? "Không có đơn hàng nào chờ phân công." : null);
         }

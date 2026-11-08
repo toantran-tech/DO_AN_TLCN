@@ -60,5 +60,13 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
         }
 
         public Task<OrderOperation?> FindAsync(Guid operationId) => _operations.FindAsync(operationId);
+
+        /// <summary>
+        /// Request fingerprint: readable key fields plus a hash of the free-text part (note/reason), so a replay with the
+        /// same key but a different note is a different request (409) and the value fits the 200-char column.
+        /// </summary>
+        public static string Fingerprint(string fields, string? text) => text == null
+            ? fields
+            : $"{fields};text={Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(text)))[..16].ToLowerInvariant()}";
     }
 }
