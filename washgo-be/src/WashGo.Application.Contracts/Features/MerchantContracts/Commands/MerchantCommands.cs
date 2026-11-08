@@ -10,6 +10,9 @@ namespace WashGo.Application.Contracts.Features.MerchantContracts.Commands
     /// <summary>UC 3.2.2: Admin tạo tài khoản (role Merchant, mật khẩu tạm gửi qua email) và hồ sơ Merchant.</summary>
     public class CreateMerchantCommand
     {
+        /// <summary>Key riêng của tạo Merchant; giữ nguyên key/payload khi gửi lại. Không áp dụng khi sửa.</summary>
+        [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+        public Guid? ClientRequestId { get; set; }
         public string Email { get; set; } = string.Empty;
         public string BusinessName { get; set; } = string.Empty;
         public string? TaxCode { get; set; }

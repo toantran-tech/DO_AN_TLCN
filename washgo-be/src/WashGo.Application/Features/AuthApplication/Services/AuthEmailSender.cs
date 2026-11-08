@@ -57,7 +57,16 @@ namespace WashGo.Application.Features.AuthApplication.Services
                 $"Email đăng nhập: {email}\nMật khẩu tạm thời: {temporaryPassword}\n\n" +
                 "Vui lòng đăng nhập và đổi mật khẩu bằng chức năng Quên mật khẩu. Không chia sẻ thông tin này cho bất kỳ ai.");
 
-        private async Task<bool> SendAsync(string email, string subject, string body, bool isHtml = false)
+        public Task<CredentialDeliveryStatus> SendMerchantCredentialsAsync(string email, string fullName, string temporaryPassword) =>
+            SendWithStatusAsync(email, "Tài khoản Merchant WashGo của bạn",
+                $"Xin chào {fullName},\n\nTài khoản Merchant WashGo của bạn đã được tạo.\n" +
+                $"Email đăng nhập: {email}\nMật khẩu tạm thời: {temporaryPassword}\n\n" +
+                "Vui lòng đăng nhập và đổi mật khẩu. Nếu không nhận được thư, hãy dùng Quên mật khẩu. Không chia sẻ thông tin này cho bất kỳ ai.");
+
+        private async Task<bool> SendAsync(string email, string subject, string body, bool isHtml = false) =>
+            await SendWithStatusAsync(email, subject, body, isHtml) == CredentialDeliveryStatus.Sent;
+
+        private async Task<CredentialDeliveryStatus> SendWithStatusAsync(string email, string subject, string body, bool isHtml = false)
         {
             var host = _configuration["Email:Smtp:Host"] ?? _configuration["SMTP_HOST"] ?? "smtp.gmail.com";
             var senderAddress = _configuration["Email:Smtp:SenderAddress"] ?? _configuration["SMTP_SENDER_ADDRESS"];
@@ -74,7 +83,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
             if (string.IsNullOrWhiteSpace(host) || string.IsNullOrWhiteSpace(senderAddress))
             {
                 _logger.LogError("SMTP is not configured. Set Email:Smtp:Host and Email:Smtp:SenderAddress (or SMTP_HOST / SMTP_SENDER_ADDRESS).");
-                return false;
+                return CredentialDeliveryStatus.Failed;
             }
 
             try
@@ -105,12 +114,14 @@ namespace WashGo.Application.Features.AuthApplication.Services
                 }
 
                 await client.SendMailAsync(message);
-                return true;
+                return CredentialDeliveryStatus.Sent;
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to send email '{Subject}' to {Email}", subject, email);
-                return false;
+                // A lost SMTP acknowledgement can occur after the server accepted the message.
+                return ex is ArgumentException or FormatException or SmtpFailedRecipientException
+                    ? CredentialDeliveryStatus.Failed : CredentialDeliveryStatus.Unknown;
             }
         }
     }

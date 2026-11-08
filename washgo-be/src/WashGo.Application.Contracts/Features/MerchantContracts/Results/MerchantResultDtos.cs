@@ -11,6 +11,10 @@ namespace WashGo.Application.Contracts.Features.MerchantContracts.Results
     {
         public Guid Id { get; set; }
         public string Version { get; set; } = string.Empty;
+        /// <summary>Sent = SMTP đã chấp nhận, không bảo đảm đã vào inbox. Unknown có thể đang gửi hoặc chưa xác định.</summary>
+        public CredentialDeliveryStatus CredentialDelivery { get; set; }
+        public bool CredentialEmailSent => CredentialDelivery == CredentialDeliveryStatus.Sent;
+        public DateTime? CredentialSentAt { get; set; }
         public string BusinessName { get; set; } = string.Empty;
         public string Email { get; set; } = string.Empty;
         public string? TaxCode { get; set; }

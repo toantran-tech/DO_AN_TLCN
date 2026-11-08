@@ -1,0 +1,20 @@
+# Development only. Merge with the root docker-compose.yml; never use for normal OTP delivery.
+services:
+  mailpit-merchant:
+    image: axllent/mailpit:v1.27.4
+    container_name: washgo_merchant_mailpit
+    environment:
+      MP_ENABLE_CHAOS: "true"
+    ports:
+      - "127.0.0.1:18025:8025"
+    networks:
+      - washgo_network
+  washgo-be:
+    environment:
+      Email__Smtp__Host: mailpit-merchant
+      Email__Smtp__Port: "1025"
+      Email__Smtp__EnableSsl: "false"
+      Email__Smtp__Username: ""
+      Email__Smtp__Password: ""
+      Email__Smtp__SenderAddress: washgo@example.test
+      Email__Smtp__SenderName: WashGo Smoke

@@ -41,5 +41,7 @@ namespace WashGo.Domain.Entities.Partner
         public int MaxCapacity { get; set; } = 50;
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+        public CredentialDeliveryStatus CredentialDelivery { get; set; } = CredentialDeliveryStatus.Unknown;
+        public DateTime? CredentialSentAt { get; set; }
     }
 }
