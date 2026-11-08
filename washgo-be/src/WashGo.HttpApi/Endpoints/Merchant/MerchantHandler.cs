@@ -66,10 +66,10 @@ namespace WashGo.HttpApi.Endpoints.Merchant
                 .WithSummary("Báo cáo doanh thu tiền giặt, hoa hồng sàn, thực nhận, tăng trưởng so với kỳ trước và chuỗi doanh thu theo từng ngày.")
                 .WithOpenApi();
 
-            merchantGroup.MapGet("/sla-alerts", async (IMerchantAppService svc) =>
-                (await svc.GetSlaAlertsAsync()).CustomResult())
+            merchantGroup.MapGet("/sla-alerts", async ([AsParameters] MerchantSlaAlertsQuery query, IMerchantAppService svc) =>
+                (await svc.GetSlaAlertsAsync(query)).CustomResult())
                 .WithName("Merchant xem cảnh báo quá hạn SLA (Overdue Attention)")
-                .WithSummary("Cảnh báo các đơn quá hạn lấy đồ, quá hạn giặt sấy hoặc quá hạn trả đồ kèm số phút trễ và thao tác xử lý gợi ý.")
+                .WithSummary("Cảnh báo các đơn quá hạn lấy đồ, quá hạn giặt sấy hoặc quá hạn trả đồ kèm số phút trễ và thao tác xử lý gợi ý. Tổng cảnh báo tính tại DB trên toàn phạm vi; danh sách ưu tiên phân trang (page, take ≤ 100, alertType). Mốc thời gian trả UTC.")
                 .WithOpenApi();
         }
     }

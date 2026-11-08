@@ -483,6 +483,9 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             var (period, fromUtc, toUtc, _, _, error) = DateTimePeriodHelper.ResolvePeriod(query.Period, query.FromDate, query.ToDate, "all");
             if (error != null)
                 return BadRequest<MerchantDashboardDto>(error);
+            // Counts, latest orders and settlements are read in one repeatable-read transaction: one consistent snapshot.
+            using var snapshot = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true,
+                isolationLevel: System.Data.IsolationLevel.RepeatableRead);
 
             var ordersQuery = (await _orderRepo.GetQueryableAsync())
                 .Where(o => !o.IsDeleted && o.MerchantId == merchantId.Value);
@@ -569,15 +572,15 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             var result = new MerchantDashboardDto
             {
                 Period = period,
-                FromDate = fromUtc.HasValue ? DateTimePeriodHelper.ToVietnamTime(fromUtc.Value) : null,
-                ToDate = toUtc.HasValue ? DateTimePeriodHelper.ToVietnamTime(toUtc.Value) : null,
+                FromDate = fromUtc,
+                ToDate = toUtc,
                 TotalOrders = totalOrders,
                 StatusCounts = statusCounts,
                 LatestOrders = latestDtos,
                 RecentSettlements = recentSettlements,
-                GeneratedAt = DateTimePeriodHelper.NowVietnam
+                GeneratedAt = DateTime.UtcNow
             };
-
+            await snapshot.CompleteAsync();
             return Success(result);
         }
 
@@ -647,7 +650,7 @@ namespace WashGo.Application.Features.MerchantApplication.Services
         }
 
         // UC 2.2.2: Cảnh báo vi phạm SLA (Overdue Attention)
-        public async Task<BaseResponse<MerchantSlaAlertsDto>> GetSlaAlertsAsync()
+        public async Task<BaseResponse<MerchantSlaAlertsDto>> GetSlaAlertsAsync(MerchantSlaAlertsQuery query)
         {
             var merchantId = CurrentUser.Id;
             if (!merchantId.HasValue)
@@ -656,104 +659,74 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             var settings = await _settings.GetAsync();
             int collectSlaHours = settings.MerchantCollectSlaHours > 0 ? settings.MerchantCollectSlaHours : 4;
             int returnSlaHours = settings.MerchantReturnSlaHours > 0 ? settings.MerchantReturnSlaHours : 24;
+            var page = Math.Max(1, query.Page ?? 1);
+            var take = Math.Clamp(query.Take ?? 20, 1, 100);
+            var now = DateTime.UtcNow;
+            var collectBefore = now.AddHours(-collectSlaHours);
+            var returnBefore = now.AddHours(-returnSlaHours);
 
-            var nowUtc = DateTime.UtcNow;
-            var nowVn = DateTimePeriodHelper.NowVietnam;
-
-            var activeOrders = await AsyncExecuter.ToListAsync(
-                (await _orderRepo.GetQueryableAsync())
-                    .Where(o => !o.IsDeleted && o.MerchantId == merchantId.Value
-                                && o.Status != WashOrderStatus.Completed
-                                && o.Status != WashOrderStatus.Cancelled
-                                && o.Status != WashOrderStatus.Returned)
-            );
-
-            var priorityOrders = new List<MerchantPriorityOrderDto>();
-            int collectionAlerts = 0;
-            int processingAlerts = 0;
-            int returnAlerts = 0;
-
-            foreach (var o in activeOrders)
+            using var snapshot = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true,
+                isolationLevel: System.Data.IsolationLevel.RepeatableRead);
+            var orders = (await _orderRepo.GetQueryableAsync()).Where(o => !o.IsDeleted && o.MerchantId == merchantId.Value);
+            // Same rules as before, evaluated by the database for the whole scope; only the requested page is loaded.
+            var collection = orders.Where(o => o.Status == WashOrderStatus.Deposited && o.DepositedAt != null && o.DepositedAt < collectBefore)
+                .Select(o => new SlaRow { Id = o.Id, Type = MerchantSlaAlertType.CollectionOverdue, Deadline = o.DepositedAt!.Value.AddHours(collectSlaHours) });
+            var processing = orders.Where(o => (o.Status == WashOrderStatus.Washing || o.Status == WashOrderStatus.Drying ||
+                                                o.Status == WashOrderStatus.Ironing || o.Status == WashOrderStatus.Folding) &&
+                                               o.EstimatedFinishAt != null && o.EstimatedFinishAt < now)
+                .Select(o => new SlaRow { Id = o.Id, Type = MerchantSlaAlertType.ProcessingOverdue, Deadline = o.EstimatedFinishAt!.Value });
+            var returns = orders.Where(o => o.Status == WashOrderStatus.Paid && o.PaidAt != null && o.PaidAt < returnBefore)
+                .Select(o => new SlaRow { Id = o.Id, Type = MerchantSlaAlertType.ReturnOverdue, Deadline = o.PaidAt!.Value.AddHours(returnSlaHours) });
+            var collectionCount = await AsyncExecuter.CountAsync(collection);
+            var processingCount = await AsyncExecuter.CountAsync(processing);
+            var returnCount = await AsyncExecuter.CountAsync(returns);
+            var all = query.AlertType switch
             {
-                // 1. Quá hạn lấy đồ: Đơn Deposited > collectSlaHours
-                if (o.Status == WashOrderStatus.Deposited)
-                {
-                    var depositedTime = o.DepositedAt ?? DateTimeOffset.FromUnixTimeSeconds(o.CreatedOn).UtcDateTime;
-                    var deadline = depositedTime.AddHours(collectSlaHours);
-                    if (nowUtc > deadline)
-                    {
-                        collectionAlerts++;
-                        var overdueMins = (int)(nowUtc - deadline).TotalMinutes;
-                        priorityOrders.Add(new MerchantPriorityOrderDto
-                        {
-                            OrderId = o.Id,
-                            OrderCode = o.OrderCode,
-                            MerchantOrderCode = o.MerchantOrderCode,
-                            Status = o.Status,
-                            AlertType = MerchantSlaAlertType.CollectionOverdue,
-                            Deadline = DateTimePeriodHelper.ToVietnamTime(deadline),
-                            OverdueMinutes = overdueMins,
-                            LockerName = o.LockerName,
-                            BoxNumber = o.BoxNumber
-                        });
-                    }
-                }
-                // 2. Quá hạn giặt sấy: Đơn đang xử lý (Washing/Drying/Ironing/Folding) quá EstimatedFinishAt
-                else if (o.Status is WashOrderStatus.Washing or WashOrderStatus.Drying or WashOrderStatus.Ironing or WashOrderStatus.Folding)
-                {
-                    if (o.EstimatedFinishAt.HasValue && nowUtc > o.EstimatedFinishAt.Value)
-                    {
-                        processingAlerts++;
-                        var overdueMins = (int)(nowUtc - o.EstimatedFinishAt.Value).TotalMinutes;
-                        priorityOrders.Add(new MerchantPriorityOrderDto
-                        {
-                            OrderId = o.Id,
-                            OrderCode = o.OrderCode,
-                            MerchantOrderCode = o.MerchantOrderCode,
-                            Status = o.Status,
-                            AlertType = MerchantSlaAlertType.ProcessingOverdue,
-                            Deadline = DateTimePeriodHelper.ToVietnamTime(o.EstimatedFinishAt.Value),
-                            OverdueMinutes = overdueMins,
-                            LockerName = o.LockerName,
-                            BoxNumber = o.BoxNumber
-                        });
-                    }
-                }
-                // 3. Quá hạn trả đồ: Đơn Paid > returnSlaHours chưa chuyển sang tủ trả
-                else if (o.Status == WashOrderStatus.Paid)
-                {
-                    var paidTime = o.PaidAt ?? DateTimeOffset.FromUnixTimeSeconds(o.CreatedOn).UtcDateTime;
-                    var deadline = paidTime.AddHours(returnSlaHours);
-                    if (nowUtc > deadline)
-                    {
-                        returnAlerts++;
-                        var overdueMins = (int)(nowUtc - deadline).TotalMinutes;
-                        priorityOrders.Add(new MerchantPriorityOrderDto
-                        {
-                            OrderId = o.Id,
-                            OrderCode = o.OrderCode,
-                            MerchantOrderCode = o.MerchantOrderCode,
-                            Status = o.Status,
-                            AlertType = MerchantSlaAlertType.ReturnOverdue,
-                            Deadline = DateTimePeriodHelper.ToVietnamTime(deadline),
-                            OverdueMinutes = overdueMins,
-                            LockerName = o.LockerName,
-                            BoxNumber = o.BoxNumber
-                        });
-                    }
-                }
-            }
-
-            var result = new MerchantSlaAlertsDto
-            {
-                CollectionAlertsCount = collectionAlerts,
-                ProcessingAlertsCount = processingAlerts,
-                ReturnAlertsCount = returnAlerts,
-                PriorityOrders = priorityOrders.OrderByDescending(x => x.OverdueMinutes).ToList(),
-                ServerNow = nowVn
+                MerchantSlaAlertType.CollectionOverdue => collection,
+                MerchantSlaAlertType.ProcessingOverdue => processing,
+                MerchantSlaAlertType.ReturnOverdue => returns,
+                _ => collection.Concat(processing).Concat(returns)
             };
+            var rows = await AsyncExecuter.ToListAsync(all.OrderBy(x => x.Deadline).ThenBy(x => x.Id).Skip((page - 1) * take).Take(take));
+            var ids = rows.Select(x => x.Id).ToList();
+            var details = (await AsyncExecuter.ToListAsync(orders.Where(o => ids.Contains(o.Id))
+                    .Select(o => new { o.Id, o.OrderCode, o.MerchantOrderCode, o.Status, o.LockerName, o.BoxNumber })))
+                .ToDictionary(x => x.Id);
+            await snapshot.CompleteAsync();
 
-            return Success(result);
+            return Success(new MerchantSlaAlertsDto
+            {
+                CollectionAlertsCount = collectionCount,
+                ProcessingAlertsCount = processingCount,
+                ReturnAlertsCount = returnCount,
+                Page = page,
+                Take = take,
+                PriorityTotal = query.AlertType switch
+                {
+                    MerchantSlaAlertType.CollectionOverdue => collectionCount,
+                    MerchantSlaAlertType.ProcessingOverdue => processingCount,
+                    MerchantSlaAlertType.ReturnOverdue => returnCount,
+                    _ => collectionCount + processingCount + returnCount
+                },
+                PriorityOrders = rows.Where(x => details.ContainsKey(x.Id)).Select(x =>
+                {
+                    var o = details[x.Id];
+                    return new MerchantPriorityOrderDto
+                    {
+                        OrderId = o.Id, OrderCode = o.OrderCode, MerchantOrderCode = o.MerchantOrderCode, Status = o.Status,
+                        AlertType = x.Type, Deadline = DateTime.SpecifyKind(x.Deadline, DateTimeKind.Utc),
+                        OverdueMinutes = (int)(now - x.Deadline).TotalMinutes, LockerName = o.LockerName, BoxNumber = o.BoxNumber
+                    };
+                }).ToList(),
+                ServerNow = now
+            });
+        }
+
+        private sealed class SlaRow
+        {
+            public Guid Id { get; init; }
+            public MerchantSlaAlertType Type { get; init; }
+            public DateTime Deadline { get; init; }
         }
     }
 }

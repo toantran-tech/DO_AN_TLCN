@@ -49,7 +49,7 @@ namespace WashGo.Application.Contracts.Features.MerchantContracts.Results
         /// <summary>Chuỗi dữ liệu chi tiết doanh thu theo từng ngày trong kỳ.</summary>
         public List<MerchantDailyRevenueDto> DailySeries { get; set; } = [];
 
-        /// <summary>Thời điểm tạo báo cáo trên server (theo giờ VN UTC+7).</summary>
+        /// <summary>Thời điểm tạo báo cáo trên server (UTC, hậu tố Z; FE đổi sang giờ Việt Nam).</summary>
         public DateTime GeneratedAt { get; set; } = DateTime.UtcNow;
     }
 
