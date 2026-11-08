@@ -48,18 +48,18 @@ namespace WashGo.HttpApi.Endpoints.Merchant
                 .WithSummary("Dữ liệu đề xuất, dữ liệu hiện tại và các trường thay đổi.")
                 .WithOpenApi();
 
-            requests.MapPost("/{id:guid}/approve", async (Guid id, IMerchantProfileAppService svc) =>
-                (await svc.ApproveAsync(id)).CustomResult())
+            requests.MapPost("/{id:guid}/approve", async (Guid id, string? expectedVersion, Guid? operationId, IMerchantProfileAppService svc) =>
+                (await svc.ApproveAsync(id, expectedVersion, operationId)).CustomResult())
                 .RequireAuthorization("AdminOnly")
                 .WithName("Phê duyệt cập nhật hồ sơ Merchant")
-                .WithSummary("Áp dụng thông tin mới vào hồ sơ cửa hàng; báo Merchant.")
+                .WithSummary("Admin duyệt: query expectedVersion bắt buộc từ chi tiết yêu cầu, operationId tùy chọn để gửi lại an toàn. Hồ sơ đã đổi từ lúc Merchant gửi → 409 MerchantProfileChanged; không áp snapshot cũ.")
                 .WithOpenApi();
 
             requests.MapPost("/{id:guid}/reject", async (Guid id, RejectMerchantProfileRequestCommand command, IMerchantProfileAppService svc) =>
                 (await svc.RejectAsync(id, command)).CustomResult())
                 .RequireAuthorization("AdminOnly")
                 .WithName("Từ chối cập nhật hồ sơ Merchant")
-                .WithSummary("Từ chối kèm lý do bắt buộc; báo Merchant.")
+                .WithSummary("Từ chối: body reason, expectedVersion bắt buộc; operationId tùy chọn. Gửi lại cùng key/nội dung trả kết quả cũ, khác nội dung → 409.")
                 .WithOpenApi();
         }
     }

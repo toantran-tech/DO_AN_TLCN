@@ -1,5 +1,28 @@
 # Tiến độ WashGo theo Đặc tả usecase (Backend trước)
-Cập nhật lần cuối: 05/11/2026
+Cập nhật lần cuối: 09/11/2026
+
+## Merchant đợt 2 ngày 09/11/2026 — version và kết quả thao tác
+
+Folder yêu cầu nằm tại `C:/Users/PC/Desktop/HK1_2027/cần làm`. Checklist chính đã được đưa về [IMPLEMENTATION_CHECKLIST.md](IMPLEMENTATION_CHECKLIST.md) trong thư mục gốc washgo-be theo yêu cầu; cập nhật tiến độ ở bản này.
+
+- [x] GET/list Merchant trả version chuỗi; PUT hồ sơ và status bắt buộc expectedVersion. Thiếu 400, cũ 409 kèm hồ sơ mới. Version đơn điệu ở độ chính xác microsecond của PostgreSQL; dùng chuỗi tránh mất chính xác ở JavaScript. Các thao tác ghi khóa Merchant trong transaction bằng cùng capacity lock với phân công đơn.
+- [x] operationId tùy chọn cho sửa/khóa/duyệt/từ chối; lock key trước lock Merchant, hash toàn payload, response gốc lưu cùng transaction. Replay đúng key trả snapshot cũ, không ghi/gửi audit/notification lại; khác nội dung trả 409. GET `/merchant/operations/{operationId}` AdminOnly và scope actor; chỉ kết quả đã commit, 404 không kết luận request đang chạy đã thất bại.
+- [x] Gửi yêu cầu hồ sơ khóa cùng Merchant để bảo vệ một Pending và snapshot. Duyệt/từ chối có version yêu cầu; duyệt kiểm tra baseMerchantVersion và Current snapshot trước áp Proposed. Hồ sơ đổi trả 409 MerchantProfileChanged; legacy đối chiếu trường snapshot hiện có. Duyệt/từ chối đồng thời chỉ một thành công; yêu cầu đã xử lý trả 409 AlreadyReviewed. Duyệt nhận expectedVersion/operationId ở query; từ chối ở body. Hướng dẫn `docs/ADMIN_MERCHANT_REVIEW.md`.
+- [x] Migration `20261108181756_AddMerchantWriteOperations` đã áp dụng PostgreSQL Docker; chỉ thêm bảng operation. EF has-pending-model-changes sạch. .NET/Docker build thành công, còn các cảnh báo nullable đã có.
+- [x] Bản Docker cuối: `merchant-admin-profile-guards.ps1` PASS (save/review đồng thời 200/409, replay/conflict/lookup/audit, stale snapshot, quyền và validation/vùng); `merchant-profile.ps1` PASS; `merchant-profile-legal.ps1` PASS. Fixture riêng, không gửi email bên ngoài. Cập nhật hợp đồng version trong các script merchant-admin, audit-log, system-settings; chưa chạy lại ba script này vì có bước gửi thông tin tài khoản/thiết lập toàn hệ thống.
+- [ ] Còn: idempotency tạo Merchant, ánh xạ lỗi unique, delivery status email, upload tài liệu PDF/Word và các mục còn lại của checklist. Chưa coi toàn module hoặc toàn folder hoàn tất.
+
+
+## Đợt hoàn thiện folder cần làm ngày 09/11/2026
+
+Checklist tổng: [IMPLEMENTATION_CHECKLIST.md](IMPLEMENTATION_CHECKLIST.md). Giữ nguyên 13 tài liệu yêu cầu để đối chiếu; không đánh dấu toàn module hoàn tất khi mới sửa một phần. Quyền tài liệu đã chốt: **Admin quản lý SLA/hợp đồng, Merchant chỉ xem/tải**; giấy phép Merchant đề xuất qua duyệt.
+
+- [x] Admin Merchant — đợt 1: PUT `/merchant/` không còn thay trạng thái; nếu client gửi status khác hiện tại trả 400 với `meta.code=UseMerchantStatusEndpoint`. Bỏ status hoặc echo trạng thái hiện tại vẫn sửa hồ sơ được; khóa/mở tiếp tục đi PUT `/merchant/status` với guard/thu hồi phiên hiện có. Đây chưa phải sửa concurrency của luồng status.
+- [x] Lưu lại cùng vùng giữ nguyên ID/priority/isActive/assignedBy/assignedAt/createdAt/updatedAt; chỉ xóa link bị bỏ và thêm link mới. `null` giữ vùng, `[]` gỡ vùng. Danh sách Merchant thêm ThenBy(Id). Validate commission và deposit tối đa 2 chữ số lẻ, deposit trong decimal(18,2), city/district tối đa 100 trước ghi.
+- [x] GET `/merchant/summary` AdminOnly trả tổng Merchant, ba trạng thái và số yêu cầu hồ sơ Pending trong transaction repeatable-read; `generatedAt` UTC, không theo bộ lọc bảng.
+- [x] Build .NET và Docker thành công (còn 5 cảnh báo nullable có sẵn); Swagger có API summary. `tests/smoke/merchant-admin-profile-guards.ps1` PASS trên Docker: quyền 401/403, không khóa/mở bằng sửa hồ sơ, endpoint status hoạt động, summary đổi đúng theo trạng thái fixture, validation không ghi dữ liệu sai, hoa hồng 0 hợp lệ, lưu/xóa vùng đúng. Script dùng fixture riêng và dọn sau test, không gọi tạo Merchant/gửi email. Không thay model nên không tạo migration.
+- [ ] Tiếp theo: version/idempotency/lookup Merchant, duyệt hồ sơ chống snapshot cũ, tình trạng email, tài liệu riêng tư; sau đó Finance, Settings, Locker, Service, Promotion, Incident theo checklist. Chưa kết luận toàn bộ folder đã hoàn tất.
+
 
 Ghi nhận ngày 05/11/2026 — URL đăng ký VNPay: form từ chối localhost. `tools/payment-tunnel/compose.yml` và proxy `server.mjs` chỉ công khai GET trang giới thiệu/return, GET `/payment/vnpay-ipn`, POST `/payment/momo-ipn`; các route còn lại trả 404, không công khai Swagger/Auth. Lệnh bật ban đầu bị automatic approval review từ chối vì thiếu đồng ý chuyển IPN qua Cloudflare; sau khi giải thích, người dùng đã đồng ý bật. **Đã chạy tunnel:** `https://impressive-weighted-magnitude-champagne.trycloudflare.com`. Kiểm tra public: trang gốc 200; Swagger/Auth 404; VNPay IPN tới backend (từ chối chữ ký chưa hợp lệ), MoMo IPN giả 400. Đã điền URL IPN/return tương ứng vào .env local. URL tạm có thể đổi khi khởi động lại tunnel; chưa có khóa gateway riêng nên chưa kết luận thanh toán end-to-end thành công.
 

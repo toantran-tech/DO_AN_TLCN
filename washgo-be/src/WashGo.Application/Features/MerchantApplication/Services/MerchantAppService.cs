@@ -26,6 +26,7 @@ using WashGo.Domain.Entities.WashOrder;
 using WashGo.Domain.Entities.WashOrder.Interfaces;
 using WashGo.Domain.Shared.Enums;
 using WashGo.Core.Utils;
+using System.Data;
 
 using WashGo.Application.Features.SystemSettingApplication.Services;
 
@@ -52,6 +53,7 @@ namespace WashGo.Application.Features.MerchantApplication.Services
         private readonly IRepository<MerchantServiceArea, Guid> _msaRepo;
         private readonly IRepository<ServiceArea, Guid> _areaRepo;
         private readonly IRepository<MerchantImage, Guid> _imageRepo;
+        private readonly IRepository<MerchantProfileRequest, Guid> _profileRequestRepo;
         private readonly IWashOrderRepository _orderRepo;
         private readonly IRepository<MerchantSettlement, Guid> _settlementRepo;
         private readonly OrderListEnricher _enricher;
@@ -60,6 +62,7 @@ namespace WashGo.Application.Features.MerchantApplication.Services
         private readonly NotificationPublisher _notifications;
         private readonly IConfiguration _configuration;
         private readonly ILogger<MerchantAppService> _logger;
+        private readonly MerchantWriteGuard _writeGuard;
 
         public MerchantAppService(
             IRepository<Merchant, Guid> merchantRepo,
@@ -69,6 +72,7 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             IRepository<MerchantServiceArea, Guid> msaRepo,
             IRepository<ServiceArea, Guid> areaRepo,
             IRepository<MerchantImage, Guid> imageRepo,
+            IRepository<MerchantProfileRequest, Guid> profileRequestRepo,
             IWashOrderRepository orderRepo,
             IRepository<MerchantSettlement, Guid> settlementRepo,
             OrderListEnricher enricher,
@@ -76,7 +80,8 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             IAuthEmailSender emailSender,
             NotificationPublisher notifications,
             IConfiguration configuration,
-            ILogger<MerchantAppService> logger)
+            ILogger<MerchantAppService> logger,
+            MerchantWriteGuard writeGuard)
         {
             _merchantRepo = merchantRepo;
             _userRepo = userRepo;
@@ -85,6 +90,7 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             _msaRepo = msaRepo;
             _areaRepo = areaRepo;
             _imageRepo = imageRepo;
+            _profileRequestRepo = profileRequestRepo;
             _orderRepo = orderRepo;
             _settlementRepo = settlementRepo;
             _enricher = enricher;
@@ -93,6 +99,38 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             _notifications = notifications;
             _configuration = configuration;
             _logger = logger;
+            _writeGuard = writeGuard;
+        }
+
+        public async Task<BaseResponse<MerchantSummaryDto>> GetSummaryAsync()
+        {
+            using var snapshot = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true,
+                isolationLevel: IsolationLevel.RepeatableRead);
+            var counts = await AsyncExecuter.ToListAsync((await _merchantRepo.GetQueryableAsync())
+                .GroupBy(x => x.Status).Select(g => new { Status = g.Key, Count = g.Count() }));
+            var pending = await _profileRequestRepo.CountAsync(x => x.Status == ServiceApprovalStatus.Pending);
+            var result = new MerchantSummaryDto
+            {
+                Total = counts.Sum(x => x.Count),
+                Active = counts.Where(x => x.Status == MerchantStatus.Active).Sum(x => x.Count),
+                Inactive = counts.Where(x => x.Status == MerchantStatus.Inactive).Sum(x => x.Count),
+                Suspended = counts.Where(x => x.Status == MerchantStatus.Suspended).Sum(x => x.Count),
+                PendingProfileRequests = pending,
+                GeneratedAt = DateTime.UtcNow
+            };
+            await snapshot.CompleteAsync();
+            return Success(result);
+        }
+
+        public async Task<BaseResponse<MerchantOperationResultDto>> GetOperationAsync(Guid operationId)
+        {
+            var row = await _writeGuard.FindAsync(operationId, CurrentUser.Id!.Value);
+            if (row == null) return NotFound<MerchantOperationResultDto>("Không tìm thấy thao tác đã commit của bạn.");
+            return Success(new MerchantOperationResultDto
+            {
+                OperationId = row.Id, MerchantId = row.MerchantId, Operation = row.Operation, CreatedAt = row.CreatedAt,
+                Result = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(row.ResponseJson)
+            });
         }
 
         // UC 3.2.1
@@ -127,7 +165,7 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             var take = Math.Clamp(query.Take, 1, 100);
             var total = await AsyncExecuter.CountAsync(queryable);
             var items = await AsyncExecuter.ToListAsync(
-                queryable.OrderBy(x => x.BusinessName)
+                queryable.OrderBy(x => x.BusinessName).ThenBy(x => x.Id)
                          .Skip((page - 1) * take)
                          .Take(take)
             );
@@ -205,6 +243,11 @@ namespace WashGo.Application.Features.MerchantApplication.Services
         // UC 3.2.3
         public async Task<BaseResponse<MerchantResultDto>> UpdateAsync(UpdateMerchantCommand command)
         {
+            using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            if (await _writeGuard.ReplayAsync<MerchantResultDto>(command.OperationId, CurrentUser.Id!.Value,
+                    command.Id, "Update", command) is { } replay)
+                return replay;
+            await _writeGuard.LockMerchantAsync(command.Id);
             if (command.Status.HasValue && !Enum.IsDefined(typeof(MerchantStatus), command.Status.Value))
             {
                 return BadRequest<MerchantResultDto>("Trạng thái Merchant không hợp lệ. Chỉ chấp nhận 1, 2 hoặc 3.");
@@ -216,6 +259,19 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             {
                 return NotFound<MerchantResultDto>("Không tìm thấy hồ sơ đối tác giặt sấy!");
             }
+            if (string.IsNullOrWhiteSpace(command.ExpectedVersion))
+                return MerchantWriteGuard.Error<MerchantResultDto>(HttpStatusCode.BadRequest, "ExpectedVersionRequired", "Thiếu expectedVersion từ GET /merchant/{id}.");
+            if (command.ExpectedVersion != MerchantWriteGuard.Version(entity))
+                return MerchantWriteGuard.Error(HttpStatusCode.Conflict, "VersionMismatch", "Hồ sơ đã thay đổi; vui lòng tải lại.", (await ToDtosAsync([entity]))[0]);
+            // Keep the legacy field readable, but never let profile edits bypass lock rules.
+            if (command.Status.HasValue && command.Status.Value != entity.Status)
+                return new BaseResponse<MerchantResultDto>
+                {
+                    Succeeded = false,
+                    StatusCode = HttpStatusCode.BadRequest,
+                    Meta = new { code = "UseMerchantStatusEndpoint" },
+                    Message = "Vui lòng dùng PUT /merchant/status để khóa hoặc mở khóa Merchant."
+                };
             var auditBefore = (await ToDtosAsync([entity]))[0];
 
             // Email is optional on edit: blank keeps the login email.
@@ -238,15 +294,11 @@ namespace WashGo.Application.Features.MerchantApplication.Services
                     return BadRequest<MerchantResultDto>($"Tối đa {UploadStorage.MaxImagesPerSubmission} ảnh.");
             }
 
-            using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            var previousVersion = entity.UpdatedAt.Ticks / 10;
             Apply(entity, command, phone!);
+            entity.UpdatedAt = new DateTime(Math.Max(entity.UpdatedAt.Ticks / 10, previousVersion + 1) * 10, DateTimeKind.Utc);
             if (command.CommissionRate.HasValue)
                 entity.CommissionRate = command.CommissionRate.Value;
-            if (command.Status.HasValue && command.Status.Value != entity.Status)
-            {
-                entity.Status = command.Status.Value;
-                user.IsActive = entity.Status == MerchantStatus.Active;
-            }
             await _merchantRepo.UpdateAsync(entity, autoSave: true);
             if (user.Email != email)
             {
@@ -258,19 +310,25 @@ namespace WashGo.Application.Features.MerchantApplication.Services
                 await ReplaceImagesAsync(entity.Id, images);
             if (command.ServiceAreaIds != null)
                 await ReplaceAreasAsync(entity.Id, command.ServiceAreaIds);
-            await uow.CompleteAsync();
-
             var auditAfter = (await ToDtosAsync([entity]))[0];
             await Audit.LogAsync(new AuditEntry("Merchant", "Update", "Merchant", entity.Id.ToString(), entity.BusinessName)
             {
                 ChangedFields = AuditLogWriter.Diff(auditBefore, auditAfter)
             });
-            return Success(auditAfter, "Cập nhật Merchant thành công!");
+            var response = Success(auditAfter, "Cập nhật Merchant thành công!");
+            await _writeGuard.RecordAsync(command.OperationId, CurrentUser.Id.Value, entity.Id, "Update", command, response);
+            await uow.CompleteAsync();
+            return response;
         }
 
         // UC 3.2.4: lock needs a reason and, with unfinished orders, an explicit confirmation.
         public async Task<BaseResponse<MerchantResultDto>> UpdateStatusAsync(UpdateMerchantStatusCommand command)
         {
+            using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            if (await _writeGuard.ReplayAsync<MerchantResultDto>(command.OperationId, CurrentUser.Id!.Value,
+                    command.MerchantId, "Status", command) is { } replay)
+                return replay;
+            await _writeGuard.LockMerchantAsync(command.MerchantId);
             if (!Enum.IsDefined(typeof(MerchantStatus), command.Status))
             {
                 return BadRequest<MerchantResultDto>("Trạng thái Merchant không hợp lệ. Chỉ chấp nhận 1, 2 hoặc 3.");
@@ -282,8 +340,17 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             {
                 return NotFound<MerchantResultDto>("Không tìm thấy đối tác Merchant!");
             }
+            if (string.IsNullOrWhiteSpace(command.ExpectedVersion))
+                return MerchantWriteGuard.Error<MerchantResultDto>(HttpStatusCode.BadRequest, "ExpectedVersionRequired", "Thiếu expectedVersion từ GET /merchant/{id}.");
+            if (command.ExpectedVersion != MerchantWriteGuard.Version(entity))
+                return MerchantWriteGuard.Error(HttpStatusCode.Conflict, "VersionMismatch", "Hồ sơ đã thay đổi; vui lòng tải lại.", (await ToDtosAsync([entity]))[0]);
             if (entity.Status == command.Status)
-                return Success((await ToDtosAsync([entity]))[0], "Merchant đã ở trạng thái này.");
+            {
+                var unchanged = Success((await ToDtosAsync([entity]))[0], "Merchant đã ở trạng thái này.");
+                await _writeGuard.RecordAsync(command.OperationId, CurrentUser.Id.Value, entity.Id, "Status", command, unchanged);
+                await uow.CompleteAsync();
+                return unchanged;
+            }
 
             var now = DateTime.UtcNow;
             var locking = command.Status != MerchantStatus.Active;
@@ -307,9 +374,8 @@ namespace WashGo.Application.Features.MerchantApplication.Services
                 }
             }
 
-            using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
             entity.Status = command.Status;
-            entity.UpdatedAt = now;
+            MerchantWriteGuard.Touch(entity);
             if (locking)
             {
                 entity.RejectionReason = reason;
@@ -336,12 +402,14 @@ namespace WashGo.Application.Features.MerchantApplication.Services
                 locking ? $"Tài khoản cửa hàng {entity.BusinessName} đã bị Admin khóa. Lý do: {reason}"
                         : $"Tài khoản cửa hàng {entity.BusinessName} đã được Admin kích hoạt lại.",
                 "merchant", entity.Id);
-            await uow.CompleteAsync();
             await Audit.LogAsync(new AuditEntry("Merchant", locking ? "Lock" : "Unlock", "Merchant", entity.Id.ToString(), entity.BusinessName)
             {
                 Reason = reason, ChangedFields = ["status"], Details = new { status = entity.Status.ToString() }
             });
-            return Success((await ToDtosAsync([entity]))[0], locking ? "Đã khóa Merchant thành công!" : "Đã mở khóa Merchant thành công!");
+            var response = Success((await ToDtosAsync([entity]))[0], locking ? "Đã khóa Merchant thành công!" : "Đã mở khóa Merchant thành công!");
+            await _writeGuard.RecordAsync(command.OperationId, CurrentUser.Id.Value, entity.Id, "Status", command, response);
+            await uow.CompleteAsync();
+            return response;
         }
 
         public async Task<BaseResponse<List<ColumnFilterDistinctValueDto>>> GetColumnDistinctValuesAsync(string fieldName, MerchantFilterQuery query)
@@ -368,11 +436,16 @@ namespace WashGo.Application.Features.MerchantApplication.Services
                 return (MerchantRules.InvalidCoordinates, null);
             if (command.CommissionRate is < 0 or > 100)
                 return (MerchantRules.InvalidCommission, null);
+            if (command.CommissionRate.HasValue && decimal.Round(command.CommissionRate.Value, 2) != command.CommissionRate.Value)
+                return ("Tỷ lệ chiết khấu chỉ được có tối đa 2 chữ số thập phân.", null);
+            if ((command.City?.Trim().Length ?? 0) > 100 || (command.District?.Trim().Length ?? 0) > 100)
+                return ("Tỉnh/thành phố và quận/huyện tối đa 100 ký tự.", null);
             if (command.ServiceRadiusKm is < 1 or > 100)
                 return ("Bán kính phục vụ phải từ 1 đến 100 km.", null);
             if (command.MaxCapacity is < 1 or > 100000)
                 return ("Sức chứa tối đa phải lớn hơn 0.", null);
-            if (command.DepositAmount < 0)
+            if (command.DepositAmount < 0 || command.DepositAmount > 9999999999999999.99m ||
+                decimal.Round(command.DepositAmount, 2) != command.DepositAmount)
                 return ("Tiền ký quỹ không hợp lệ.", null);
             if (command.ContractStartDate.HasValue && command.ContractEndDate.HasValue &&
                 command.ContractEndDate.Value < command.ContractStartDate.Value)
@@ -439,8 +512,13 @@ namespace WashGo.Application.Features.MerchantApplication.Services
         private async System.Threading.Tasks.Task ReplaceAreasAsync(Guid merchantId, List<Guid> areaIds)
         {
             var existing = await _msaRepo.GetListAsync(x => x.MerchantId == merchantId);
-            await _msaRepo.DeleteManyAsync(existing, autoSave: true);
-            await _msaRepo.InsertManyAsync(areaIds.Distinct().Select(areaId => new MerchantServiceArea(GuidGenerator.Create())
+            var desired = areaIds.ToHashSet();
+            var removed = existing.Where(x => !desired.Contains(x.ServiceAreaId)).ToList();
+            if (removed.Count > 0)
+                await _msaRepo.DeleteManyAsync(removed, autoSave: true);
+            // Unchanged links retain priority, activation and assignment history.
+            var retained = existing.Select(x => x.ServiceAreaId).ToHashSet();
+            var added = desired.Where(id => !retained.Contains(id)).Select(areaId => new MerchantServiceArea(GuidGenerator.Create())
             {
                 MerchantId = merchantId,
                 ServiceAreaId = areaId,
@@ -450,7 +528,9 @@ namespace WashGo.Application.Features.MerchantApplication.Services
                 AssignedAt = DateTime.UtcNow,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
-            }), autoSave: true);
+            }).ToList();
+            if (added.Count > 0)
+                await _msaRepo.InsertManyAsync(added, autoSave: true);
         }
 
         /// <summary>Tổng đơn, doanh thu (đơn đã thanh toán) và số đơn chưa xử lý được tính từ đơn hàng thực tế.</summary>
@@ -477,6 +557,7 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             var dtos = ObjectMapper.Map<List<Merchant>, List<MerchantResultDto>>(merchants);
             foreach (var dto in dtos)
             {
+                dto.Version = MerchantWriteGuard.Version(merchants.First(x => x.Id == dto.Id));
                 dto.Email = emails.GetValueOrDefault(dto.Id, string.Empty);
                 dto.ServiceAreaIds = areas.GetValueOrDefault(dto.Id) ?? [];
                 dto.ImageUrls = images.GetValueOrDefault(dto.Id) ?? [];

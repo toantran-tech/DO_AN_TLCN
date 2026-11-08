@@ -36,19 +36,19 @@ try {
     $r=(Call-Api Post '/merchant-profile/update-requests' (Req @{taxCode=$tax;businessLicense=$licImg;address="12 New Road $run";latitude=10.81;longitude=106.71}) $team).data
     if((@($r.changedFields) -join ',') -notmatch 'taxCode' -or (@($r.changedFields) -join ',') -notmatch 'businessLicense' -or $r.proposed.taxCode -ne $tax -or $r.proposed.businessLicense -ne $licImg){throw "Request wrong: $(@($r.changedFields) -join ',')"}
     if((Call-Api Get '/merchant-profile/' $null $team).data.taxCode -eq $tax){throw 'Tax code applied before approval.'}
-    Call-Api Post "/merchant-profile-request/$($r.id)/approve" $null $admin | Out-Null
+    Call-Api Post "/merchant-profile-request/$($r.id)/approve?expectedVersion=$($r.version)" $null $admin | Out-Null
     $after=(Call-Api Get '/merchant-profile/' $null $team).data
     if($after.taxCode -ne $tax -or $after.businessLicense -ne $licImg -or $after.latitude -ne 10.81 -or $after.address -ne "12 New Road $run"){throw "Approval not applied: $($after.taxCode) $($after.businessLicense)"}
 
     Write-Output '4. Licence number text, clearing the tax code, older requests keep values'
     $p=(Call-Api Get '/merchant-profile/' $null $team).data
     $r2=(Call-Api Post '/merchant-profile/update-requests' (Req @{taxCode='';businessLicense="GPKD-$run"}) $team).data
-    Call-Api Post "/merchant-profile-request/$($r2.id)/approve" $null $admin | Out-Null
+    Call-Api Post "/merchant-profile-request/$($r2.id)/approve?expectedVersion=$($r2.version)" $null $admin | Out-Null
     $after=(Call-Api Get '/merchant-profile/' $null $team).data
     if($after.taxCode -or $after.businessLicense -ne "GPKD-$run"){throw 'Clear/licence number not applied.'}
     $r3=(Call-Api Post '/merchant-profile/update-requests' (Req @{openingHours='07:00-22:00'}) $team).data
     Sql "UPDATE washgo.merchant_profile_requests SET proposed_data = proposed_data - 'taxCode' - 'businessLicense' WHERE id='$($r3.id)';" | Out-Null
-    Call-Api Post "/merchant-profile-request/$($r3.id)/approve" $null $admin | Out-Null
+    Call-Api Post "/merchant-profile-request/$($r3.id)/approve?expectedVersion=$($r3.version)" $null $admin | Out-Null
     if((Call-Api Get '/merchant-profile/' $null $team).data.businessLicense -ne "GPKD-$run"){throw 'Old request without the fields changed the licence.'}
 
     Write-Output 'PASS: latitude/longitude required together and with any address/city change; tax code format and uniqueness; licence image must be the Merchant''s own upload, licence number length; request shows current/proposed/changed taxCode and businessLicense, applied only when the Admin approves; empty string clears; requests without the fields keep current values.'

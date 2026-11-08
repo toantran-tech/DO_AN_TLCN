@@ -40,12 +40,17 @@ namespace WashGo.Application.Contracts.Features.MerchantContracts.Commands
     public class UpdateMerchantCommand : CreateMerchantCommand
     {
         public Guid Id { get; set; }
+        public string? ExpectedVersion { get; set; }
+        public Guid? OperationId { get; set; }
+        /// <summary>Chỉ chấp nhận giá trị hiện tại để tương thích client cũ. Đổi trạng thái dùng PUT /merchant/status.</summary>
         public MerchantStatus? Status { get; set; }
     }
 
     /// <summary>UC 3.2.4: khóa (Suspended/Inactive, bắt buộc lý do) hoặc mở khóa (Active).</summary>
     public class UpdateMerchantStatusCommand
     {
+        public string? ExpectedVersion { get; set; }
+        public Guid? OperationId { get; set; }
         public Guid MerchantId { get; set; }
         public MerchantStatus Status { get; set; }
         public string? RejectionReason { get; set; }

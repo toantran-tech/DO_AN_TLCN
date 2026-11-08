@@ -92,15 +92,15 @@ INSERT INTO washgo.merchants SELECT (jsonb_populate_record(NULL::washgo.merchant
 
     Write-Output '5. Reject with reason'
     Assert-Status 400 Post "/merchant-profile-request/$($r1.data.id)/reject" @{reason=' '} $admin
-    $rej=(Call-Api Post "/merchant-profile-request/$($r1.data.id)/reject" @{reason='Anh chua ro'} $admin).data
+    $rej=(Call-Api Post "/merchant-profile-request/$($r1.data.id)/reject" @{reason='Anh chua ro';expectedVersion=$r1.data.version} $admin).data
     if($rej.status -ne 3 -or $rej.rejectionReason -ne 'Anh chua ro'){throw 'Reject failed.'}
-    Assert-Status 400 Post "/merchant-profile-request/$($r1.data.id)/approve" $null $admin
+    Assert-Status 409 Post "/merchant-profile-request/$($r1.data.id)/approve" $null $admin
     if((Profile).businessName -ne 'Profile Smoke Laundry B'){throw 'Rejected request changed the profile.'}
     if(@(Notes $merchant 27 | Where-Object { $_.content -match 'Anh chua ro' }).Count -ne 1){throw 'Merchant not told the reason.'}
 
     Write-Output '6. Approve applies the update'
     $r2=(Call-Api Post '/merchant-profile/update-requests' $req $merchant).data
-    $ok=Call-Api Post "/merchant-profile-request/$($r2.id)/approve" $null $admin
+    $ok=Call-Api Post "/merchant-profile-request/$($r2.id)/approve?expectedVersion=$($r2.version)" $null $admin
     if($ok.data.status -ne 2){throw 'Approve failed.'}
     $p=Profile
     if($p.businessName -ne "Profile Laundry $run" -or $p.address -ne '99 New Street' -or $p.city -ne 'Can Tho' -or $p.latitude -ne 10.045162 -or $p.longitude -ne 105.746857 -or $p.phone -ne '0901234567' -or $p.openingHours -ne '"07:00-22:00"' -or (@($p.imageUrls) -join ',') -ne $img -or $p.pendingRequest){throw 'Approved update not applied.'}
@@ -110,11 +110,11 @@ INSERT INTO washgo.merchants SELECT (jsonb_populate_record(NULL::washgo.merchant
     Write-Output '7. Omitted images are kept; removing images works'
     $r3=(Call-Api Post '/merchant-profile/update-requests' @{businessName="Profile Laundry $run";address='99 New Street';city='Can Tho';latitude=10.045162;longitude=105.746857;phone='0901234567';openingHours='{"mon":"06:00-23:00"}'} $merchant).data
     if((@($r3.changedFields) -join ',') -ne 'openingHours' -or (@($r3.proposed.imageUrls) -join ',') -ne $img){throw "Omitted images not kept: $(@($r3.changedFields) -join ',')"}
-    Call-Api Post "/merchant-profile-request/$($r3.id)/approve" $null $admin | Out-Null
+    Call-Api Post "/merchant-profile-request/$($r3.id)/approve?expectedVersion=$($r3.version)" $null $admin | Out-Null
     $p=Profile
     if(($p.openingHours | ConvertFrom-Json).mon -ne '06:00-23:00' -or (@($p.imageUrls) -join ',') -ne $img){throw 'Hours-only update wrong.'}
     $r4=(Call-Api Post '/merchant-profile/update-requests' @{businessName="Profile Laundry $run";address='99 New Street';city='Can Tho';latitude=10.045162;longitude=105.746857;phone='0901234567';openingHours='{"mon":"06:00-23:00"}';imageUrls=@()} $merchant).data
-    Call-Api Post "/merchant-profile-request/$($r4.id)/approve" $null $admin | Out-Null
+    Call-Api Post "/merchant-profile-request/$($r4.id)/approve?expectedVersion=$($r4.version)" $null $admin | Out-Null
     if(@((Profile).imageUrls).Count -ne 0){throw 'Images not removed.'}
 
     Write-Output 'PASS: profile view (with City, Lat/Long, JoinedAt, PublicRatingCount), phone/name/address/city/coordinates/image validation, no-change guard, pending request + Admin notification, one pending, scope, reject with reason, approve applies fields and images, omitted images kept, images removable.'
