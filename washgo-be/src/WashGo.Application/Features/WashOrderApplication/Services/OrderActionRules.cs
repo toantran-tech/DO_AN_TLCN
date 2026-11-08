@@ -94,6 +94,18 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             return null;
         }
 
+        /// <summary>Lý do Admin chưa được hủy đơn quá hạn gửi đồ (deadline lưu trên đơn; đơn cũ đã backfill).</summary>
+        public static Block? CancelExpiredDeposit(WashOrder order, string role, DateTime now)
+        {
+            if (role != "Admin")
+                return new("RoleNotAllowed", "Chỉ Admin được hủy đơn quá hạn gửi đồ.");
+            if (order.Status != WashOrderStatus.Pending)
+                return new("NotPending", "Chỉ hủy theo luồng này khi đơn còn chờ gửi đồ.");
+            if (order.DepositDeadline is not { } deadline || now <= deadline)
+                return new("NotExpired", "Đơn chưa quá hạn gửi đồ.");
+            return null;
+        }
+
         public static DateTime? TransferToStorageEligibleAt(WashOrder order) =>
             order.PickupDeadline?.AddHours(WashGo.Domain.Entities.SystemConfig.SystemSetting.StorageTransferAfterHours);
 
@@ -113,6 +125,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             var weigh = Weigh(order, role);
             var assign = Assign(order, role, out var task);
             var storage = MoveToStorage(order, role, DateTime.UtcNow);
+            var expired = CancelExpiredDeposit(order, role, DateTime.UtcNow);
             return new OrderAllowedActionsDto
             {
                 AllowedNextStatuses = options.Where(x => x.Allowed).Select(x => x.Status).ToList(),
@@ -129,7 +142,9 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 CanMoveToStorage = storage == null,
                 MoveToStorageReasonCode = storage?.Code,
                 MoveToStorageReason = storage?.Message,
-                TransferToStorageEligibleAt = TransferToStorageEligibleAt(order)
+                TransferToStorageEligibleAt = TransferToStorageEligibleAt(order),
+                CanCancelExpiredDeposit = expired == null,
+                CancelExpiredDepositReasonCode = expired?.Code
             };
         }
     }
