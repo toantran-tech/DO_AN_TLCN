@@ -71,6 +71,7 @@ namespace WashGo.Application.Features.MerchantApplication.Services
                 Id = merchant.Id,
                 BusinessName = merchant.BusinessName,
                 TaxCode = merchant.TaxCode,
+                BusinessLicense = LicenseText(merchant.BusinessLicense),
                 Email = user?.Email ?? string.Empty,
                 Address = merchant.Address,
                 District = merchant.District,
@@ -117,6 +118,32 @@ namespace WashGo.Application.Features.MerchantApplication.Services
                 return BadRequest<MerchantProfileRequestDto>("Vĩ độ (Latitude) không hợp lệ (phải từ -90 đến 90).");
             if (command.Longitude.HasValue && (command.Longitude.Value < -180m || command.Longitude.Value > 180m))
                 return BadRequest<MerchantProfileRequestDto>("Kinh độ (Longitude) không hợp lệ (phải từ -180 đến 180).");
+            // A location is a pair: never mix a new latitude with the old longitude.
+            if (command.Latitude.HasValue != command.Longitude.HasValue)
+                return BadRequest<MerchantProfileRequestDto>("Cần gửi đủ cả vĩ độ và kinh độ (hoặc bỏ trống cả hai).");
+            var addressChanged = !string.Equals(address, merchant.Address, StringComparison.Ordinal) ||
+                                 !string.Equals(city, merchant.City ?? string.Empty, StringComparison.Ordinal);
+            if (addressChanged && !command.Latitude.HasValue)
+                return BadRequest<MerchantProfileRequestDto>("Đổi địa chỉ/thành phố cần chọn lại vị trí cửa hàng trên bản đồ (latitude, longitude).");
+
+            var currentLicense = LicenseText(merchant.BusinessLicense);
+            string? taxCode = command.TaxCode == null ? merchant.TaxCode : command.TaxCode.Trim();
+            if (!string.IsNullOrEmpty(taxCode) && command.TaxCode != null)
+            {
+                if (!System.Text.RegularExpressions.Regex.IsMatch(taxCode, @"^\d{10}(-\d{3})?$"))
+                    return BadRequest<MerchantProfileRequestDto>("Mã số thuế phải gồm 10 chữ số hoặc 10 chữ số kèm -3 chữ số chi nhánh.");
+                if (await _merchantRepo.AnyAsync(x => x.TaxCode == taxCode && x.Id != merchant.Id))
+                    return BadRequest<MerchantProfileRequestDto>("Mã số thuế này đã được cửa hàng khác sử dụng.");
+            }
+            string? license = command.BusinessLicense == null ? currentLicense : command.BusinessLicense.Trim();
+            if (!string.IsNullOrEmpty(license) && command.BusinessLicense != null && license != currentLicense)
+            {
+                var isFile = license.StartsWith("/", StringComparison.Ordinal) || license.StartsWith("http", StringComparison.OrdinalIgnoreCase);
+                if (isFile && UploadStorage.ValidateOwnedImages(_configuration, [license], merchant.Id, 1, out _) != null)
+                    return BadRequest<MerchantProfileRequestDto>("Ảnh giấy phép phải là ảnh do chính cửa hàng upload qua /files/images.");
+                if (!isFile && license.Length > 100)
+                    return BadRequest<MerchantProfileRequestDto>("Số giấy phép kinh doanh tối đa 100 ký tự.");
+            }
 
             var digits = MerchantRules.NormalizePhone(phone);
             if (digits == null)
@@ -133,7 +160,9 @@ namespace WashGo.Application.Features.MerchantApplication.Services
                 Longitude = merchant.Longitude,
                 Phone = merchant.Phone,
                 OpeningHours = MerchantRules.NormalizeJson(merchant.OpeningHours),
-                ImageUrls = await StoreImagesAsync(merchant.Id)
+                ImageUrls = await StoreImagesAsync(merchant.Id),
+                TaxCode = merchant.TaxCode ?? string.Empty,
+                BusinessLicense = currentLicense ?? string.Empty
             };
             var images = current.ImageUrls;
             if (command.ImageUrls != null)
@@ -155,7 +184,9 @@ namespace WashGo.Application.Features.MerchantApplication.Services
                 Longitude = command.Longitude ?? merchant.Longitude,
                 Phone = digits,
                 OpeningHours = hours,
-                ImageUrls = images
+                ImageUrls = images,
+                TaxCode = taxCode ?? string.Empty,
+                BusinessLicense = license ?? string.Empty
             };
             if (Changes(current, proposed).Count == 0)
                 return BadRequest<MerchantProfileRequestDto>("Không có thông tin nào thay đổi.");
@@ -230,6 +261,16 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             }
             merchant.Phone = data.Phone;
             merchant.OpeningHours = data.OpeningHours;
+            // Requests made before these fields existed carry null: keep the current values.
+            if (data.TaxCode != null)
+            {
+                var tax = data.TaxCode.Length == 0 ? null : data.TaxCode;
+                if (tax != null && await _merchantRepo.AnyAsync(x => x.TaxCode == tax && x.Id != merchant.Id))
+                    return BadRequest<MerchantProfileRequestDto>("Mã số thuế đã được cửa hàng khác sử dụng; hãy từ chối yêu cầu.");
+                merchant.TaxCode = tax;
+            }
+            if (data.BusinessLicense != null)
+                merchant.BusinessLicense = data.BusinessLicense.Length == 0 ? null : MerchantRules.NormalizeJson(JsonSerializer.Serialize(data.BusinessLicense));
             merchant.UpdatedAt = now;
             await _merchantRepo.UpdateAsync(merchant, autoSave: true);
             await ReplaceStoreImagesAsync(merchant.Id, data.ImageUrls);
@@ -266,6 +307,18 @@ namespace WashGo.Application.Features.MerchantApplication.Services
                 $"Yêu cầu cập nhật hồ sơ cửa hàng của bạn đã bị từ chối. Lý do: {reason}", "merchant-profile-request", request.Id);
             var names = await MerchantNamesAsync([request.MerchantId]);
             return Success(ToDto(request, names.GetValueOrDefault(request.MerchantId, string.Empty)), "Đã từ chối yêu cầu cập nhật!");
+        }
+
+        /// <summary>BusinessLicense is stored as JSON (Admin form): a JSON string becomes plain text.</summary>
+        private static string? LicenseText(string? stored)
+        {
+            if (string.IsNullOrWhiteSpace(stored)) return null;
+            try
+            {
+                using var doc = JsonDocument.Parse(stored);
+                return doc.RootElement.ValueKind == JsonValueKind.String ? doc.RootElement.GetString() : stored;
+            }
+            catch (JsonException) { return stored; }
         }
 
         private async Task<List<string>> StoreImagesAsync(Guid merchantId) =>
@@ -306,6 +359,8 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             if (current.Phone != proposed.Phone) changed.Add("phone");
             if (current.OpeningHours != proposed.OpeningHours) changed.Add("openingHours");
             if (!current.ImageUrls.SequenceEqual(proposed.ImageUrls)) changed.Add("imageUrls");
+            if (proposed.TaxCode != null && (current.TaxCode ?? string.Empty) != proposed.TaxCode) changed.Add("taxCode");
+            if (proposed.BusinessLicense != null && (current.BusinessLicense ?? string.Empty) != proposed.BusinessLicense) changed.Add("businessLicense");
             return changed;
         }
 
