@@ -1,6 +1,16 @@
 # Tiến độ WashGo theo Đặc tả usecase (Backend trước)
 Cập nhật lần cuối: 09/11/2026
 
+## Merchant đợt 3 ngày 09/11/2026 — tạo tài khoản và email
+
+- [x] Nhánh riêng `feat/toantran/merchant-create-safety`, từ develop đã merge PR #77. POST `/merchant/` nhận clientRequestId GUID tùy chọn (nên dùng): chuẩn hóa email/MST, khóa key và định danh, kiểm tra dưới khóa, ghi User/Merchant/ảnh/vùng/Create audit/operation trong cùng transaction. Replay không tạo lại, không sinh/gửi lại mật khẩu; khác payload trả 409 OperationIdReused. GET `/merchant/operations/{clientRequestId}` nhận cả Create, scope Admin actor; snapshot hồ sơ giữ nguyên, delivery đọc trạng thái mới nhất. Thêm ClientRequestId trên command với WhenWritingNull để không đổi fingerprint các operation Update cũ không gửi field này.
+- [x] Trùng email/MST lúc tạo trả 409 EmailAlreadyUsed/TaxCodeAlreadyUsed; infrastructure classifier chỉ nhận unique constraint tương ứng (23505), không đổi các lỗi DB khác thành duplicate. Áp dụng wrapper cho create/update/approve; exception xảy ra thì explicit UoW rollback trước khi trả 409. Create/update/approve thống nhất thứ tự khóa email → MST → Merchant khi có ghi định danh. Tên cửa hàng vẫn tối đa 200; tên hiển thị User dẫn xuất giới hạn 100 theo cột tài khoản.
+- [x] Email Merchant có subject/nội dung riêng, không dùng nhãn Shipper. Account + operation commit trước SMTP; chỉ request tạo đầu tiên gửi. Merchant lưu CredentialDelivery (0 Unknown, 1 Sent = SMTP chấp nhận, 2 Failed xác định), CredentialSentAt và trả CredentialEmailSent. Khi mất kết nối/ack hoặc crash trước xác nhận là Unknown, không tự resend; tài khoản vẫn tồn tại và có thể dùng Quên mật khẩu. Delivery cập nhật trong transaction riêng, giữ version hồ sơ; không lưu plaintext password vào operation/audit/DTO.
+- [x] Migration `20261108184346_AddMerchantCredentialDelivery` đã áp dụng PostgreSQL Docker; legacy = Unknown/null, không suy là đã gửi. Build .NET/Docker thành công. Test `merchant-create-safety.ps1` PASS: hai request cùng key một account/một email; khác key tranh email/MST; create tranh Admin sửa email; trigger fixture ép lỗi unique email/MST thật từ DB trả đúng mã 409 và không còn account/operation dở; không lộ password; recipient 550 giữ account và Failed; transport lỗi giữ account và Unknown; retry sau phục hồi không gửi lại. Trigger được dọn (0 còn lại).
+- [x] Hồi quy `merchant-admin-profile-guards.ps1`, `merchant-admin.ps1`, `merchant-profile-legal.ps1` PASS. Test dùng SMTP Mailpit riêng, không gửi email bên ngoài. Hướng dẫn chạy/khôi phục tại `docs/ADMIN_MERCHANT_CREATE.md`. Cập nhật checklist chính trong repo.
+- [ ] Còn lại của quản lý Merchant: sort/date/rating count và định nghĩa chỉ số tài chính, upload giấy tờ/SLA/hợp đồng riêng tư; replay cho gửi yêu cầu hồ sơ. Chưa coi toàn folder yêu cầu hoàn tất. Chưa commit/push nhánh mới.
+
+
 ## Merchant đợt 2 ngày 09/11/2026 — version và kết quả thao tác
 
 Folder yêu cầu nằm tại `C:/Users/PC/Desktop/HK1_2027/cần làm`. Checklist chính đã được đưa về [IMPLEMENTATION_CHECKLIST.md](IMPLEMENTATION_CHECKLIST.md) trong thư mục gốc washgo-be theo yêu cầu; cập nhật tiến độ ở bản này.
@@ -10,7 +20,7 @@ Folder yêu cầu nằm tại `C:/Users/PC/Desktop/HK1_2027/cần làm`. Checkli
 - [x] Gửi yêu cầu hồ sơ khóa cùng Merchant để bảo vệ một Pending và snapshot. Duyệt/từ chối có version yêu cầu; duyệt kiểm tra baseMerchantVersion và Current snapshot trước áp Proposed. Hồ sơ đổi trả 409 MerchantProfileChanged; legacy đối chiếu trường snapshot hiện có. Duyệt/từ chối đồng thời chỉ một thành công; yêu cầu đã xử lý trả 409 AlreadyReviewed. Duyệt nhận expectedVersion/operationId ở query; từ chối ở body. Hướng dẫn `docs/ADMIN_MERCHANT_REVIEW.md`.
 - [x] Migration `20261108181756_AddMerchantWriteOperations` đã áp dụng PostgreSQL Docker; chỉ thêm bảng operation. EF has-pending-model-changes sạch. .NET/Docker build thành công, còn các cảnh báo nullable đã có.
 - [x] Bản Docker cuối: `merchant-admin-profile-guards.ps1` PASS (save/review đồng thời 200/409, replay/conflict/lookup/audit, stale snapshot, quyền và validation/vùng); `merchant-profile.ps1` PASS; `merchant-profile-legal.ps1` PASS. Fixture riêng, không gửi email bên ngoài. Cập nhật hợp đồng version trong các script merchant-admin, audit-log, system-settings; chưa chạy lại ba script này vì có bước gửi thông tin tài khoản/thiết lập toàn hệ thống.
-- [ ] Còn: idempotency tạo Merchant, ánh xạ lỗi unique, delivery status email, upload tài liệu PDF/Word và các mục còn lại của checklist. Chưa coi toàn module hoặc toàn folder hoàn tất.
+- [x] Các phần tạo Merchant/idempotency tạo, ánh xạ lỗi unique và email delivery của đợt 2 đã được xử lý ở đợt 3 bên trên. Upload PDF/Word và các mục còn lại vẫn theo checklist, chưa coi toàn module hoặc toàn folder hoàn tất.
 
 
 ## Đợt hoàn thiện folder cần làm ngày 09/11/2026

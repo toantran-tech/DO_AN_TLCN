@@ -35,7 +35,7 @@ namespace WashGo.HttpApi.Endpoints.Merchant
             group.MapGet("/operations/{operationId:guid}", async (Guid operationId, IMerchantAppService svc) =>
                 (await svc.GetOperationAsync(operationId)).CustomResult())
                 .WithName("Admin tra cứu thao tác Merchant")
-                .WithSummary("Chỉ thao tác đã commit do chính Admin thực hiện: sửa hồ sơ/trạng thái/duyệt/từ chối. Trả snapshot kết quả gốc. 404 không chứng minh request đang chạy đã thất bại; có thể gửi lại cùng operationId và payload.")
+                .WithSummary("Chỉ thao tác đã commit do chính Admin thực hiện: tạo/sửa/trạng thái/duyệt/từ chối. Tạo dùng clientRequestId làm operationId khi tra cứu; giữ snapshot hồ sơ lúc tạo, credentialDelivery cập nhật trạng thái gửi email hiện tại. 404 không chứng minh request đang chạy đã thất bại; có thể gửi lại cùng key/payload.")
                 .WithOpenApi();
 
             group.MapGet("/{id:guid}", async (Guid id, IMerchantAppService svc) =>
@@ -47,7 +47,7 @@ namespace WashGo.HttpApi.Endpoints.Merchant
             group.MapPost("/", async (CreateMerchantCommand command, IMerchantAppService svc) =>
                 (await svc.CreateAsync(command)).CustomResult())
                 .WithName("Thêm mới hồ sơ đối tác giặt sấy")
-                .WithSummary("Thêm mới hồ sơ đối tác giặt sấy.")
+                .WithSummary("Tạo Merchant: clientRequestId (GUID) chống tạo/gửi email trùng khi retry; cùng key khác payload → 409. Trùng email/MST → 409. Tài khoản vẫn được tạo nếu email lỗi; credentialDelivery=0 Unknown/1 Sent (SMTP chấp nhận)/2 Failed, không bảo đảm inbox. Replay không gửi lại mật khẩu.")
                 .WithOpenApi();
 
             group.MapPut("/", async (UpdateMerchantCommand command, IMerchantAppService svc) =>

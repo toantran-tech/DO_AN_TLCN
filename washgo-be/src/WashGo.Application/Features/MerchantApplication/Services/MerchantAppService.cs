@@ -126,10 +126,21 @@ namespace WashGo.Application.Features.MerchantApplication.Services
         {
             var row = await _writeGuard.FindAsync(operationId, CurrentUser.Id!.Value);
             if (row == null) return NotFound<MerchantOperationResultDto>("Không tìm thấy thao tác đã commit của bạn.");
+            object result = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(row.ResponseJson);
+            if (row.Operation == "Create")
+            {
+                var created = System.Text.Json.JsonSerializer.Deserialize<BaseResponse<MerchantResultDto>>(row.ResponseJson,
+                    new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+                if (created?.Data != null)
+                {
+                    await FillCredentialDeliveryAsync(created.Data);
+                    result = created;
+                }
+            }
             return Success(new MerchantOperationResultDto
             {
                 OperationId = row.Id, MerchantId = row.MerchantId, Operation = row.Operation, CreatedAt = row.CreatedAt,
-                Result = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(row.ResponseJson)
+                Result = result
             });
         }
 
@@ -184,69 +195,111 @@ namespace WashGo.Application.Features.MerchantApplication.Services
         }
 
         // UC 3.2.2: creates the Merchant login (role Merchant) and profile; credentials go out by email.
-        public async Task<BaseResponse<MerchantResultDto>> CreateAsync(CreateMerchantCommand command)
+        public Task<BaseResponse<MerchantResultDto>> CreateAsync(CreateMerchantCommand command) =>
+            _writeGuard.IdentitySafeAsync(() => CreateCoreAsync(command));
+
+        private async Task<BaseResponse<MerchantResultDto>> CreateCoreAsync(CreateMerchantCommand command)
         {
             var email = command.Email?.Trim().ToLowerInvariant() ?? string.Empty;
-            if (!MerchantRules.IsValidEmail(email))
-                return BadRequest<MerchantResultDto>("Email không hợp lệ.");
-            var (error, phone) = await ValidateAsync(command, email, null);
-            if (error != null)
-                return BadRequest<MerchantResultDto>(error);
-            var imageError = UploadStorage.ValidateOwnedImages(_configuration, command.ImageUrls, CurrentUser.Id!.Value, 0, out var images);
-            if (imageError != null)
-                return BadRequest<MerchantResultDto>(imageError);
-            var role = await _roleRepo.FirstOrDefaultAsync(x => x.Name == "Merchant");
-            if (role == null)
-                return BadRequest<MerchantResultDto>("Có lỗi xảy ra. Vui lòng thử lại.");
-
-            var temporaryPassword = TemporaryPassword.Generate();
-            var user = new User(GuidGenerator.Create())
-            {
-                RoleId = role.Id,
-                Email = email,
-                PasswordHash = BCrypt.Net.BCrypt.HashPassword(temporaryPassword),
-                AuthProvider = AuthProvider.Local,
-                FullName = command.BusinessName.Trim(),
-                IsActive = true
-            };
-            // Merchant accounts share their id with the Merchant profile.
-            var entity = new Merchant(user.Id)
-            {
-                Status = MerchantStatus.Active,
-                Rating = 5.0m,
-                CommissionRate = command.CommissionRate ?? (await _settings.GetAsync()).DefaultCommissionRate,
-                ApprovedBy = CurrentUser.Id,
-                ApprovedAt = DateTime.UtcNow
-            };
-            Apply(entity, command, phone!);
-
+            command.Email = email;
+            command.TaxCode = string.IsNullOrWhiteSpace(command.TaxCode) ? null : command.TaxCode.Trim();
+            string temporaryPassword;
+            Merchant entity;
+            BaseResponse<MerchantResultDto> response;
             using (var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true))
             {
+                if (await _writeGuard.ReplayAsync<MerchantResultDto>(command.ClientRequestId, CurrentUser.Id!.Value, null, "Create", command) is { } replay)
+                {
+                    if (replay.Succeeded && replay.Data != null) await FillCredentialDeliveryAsync(replay.Data);
+                    return replay;
+                }
+                if (!MerchantRules.IsValidEmail(email))
+                    return BadRequest<MerchantResultDto>("Email không hợp lệ.");
+                await _writeGuard.LockIdentityAsync(email, command.TaxCode);
+                if (await _userRepo.AnyAsync(x => x.Email.ToLower() == email))
+                    return MerchantWriteGuard.Error<MerchantResultDto>(HttpStatusCode.Conflict, "EmailAlreadyUsed", "Email này đã được sử dụng.");
+                if (command.TaxCode != null && await _merchantRepo.AnyAsync(x => x.TaxCode == command.TaxCode))
+                    return MerchantWriteGuard.Error<MerchantResultDto>(HttpStatusCode.Conflict, "TaxCodeAlreadyUsed", "Mã số thuế này đã được sử dụng.");
+                var (error, phone) = await ValidateAsync(command, email, null);
+                if (error != null) return BadRequest<MerchantResultDto>(error);
+                var imageError = UploadStorage.ValidateOwnedImages(_configuration, command.ImageUrls, CurrentUser.Id.Value, 0, out var images);
+                if (imageError != null) return BadRequest<MerchantResultDto>(imageError);
+                var role = await _roleRepo.FirstOrDefaultAsync(x => x.Name == "Merchant");
+                if (role == null) return BadRequest<MerchantResultDto>("Có lỗi xảy ra. Vui lòng thử lại.");
+                temporaryPassword = TemporaryPassword.Generate();
+                var displayName = command.BusinessName.Trim();
+                var user = new User(GuidGenerator.Create())
+                {
+                    RoleId = role.Id, Email = email, PasswordHash = BCrypt.Net.BCrypt.HashPassword(temporaryPassword),
+                    AuthProvider = AuthProvider.Local,
+                    // Account display names have a 100-character limit; the store retains its full legal name.
+                    FullName = displayName.Length > 100 ? displayName[..100] : displayName, IsActive = true
+                };
+                entity = new Merchant(user.Id)
+                {
+                    Status = MerchantStatus.Active, Rating = 5.0m,
+                    CommissionRate = command.CommissionRate ?? (await _settings.GetAsync()).DefaultCommissionRate,
+                    ApprovedBy = CurrentUser.Id, ApprovedAt = DateTime.UtcNow
+                };
+                Apply(entity, command, phone!);
                 await _userRepo.InsertAsync(user, autoSave: true);
                 await _merchantRepo.InsertAsync(entity, autoSave: true);
                 await ReplaceImagesAsync(entity.Id, images);
                 await ReplaceAreasAsync(entity.Id, command.ServiceAreaIds ?? []);
+                await Audit.LogAsync(new AuditEntry("Merchant", "Create", "Merchant", entity.Id.ToString(), entity.BusinessName)
+                { Details = new { entity.CommissionRate, status = entity.Status.ToString(), operationId = command.ClientRequestId } });
+                response = Created((await ToDtosAsync([entity]))[0], "Tài khoản Merchant đã được tạo; trạng thái gửi email được trả riêng.");
+                await _writeGuard.RecordAsync(command.ClientRequestId, CurrentUser.Id.Value, entity.Id, "Create", command, response);
                 await uow.CompleteAsync();
             }
-
-            // Spec 6a: a failed delivery is logged but the account stays created.
-            var sent = await _emailSender.SendAccountCredentialsAsync(email, entity.BusinessName, temporaryPassword);
-            if (!sent)
-                _logger.LogWarning("Could not send Merchant credentials to {Email}.", email);
-            await Audit.LogAsync(new AuditEntry("Merchant", "Create", "Merchant", entity.Id.ToString(), entity.BusinessName)
+            // Account + operation are committed BEFORE SMTP. Only the first creator ever attempts delivery.
+            var delivery = CredentialDeliveryStatus.Unknown;
+            try { delivery = await _emailSender.SendMerchantCredentialsAsync(email, entity.BusinessName, temporaryPassword); }
+            catch (Exception) { _logger.LogWarning("Merchant {MerchantId} credential email outcome is unknown.", entity.Id); }
+            try
             {
-                Details = new { email, entity.CommissionRate, status = entity.Status.ToString(), credentialEmailSent = sent }
-            });
-            return Created((await ToDtosAsync([entity]))[0], "Thêm Merchant thành công!");
+                using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+                await _writeGuard.LockMerchantAsync(entity.Id);
+                var saved = await _merchantRepo.GetAsync(entity.Id);
+                saved.CredentialDelivery = delivery;
+                saved.CredentialSentAt = delivery == CredentialDeliveryStatus.Sent ? DateTime.UtcNow : null;
+                // Delivery metadata does not change the profile version or overwrite concurrent profile edits.
+                await _merchantRepo.UpdateAsync(saved, autoSave: true);
+                await uow.CompleteAsync();
+                response.Data!.CredentialDelivery = saved.CredentialDelivery;
+                response.Data.CredentialSentAt = saved.CredentialSentAt;
+            }
+            catch (Exception)
+            {
+                // The create is already durable. Do not report a false failed creation or retry SMTP.
+                _logger.LogWarning("Merchant {MerchantId} created; credential delivery metadata could not be confirmed.", entity.Id);
+            }
+            return response;
+        }
+
+        private async Task FillCredentialDeliveryAsync(MerchantResultDto dto)
+        {
+            var merchant = await _merchantRepo.FindAsync(dto.Id);
+            if (merchant == null) return;
+            dto.CredentialDelivery = merchant.CredentialDelivery;
+            dto.CredentialSentAt = merchant.CredentialSentAt;
         }
 
         // UC 3.2.3
-        public async Task<BaseResponse<MerchantResultDto>> UpdateAsync(UpdateMerchantCommand command)
+        public Task<BaseResponse<MerchantResultDto>> UpdateAsync(UpdateMerchantCommand command) =>
+            _writeGuard.IdentitySafeAsync(() => UpdateCoreAsync(command));
+
+        private async Task<BaseResponse<MerchantResultDto>> UpdateCoreAsync(UpdateMerchantCommand command)
         {
             using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
             if (await _writeGuard.ReplayAsync<MerchantResultDto>(command.OperationId, CurrentUser.Id!.Value,
                     command.Id, "Update", command) is { } replay)
                 return replay;
+            // Match create's lock order. Project the current email without tracking a stale User entity.
+            var identityEmail = string.IsNullOrWhiteSpace(command.Email)
+                ? await AsyncExecuter.FirstOrDefaultAsync((await _userRepo.GetQueryableAsync()).Where(x => x.Id == command.Id).Select(x => x.Email)) ?? string.Empty
+                : command.Email.Trim().ToLowerInvariant();
+            await _writeGuard.LockIdentityAsync(identityEmail, command.TaxCode?.Trim());
             await _writeGuard.LockMerchantAsync(command.Id);
             if (command.Status.HasValue && !Enum.IsDefined(typeof(MerchantStatus), command.Status.Value))
             {

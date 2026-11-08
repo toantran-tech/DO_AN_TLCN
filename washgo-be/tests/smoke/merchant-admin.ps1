@@ -52,7 +52,7 @@ try {
 
     Write-Output '2. Create with account (UC 3.2.2)'
     Assert-Status 400 Post '/merchant/' (Body @{email='not-an-email'}) $admin
-    Assert-Status 400 Post '/merchant/' (Body @{email='admin@washgo.vn'}) $admin
+    Assert-Status 409 Post '/merchant/' (Body @{email='admin@washgo.vn'}) $admin
     Assert-Status 400 Post '/merchant/' (Body @{latitude=0;longitude=0}) $admin
     Assert-Status 400 Post '/merchant/' (Body @{latitude=95}) $admin
     Assert-Status 400 Post '/merchant/' (Body @{phone='12ab'}) $admin
@@ -60,7 +60,7 @@ try {
     Assert-Status 400 Post '/merchant/' (Body @{serviceAreaIds=@("$([Guid]::NewGuid())")}) $admin
     Assert-Status 400 Post '/merchant/' (Body @{contractEndDate='2025-01-01T00:00:00Z'}) $admin
     $seedTax=Sql "SELECT tax_code FROM washgo.merchants WHERE tax_code IS NOT NULL LIMIT 1;"
-    if($seedTax){ Assert-Status 400 Post '/merchant/' (Body @{taxCode=$seedTax}) $admin }
+    if($seedTax){ Assert-Status 409 Post '/merchant/' (Body @{taxCode=$seedTax}) $admin }
     $img=Upload-Image $admin
     $c=Call-Api Post '/merchant/' (Body @{imageUrls=@($img)}) $admin
     $merchantId=[Guid]$c.data.id
@@ -68,8 +68,8 @@ try {
     if(!$c.message -or $m.email -ne $email -or $m.status -ne 1 -or $m.phone -ne '0912345678' -or $m.taxCode -ne "TX$run" -or $m.businessLicense -ne ('"GP-'+$run+'"')){throw 'Create fields wrong.'}
     if((@($m.imageUrls) -join ',') -ne $img -or (@($m.serviceAreaIds) -join ',') -ne "$area" -or $m.maxCapacity -ne 30 -or !$m.contractEndDate -or $m.slaDocUrl -ne '/uploads/sla.pdf'){throw 'Create details wrong.'}
     if((Sql "SELECT r.name FROM washgo.users u JOIN washgo.roles r ON r.id=u.role_id WHERE u.id='$merchantId';") -ne 'Merchant'){throw 'Account role wrong.'}
-    Assert-Status 400 Post '/merchant/' (Body @{businessName="Dup $run"}) $admin
-    Assert-Status 400 Post '/merchant/' (Body @{email="other-$run@example.com"}) $admin
+    Assert-Status 409 Post '/merchant/' (Body @{businessName="Dup $run"}) $admin
+    Assert-Status 409 Post '/merchant/' (Body @{email="other-$run@example.com"}) $admin
     # Fixture shortcut: give the new account a known password instead of reading the email.
     Sql "UPDATE washgo.users SET password_hash=(SELECT password_hash FROM washgo.users WHERE id='$seedMerchantId') WHERE id='$merchantId';" | Out-Null
     $sessions.N=(Call-Api Post '/auth/login' @{email=$email;password='Merchant@123'} $null).data

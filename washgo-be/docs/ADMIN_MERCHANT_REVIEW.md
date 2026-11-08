@@ -21,7 +21,7 @@ Ví dụ body khóa, thay ID và version bằng dữ liệu thật:
 
 operationId tùy chọn nhưng nên gửi khi ghi. Sau timeout, giữ nguyên key và toàn bộ payload, kể cả expectedVersion. Gửi lại cùng yêu cầu trả response gốc, không thực hiện lại. Cùng key khác payload/đối tượng/thao tác trả 409 OperationIdReused. Replay trả snapshot cũ, không phải trạng thái hiện tại; dùng GET nếu cần dữ liệu mới nhất.
 
-Tra cứu GET `/merchant/operations/{operationId}`: AdminOnly, chỉ thao tác do chính Admin thực hiện. Response có operationId, merchantId, operation, createdAt và result (response gốc). Chỉ thao tác đã commit mới có kết quả; 404 không chứng minh request đang chạy đã thất bại. Có thể gửi lại cùng operationId và payload. Hiện hỗ trợ Update/Status/ApproveProfile/RejectProfile; chưa hỗ trợ tạo Merchant.
+Tra cứu GET `/merchant/operations/{operationId}`: AdminOnly, chỉ thao tác do chính Admin thực hiện. Response có operationId, merchantId, operation, createdAt và result (response gốc). Chỉ thao tác đã commit mới có kết quả; 404 không chứng minh request đang chạy đã thất bại. Có thể gửi lại cùng operationId và payload. Hỗ trợ Update/Status/ApproveProfile/RejectProfile và Create (dùng clientRequestId làm key tra cứu; xem hướng dẫn tạo Merchant).
 
 ## Duyệt hồ sơ
 
@@ -33,7 +33,7 @@ GET/list yêu cầu hồ sơ có `version` chuỗi; `current.baseMerchantVersion
 - Hồ sơ Merchant đổi từ khi gửi: duyệt trả 409 MerchantProfileChanged, không áp snapshot cũ. Từ chối yêu cầu và gửi đề xuất mới; không ép duyệt bằng cách chỉ đổi expectedVersion.
 - Sửa/khóa/gửi yêu cầu/duyệt/từ chối dùng cùng khóa Merchant với phân công đơn, kiểm tra version trong transaction. Legacy chưa có base version thì đối chiếu các trường snapshot hiện có trước khi duyệt.
 
-Migration `20261108181756_AddMerchantWriteOperations` đã áp dụng DB; model không thiếu migration. Tạo tài khoản/idempotency tạo/email delivery status còn nằm trong checklist.
+Migration `20261108181756_AddMerchantWriteOperations` đã áp dụng DB. Đợt 3 đã bổ sung tạo tài khoản/idempotency tạo/email delivery status; xem [ADMIN_MERCHANT_CREATE.md](ADMIN_MERCHANT_CREATE.md). Không coi toàn bộ quản lý Merchant đã hoàn tất; theo checklist chính.
 
 ## Thống kê
 
