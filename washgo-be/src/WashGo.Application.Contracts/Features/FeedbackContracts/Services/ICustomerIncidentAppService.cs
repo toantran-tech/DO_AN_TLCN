@@ -18,6 +18,7 @@ namespace WashGo.Application.Contracts.Features.FeedbackContracts.Services
         Task<BaseResponse<IncidentResultDto>> UpdateAsync(Guid id, UpdateIncidentCommand command);
         Task<BaseResponse<IncidentResultDto>> WithdrawAsync(Guid id, WithdrawIncidentCommand command);
         Task<BaseResponse<List<IncidentMessageDto>>> GetMessagesAsync(Guid id);
+        Task<PaginatedResult<IncidentMessageDto>> GetMessagePageAsync(Guid id, int page, int take);
         Task<BaseResponse<IncidentMessageDto>> AddMessageAsync(Guid id, AddIncidentMessageCommand command);
     }
 }

@@ -53,12 +53,16 @@ namespace WashGo.HttpApi.Endpoints.Finance
                 .WithName("Tạo kỳ đối soát")
                 .WithSummary("Admin chốt số liệu hoa hồng của một Merchant cho một kỳ đã kết thúc; không cho tạo kỳ trùng.")
                 .WithOpenApi();
+            group.MapPost("/settlements/quote", async (CreateSettlementCommand command, IFinanceAppService svc) => (await svc.QuoteSettlementAsync(command)).CustomResult())
+                .RequireAuthorization("AdminOnly").WithSummary("Xem trước thu/hoàn/hoa hồng/thực nhận và các đơn; lấy quoteToken trước khi tạo kỳ. Kỳ đóng, biên UTC gồm cả hai đầu.").WithOpenApi();
+            group.MapGet("/operations/{id:guid}", async (Guid id, IFinanceAppService svc) => (await svc.GetOperationAsync(id)).CustomResult())
+                .RequireAuthorization("AdminOnly").WithSummary("Tra kết quả ghi Finance theo operationId của chính Admin.").WithOpenApi();
 
             group.MapPost("/settlements/filter", async (SettlementFilterQuery query, IFinanceAppService svc) =>
                 (await svc.GetSettlementsAsync(query)).CustomResult())
                 .RequireAuthorization("MerchantOrAdmin")
                 .WithName("Danh sách kỳ đối soát")
-                .WithSummary("Admin xem mọi kỳ (lọc Merchant/trạng thái); Merchant chỉ xem kỳ của mình.")
+                .WithSummary("Merchant chỉ xem kỳ của mình. FromDate/ToDate lọc kỳ giao nhau; PaidFromDate/PaidToDate lọc ngày chi trả (Unix giây, bao gồm hai đầu). Keyword tên Merchant/chứng từ; sortBy PeriodFrom/PeriodTo/PaidAt/CreatedOn/MerchantName/PayoutAmount/Status/Id.")
                 .WithOpenApi();
 
             group.MapGet("/settlements/{id:guid}/orders", async (Guid id, IFinanceAppService svc) =>
@@ -67,6 +71,10 @@ namespace WashGo.HttpApi.Endpoints.Finance
                 .WithName("Chi tiết kỳ đối soát theo đơn")
                 .WithSummary("Từng đơn trong kỳ: tiền thu, hoàn, tỷ lệ hoa hồng chốt trên đơn (null = chưa có snapshot, cần đối chiếu), hoa hồng, thực nhận; kèm số đã chốt của kỳ. Merchant chỉ xem kỳ của mình.")
                 .WithOpenApi();
+            group.MapGet("/settlements/{id:guid}", async (Guid id, IFinanceAppService svc) => (await svc.GetSettlementAsync(id)).CustomResult())
+                .RequireAuthorization("MerchantOrAdmin").WithSummary("Chi tiết kỳ đối soát gồm version, số tiền đã chốt và chứng từ; Merchant chỉ xem của mình.").WithOpenApi();
+            group.MapGet("/settlements/{id:guid}/lines", async (Guid id, int? page, int? take, IFinanceAppService svc) => (await svc.GetSettlementLinesAsync(id, page ?? 1, take ?? 20)).CustomResult())
+                .RequireAuthorization("MerchantOrAdmin").WithSummary("Phân trang dòng đối soát từ snapshot; kỳ legacy chưa có snapshot được đánh dấu tại /orders.").WithOpenApi();
 
             group.MapPost("/settlements/{id:guid}/confirm-paid", async (Guid id, ConfirmSettlementPaidCommand command, IFinanceAppService svc) =>
                 (await svc.ConfirmSettlementPaidAsync(id, command)).CustomResult())

@@ -17,6 +17,8 @@ namespace WashGo.HttpApi.Endpoints.Feedback
         public void MapEndpoint(IEndpointRouteBuilder app)
         {
             var group = app.MapGroup(_endpoint).WithTags("Incident - Báo cáo sự cố & khiếu nại");
+            group.MapGet("/summary", async (IIncidentAppService svc) => (await svc.GetSummaryAsync()).CustomResult())
+                .RequireAuthorization("AdminOnly").WithSummary("Tổng khiếu nại và số lượng từng trạng thái từ DB.").WithOpenApi();
 
             group.MapPost("/", async (CreateIncidentCommand command, IIncidentAppService svc) =>
                 (await svc.CreateAsync(command)).CustomResult())
@@ -110,6 +112,8 @@ namespace WashGo.HttpApi.Endpoints.Feedback
                 .WithName("Trao đổi trong khiếu nại")
                 .WithSummary("Customer (khiếu nại của mình) hoặc Admin xem các tin trao đổi và minh chứng bổ sung, cũ trước.")
                 .WithOpenApi();
+            group.MapGet("/{id:guid}/messages/page", async (Guid id, int? page, int? take, ICustomerIncidentAppService svc) => (await svc.GetMessagePageAsync(id, page ?? 1, take ?? 20)).CustomResult())
+                .RequireAuthorization().WithSummary("Phân trang trao đổi tại DB, cũ trước, take tối đa 100; chỉ Admin hoặc chủ khiếu nại.").WithOpenApi();
 
             group.MapPost("/{id:guid}/messages", async (Guid id, AddIncidentMessageCommand command, ICustomerIncidentAppService svc) =>
                 (await svc.AddMessageAsync(id, command)).CustomResult())

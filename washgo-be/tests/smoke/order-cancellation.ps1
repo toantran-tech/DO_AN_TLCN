@@ -180,8 +180,8 @@ FROM washgo.payment_transactions t WHERE transaction_reference='$($pay.transacti
     if($refunds.Count -ne 1 -or $refunds[0].amount -ne 70000){throw 'Cancellation created duplicate/full refund.'}
     Assert-Status 400 Post '/payment/refund-requests' @{orderId=$id;reason='Attempt to refund fee too'} $customer
     $refundId=$refunds[0].id
-    Call-Api Post "/payment/refund-requests/$refundId/review" @{approve=$true} $admin | Out-Null
-    Call-Api Post "/payment/refund-requests/$refundId/confirm-refunded" @{refundReference='SMOKE-NO-REAL-BANK-TRANSFER'} $admin | Out-Null
+    $approved=(Call-Api Post "/payment/refund-requests/$refundId/review" @{approve=$true;expectedVersion=$refunds[0].version} $admin).data
+    Call-Api Post "/payment/refund-requests/$refundId/confirm-refunded" @{refundReference='SMOKE-NO-REAL-BANK-TRANSFER';expectedVersion=$approved.version} $admin | Out-Null
 
     Write-Output '7. Concurrent cancel/deposit: consistent occupied slot or free slot, no lost goods'
     $o=New-CancelOrder;$id=$o.id

@@ -56,12 +56,13 @@ namespace WashGo.Application.Features.MerchantReportApplication.Services
 
         private async Task<IQueryable<PayRow>> PaymentsAsync(Guid merchantId, DateTime? from, DateTime? to)
         {
-            var orders = (await _orderRepo.GetQueryableAsync()).Where(o => !o.IsDeleted && o.MerchantId == merchantId);
+            var orders = await _orderRepo.GetQueryableAsync();
             var q = from p in await _paymentRepo.GetQueryableAsync()
                     join o in orders on p.OrderId equals o.Id
                     where (p.Status == PaymentTransactionStatus.Succeeded || p.Status == PaymentTransactionStatus.Refunded) &&
-                          p.CompletedAt != null
-                    select new PayRow { OrderId = o.Id, Purpose = p.Purpose, Amount = p.Amount, At = p.CompletedAt!.Value, Rate = o.CommissionRateApplied };
+                          p.CompletedAt != null && (p.FinancialSnapshotBasis != null ? p.MerchantIdSnapshot : o.MerchantId) == merchantId
+                    select new PayRow { OrderId = o.Id, Purpose = p.Purpose, Amount = p.Amount, At = p.CompletedAt!.Value,
+                        Rate = p.FinancialSnapshotBasis != null ? p.CommissionRateSnapshot : o.CommissionRateApplied };
             if (from.HasValue) q = q.Where(x => x.At >= from.Value);
             if (to.HasValue) q = q.Where(x => x.At < to.Value);
             return q;
@@ -69,11 +70,13 @@ namespace WashGo.Application.Features.MerchantReportApplication.Services
 
         private async Task<IQueryable<PayRow>> RefundsAsync(Guid merchantId, DateTime? from, DateTime? to)
         {
-            var orders = (await _orderRepo.GetQueryableAsync()).Where(o => !o.IsDeleted && o.MerchantId == merchantId);
+            var orders = await _orderRepo.GetQueryableAsync();
             var q = from r in await _refundRepo.GetQueryableAsync()
                     join o in orders on r.OrderId equals o.Id
-                    where r.Status == RefundRequestStatus.Refunded && r.RefundedAt != null
-                    select new PayRow { OrderId = o.Id, Purpose = PaymentPurpose.Order, Amount = r.Amount, At = r.RefundedAt!.Value, Rate = o.CommissionRateApplied };
+                    where r.Status == RefundRequestStatus.Refunded && r.RefundedAt != null &&
+                        (r.FinancialSnapshotBasis != null ? r.MerchantIdSnapshot : o.MerchantId) == merchantId
+                    select new PayRow { OrderId = o.Id, Purpose = PaymentPurpose.Order, Amount = r.Amount, At = r.RefundedAt!.Value,
+                        Rate = r.FinancialSnapshotBasis != null ? r.CommissionRateSnapshot : o.CommissionRateApplied };
             if (from.HasValue) q = q.Where(x => x.At >= from.Value);
             if (to.HasValue) q = q.Where(x => x.At < to.Value);
             return q;
