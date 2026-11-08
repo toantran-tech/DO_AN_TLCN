@@ -16,6 +16,7 @@ namespace WashGo.EntityFrameworkCore.BuilderConfiguration
             builder.Property(x => x.Operation).HasMaxLength(40).IsRequired();
             builder.Property(x => x.Request).HasMaxLength(200).IsRequired();
             builder.HasIndex(x => x.OrderId);
+            builder.HasIndex(x => x.GroupId);
             builder.HasOne<WashOrder>().WithMany().HasForeignKey(x => x.OrderId).OnDelete(DeleteBehavior.Cascade);
         }
     }

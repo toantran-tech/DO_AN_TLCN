@@ -49,7 +49,7 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Commands
         public string? Note { get; set; }
     }
 
-    public class MoveOrderToStorageCommand
+    public class MoveOrderToStorageCommand : GuardedOrderCommand
     {
         public Guid OrderId { get; set; }
         public string StorageLocation { get; set; } = string.Empty;

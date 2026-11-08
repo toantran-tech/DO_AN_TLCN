@@ -2441,6 +2441,10 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
+                    b.Property<Guid?>("GroupId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("group_id");
+
                     b.Property<string>("Operation")
                         .IsRequired()
                         .HasMaxLength(40)
@@ -2466,6 +2470,8 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnName("result_status");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("GroupId");
 
                     b.HasIndex("OrderId");
 

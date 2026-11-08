@@ -114,11 +114,11 @@ namespace WashGo.HttpApi.Endpoints.WashOrder
                 .WithSummary("Merchant cân đồ đã thu gom, tính lại giá và thời gian dự kiến; đơn giữ trạng thái Collected. Hỗ trợ expectedRevision/expectedStatus (409) và operationId như PUT /status.")
                 .WithOpenApi();
 
-            group.MapPost("/move-to-storage", async (MoveOrderToStorageCommand command, IWashOrderAppService svc) =>
-                (await svc.MoveToStorageAsync(command)).CustomResult())
+            group.MapPost("/move-to-storage", async (MoveOrderToStorageCommand command, HttpContext http, IWashOrderAppService svc) =>
+                (await svc.MoveToStorageAsync(OrderWriteHeaders.Apply(command, http))).CustomResult())
                 .RequireAuthorization("ShipperOrAdmin")
                 .WithName("Ghi nhận chuyển đồ quá hạn sang kho")
-                .WithSummary("Shipper hoặc Admin ghi nhận chuyển đồ quá hạn khỏi locker sang kho.")
+                .WithSummary("Shipper hoặc Admin ghi nhận chuyển đồ quá hạn khỏi locker sang kho. Hỗ trợ expectedRevision/expectedStatus (409) và operationId (gửi lại không thực hiện lại; tra cứu bằng GET /wash-order/{id}/operations/{operationId}). Điều kiện xem trước ở allowedActions.canMoveToStorage.")
                 .WithOpenApi();
 
             group.MapPut("/assign-shipper", async (AssignShipperCommand command, HttpContext http, IWashOrderAppService svc) =>
