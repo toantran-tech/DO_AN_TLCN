@@ -9,6 +9,7 @@ using WashGo.Application.Contracts.Features.PaymentContracts.Commands;
 using WashGo.Application.Contracts.Features.PaymentContracts.Services;
 using WashGo.Core.Endpoint;
 using WashGo.Domain.Shared.Enums;
+using WashGo.Application.Contracts.Features.PaymentContracts.Queries;
 
 namespace WashGo.HttpApi.Endpoints.Payment
 {
@@ -102,6 +103,8 @@ namespace WashGo.HttpApi.Endpoints.Payment
                 .WithName("Xem chi tiết yêu cầu hoàn tiền")
                 .WithSummary("Admin xem mọi yêu cầu; Customer chỉ xem yêu cầu của mình.")
                 .WithOpenApi();
+            group.MapPost("/refund-requests/filter", async (RefundFilterQuery query, IPaymentAppService service) => (await service.FilterRefundRequestsAsync(query)).CustomResult())
+                .RequireAuthorization("AdminOnly").WithSummary("Lọc yêu cầu hoàn tiền tại DB: trạng thái/đơn/khách/ngày/số tiền/keyword; phân trang ổn định.").WithOpenApi();
 
             group.MapPost("/refund-requests/{id:guid}/review", async (Guid id, ReviewRefundRequestCommand command, IPaymentAppService service) =>
                 (await service.ReviewRefundRequestAsync(id, command)).CustomResult())

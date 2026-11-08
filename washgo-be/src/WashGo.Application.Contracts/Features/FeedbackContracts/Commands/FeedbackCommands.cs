@@ -55,6 +55,8 @@ namespace WashGo.Application.Contracts.Features.FeedbackContracts.Commands
     /// <summary>Tin nhắn trao đổi trong khiếu nại, có thể kèm minh chứng bổ sung.</summary>
     public class AddIncidentMessageCommand
     {
+        public Guid? OperationId { get; set; }
+        public string? ExpectedVersion { get; set; }
         public string Content { get; set; } = string.Empty;
         public List<string> ImageUrls { get; set; } = [];
         public List<string> VideoUrls { get; set; } = [];
@@ -62,6 +64,9 @@ namespace WashGo.Application.Contracts.Features.FeedbackContracts.Commands
 
     public class ResolveIncidentCommand
     {
+        public Guid? OperationId { get; set; }
+        public string? ExpectedVersion { get; set; }
+        public string? ExpectedSettingsVersion { get; set; }
         public string ResolutionNote { get; set; } = string.Empty;
         public ResponsibleParty? ResponsibleParty { get; set; }
         public CompensationLevel CompensationLevel { get; set; }
@@ -71,11 +76,15 @@ namespace WashGo.Application.Contracts.Features.FeedbackContracts.Commands
 
     public class RejectIncidentCommand
     {
+        public Guid? OperationId { get; set; }
+        public string? ExpectedVersion { get; set; }
         public string Reason { get; set; } = string.Empty;
     }
 
     public class ConfirmCompensationCommand
     {
+        public Guid? OperationId { get; set; }
+        public string? ExpectedVersion { get; set; }
         public string Reference { get; set; } = string.Empty;
     }
 }

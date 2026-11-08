@@ -21,6 +21,7 @@ namespace WashGo.Application.Contracts.Features.PaymentContracts.Services
         Task<BaseResponse<RefundRequestDto>> CreateRefundRequestAsync(CreateRefundRequestCommand command);
         Task<BaseResponse<System.Collections.Generic.List<RefundRequestDto>>> GetRefundRequestsAsync(bool mineOnly, RefundRequestStatus? status = null);
         Task<BaseResponse<RefundRequestDto>> GetRefundRequestAsync(Guid id);
+        Task<PaginatedResult<RefundRequestDto>> FilterRefundRequestsAsync(WashGo.Application.Contracts.Features.PaymentContracts.Queries.RefundFilterQuery query);
         Task<BaseResponse<RefundRequestDto>> ReviewRefundRequestAsync(Guid id, ReviewRefundRequestCommand command);
         Task<BaseResponse<RefundRequestDto>> ConfirmRefundedAsync(Guid id, ConfirmRefundCommand command);
     }

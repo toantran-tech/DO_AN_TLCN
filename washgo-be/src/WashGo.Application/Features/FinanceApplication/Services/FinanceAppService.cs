@@ -1,3 +1,4 @@
+using WashGo.Domain.Shared.Validation;
 using WashGo.Application.Features.AuditApplication.Services;
 using System;
 using System.Collections.Generic;
@@ -5,6 +6,9 @@ using System.Globalization;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using System.Net;
+using System.Text.Json;
+using WashGo.Application.Contracts.Features.AuditContracts.Results;
 using Volo.Abp.Domain.Repositories;
 using Volo.Abp.Uow;
 using WashGo.Application.Contracts.Features.FinanceContracts.Commands;
@@ -59,11 +63,13 @@ namespace WashGo.Application.Features.FinanceApplication.Services
             _notifications = notifications;
         }
 
-        private sealed record PaymentRow(Guid OrderId, Guid? MerchantId, PaymentPurpose Purpose, decimal Amount, DateTime CompletedAt, decimal? CommissionRateApplied);
-        private sealed record RefundRow(Guid OrderId, Guid? MerchantId, decimal Amount, DateTime RefundedAt, decimal? CommissionRateApplied);
+        private sealed record PaymentRow(Guid Id, Guid OrderId, Guid? MerchantId, PaymentPurpose Purpose, decimal Amount, DateTime CompletedAt, decimal? CommissionRateApplied);
+        private sealed record RefundRow(Guid Id, Guid OrderId, Guid? MerchantId, decimal Amount, DateTime RefundedAt, decimal? CommissionRateApplied);
 
         private static (DateTime From, DateTime To, string? Error) Period(long? fromDate, long? toDate)
         {
+            if (fromDate is < 0 or > 253402300799 || toDate is < 0 or > 253402300799)
+                return (DateTime.UnixEpoch, DateTime.UnixEpoch, "Thời gian Unix không hợp lệ.");
             var to = toDate is > 0 ? DateTimeOffset.FromUnixTimeSeconds(toDate.Value).UtcDateTime : DateTime.UtcNow;
             var from = fromDate is > 0 ? DateTimeOffset.FromUnixTimeSeconds(fromDate.Value).UtcDateTime : to.AddDays(-30);
             if (from > to)
@@ -81,9 +87,12 @@ namespace WashGo.Application.Features.FinanceApplication.Services
                         join o in orders on p.OrderId equals o.Id
                         where (p.Status == PaymentTransactionStatus.Succeeded || p.Status == PaymentTransactionStatus.Refunded)
                               && p.CompletedAt != null && p.CompletedAt >= periodFrom && p.CompletedAt <= periodTo
-                              && (merchantId == null || o.MerchantId == merchantId)
-                        select new PaymentRow(o.Id, o.MerchantId, p.Purpose, p.Amount, p.CompletedAt!.Value, o.CommissionRateApplied);
-            return await AsyncExecuter.ToListAsync(query);
+                              && (merchantId == null || (p.FinancialSnapshotBasis != null ? p.MerchantIdSnapshot : o.MerchantId) == merchantId)
+                        select new PaymentRow(p.Id, o.Id, p.FinancialSnapshotBasis != null ? p.MerchantIdSnapshot : o.MerchantId, p.Purpose, p.Amount, p.CompletedAt!.Value,
+                            p.FinancialSnapshotBasis != null ? p.CommissionRateSnapshot : o.CommissionRateApplied);
+            var rows = await AsyncExecuter.ToListAsync(query.Take(FinancialReportLimitException.MaximumSourceRows + 1));
+            if (rows.Count > FinancialReportLimitException.MaximumSourceRows) throw new FinancialReportLimitException();
+            return rows;
         }
 
         private async Task<List<RefundRow>> RefundsAsync(DateTime periodFrom, DateTime periodTo, Guid? merchantId)
@@ -94,9 +103,12 @@ namespace WashGo.Application.Features.FinanceApplication.Services
                         join o in orders on r.OrderId equals o.Id
                         where r.Status == RefundRequestStatus.Refunded && r.RefundedAt != null
                               && r.RefundedAt >= periodFrom && r.RefundedAt <= periodTo
-                              && (merchantId == null || o.MerchantId == merchantId)
-                        select new RefundRow(o.Id, o.MerchantId, r.Amount, r.RefundedAt!.Value, o.CommissionRateApplied);
-            return await AsyncExecuter.ToListAsync(query);
+                              && (merchantId == null || (r.FinancialSnapshotBasis != null ? r.MerchantIdSnapshot : o.MerchantId) == merchantId)
+                        select new RefundRow(r.Id, o.Id, r.FinancialSnapshotBasis != null ? r.MerchantIdSnapshot : o.MerchantId, r.Amount, r.RefundedAt!.Value,
+                            r.FinancialSnapshotBasis != null ? r.CommissionRateSnapshot : o.CommissionRateApplied);
+            var rows = await AsyncExecuter.ToListAsync(query.Take(FinancialReportLimitException.MaximumSourceRows + 1));
+            if (rows.Count > FinancialReportLimitException.MaximumSourceRows) throw new FinancialReportLimitException();
+            return rows;
         }
 
         private async Task<Dictionary<Guid, Merchant>> MerchantsAsync(IEnumerable<Guid?> ids)
@@ -107,6 +119,7 @@ namespace WashGo.Application.Features.FinanceApplication.Services
 
         public async Task<BaseResponse<RevenueReportDto>> GetRevenueReportAsync(FinancePeriodQuery query)
         {
+            using var snapshot = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true, isolationLevel: System.Data.IsolationLevel.RepeatableRead);
             var (from, to, error) = Period(query.FromDate, query.ToDate);
             if (error != null)
                 return BadRequest<RevenueReportDto>(error);
@@ -115,10 +128,12 @@ namespace WashGo.Application.Features.FinanceApplication.Services
             var merchants = await MerchantsAsync(payments.Select(x => x.MerchantId).Concat(refunds.Select(x => x.MerchantId)));
 
             var laundryOrderIds = payments.Where(x => x.Purpose == PaymentPurpose.Order).Select(x => x.OrderId).Distinct().ToList();
-            var items = await _itemRepo.GetListAsync(x => laundryOrderIds.Contains(x.WashOrderId));
+            var items = await AsyncExecuter.ToListAsync((await _itemRepo.GetQueryableAsync()).Where(x => laundryOrderIds.Contains(x.WashOrderId)).Take(FinancialReportLimitException.MaximumSourceRows + 1));
+            if (items.Count > FinancialReportLimitException.MaximumSourceRows) throw new FinancialReportLimitException();
 
             var report = new RevenueReportDto
             {
+                GeneratedAt = DateTime.UtcNow,
                 FromDate = from,
                 ToDate = to,
                 LaundryRevenue = payments.Where(x => x.Purpose == PaymentPurpose.Order).Sum(x => x.Amount),
@@ -157,6 +172,7 @@ namespace WashGo.Application.Features.FinanceApplication.Services
             };
             report.TotalRevenue = report.LaundryRevenue + report.StorageFeeRevenue + report.CancellationFeeRevenue - report.RefundedAmount;
             var empty = payments.Count == 0 && refunds.Count == 0;
+            await snapshot.CompleteAsync();
             return Success(report, empty ? "Không có dữ liệu trong khoảng thời gian này." : null);
         }
 
@@ -167,9 +183,12 @@ namespace WashGo.Application.Features.FinanceApplication.Services
                 return BadRequest<string>(result.Message ?? "Không thể xuất báo cáo. Vui lòng thử lại.");
             var r = result.Data;
             static string N(decimal v) => v.ToString(CultureInfo.InvariantCulture);
-            static string Q(string v) => "\"" + v.Replace("\"", "\"\"") + "\"";
+            static string Q(string v) => "\"" + ((v.TrimStart().StartsWith('=') || v.TrimStart().StartsWith('+') || v.TrimStart().StartsWith('-') || v.TrimStart().StartsWith('@') || v.StartsWith('\t') || v.StartsWith('\r')) ? "'" : "") + v.Replace("\"", "\"\"") + "\"";
             var csv = new StringBuilder();
             csv.AppendLine("Muc,Gia tri");
+            csv.AppendLine($"GeneratedAtUtc,{r.GeneratedAt:O}");
+            csv.AppendLine("Timezone,Asia/Ho_Chi_Minh");
+            csv.AppendLine("Currency,VND");
             csv.AppendLine($"Tu ngay,{r.FromDate:yyyy-MM-dd HH:mm}");
             csv.AppendLine($"Den ngay,{r.ToDate:yyyy-MM-dd HH:mm}");
             csv.AppendLine($"Tong doanh thu,{N(r.TotalRevenue)}");
@@ -206,8 +225,8 @@ namespace WashGo.Application.Features.FinanceApplication.Services
                 var mPayments = payments.Where(x => x.MerchantId == id).ToList();
                 var mRefunds = refunds.Where(x => x.MerchantId == id).ToList();
                 var gross = mPayments.Sum(x => x.Amount);
-                // Refunds of laundry money reduce the base; refunds cannot exceed what was collected.
-                var refunded = Math.Min(gross, mRefunds.Sum(x => x.Amount));
+                // Refunds in this period may reverse receipts from an earlier period: retain the negative adjustment.
+                var refunded = mRefunds.Sum(x => x.Amount);
                 var net = gross - refunded;
 
                 // Commission per order at the rate locked on that order (0% is a valid rate). Orders without a locked
@@ -252,15 +271,59 @@ namespace WashGo.Application.Features.FinanceApplication.Services
 
         public async Task<BaseResponse<List<MerchantCommissionDto>>> GetCommissionsAsync(FinancePeriodQuery query)
         {
+            using var snapshot = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true, isolationLevel: System.Data.IsolationLevel.RepeatableRead);
             var (from, to, error) = Period(query.FromDate, query.ToDate);
             if (error != null)
                 return BadRequest<List<MerchantCommissionDto>>(error);
             var rows = await BuildCommissionsAsync(from, to, query.MerchantId);
+            await snapshot.CompleteAsync();
             return Success(rows, rows.Count == 0 ? "Không có dữ liệu trong khoảng thời gian này." : null);
+        }
+
+        public async Task<BaseResponse<SettlementQuoteDto>> QuoteSettlementAsync(CreateSettlementCommand command)
+        {
+            if (command.FromDate <= 0 || command.ToDate <= 0) return BadRequest<SettlementQuoteDto>("Vui lòng chọn kỳ đối soát.");
+            var (from, to, error) = Period(command.FromDate, command.ToDate);
+            if (error != null || to > DateTime.UtcNow) return BadRequest<SettlementQuoteDto>(error ?? "Kỳ đối soát phải đã kết thúc.");
+            using var snapshot = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true, isolationLevel: System.Data.IsolationLevel.RepeatableRead);
+            var merchant = await _merchantRepo.FindAsync(command.MerchantId);
+            if (merchant == null) return NotFound<SettlementQuoteDto>("Không tìm thấy Merchant.");
+            var row = (await BuildCommissionsAsync(from, to, merchant.Id)).FirstOrDefault();
+            var quote = await BuildQuoteAsync(merchant, from, to, row);
+            if (await _settlementRepo.AnyAsync(x => !x.IsDeleted && x.MerchantId == merchant.Id && x.PeriodFrom <= to && x.PeriodTo >= from))
+            { quote.CanCreate = false; quote.BlockingCode = "SettlementOverlap"; }
+            await snapshot.CompleteAsync(); return Success(quote);
+        }
+
+        private async Task<SettlementQuoteDto> BuildQuoteAsync(Merchant merchant, DateTime from, DateTime to, MerchantCommissionDto? summary)
+        {
+            summary ??= new MerchantCommissionDto { MerchantId = merchant.Id, MerchantName = merchant.BusinessName, CommissionRate = merchant.CommissionRate };
+            var breakdown = await BuildBreakdownAsync(new MerchantSettlement
+            {
+                MerchantId = merchant.Id, PeriodFrom = from, PeriodTo = to,
+                CommissionAmount = summary.CommissionAmount, PayoutAmount = summary.PayoutAmount
+            });
+            return new SettlementQuoteDto
+            {
+                Summary = summary, Breakdown = breakdown, GeneratedAt = DateTime.UtcNow,
+                QuoteToken = AdministrativeWriteGuard.Version(new { merchant.Id, from, to, summary, breakdown.Lines }),
+                CanCreate = summary.CommissionComplete && summary.PayoutAmount > 0,
+                BlockingCode = !summary.CommissionComplete ? "CommissionSnapshotMissing" : summary.PayoutAmount <= 0 ? "NonPositivePayout" : null
+            };
+        }
+
+        public async Task<BaseResponse<AdministrativeOperationDto>> GetOperationAsync(Guid id)
+        {
+            var operation = await Writes.FindAsync(id, CurrentUser.Id!.Value, "Finance");
+            return operation == null ? NotFound<AdministrativeOperationDto>("Chưa có kết quả đã commit; không chứng minh yêu cầu đang chạy đã thất bại.") :
+                Success(new AdministrativeOperationDto { OperationId = operation.Id, Action = operation.Action, ResourceId = operation.ResourceId, CompletedAt = operation.CompletedAt, Result = JsonSerializer.Deserialize<JsonElement>(operation.ResponseJson) });
         }
 
         public async Task<BaseResponse<SettlementDto>> CreateSettlementAsync(CreateSettlementCommand command)
         {
+            using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            if (await Writes.ReplayAsync<SettlementDto>(command.OperationId, CurrentUser.Id!.Value, "Finance", "CreateSettlement", command.MerchantId.ToString(), command) is { } replay) return replay;
+            await Writes.LockAsync($"finance-merchant:{command.MerchantId}");
             if (command.FromDate <= 0 || command.ToDate <= 0)
                 return BadRequest<SettlementDto>("Vui lòng chọn kỳ đối soát.");
             var (from, to, error) = Period(command.FromDate, command.ToDate);
@@ -272,13 +335,16 @@ namespace WashGo.Application.Features.FinanceApplication.Services
             if (merchant == null)
                 return NotFound<SettlementDto>("Không tìm thấy Merchant!");
 
-            using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
             // A period may be settled only once per Merchant; overlapping periods would pay twice.
             if (await _settlementRepo.AnyAsync(x => x.MerchantId == merchant.Id && !x.IsDeleted &&
-                                                     x.PeriodFrom < to && x.PeriodTo > from))
-                return BadRequest<SettlementDto>("Kỳ đối soát bị trùng với kỳ đã tạo cho Merchant này.");
+                                                     x.PeriodFrom <= to && x.PeriodTo >= from))
+                return AdministrativeWriteGuard.Error<SettlementDto>(HttpStatusCode.Conflict, "SettlementOverlap", "Kỳ đối soát bị trùng với kỳ đã tạo cho Merchant này.");
 
             var row = (await BuildCommissionsAsync(from, to, merchant.Id)).FirstOrDefault();
+            var preview = await BuildQuoteAsync(merchant, from, to, row);
+            if (!preview.CanCreate) return AdministrativeWriteGuard.Error<SettlementDto>(HttpStatusCode.BadRequest, preview.BlockingCode!, "Kỳ không đủ dữ liệu tỷ lệ hoặc số thực nhận không dương; cần đối chiếu trước.");
+            if (string.IsNullOrWhiteSpace(command.QuoteToken)) return AdministrativeWriteGuard.Error<SettlementDto>(HttpStatusCode.BadRequest, "QuoteRequired", "Cần lấy quoteToken từ POST /finance/settlements/quote.");
+            if (command.QuoteToken != preview.QuoteToken) return AdministrativeWriteGuard.Error<SettlementDto>(HttpStatusCode.Conflict, "QuoteChanged", "Số liệu đối soát đã thay đổi; hãy xem lại quote.");
             var settlement = new MerchantSettlement
             {
                 MerchantId = merchant.Id,
@@ -295,22 +361,42 @@ namespace WashGo.Application.Features.FinanceApplication.Services
                 Status = SettlementStatus.Pending,
                 CreatedByUserId = CurrentUser.Id
             };
+            settlement.BreakdownSnapshotJson = JsonSerializer.Serialize(preview.Breakdown);
             await _settlementRepo.InsertAsync(settlement, autoSave: true);
             await _notifications.SendAsync([merchant.Id], NotificationType.SettlementCreated, "Kỳ đối soát mới",
                 $"Kỳ đối soát {(from + VietnamOffset):dd/MM/yyyy} - {(to + VietnamOffset):dd/MM/yyyy}: doanh thu {settlement.NetRevenue:N0}đ, " +
                 $"hoa hồng {settlement.CommissionAmount:N0}đ, thực nhận {settlement.PayoutAmount:N0}đ.");
-            await uow.CompleteAsync();
             await Audit.LogAsync(new AuditEntry("Finance", "CreateSettlement", "Settlement", settlement.Id.ToString(), merchant.BusinessName)
             {
                 Details = new { merchantId = merchant.Id, settlement.PeriodFrom, settlement.PeriodTo, settlement.OrderCount, settlement.NetRevenue,
                                 settlement.CommissionAmount, settlement.PayoutAmount }
             });
-            return Created(ToDto(settlement), "Đã tạo kỳ đối soát.");
+            var response = Created(ToDto(settlement), "Đã tạo kỳ đối soát.");
+            await Writes.RecordAsync(command.OperationId, CurrentUser.Id.Value, "Finance", "CreateSettlement", command.MerchantId.ToString(), command, response);
+            await uow.CompleteAsync();
+            return response;
         }
 
+        private static readonly Dictionary<string, string> SettlementSortFields = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Id"] = "Id", ["PeriodFrom"] = "PeriodFrom", ["PeriodTo"] = "PeriodTo", ["PaidAt"] = "PaidAt",
+            ["CreatedOn"] = "CreatedOn", ["MerchantName"] = "MerchantName", ["PayoutAmount"] = "PayoutAmount", ["Status"] = "Status"
+        };
         public async Task<PaginatedResult<SettlementDto>> GetSettlementsAsync(SettlementFilterQuery query)
         {
+            if (!CurrentUser.Id.HasValue || !CurrentUser.IsInRole("Admin") && !CurrentUser.IsInRole("Merchant"))
+                return new() { Succeeded = false, StatusCode = HttpStatusCode.Forbidden, Message = "Không có quyền xem đối soát." };
+            if (query.Status.HasValue && !Enum.IsDefined(query.Status.Value))
+                return new() { Succeeded = false, StatusCode = HttpStatusCode.BadRequest, Message = "Trạng thái đối soát không hợp lệ." };
+            var paidDates = new BaseFilterQuery { FromDate = query.PaidFromDate, ToDate = query.PaidToDate };
+            if (query.DateRangeError() != null || paidDates.DateRangeError() != null || query.Keyword?.Length > 200 || !WhitelistedQuerySort.IsValid(query.SortBy, SettlementSortFields))
+                return new() { Succeeded = false, StatusCode = HttpStatusCode.BadRequest, Message = "Khoảng ngày hoặc tiêu chí sắp xếp đối soát không hợp lệ (tối đa 8 tiêu chí)." };
             var queryable = (await _settlementRepo.GetQueryableAsync()).Where(x => !x.IsDeleted);
+            if (query.FromDate > 0) { var from = DateTimeOffset.FromUnixTimeSeconds(query.FromDate).UtcDateTime; queryable = queryable.Where(x => x.PeriodTo >= from); }
+            if (query.ToDate > 0) { var to = DateTimeOffset.FromUnixTimeSeconds(query.ToDate).UtcDateTime; queryable = queryable.Where(x => x.PeriodFrom <= to); }
+            if (query.PaidFromDate > 0) { var from = DateTimeOffset.FromUnixTimeSeconds(query.PaidFromDate).UtcDateTime; queryable = queryable.Where(x => x.PaidAt >= from); }
+            if (query.PaidToDate > 0) { var to = DateTimeOffset.FromUnixTimeSeconds(query.PaidToDate).UtcDateTime; queryable = queryable.Where(x => x.PaidAt <= to); }
+            if (!string.IsNullOrWhiteSpace(query.Keyword)) { var term = query.Keyword.Trim().ToLower(); queryable = queryable.Where(x => x.MerchantName.ToLower().Contains(term) || x.PaymentReference != null && x.PaymentReference.ToLower().Contains(term)); }
             // Merchants only see their own settlements.
             var merchantId = CurrentUser.IsInRole("Admin") ? query.MerchantId : CurrentUser.Id;
             if (merchantId.HasValue)
@@ -320,9 +406,35 @@ namespace WashGo.Application.Features.FinanceApplication.Services
             var page = Math.Max(1, query.Page);
             var take = Math.Clamp(query.Take, 1, 100);
             var total = await AsyncExecuter.CountAsync(queryable);
-            var items = await AsyncExecuter.ToListAsync(queryable.OrderByDescending(x => x.PeriodTo)
-                .Skip((page - 1) * take).Take(take));
+            var items = await AsyncExecuter.ToListAsync(WhitelistedQuerySort.Apply(queryable, query.SortBy, SettlementSortFields, new SortOption { Field = "PeriodTo", IsDescending = true })
+                .Skip((int)Math.Min(int.MaxValue, ((long)page - 1) * take)).Take(take));
             return Success(items.Select(ToDto).ToList(), total, page, take, total == 0 ? "Chưa có kỳ đối soát nào." : null);
+        }
+
+        public async Task<BaseResponse<SettlementDto>> GetSettlementAsync(Guid id)
+        {
+            var settlement = await _settlementRepo.FindAsync(id);
+            return settlement == null || settlement.IsDeleted || (!CurrentUser.IsInRole("Admin") && settlement.MerchantId != CurrentUser.Id)
+                ? NotFound<SettlementDto>("Không tìm thấy kỳ đối soát.") : Success(ToDto(settlement));
+        }
+
+        public async Task<PaginatedResult<SettlementOrderLineDto>> GetSettlementLinesAsync(Guid id, int page, int take)
+        {
+            page = Math.Max(1, page); take = Math.Clamp(take, 1, 100);
+            if (!CurrentUser.Id.HasValue) return new() { Succeeded = false, StatusCode = HttpStatusCode.Forbidden };
+            using var snapshot = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true, isolationLevel: System.Data.IsolationLevel.RepeatableRead);
+            var stored = await LazyServiceProvider.LazyGetRequiredService<ISettlementSnapshotReader>().ReadAsync(id, CurrentUser.IsInRole("Admin") ? null : CurrentUser.Id, page, take);
+            if (stored.HasValue)
+            {
+                var lines = stored.Value.Lines.Select(x => JsonSerializer.Deserialize<SettlementOrderLineDto>(x)!).ToList();
+                await snapshot.CompleteAsync(); return Success(lines, stored.Value.Total, page, take);
+            }
+            // Legacy periods have no frozen rows: the bounded live breakdown is explicitly a fallback.
+            var result = await GetSettlementBreakdownAsync(id);
+            if (!result.Succeeded || result.Data == null) return new() { Succeeded = false, StatusCode = result.StatusCode, Message = result.Message };
+            page = Math.Max(1, page); take = Math.Clamp(take, 1, 100);
+            await snapshot.CompleteAsync();
+            return Success(result.Data.Lines.Skip((int)Math.Min(int.MaxValue, ((long)page - 1) * take)).Take(take).ToList(), result.Data.Lines.Count, page, take);
         }
 
         public async Task<BaseResponse<SettlementBreakdownDto>> GetSettlementBreakdownAsync(Guid id)
@@ -331,6 +443,18 @@ namespace WashGo.Application.Features.FinanceApplication.Services
             if (settlement == null || settlement.IsDeleted ||
                 !CurrentUser.IsInRole("Admin") && settlement.MerchantId != CurrentUser.Id)
                 return NotFound<SettlementBreakdownDto>("Không tìm thấy kỳ đối soát!");
+            if (settlement.BreakdownSnapshotJson != null)
+            {
+                var snapshot = JsonSerializer.Deserialize<SettlementBreakdownDto>(settlement.BreakdownSnapshotJson)!;
+                snapshot.SettlementId = settlement.Id; snapshot.Status = settlement.Status; snapshot.IsSnapshot = true;
+                return Success(snapshot);
+            }
+            // Legacy periods expose current source lines explicitly as non-snapshot; settled totals are unchanged.
+            return Success(await BuildBreakdownAsync(settlement));
+        }
+
+        private async Task<SettlementBreakdownDto> BuildBreakdownAsync(MerchantSettlement settlement)
+        {
             var payments = (await PaymentsAsync(settlement.PeriodFrom, settlement.PeriodTo, settlement.MerchantId))
                 .Where(x => x.Purpose == PaymentPurpose.Order).ToList();
             var refunds = await RefundsAsync(settlement.PeriodFrom, settlement.PeriodTo, settlement.MerchantId);
@@ -349,19 +473,25 @@ namespace WashGo.Application.Features.FinanceApplication.Services
                 return new SettlementOrderLineDto
                 {
                     OrderId = oid, OrderCode = codes.GetValueOrDefault(oid, string.Empty), Collected = collected, Refunded = refunded,
+                    PaymentTransactionIds = payments.Where(x => x.OrderId == oid).Select(x => x.Id).OrderBy(x => x).ToList(),
+                    RefundRequestIds = refunds.Where(x => x.OrderId == oid).Select(x => x.Id).OrderBy(x => x).ToList(),
                     CommissionRate = rate, Commission = commission, Payout = commission.HasValue ? collected - refunded - commission.Value : null
                 };
             }).OrderBy(x => x.OrderCode).ToList();
-            return Success(new SettlementBreakdownDto
+            return new SettlementBreakdownDto
             {
                 SettlementId = settlement.Id, PeriodFrom = settlement.PeriodFrom, PeriodTo = settlement.PeriodTo, Status = settlement.Status,
                 SettledCommissionAmount = settlement.CommissionAmount, SettledPayoutAmount = settlement.PayoutAmount,
                 OrdersWithoutCommissionSnapshot = lines.Count(x => !x.CommissionRate.HasValue), Lines = lines
-            });
+            };
         }
 
         public async Task<BaseResponse<SettlementDto>> ConfirmSettlementPaidAsync(Guid id, ConfirmSettlementPaidCommand command)
         {
+            using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            var payload = new { id, command.ExpectedVersion, Reference = command.Reference?.Trim() };
+            if (await Writes.ReplayAsync<SettlementDto>(command.OperationId, CurrentUser.Id!.Value, "Finance", "ConfirmSettlementPaid", id.ToString(), payload) is { } replay) return replay;
+            await Writes.LockAsync($"finance-settlement:{id}");
             var reference = command.Reference?.Trim();
             if (string.IsNullOrWhiteSpace(reference) || reference.Length > 120)
                 return BadRequest<SettlementDto>("Vui lòng nhập mã tham chiếu chuyển khoản (tối đa 120 ký tự).");
@@ -369,7 +499,15 @@ namespace WashGo.Application.Features.FinanceApplication.Services
             if (settlement == null || settlement.IsDeleted)
                 return NotFound<SettlementDto>("Không tìm thấy kỳ đối soát!");
             if (settlement.Status == SettlementStatus.Paid)
-                return Success(ToDto(settlement), "Kỳ đối soát đã được ghi nhận chi trả trước đó.");
+            {
+                if (settlement.PaymentReference != reference) return AdministrativeWriteGuard.Error<SettlementDto>(HttpStatusCode.Conflict, "PaymentReferenceChanged", "Kỳ đã chi trả với mã tham chiếu khác.");
+                var prior = Success(ToDto(settlement), "Kỳ đối soát đã được ghi nhận chi trả trước đó.");
+                await Writes.RecordAsync(command.OperationId, CurrentUser.Id.Value, "Finance", "ConfirmSettlementPaid", id.ToString(), payload, prior);
+                await uow.CompleteAsync(); return prior;
+            }
+            if (string.IsNullOrWhiteSpace(command.ExpectedVersion)) return AdministrativeWriteGuard.Error<SettlementDto>(HttpStatusCode.BadRequest, "ExpectedVersionRequired", "Thiếu expectedVersion.");
+            if (command.ExpectedVersion != ToDto(settlement).Version) return AdministrativeWriteGuard.Error<SettlementDto>(HttpStatusCode.Conflict, "VersionMismatch", "Kỳ đối soát đã thay đổi.");
+            if (settlement.PayoutAmount <= 0) return BadRequest<SettlementDto>("Không ghi chi trả cho kỳ có thực nhận bằng 0 hoặc âm.");
 
             settlement.Status = SettlementStatus.Paid;
             settlement.PaymentReference = reference;
@@ -383,11 +521,14 @@ namespace WashGo.Application.Features.FinanceApplication.Services
                 ChangedFields = ["status", "paymentReference", "paidAt"],
                 Details = new { merchantId = settlement.MerchantId, settlement.PayoutAmount }
             });
-            return Success(ToDto(settlement), "Đã ghi nhận chi trả cho Merchant.");
+            var response = Success(ToDto(settlement), "Đã ghi nhận chi trả cho Merchant.");
+            await Writes.RecordAsync(command.OperationId, CurrentUser.Id.Value, "Finance", "ConfirmSettlementPaid", id.ToString(), payload, response);
+            await uow.CompleteAsync(); return response;
         }
 
         private static SettlementDto ToDto(MerchantSettlement x) => new()
         {
+            Version = AdministrativeWriteGuard.Version(new { x.Id, x.Status, x.PaymentReference, PaidAt = x.PaidAt?.Ticks / 10, x.PayoutAmount, x.PeriodFrom, x.PeriodTo, x.CommissionAmount, x.RefundedAmount }),
             Id = x.Id,
             MerchantId = x.MerchantId,
             MerchantName = x.MerchantName,

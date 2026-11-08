@@ -4,8 +4,25 @@ using WashGo.Domain.Shared.Enums;
 
 namespace WashGo.Application.Contracts.Features.FinanceContracts.Results
 {
+    public class SettlementQuoteDto
+    {
+        public string QuoteToken { get; set; } = string.Empty;
+        public MerchantCommissionDto Summary { get; set; } = new();
+        public SettlementBreakdownDto Breakdown { get; set; } = new();
+        public DateTime GeneratedAt { get; set; }
+        public string TimeZone => "Asia/Ho_Chi_Minh";
+        public string Boundaries => "Inclusive UTC instants; periods sharing an endpoint overlap.";
+        public bool CanCreate { get; set; }
+        public string? BlockingCode { get; set; }
+    }
     public class RevenueReportDto
     {
+        public DateTime GeneratedAt { get; set; }
+        public string TimeZone => "Asia/Ho_Chi_Minh";
+        public string Currency => "VND";
+        public string TimeBasis => "Payment.CompletedAt / Refund.RefundedAt, inclusive UTC instants";
+        public string ServiceRevenueBasis => "Order-item subtotals before allocation of discounts, weight surcharges and refunds; not service-level cash receipts.";
+        public string LedgerCoverage => "Recorded gateway transactions and confirmed refunds; legacy cash without a transaction is excluded.";
         public DateTime FromDate { get; set; }
         public DateTime ToDate { get; set; }
         /// <summary>Tiền giặt + phí quá hạn/lưu kho + phí hủy đã thu, trừ tiền đã hoàn trong kỳ.</summary>
@@ -46,6 +63,8 @@ namespace WashGo.Application.Contracts.Features.FinanceContracts.Results
 
     public class MerchantCommissionDto
     {
+        public string CommissionBasis => "Per-order locked rate; refunds reverse that rate in their own period.";
+        public string DisplayRateBasis => "commissionRate is the current Merchant rate; line snapshots determine money.";
         public Guid MerchantId { get; set; }
         public string MerchantName { get; set; } = string.Empty;
         public int PaidOrderCount { get; set; }
@@ -66,6 +85,8 @@ namespace WashGo.Application.Contracts.Features.FinanceContracts.Results
     /// <summary>Chi tiết một kỳ đối soát theo đơn: thu, hoàn, tỷ lệ chốt, hoa hồng, thực nhận.</summary>
     public class SettlementOrderLineDto
     {
+        public List<Guid> PaymentTransactionIds { get; set; } = [];
+        public List<Guid> RefundRequestIds { get; set; } = [];
         public Guid OrderId { get; set; }
         public string OrderCode { get; set; } = string.Empty;
         public decimal Collected { get; set; }
@@ -79,6 +100,7 @@ namespace WashGo.Application.Contracts.Features.FinanceContracts.Results
 
     public class SettlementBreakdownDto
     {
+        public bool IsSnapshot { get; set; }
         public Guid SettlementId { get; set; }
         public DateTime PeriodFrom { get; set; }
         public DateTime PeriodTo { get; set; }
@@ -92,6 +114,7 @@ namespace WashGo.Application.Contracts.Features.FinanceContracts.Results
 
     public class SettlementDto
     {
+        public string Version { get; set; } = string.Empty;
         public Guid Id { get; set; }
         public Guid MerchantId { get; set; }
         public string MerchantName { get; set; } = string.Empty;

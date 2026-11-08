@@ -29,6 +29,20 @@ namespace WashGo.Application.Contracts.Features.FeedbackContracts.Results
 
     public class IncidentResultDto
     {
+        public string? CustomerAvatarUrl { get; set; }
+        public string? CustomerEmail { get; set; }
+        public string? CustomerPhoneNumber { get; set; }
+        public List<string> MerchantImageUrls { get; set; } = [];
+        public string? MerchantEmail { get; set; }
+        public string? MerchantPhone { get; set; }
+        public string ContactBasis => "Current profile, Admin only; not part of incident version.";
+        public Guid? ReviewedBy { get; set; }
+        public bool CanResolve { get; set; }
+        public bool CanReject { get; set; }
+        public bool CanConfirmCompensation { get; set; }
+        public string Version { get; set; } = string.Empty;
+        public int? CompensationPercentApplied { get; set; }
+        public string? CompensationSettingsVersion { get; set; }
         public Guid Id { get; set; }
         public Guid OrderId { get; set; }
         public string OrderCode { get; set; } = string.Empty;

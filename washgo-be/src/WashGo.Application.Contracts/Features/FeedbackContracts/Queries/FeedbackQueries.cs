@@ -14,6 +14,9 @@ namespace WashGo.Application.Contracts.Features.FeedbackContracts.Queries
 
     public class IncidentFilterQuery : BaseFilterQuery
     {
+        public CompensationStatus? CompensationStatus { get; set; }
+        public Guid? OrderId { get; set; }
+        public Guid? CustomerId { get; set; }
         public IncidentStatus? Status { get; set; }
         public IncidentSeverity? Severity { get; set; }
         public IncidentType? Type { get; set; }

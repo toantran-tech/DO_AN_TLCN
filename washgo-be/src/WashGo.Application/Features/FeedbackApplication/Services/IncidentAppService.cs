@@ -1,10 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using Volo.Abp.Domain.Repositories;
 using Volo.Abp.Uow;
+using WashGo.Application.Features.AuditApplication.Services;
+using System.Net;
 using WashGo.Application.Contracts.Features.FeedbackContracts.Commands;
 using WashGo.Application.Contracts.Features.FeedbackContracts.Queries;
 using WashGo.Application.Contracts.Features.FeedbackContracts.Results;
@@ -115,6 +118,7 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
             };
             await _incidentRepo.InsertAsync(incident, autoSave: true);
             await _notifications.IncidentCreatedAsync(incident);
+            await Audit.LogAsync(new AuditEntry("Incident", "Create", "Incident", incident.Id.ToString(), incident.OrderCode));
             await uow.CompleteAsync();
             return Created(ToDto(incident),
                 "Báo cáo của bạn đã được gửi. Chúng tôi sẽ xử lý trong thời gian sớm nhất.");
@@ -134,7 +138,12 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
 
         public async Task<PaginatedResult<IncidentResultDto>> GetListAsync(IncidentFilterQuery query)
         {
-            var queryable = await _incidentRepo.GetQueryableAsync();
+            if (query.DateRangeError() != null || query.CompensationStatus.HasValue && !Enum.IsDefined(query.CompensationStatus.Value) || query.Keyword?.Length > 200 || query.Status.HasValue && !Enum.IsDefined(query.Status.Value) || query.Type.HasValue && !Enum.IsDefined(query.Type.Value) || query.Severity.HasValue && !Enum.IsDefined(query.Severity.Value))
+                return new() { Succeeded = false, StatusCode = HttpStatusCode.BadRequest, Message = query.DateRangeError() ?? "Bộ lọc không hợp lệ." };
+            var queryable = (await _incidentRepo.GetQueryableAsync()).Where(x => !x.IsDeleted);
+            if (query.CompensationStatus.HasValue) queryable = queryable.Where(x => x.CompensationStatus == query.CompensationStatus.Value);
+            if (query.OrderId.HasValue) queryable = queryable.Where(x => x.OrderId == query.OrderId.Value);
+            if (query.CustomerId.HasValue) queryable = queryable.Where(x => x.CustomerId == query.CustomerId.Value);
             if (query.Status.HasValue)
                 queryable = queryable.Where(x => x.Status == query.Status.Value);
             if (query.Severity.HasValue)
@@ -155,14 +164,33 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
                     (x.MerchantName != null && x.MerchantName.ToLower().Contains(kw)));
             }
 
+            IOrderedQueryable<Incident>? ordered = null;
+            foreach (var option in query.SortBy ?? [])
+            {
+                var field = option?.Field?.Trim().ToLowerInvariant();
+                if (field is not ("createdon" or "createdat" or "status" or "severity" or "compensationamount" or "id"))
+                    return new() { Succeeded = false, StatusCode = HttpStatusCode.BadRequest, Message = "SortBy chỉ hỗ trợ CreatedOn, Status, Severity, CompensationAmount, Id." };
+                void Add<TKey>(Expression<Func<Incident, TKey>> key) => ordered = ordered == null
+                    ? option!.IsDescending ? queryable.OrderByDescending(key) : queryable.OrderBy(key)
+                    : option!.IsDescending ? ordered.ThenByDescending(key) : ordered.ThenBy(key);
+                switch (field)
+                {
+                    case "createdon": case "createdat": Add(x => x.CreatedOn); break;
+                    case "status": Add(x => x.Status); break;
+                    case "severity": Add(x => x.Severity); break;
+                    case "compensationamount": Add(x => x.CompensationAmount); break;
+                    case "id": Add(x => x.Id); break;
+                }
+            }
+            ordered ??= queryable.OrderBy(x => x.Status == IncidentStatus.Pending ? 0 : 1).ThenByDescending(x => x.CreatedOn);
             var page = Math.Max(1, query.Page);
             var take = Math.Clamp(query.Take, 1, 100);
             var total = await AsyncExecuter.CountAsync(queryable);
-            var items = await AsyncExecuter.ToListAsync(queryable
-                .OrderBy(x => x.Status == IncidentStatus.Pending ? 0 : 1)
-                .ThenByDescending(x => x.CreatedOn)
+            var items = await AsyncExecuter.ToListAsync(ordered.ThenBy(x => x.Id)
                 .Skip((page - 1) * take).Take(take));
-            return Success(items.Select(ToDto).ToList(), total, page, take,
+            var dtos = items.Select(ToDto).ToList();
+            await LazyServiceProvider.LazyGetRequiredService<IncidentContactEnricher>().FillAsync(dtos);
+            return Success(dtos, total, page, take,
                 total == 0 ? "Chưa có khiếu nại nào." : null);
         }
 
@@ -171,7 +199,15 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
             var incident = await _incidentRepo.FindAsync(id);
             if (incident == null || (!CurrentUser.IsInRole("Admin") && incident.CustomerId != CurrentUser.Id))
                 return NotFound<IncidentResultDto>("Không tìm thấy khiếu nại!");
-            return Success(ToDto(incident));
+            var dto = ToDto(incident);
+            await LazyServiceProvider.LazyGetRequiredService<IncidentContactEnricher>().FillAsync([dto]);
+            return Success(dto);
+        }
+        public async Task<BaseResponse<WashGo.Application.Contracts.Features.AuditContracts.Results.AdministrativeSummaryDto>> GetSummaryAsync()
+        {
+            var groups = await AsyncExecuter.ToListAsync((await _incidentRepo.GetQueryableAsync()).Where(x => !x.IsDeleted)
+                .GroupBy(x => x.Status).Select(g => new { Status = g.Key, Count = g.Count() }));
+            return Success(new WashGo.Application.Contracts.Features.AuditContracts.Results.AdministrativeSummaryDto { Total = groups.Sum(x => x.Count), Counts = groups.ToDictionary(x => x.Status.ToString(), x => x.Count), GeneratedAt = DateTime.UtcNow });
         }
 
         public async Task<BaseResponse<IncidentResultDto>> ResolveAsync(Guid id, ResolveIncidentCommand command)
@@ -183,15 +219,23 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
                 (command.ResponsibleParty.HasValue && !Enum.IsDefined(command.ResponsibleParty.Value)))
                 return BadRequest<IncidentResultDto>("Mức bồi thường hoặc bên chịu trách nhiệm không hợp lệ.");
             var compensating = command.CompensationLevel != CompensationLevel.None;
-            if (compensating && (command.ItemValue <= 0 || command.ItemValue > MaxItemValue))
+            if (compensating && (command.ItemValue <= 0 || command.ItemValue > MaxItemValue || decimal.Round(command.ItemValue, 2) != command.ItemValue))
                 return BadRequest<IncidentResultDto>("Giá trị đồ phải lớn hơn 0 và không quá 100.000.000đ.");
 
             using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            if (await Writes.ReplayAsync<IncidentResultDto>(command.OperationId, CurrentUser.Id!.Value, "Incident", "Resolve", id.ToString(), command) is { } replay) return replay;
+            await Writes.LockAsync("system-settings");
             var incident = await _incidentRepo.GetForUpdateAsync(id);
             if (incident == null)
                 return NotFound<IncidentResultDto>("Không tìm thấy khiếu nại!");
             if (incident.Status != IncidentStatus.Pending)
                 return BadRequest<IncidentResultDto>("Khiếu nại đã được xử lý trước đó.");
+            if (string.IsNullOrWhiteSpace(command.ExpectedVersion)) return AdministrativeWriteGuard.Error<IncidentResultDto>(HttpStatusCode.BadRequest, "ExpectedVersionRequired", "Thiếu expectedVersion.");
+            if (command.ExpectedVersion != incident.Revision.ToString()) return AdministrativeWriteGuard.Error<IncidentResultDto>(HttpStatusCode.Conflict, "VersionMismatch", "Khiếu nại hoặc trao đổi/minh chứng đã thay đổi.");
+            var settings = await _settings.GetAsync();
+            var settingsVersion = settings.UpdatedAt.HasValue ? (settings.UpdatedAt.Value.Ticks / 10).ToString() : "defaults-v1";
+            if (string.IsNullOrWhiteSpace(command.ExpectedSettingsVersion)) return AdministrativeWriteGuard.Error<IncidentResultDto>(HttpStatusCode.BadRequest, "SettingsVersionRequired", "Lấy expectedSettingsVersion từ GET /system-setting.");
+            if (settingsVersion != command.ExpectedSettingsVersion) return AdministrativeWriteGuard.Error<IncidentResultDto>(HttpStatusCode.Conflict, "SettingsChanged", "Mức bồi thường đã thay đổi; hãy xem lại.");
 
             incident.Status = IncidentStatus.Resolved;
             incident.ResolutionNote = note;
@@ -199,17 +243,22 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
             incident.CompensationLevel = command.CompensationLevel;
             incident.ItemValue = compensating ? command.ItemValue : 0m;
             // The amount is computed from the configured percentage (UC 3.9.4), never taken from the client.
-            var percent = (await _settings.GetAsync()).CompensationPercent(command.CompensationLevel);
+            var percent = settings.CompensationPercent(command.CompensationLevel);
+            incident.CompensationPercentApplied = percent;
+            incident.CompensationSettingsVersion = settingsVersion;
+            incident.Revision++;
             incident.CompensationAmount = compensating ? Incident.CalculateCompensation(percent, command.ItemValue) : 0m;
             incident.CompensationStatus = incident.CompensationAmount > 0 ? CompensationStatus.Pending : CompensationStatus.None;
             incident.ReviewedBy = CurrentUser.Id;
             incident.ReviewedAt = DateTime.UtcNow;
             await _incidentRepo.UpdateAsync(incident, autoSave: true);
             await _notifications.IncidentProcessedAsync(incident);
-            await uow.CompleteAsync();
-            return Success(ToDto(incident), incident.CompensationAmount > 0
+            await Audit.LogAsync(new AuditEntry("Incident", "Resolve", "Incident", id.ToString(), incident.OrderCode) { Details = new { percent, settingsVersion, incident.CompensationAmount } });
+            var response = Success(ToDto(incident), incident.CompensationAmount > 0
                 ? $"Đã xử lý khiếu nại; tạo yêu cầu bồi thường {incident.CompensationAmount:N0}đ cho khách hàng."
                 : "Đã xử lý khiếu nại.");
+            await Writes.RecordAsync(command.OperationId, CurrentUser.Id.Value, "Incident", "Resolve", id.ToString(), command, response);
+            await uow.CompleteAsync(); return response;
         }
 
         public async Task<BaseResponse<IncidentResultDto>> RejectAsync(Guid id, RejectIncidentCommand command)
@@ -219,20 +268,26 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
                 return BadRequest<IncidentResultDto>("Vui lòng nhập lý do từ chối (tối đa 2000 ký tự).");
 
             using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            if (await Writes.ReplayAsync<IncidentResultDto>(command.OperationId, CurrentUser.Id!.Value, "Incident", "Reject", id.ToString(), command) is { } replay) return replay;
             var incident = await _incidentRepo.GetForUpdateAsync(id);
             if (incident == null)
                 return NotFound<IncidentResultDto>("Không tìm thấy khiếu nại!");
             if (incident.Status != IncidentStatus.Pending)
                 return BadRequest<IncidentResultDto>("Khiếu nại đã được xử lý trước đó.");
+            if (string.IsNullOrWhiteSpace(command.ExpectedVersion)) return AdministrativeWriteGuard.Error<IncidentResultDto>(HttpStatusCode.BadRequest, "ExpectedVersionRequired", "Thiếu expectedVersion.");
+            if (command.ExpectedVersion != incident.Revision.ToString()) return AdministrativeWriteGuard.Error<IncidentResultDto>(HttpStatusCode.Conflict, "VersionMismatch", "Khiếu nại đã thay đổi.");
 
             incident.Status = IncidentStatus.Rejected;
             incident.ResolutionNote = reason;
             incident.ReviewedBy = CurrentUser.Id;
             incident.ReviewedAt = DateTime.UtcNow;
+            incident.Revision++;
             await _incidentRepo.UpdateAsync(incident, autoSave: true);
             await _notifications.IncidentProcessedAsync(incident);
-            await uow.CompleteAsync();
-            return Success(ToDto(incident), "Đã từ chối khiếu nại.");
+            var response = Success(ToDto(incident), "Đã từ chối khiếu nại.");
+            await Audit.LogAsync(new AuditEntry("Incident", "Reject", "Incident", id.ToString(), incident.OrderCode) { Reason = reason });
+            await Writes.RecordAsync(command.OperationId, CurrentUser.Id.Value, "Incident", "Reject", id.ToString(), command, response);
+            await uow.CompleteAsync(); return response;
         }
 
         public async Task<BaseResponse<IncidentResultDto>> ConfirmCompensationAsync(Guid id, ConfirmCompensationCommand command)
@@ -242,24 +297,38 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
                 return BadRequest<IncidentResultDto>("Vui lòng nhập mã tham chiếu chuyển khoản (tối đa 120 ký tự).");
 
             using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            if (await Writes.ReplayAsync<IncidentResultDto>(command.OperationId, CurrentUser.Id!.Value, "Incident", "ConfirmCompensation", id.ToString(), command) is { } replay) return replay;
             var incident = await _incidentRepo.GetForUpdateAsync(id);
             if (incident == null)
                 return NotFound<IncidentResultDto>("Không tìm thấy khiếu nại!");
             if (incident.CompensationStatus == CompensationStatus.Paid)
-                return Success(ToDto(incident), "Bồi thường đã được ghi nhận trước đó.");
+            {
+                if (incident.CompensationReference != reference) return AdministrativeWriteGuard.Error<IncidentResultDto>(HttpStatusCode.Conflict, "PaymentReferenceChanged", "Khoản bồi thường đã trả với mã tham chiếu khác.");
+                var old = Success(ToDto(incident), "Bồi thường đã được ghi nhận trước đó.");
+                await Writes.RecordAsync(command.OperationId, CurrentUser.Id.Value, "Incident", "ConfirmCompensation", id.ToString(), command, old);
+                await uow.CompleteAsync(); return old;
+            }
+            if (string.IsNullOrWhiteSpace(command.ExpectedVersion)) return AdministrativeWriteGuard.Error<IncidentResultDto>(HttpStatusCode.BadRequest, "ExpectedVersionRequired", "Thiếu expectedVersion.");
+            if (command.ExpectedVersion != incident.Revision.ToString()) return AdministrativeWriteGuard.Error<IncidentResultDto>(HttpStatusCode.Conflict, "VersionMismatch", "Khiếu nại đã thay đổi.");
             if (incident.Status != IncidentStatus.Resolved || incident.CompensationStatus != CompensationStatus.Pending)
                 return BadRequest<IncidentResultDto>("Khiếu nại không có khoản bồi thường chờ chi trả.");
 
             incident.CompensationStatus = CompensationStatus.Paid;
             incident.CompensationReference = reference;
             incident.CompensationPaidAt = DateTime.UtcNow;
+            incident.Revision++;
             await _incidentRepo.UpdateAsync(incident, autoSave: true);
-            await uow.CompleteAsync();
-            return Success(ToDto(incident), "Đã ghi nhận chi trả bồi thường.");
+            var response = Success(ToDto(incident), "Đã ghi nhận chi trả bồi thường.");
+            await Audit.LogAsync(new AuditEntry("Incident", "ConfirmCompensation", "Incident", id.ToString(), incident.OrderCode) { Details = new { reference, incident.CompensationAmount } });
+            await _notifications.SendAsync([incident.CustomerId], NotificationType.IncidentProcessed, "Đã chi trả bồi thường", $"Đã trả {incident.CompensationAmount:N0}đ cho khiếu nại đơn #{incident.OrderCode}; mã {reference}.", "incident", incident.Id);
+            await Writes.RecordAsync(command.OperationId, CurrentUser.Id.Value, "Incident", "ConfirmCompensation", id.ToString(), command, response);
+            await uow.CompleteAsync(); return response;
         }
 
         public static IncidentResultDto ToDto(Incident x) => new()
         {
+            Version = x.Revision.ToString(), CompensationPercentApplied = x.CompensationPercentApplied, CompensationSettingsVersion = x.CompensationSettingsVersion,
+            ReviewedBy = x.ReviewedBy,
             Id = x.Id,
             OrderId = x.OrderId,
             OrderCode = x.OrderCode,

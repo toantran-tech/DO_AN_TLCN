@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using Volo.Abp.Domain.Repositories;
 using Volo.Abp.Uow;
+using WashGo.Application.Features.AuditApplication.Services;
 using WashGo.Application.Contracts.Features.FeedbackContracts.Commands;
 using WashGo.Application.Contracts.Features.FeedbackContracts.Queries;
 using WashGo.Application.Contracts.Features.FeedbackContracts.Results;
@@ -165,16 +166,22 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
             if (incident.Status != IncidentStatus.Pending)
                 return BadRequest<IncidentResultDto>(NotPendingMessage);
 
+            var before = IncidentAppService.ToDto(incident);
             incident.Type = command.Type;
             incident.Severity = command.Severity;
             incident.Description = description;
             incident.ImageUrls = images;
             incident.VideoUrls = videos;
             incident.CustomerUpdatedAt = DateTime.UtcNow;
+            incident.Revision++;
             await _incidentRepo.UpdateAsync(incident, autoSave: true);
             await _notifications.SendToAdminsAsync(NotificationType.IncidentMessage, "Khách cập nhật khiếu nại",
                 $"Khách {incident.CustomerName} đã cập nhật khiếu nại về đơn #{incident.OrderCode}.", "incident", incident.Id,
                 NotificationPublisher.Message("incidentUpdated.admin", ("orderCode", incident.OrderCode), ("customerName", incident.CustomerName)));
+            await Audit.LogAsync(new AuditEntry("Incident", "CustomerUpdate", "Incident", incident.Id.ToString(), incident.OrderCode)
+            {
+                ChangedFields = AuditLogWriter.Diff(before, IncidentAppService.ToDto(incident))
+            });
             await uow.CompleteAsync();
             return Success(IncidentAppService.ToDto(incident), "Đã cập nhật khiếu nại.");
         }
@@ -197,9 +204,11 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
             if (incident.Status != IncidentStatus.Pending)
                 return BadRequest<IncidentResultDto>(NotPendingMessage);
 
+            await Audit.LogAsync(new AuditEntry("Incident", "Withdraw", "Incident", incident.Id.ToString(), incident.OrderCode) { Reason = reason });
             incident.Status = IncidentStatus.Withdrawn;
             incident.WithdrawnAt = DateTime.UtcNow;
             incident.WithdrawReason = reason;
+            incident.Revision++;
             await _incidentRepo.UpdateAsync(incident, autoSave: true);
             await _notifications.SendToAdminsAsync(NotificationType.IncidentMessage, "Khách rút khiếu nại",
                 $"Khách {incident.CustomerName} đã rút khiếu nại về đơn #{incident.OrderCode}.", "incident", incident.Id,
@@ -229,9 +238,12 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
                 return BadRequest<IncidentMessageDto>(evidenceError);
 
             using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            if (await Writes.ReplayAsync<IncidentMessageDto>(command.OperationId, userId, "Incident", "Message", id.ToString(), command) is { } replay) return replay;
             var incident = await _incidentRepo.GetForUpdateAsync(id);
             if (incident == null || (!IsAdmin && incident.CustomerId != userId))
                 return NotFound<IncidentMessageDto>(NotFoundMessage);
+            if (IsAdmin && string.IsNullOrWhiteSpace(command.ExpectedVersion)) return AdministrativeWriteGuard.Error<IncidentMessageDto>(System.Net.HttpStatusCode.BadRequest, "ExpectedVersionRequired", "Thiếu expectedVersion.");
+            if (command.ExpectedVersion != null && command.ExpectedVersion != incident.Revision.ToString()) return AdministrativeWriteGuard.Error<IncidentMessageDto>(System.Net.HttpStatusCode.Conflict, "VersionMismatch", "Khiếu nại đã thay đổi.");
             // The customer adds evidence while the incident is open; the Admin can still explain the outcome later.
             if (!IsAdmin && incident.Status != IncidentStatus.Pending)
                 return BadRequest<IncidentMessageDto>(NotPendingMessage);
@@ -248,6 +260,8 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
                 CreatedAt = DateTime.UtcNow
             };
             await _messageRepo.InsertAsync(message, autoSave: true);
+            incident.Revision++;
+            await _incidentRepo.UpdateAsync(incident, autoSave: true);
             if (IsAdmin)
                 await _notifications.SendAsync([incident.CustomerId], NotificationType.IncidentMessage, "Phản hồi khiếu nại",
                     $"WashGo đã phản hồi khiếu nại của bạn về đơn #{incident.OrderCode}.", "incident", incident.Id,
@@ -257,8 +271,21 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
                     $"Khách {incident.CustomerName} gửi trao đổi/bổ sung minh chứng cho khiếu nại đơn #{incident.OrderCode}.",
                     "incident", incident.Id,
                     NotificationPublisher.Message("incidentMessage.admin", ("orderCode", incident.OrderCode), ("customerName", incident.CustomerName)));
-            await uow.CompleteAsync();
-            return Created(ToDto(message), "Đã gửi trao đổi.");
+            var response = Created(ToDto(message), "Đã gửi trao đổi.");
+            await Audit.LogAsync(new AuditEntry("Incident", "Message", "Incident", id.ToString(), incident.OrderCode) { Details = new { messageId = message.Id } });
+            await Writes.RecordAsync(command.OperationId, userId, "Incident", "Message", id.ToString(), command, response);
+            await uow.CompleteAsync(); return response;
+        }
+
+        public async Task<PaginatedResult<IncidentMessageDto>> GetMessagePageAsync(Guid id, int page, int take)
+        {
+            var incident = await _incidentRepo.FindAsync(id);
+            if (incident == null || (!IsAdmin && incident.CustomerId != CurrentUser.Id)) return new() { Succeeded = false, StatusCode = System.Net.HttpStatusCode.NotFound, Message = NotFoundMessage };
+            page = Math.Max(1, page); take = Math.Clamp(take, 1, 100);
+            var q = (await _messageRepo.GetQueryableAsync()).Where(x => x.IncidentId == id);
+            var count = await AsyncExecuter.CountAsync(q);
+            var rows = await AsyncExecuter.ToListAsync(q.OrderBy(x => x.CreatedAt).ThenBy(x => x.Id).Skip((page - 1) * take).Take(take));
+            return Success(rows.Select(ToDto).ToList(), count, page, take);
         }
 
         /// <summary>Own uploads only; an incident itself needs at least one photo or video.</summary>
