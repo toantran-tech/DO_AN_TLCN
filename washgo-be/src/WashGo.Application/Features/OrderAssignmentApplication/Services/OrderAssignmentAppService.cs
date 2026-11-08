@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
+using System.Security.Cryptography;
+using System.Text;
 using System.Threading.Tasks;
 using Volo.Abp.Domain.Repositories;
 using Volo.Abp.Uow;
@@ -11,6 +14,7 @@ using WashGo.Application.Contracts.Features.OrderAssignmentContracts.Services;
 using WashGo.Application.Features.LockerApplication.Services;
 using WashGo.Application.Features.NotificationApplication.Services;
 using WashGo.Core.Domain.Shared.Bases;
+using WashGo.Domain.Entities.Feedback;
 using WashGo.Domain.Entities.Locker;
 using WashGo.Domain.Entities.Locker.Interfaces;
 using WashGo.Domain.Entities.Partner;
@@ -45,6 +49,8 @@ namespace WashGo.Application.Features.OrderAssignmentApplication.Services
         private readonly IRepository<ServiceArea, Guid> _areaRepo;
         private readonly LockerMerchantResolver _lockerMerchants;
         private readonly NotificationPublisher _notifications;
+        private readonly IRepository<OrderOperation, Guid> _operationRepo;
+        private readonly IRepository<OrderRating, Guid> _ratingRepo;
 
         public OrderAssignmentAppService(
             IWashOrderRepository orderRepo,
@@ -55,7 +61,9 @@ namespace WashGo.Application.Features.OrderAssignmentApplication.Services
             IRepository<Merchant, Guid> merchantRepo,
             IRepository<ServiceArea, Guid> areaRepo,
             LockerMerchantResolver lockerMerchants,
-            NotificationPublisher notifications)
+            NotificationPublisher notifications,
+            IRepository<OrderOperation, Guid> operationRepo,
+            IRepository<OrderRating, Guid> ratingRepo)
         {
             _orderRepo = orderRepo;
             _itemRepo = itemRepo;
@@ -66,6 +74,8 @@ namespace WashGo.Application.Features.OrderAssignmentApplication.Services
             _areaRepo = areaRepo;
             _lockerMerchants = lockerMerchants;
             _notifications = notifications;
+            _operationRepo = operationRepo;
+            _ratingRepo = ratingRepo;
         }
 
         // UC 3.3.1
@@ -119,14 +129,107 @@ namespace WashGo.Application.Features.OrderAssignmentApplication.Services
         }
 
         // UC 3.3.2 steps 5-10
+        private const string AssignOperation = "AssignMerchant";
+        private const string AutoAssignOperation = "AutoAssignMerchant";
+
+        private sealed record Failure(HttpStatusCode Status, string Code, string Message);
+
+        private BaseResponse<T> Fail<T>(Failure f) => new()
+        {
+            Succeeded = false, StatusCode = f.Status, Message = f.Message, Meta = new { code = f.Code }
+        };
+
         public async Task<BaseResponse<AssignmentResultDto>> AssignAsync(Guid orderId, AssignOrderCommand command)
         {
+            if (command.OperationId == Guid.Empty)
+                return BadRequest<AssignmentResultDto>("operationId không hợp lệ.");
             using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
-            var (result, notFound, error) = await AssignCoreAsync(orderId, command.MerchantId, false);
+            var pair = new List<(Guid OrderId, Guid MerchantId)> { (orderId, command.MerchantId) };
+            if (command.OperationId is { } operationId)
+            {
+                var (replay, conflict) = await ReplayAsync(operationId, AssignOperation, pair);
+                if (conflict != null)
+                    return Fail<AssignmentResultDto>(conflict);
+                if (replay != null)
+                {
+                    await uow.CompleteAsync();
+                    return Replayed(replay[0]);
+                }
+            }
+            // Capacity lock first (same order as the batch: Merchant, then order) so concurrent assignments cannot overfill.
+            await _orderRepo.AcquireLockAsync(CapacityLock(command.MerchantId));
+            var (result, failure) = await AssignCoreAsync(orderId, command.MerchantId, false, command.ExpectedRevision, command.ExpectedCommissionRate);
             if (result == null)
-                return notFound ? NotFound<AssignmentResultDto>("Không tìm thấy đơn hàng!") : BadRequest<AssignmentResultDto>(error!);
+                return Fail<AssignmentResultDto>(failure!);
+            if (command.OperationId is { } op)
+                await RecordAsync(op, op, AssignOperation, result);
             await uow.CompleteAsync();
             return Success(result, "Phân công thành công!");
+        }
+
+        private BaseResponse<T> Replayed<T>(T data) => new()
+        {
+            Succeeded = true, StatusCode = HttpStatusCode.OK, Data = data,
+            Message = "Thao tác phân công này đã được xử lý trước đó; không thực hiện lại.",
+            Meta = new { code = "Replayed", replayed = true }
+        };
+
+        private static string CapacityLock(Guid merchantId) => $"merchant-capacity:{merchantId}";
+
+        private static Guid ItemId(Guid operationId, Guid orderId) =>
+            new(MD5.HashData(Encoding.UTF8.GetBytes($"{operationId}:{orderId}")));
+
+        /// <summary>Same key, same actor, same operation and same order–Merchant pairs → stored results; otherwise 409.</summary>
+        private async Task<(List<AssignmentResultDto>? Results, Failure? Conflict)> ReplayAsync(
+            Guid operationId, string operation, List<(Guid OrderId, Guid MerchantId)> pairs)
+        {
+            var rows = await _operationRepo.GetListAsync(x => x.GroupId == operationId || x.Id == operationId);
+            if (rows.Count == 0)
+                return (null, null);
+            var requested = pairs.Select(x => $"{x.OrderId}|merchantId={x.MerchantId}").OrderBy(x => x).ToList();
+            var stored = rows.Select(x => $"{x.OrderId}|{x.Request}").OrderBy(x => x).ToList();
+            if (rows.Any(x => x.Operation != operation || x.ActorId != CurrentUser.Id) || !requested.SequenceEqual(stored))
+                return (null, new Failure(HttpStatusCode.Conflict, "OperationIdReused", "operationId này đã được dùng cho một thao tác khác."));
+            return (await ResultsAsync(rows), null);
+        }
+
+        private async Task<List<AssignmentResultDto>> ResultsAsync(List<OrderOperation> rows)
+        {
+            var ids = rows.Select(x => x.OrderId).ToList();
+            var orders = (await _orderRepo.GetListAsync(o => ids.Contains(o.Id))).ToDictionary(o => o.Id);
+            return rows.OrderBy(x => x.CreatedAt).ThenBy(x => x.Id).Where(x => orders.ContainsKey(x.OrderId)).Select(x =>
+            {
+                var o = orders[x.OrderId];
+                return new AssignmentResultDto
+                {
+                    OrderId = o.Id, OrderCode = o.OrderCode, MerchantId = o.MerchantId ?? Guid.Empty,
+                    MerchantName = o.MerchantName ?? string.Empty, CommissionRateApplied = o.CommissionRateApplied,
+                    ResultRevision = x.ResultRevision
+                };
+            }).ToList();
+        }
+
+        private async Task RecordAsync(Guid id, Guid groupId, string operation, AssignmentResultDto result)
+        {
+            await _operationRepo.InsertAsync(new OrderOperation(id)
+            {
+                GroupId = groupId, OrderId = result.OrderId, ActorId = CurrentUser.Id ?? Guid.Empty, Operation = operation,
+                Request = $"merchantId={result.MerchantId}", ResultStatus = WashOrderStatus.Deposited,
+                ResultRevision = result.ResultRevision, CreatedAt = DateTime.UtcNow
+            }, autoSave: true);
+        }
+
+        public async Task<BaseResponse<AssignmentOperationDto>> GetOperationAsync(Guid operationId)
+        {
+            var rows = await _operationRepo.GetListAsync(x => (x.GroupId == operationId || x.Id == operationId) &&
+                                                             (x.Operation == AssignOperation || x.Operation == AutoAssignOperation));
+            if (rows.Count == 0)
+                return NotFound<AssignmentOperationDto>("Không tìm thấy thao tác này: yêu cầu chưa tới server hoặc đã thất bại, có thể gửi lại cùng operationId.");
+            return Success(new AssignmentOperationDto
+            {
+                OperationId = operationId, Operation = rows[0].Operation, CreatedAt = rows.Min(x => x.CreatedAt),
+                Results = await ResultsAsync(rows)
+            });
         }
 
         // UC 3.3.3 steps 4-5
@@ -169,39 +272,66 @@ namespace WashGo.Application.Features.OrderAssignmentApplication.Services
             var items = command.Assignments ?? [];
             if (items.Count == 0 || items.Count > MaxBatch || items.Select(x => x.OrderId).Distinct().Count() != items.Count)
                 return BadRequest<List<AssignmentResultDto>>($"Vui lòng xác nhận từ 1 đến {MaxBatch} đơn hàng, mỗi đơn một lần.");
+            if (command.OperationId == Guid.Empty)
+                return BadRequest<List<AssignmentResultDto>>("operationId không hợp lệ.");
             // All-or-nothing: any invalid pair rolls back the whole batch.
             using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            if (command.OperationId is { } operationId)
+            {
+                var (replay, conflict) = await ReplayAsync(operationId, AutoAssignOperation,
+                    items.Select(x => (x.OrderId, x.MerchantId)).ToList());
+                if (conflict != null)
+                    return Fail<List<AssignmentResultDto>>(conflict);
+                if (replay != null)
+                {
+                    await uow.CompleteAsync();
+                    return Replayed(replay);
+                }
+            }
+            // Lock every Merchant's capacity in a stable order (by id) before touching orders: no deadlock, no overfill.
+            foreach (var merchantId in items.Select(x => x.MerchantId).Distinct().OrderBy(x => x))
+                await _orderRepo.AcquireLockAsync(CapacityLock(merchantId));
             var results = new List<AssignmentResultDto>();
             foreach (var item in items)
             {
-                var (result, notFound, error) = await AssignCoreAsync(item.OrderId, item.MerchantId, true);
+                var (result, failure) = await AssignCoreAsync(item.OrderId, item.MerchantId, true, item.ExpectedRevision, item.ExpectedCommissionRate);
                 if (result == null)
-                    return notFound
-                        ? NotFound<List<AssignmentResultDto>>("Không tìm thấy đơn hàng!")
-                        : BadRequest<List<AssignmentResultDto>>(error!);
+                    return Fail<List<AssignmentResultDto>>(failure!);
                 results.Add(result);
             }
+            if (command.OperationId is { } op)
+                foreach (var result in results)
+                    await RecordAsync(ItemId(op, result.OrderId), op, AutoAssignOperation, result);
             await uow.CompleteAsync();
             return Success(results, "Phân công tự động thành công!");
         }
 
-        private async Task<(AssignmentResultDto? Result, bool NotFound, string? Error)> AssignCoreAsync(
-            Guid orderId, Guid merchantId, bool auto)
+        private async Task<(AssignmentResultDto? Result, Failure? Failure)> AssignCoreAsync(
+            Guid orderId, Guid merchantId, bool auto, long? expectedRevision, decimal? expectedCommissionRate)
         {
-            // Row lock: two Admins cannot assign the same order at once.
+            // Row lock: two Admins cannot assign the same order at once. The Merchant's capacity lock is already held,
+            // so load, Active status and locker links below are read at commit time.
             var order = await _orderRepo.GetForUpdateAsync(orderId);
             if (order == null)
-                return (null, true, null);
+                return (null, new Failure(HttpStatusCode.NotFound, "NotFound", "Không tìm thấy đơn hàng!"));
+            if (expectedRevision.HasValue && expectedRevision.Value != order.Revision)
+                return (null, new Failure(HttpStatusCode.Conflict, "RevisionMismatch",
+                    $"Đơn {order.OrderCode} đã thay đổi kể từ lúc bạn xem; vui lòng tải lại trước khi phân công."));
             if (!IsWaiting(order))
-                return (null, false, $"Đơn {order.OrderCode} không ở trạng thái chờ phân công.");
+                return (null, new Failure(HttpStatusCode.BadRequest, "NotWaiting", $"Đơn {order.OrderCode} không ở trạng thái chờ phân công."));
             var candidates = await CandidatesAsync(order);
             if (candidates.Count == 0)
-                return (null, false, OrderAssignmentRules.NoMerchantInArea);
+                return (null, new Failure(HttpStatusCode.BadRequest, "NoMerchantInArea", OrderAssignmentRules.NoMerchantInArea));
             var target = candidates.FirstOrDefault(x => x.MerchantId == merchantId);
             if (target == null)
-                return (null, false, $"Merchant được chọn không hoạt động hoặc không phụ trách locker của đơn {order.OrderCode}.");
+                return (null, new Failure(HttpStatusCode.BadRequest, "MerchantNotEligible",
+                    $"Merchant được chọn không hoạt động hoặc không phụ trách locker của đơn {order.OrderCode}."));
+            if (expectedCommissionRate.HasValue && expectedCommissionRate.Value != target.CommissionRate)
+                return (null, new Failure(HttpStatusCode.Conflict, "CommissionChanged",
+                    $"Tỷ lệ hoa hồng của {target.BusinessName} đã đổi ({expectedCommissionRate:0.##}% → {target.CommissionRate:0.##}%); vui lòng xem lại."));
             if (target.CurrentLoad >= target.MaxCapacity)
-                return (null, false, $"Merchant {target.BusinessName} đã đủ tải ({target.CurrentLoad}/{target.MaxCapacity} đơn).");
+                return (null, new Failure(HttpStatusCode.BadRequest, "CapacityFull",
+                    $"Merchant {target.BusinessName} đã đủ tải ({target.CurrentLoad}/{target.MaxCapacity} đơn)."));
 
             order.MerchantId = target.MerchantId;
             order.MerchantName = target.BusinessName;
@@ -227,8 +357,9 @@ namespace WashGo.Application.Features.OrderAssignmentApplication.Services
                 OrderCode = order.OrderCode,
                 MerchantId = target.MerchantId,
                 MerchantName = target.BusinessName,
-                CommissionRateApplied = order.CommissionRateApplied
-            }, false, null);
+                CommissionRateApplied = order.CommissionRateApplied,
+                ResultRevision = order.Revision
+            }, null);
         }
 
         private static bool IsWaiting(WashOrder order) =>
@@ -257,6 +388,10 @@ namespace WashGo.Application.Features.OrderAssignmentApplication.Services
                     .GroupBy(o => o.MerchantId!.Value)
                     .Select(g => new { MerchantId = g.Key, Count = g.Count() })))
                 .ToDictionary(x => x.MerchantId, x => x.Count);
+            var ratingCounts = (await AsyncExecuter.ToListAsync((await _ratingRepo.GetQueryableAsync())
+                    .Where(r => !r.IsDeleted && !r.IsHidden && r.MerchantId != null && ids.Contains(r.MerchantId.Value))
+                    .GroupBy(r => r.MerchantId!.Value).Select(g => new { MerchantId = g.Key, Count = g.Count() })))
+                .ToDictionary(x => x.MerchantId, x => x.Count);
 
             var result = new List<MerchantCandidateDto>();
             foreach (var link in links)
@@ -277,6 +412,7 @@ namespace WashGo.Application.Features.OrderAssignmentApplication.Services
                     MerchantId = m.Id,
                     BusinessName = m.BusinessName,
                     Rating = m.Rating,
+                    PublicRatingCount = ratingCounts.GetValueOrDefault(m.Id),
                     CommissionRate = m.CommissionRate,
                     CurrentLoad = load,
                     MaxCapacity = m.MaxCapacity,

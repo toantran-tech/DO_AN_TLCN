@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using WashGo.Domain.Shared.Enums;
 
@@ -27,6 +28,13 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Results
         public string? AssignShipperReason { get; set; }
         /// <summary>Nhiệm vụ hiện tại đã có Shipper; phân công nữa là đổi người.</summary>
         public bool HasAssignedShipper { get; set; }
+        /// <summary>Ghi nhận chuyển đồ quá hạn từ tủ trả sang kho (Admin/Shipper).</summary>
+        public bool CanMoveToStorage { get; set; }
+        /// <summary>RoleNotAllowed, WrongStage, AlreadyMoved, NotYetDue.</summary>
+        public string? MoveToStorageReasonCode { get; set; }
+        public string? MoveToStorageReason { get; set; }
+        /// <summary>Thời điểm (UTC) được phép chuyển kho = hạn nhận đồ + số giờ cấu hình; null khi chưa có hạn nhận đồ.</summary>
+        public DateTime? TransferToStorageEligibleAt { get; set; }
     }
 
     public class OrderStatusOptionDto

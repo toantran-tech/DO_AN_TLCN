@@ -940,14 +940,14 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             var order = await _orderRepo.GetWithDetailsAsync(command.OrderId);
             if (order == null || !CanAccess(order, scope) || scope.Role is not ("Shipper" or "Admin"))
                 return NotFound<WashOrderDetailDto>("Không tìm thấy đơn hàng được phép chuyển kho.");
-            if (order.Status != WashOrderStatus.ReadyToReturn)
-                return BadRequest<WashOrderDetailDto>("Chỉ chuyển kho cho đồ đang nằm tại locker trả.");
-            if (order.MovedToStorageAt.HasValue)
-                return BadRequest<WashOrderDetailDto>("Đơn hàng đã được ghi nhận chuyển kho trước đó.");
+            var storageRequest = OrderWriteGuard.Fingerprint("moveToStorage",
+                $"{command.StorageLocation.Trim()}|{command.StorageReference.Trim()}|{command.Note?.Trim()}");
+            if (await GuardAsync(order, scope, command, "MoveToStorage", storageRequest) is { } stop)
+                return stop;
 
             var now = DateTime.UtcNow;
-            if (!OverdueFeeCalculator.IsTransferToStorageDue(order.PickupDeadline, now))
-                return BadRequest<WashOrderDetailDto>("Chỉ chuyển kho khi đã quá 72 giờ kể từ hạn nhận đồ.");
+            if (OrderActionRules.MoveToStorage(order, scope.Role, now) is { } blocked)
+                return BadRequest<WashOrderDetailDto>(blocked.Message);
 
             var previousStatus = order.Status;
             if (!await _orderRepo.TryChangeStatusAsync(order.Id, WashOrderStatus.ReadyToReturn,
@@ -978,6 +978,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             });
 
             await _orderRepo.UpdateAsync(order, autoSave: true);
+            await _writeGuard.RecordAsync(order, CurrentUser.Id!.Value, command, "MoveToStorage", storageRequest);
             await _notifications.MovedToStorageAsync(order);
             await uow.CompleteAsync();
             return Success(RedactStaffData(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), scope), "Đã ghi nhận chuyển đồ sang kho và giải phóng ô locker.");
