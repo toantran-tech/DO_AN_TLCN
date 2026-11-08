@@ -5,6 +5,8 @@ namespace WashGo.Application.Contracts.Features.PromotionContracts.Results
 {
     public class PromotionResultDto
     {
+    public string Version { get; set; } = string.Empty;
+    public bool CanDelete { get; set; }
         public Guid Id { get; set; }
         public string Code { get; set; } = string.Empty;
         public string? Description { get; set; }

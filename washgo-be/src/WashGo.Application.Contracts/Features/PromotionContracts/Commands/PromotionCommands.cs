@@ -5,6 +5,7 @@ namespace WashGo.Application.Contracts.Features.PromotionContracts.Commands
 {
     public class CreatePromotionCommand
     {
+        public Guid? OperationId { get; set; }
         public string Code { get; set; } = string.Empty;
         public string? Description { get; set; }
         public DiscountType DiscountType { get; set; } = DiscountType.Percentage;
@@ -20,6 +21,14 @@ namespace WashGo.Application.Contracts.Features.PromotionContracts.Commands
 
     public class UpdatePromotionCommand : CreatePromotionCommand
     {
+        public string? ExpectedVersion { get; set; }
         public Guid Id { get; set; }
+    }
+    public class SetPromotionStatusCommand
+    {
+        public Guid? OperationId { get; set; }
+        public string? ExpectedVersion { get; set; }
+        [System.Text.Json.Serialization.JsonRequired]
+        public bool IsActive { get; set; }
     }
 }
