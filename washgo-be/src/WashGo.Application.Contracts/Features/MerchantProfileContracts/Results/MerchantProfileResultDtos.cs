@@ -14,6 +14,9 @@ namespace WashGo.Application.Contracts.Features.MerchantProfileContracts.Results
         public string Phone { get; set; } = string.Empty;
         public string? OpeningHours { get; set; }
         public List<string> ImageUrls { get; set; } = [];
+        /// <summary>null trong yêu cầu cũ = không đề cập (giữ nguyên); chuỗi rỗng = đề nghị xóa.</summary>
+        public string? TaxCode { get; set; }
+        public string? BusinessLicense { get; set; }
     }
 
     public class MerchantProfileRequestDto
@@ -35,6 +38,8 @@ namespace WashGo.Application.Contracts.Features.MerchantProfileContracts.Results
         public Guid Id { get; set; }
         public string BusinessName { get; set; } = string.Empty;
         public string? TaxCode { get; set; }
+        /// <summary>Giấy phép kinh doanh đã duyệt (số giấy phép hoặc URL ảnh); null = chưa khai báo.</summary>
+        public string? BusinessLicense { get; set; }
         public string Email { get; set; } = string.Empty;
         public string Address { get; set; } = string.Empty;
         public string District { get; set; } = string.Empty;
