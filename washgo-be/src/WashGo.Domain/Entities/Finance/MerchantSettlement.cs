@@ -3,6 +3,7 @@ using WashGo.Core.Domain.Attributes;
 using WashGo.Core.Domain.Common;
 using WashGo.Domain.Shared.Constants;
 using WashGo.Domain.Shared.Enums;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace WashGo.Domain.Entities.Finance
 {
@@ -28,5 +29,7 @@ namespace WashGo.Domain.Entities.Finance
         public string? PaymentReference { get; set; }
         public DateTime? PaidAt { get; set; }
         public Guid? CreatedByUserId { get; set; }
+        [Column(TypeName = "jsonb")]
+        public string? BreakdownSnapshotJson { get; set; }
     }
 }

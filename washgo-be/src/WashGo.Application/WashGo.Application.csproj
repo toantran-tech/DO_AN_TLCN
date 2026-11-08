@@ -26,6 +26,8 @@
     <PackageReference Include="Google.Apis.Auth" Version="1.77.0" />
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.0.2" />
     <PackageReference Include="QuestPDF" Version="2024.12.3" />
+    <PackageReference Include="PdfPig" Version="0.1.11" />
+    <PackageReference Include="OpenMcdf" Version="3.3.0" />
   </ItemGroup>
 
 </Project>

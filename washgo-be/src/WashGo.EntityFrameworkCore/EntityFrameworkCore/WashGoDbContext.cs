@@ -15,6 +15,7 @@ using WashGo.Domain.Entities.WashOrder;
 using WashGo.Domain.Entities.WashService;
 using WashGo.Domain.Shared.Constants;
 using WashGo.EntityFrameworkCore.BuilderConfiguration;
+using WashGo.Domain.Entities.Audit;
 
 namespace WashGo.EntityFrameworkCore.EntityFrameworkCore
 {
@@ -27,6 +28,9 @@ namespace WashGo.EntityFrameworkCore.EntityFrameworkCore
         public DbSet<OtpCode> OtpCodes { get; set; } = null!;
         public DbSet<Customer> Customers { get; set; } = null!;
         public DbSet<Merchant> Merchants { get; set; } = null!;
+        public DbSet<PrivateDocument> PrivateDocuments { get; set; } = null!;
+        public DbSet<UploadedAsset> UploadedAssets { get; set; } = null!;
+        public DbSet<AdministrativeOperation> AdministrativeOperations { get; set; } = null!;
         public DbSet<MerchantWriteOperation> MerchantWriteOperations { get; set; } = null!;
         public DbSet<Shipper> Shippers { get; set; } = null!;
         public DbSet<ServiceArea> ServiceAreas { get; set; } = null!;
@@ -57,7 +61,7 @@ namespace WashGo.EntityFrameworkCore.EntityFrameworkCore
         public DbSet<OrderOperation> OrderOperations { get; set; } = null!;
         public DbSet<ShipperAudit> ShipperAudits { get; set; } = null!;
         public DbSet<DeliveryTask> DeliveryTasks { get; set; } = null!;
-        public DbSet<WashGo.Domain.Entities.Audit.AuditLog> AuditLogs { get; set; } = null!;
+        public DbSet<AuditLog> AuditLogs { get; set; } = null!;
 
         public WashGoDbContext(DbContextOptions<WashGoDbContext> options)
             : base(options)
@@ -76,6 +80,9 @@ namespace WashGo.EntityFrameworkCore.EntityFrameworkCore
             builder.ApplyConfiguration(new OtpCodeEntityTypeConfiguration());
             builder.ApplyConfiguration(new CustomerEntityTypeConfiguration());
             builder.ApplyConfiguration(new MerchantEntityTypeConfiguration());
+            builder.ApplyConfiguration(new PrivateDocumentEntityTypeConfiguration());
+            builder.ApplyConfiguration(new UploadedAssetEntityTypeConfiguration());
+            builder.ApplyConfiguration(new AdministrativeOperationEntityTypeConfiguration());
             builder.ApplyConfiguration(new MerchantWriteOperationEntityTypeConfiguration());
             builder.ApplyConfiguration(new ShipperEntityTypeConfiguration());
             builder.ApplyConfiguration(new ServiceAreaEntityTypeConfiguration());
@@ -109,6 +116,34 @@ namespace WashGo.EntityFrameworkCore.EntityFrameworkCore
             builder.ApplyConfiguration(new LockerMerchantEntityTypeConfiguration());
 
             builder.UseWashGoSnakeCaseColumns();
+        }
+
+        private static readonly System.Text.RegularExpressions.Regex AssetUrl = new(@"/uploads/[0-9a-f]{32}/[0-9a-f]{32}\.(jpg|png|webp|mp4|webm|mov)", System.Text.RegularExpressions.RegexOptions.Compiled);
+        private static readonly HashSet<string> AssetOwners = ["User", "Merchant", "MerchantImage", "Locker", "WashService", "ServiceChangeRequest", "MerchantProfileRequest", "OrderRating", "Incident", "IncidentMessage", "Shipper"];
+        public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+        {
+            // Reference retention is part of the SAME DB transaction as the attaching record. Cleanup uses the same lock.
+            var urls = ChangeTracker.Entries().Where(x => (x.State is EntityState.Added or EntityState.Modified) && AssetOwners.Contains(x.Metadata.ClrType.Name))
+                .SelectMany(x => x.Properties.SelectMany(p => p.CurrentValue switch
+                {
+                    string value => AssetUrl.Matches(value).Select(m => m.Value),
+                    IEnumerable<string> values => values.SelectMany(v => AssetUrl.Matches(v ?? string.Empty).Select(m => m.Value)),
+                    _ => Enumerable.Empty<string>()
+                })).Distinct().ToArray();
+            if (urls.Length > 0)
+            {
+                var ids = await UploadedAssets.AsNoTracking().Where(x => urls.Contains(x.Url)).OrderBy(x => x.Id).Select(x => x.Id).ToListAsync(cancellationToken);
+                foreach (var id in ids)
+                {
+                    var key = $"upload-asset:{id}";
+                    await Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtext({key}))", cancellationToken);
+                    var now = DateTime.UtcNow;
+                    var changed = await UploadedAssets.Where(x => x.Id == id && !x.IsDeleted && (x.ReferencedAt != null || x.ExpiresAt > now))
+                        .ExecuteUpdateAsync(s => s.SetProperty(x => x.ReferencedAt, x => x.ReferencedAt ?? now), cancellationToken);
+                    if (changed != 1) throw new WashGo.Domain.Shared.Validation.UploadAttachmentExpiredException();
+                }
+            }
+            return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
         }
     }
 }

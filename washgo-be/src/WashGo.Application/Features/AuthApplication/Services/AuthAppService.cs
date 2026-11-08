@@ -28,6 +28,7 @@ using WashGo.Domain.Shared.Validation;
 
 namespace WashGo.Application.Features.AuthApplication.Services
 {
+    [Volo.Abp.Auditing.DisableAuditing]
     public class AuthAppService : WashGoAppService, IAuthAppService
     {
         private const string VerifiedRegistrationPrefix = "verified-register:";

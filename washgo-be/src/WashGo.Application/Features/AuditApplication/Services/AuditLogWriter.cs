@@ -68,7 +68,7 @@ namespace WashGo.Application.Features.AuditApplication.Services
             }, autoSave: true);
         }
 
-        private static readonly string[] IgnoredDiffKeys = ["updatedAt", "updatedBy", "revision", "generatedAt"];
+        private static readonly string[] IgnoredDiffKeys = ["updatedAt", "updatedBy", "revision", "generatedAt", "serverNow", "version"];
 
         /// <summary>Top-level properties whose JSON value differs (camelCase names).</summary>
         public static List<string> Diff(object? before, object after)

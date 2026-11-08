@@ -1,12 +1,15 @@
 using WashGo.Core.Bases;
+using WashGo.Application.Features.AuditApplication.Services;
 
 namespace WashGo.Application
 {
     public abstract class WashGoAppService : BaseResponseHandler
     {
         /// <summary>Central audit trail (see Features/AuditApplication).</summary>
-        protected WashGo.Application.Features.AuditApplication.Services.AuditLogWriter Audit =>
-            LazyServiceProvider.LazyGetRequiredService<WashGo.Application.Features.AuditApplication.Services.AuditLogWriter>();
+        protected AuditLogWriter Audit =>
+            LazyServiceProvider.LazyGetRequiredService<AuditLogWriter>();
+        protected AdministrativeWriteGuard Writes =>
+            LazyServiceProvider.LazyGetRequiredService<AdministrativeWriteGuard>();
 
         protected WashGoAppService()
         {

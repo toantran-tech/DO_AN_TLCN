@@ -5,6 +5,8 @@ using Volo.Abp.Uow;
 using WashGo.Application.Contracts.Features.CustomerContracts.Commands;
 using WashGo.Application.Contracts.Features.CustomerContracts.Results;
 using WashGo.Application.Contracts.Features.CustomerContracts.Services;
+using WashGo.Application.Features.AuditApplication;
+using WashGo.Application.Features.AuditApplication.Services;
 using WashGo.Application.Features.FileApplication.Services;
 using WashGo.Core.Domain.Shared.Bases;
 using WashGo.Domain.Entities.Identity;

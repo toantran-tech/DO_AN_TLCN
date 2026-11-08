@@ -1,0 +1,5 @@
+services:
+  washgo-be:
+    environment:
+      Payment__Provider: Mock
+      Email__Smtp__Host: ""

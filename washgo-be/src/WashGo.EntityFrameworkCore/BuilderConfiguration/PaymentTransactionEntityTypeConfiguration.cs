@@ -20,6 +20,8 @@ namespace WashGo.EntityFrameworkCore.BuilderConfiguration
             builder.HasIndex(x => x.TransactionReference).IsUnique();
             builder.Property(x => x.ProviderTransactionId).HasMaxLength(120);
             builder.Property(x => x.Amount).HasPrecision(18, 2);
+            builder.Property(x => x.CommissionRateSnapshot).HasPrecision(5, 2);
+            builder.Property(x => x.FinancialSnapshotBasis).HasMaxLength(40);
             builder.Property(x => x.Purpose)
                 .HasDefaultValue(WashGo.Domain.Shared.Enums.PaymentPurpose.Order)
                 .HasSentinel((WashGo.Domain.Shared.Enums.PaymentPurpose)0);

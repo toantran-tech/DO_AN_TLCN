@@ -38,6 +38,7 @@ namespace WashGo.Application.Features.MerchantApplication.Services
         private readonly NotificationPublisher _notifications;
         private readonly IConfiguration _configuration;
         private readonly MerchantWriteGuard _writeGuard;
+        private readonly PrivateDocumentStore _documents;
 
         public MerchantProfileAppService(
             IRepository<MerchantProfileRequest, Guid> requestRepo,
@@ -46,7 +47,7 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             IRepository<User, Guid> userRepo,
             IRepository<OrderRating, Guid> ratingRepo,
             NotificationPublisher notifications,
-            IConfiguration configuration, MerchantWriteGuard writeGuard)
+            IConfiguration configuration, MerchantWriteGuard writeGuard, PrivateDocumentStore documents)
         {
             _requestRepo = requestRepo;
             _merchantRepo = merchantRepo;
@@ -56,6 +57,7 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             _notifications = notifications;
             _configuration = configuration;
             _writeGuard = writeGuard;
+            _documents = documents;
         }
 
         // Merchant accounts share their id with the Merchant profile.
@@ -69,12 +71,17 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             var user = await _userRepo.FindAsync(merchant.Id);
             var pending = await _requestRepo.FirstOrDefaultAsync(x => x.MerchantId == merchant.Id && x.Status == ServiceApprovalStatus.Pending);
             var publicRatingCount = await _ratingRepo.CountAsync(x => x.MerchantId == merchant.Id && !x.IsHidden);
+            var documents = await _documents.MetadataAsync([merchant.BusinessLicenseDocumentId, merchant.ContractDocumentId, merchant.SlaDocumentId]);
             return Success(new MerchantProfileDto
             {
+                Documents = documents.Values.ToList(),
                 Id = merchant.Id,
                 BusinessName = merchant.BusinessName,
                 TaxCode = merchant.TaxCode,
                 BusinessLicense = LicenseText(merchant.BusinessLicense),
+                BusinessLicenseDocumentId = merchant.BusinessLicenseDocumentId,
+                ContractDocumentId = merchant.ContractDocumentId,
+                SlaDocumentId = merchant.SlaDocumentId,
                 Email = user?.Email ?? string.Empty,
                 Address = merchant.Address,
                 District = merchant.District,
@@ -101,6 +108,8 @@ namespace WashGo.Application.Features.MerchantApplication.Services
         public async Task<BaseResponse<MerchantProfileRequestDto>> RequestUpdateAsync(MerchantProfileUpdateCommand command)
         {
             using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            if (await _writeGuard.ReplayAsync<MerchantProfileRequestDto>(command.OperationId, MerchantId, MerchantId, "SubmitProfile", command) is { } replay)
+                return replay;
             await _writeGuard.LockMerchantAsync(MerchantId);
             var merchant = await _merchantRepo.FindAsync(MerchantId);
             if (merchant == null)
@@ -158,6 +167,8 @@ namespace WashGo.Application.Features.MerchantApplication.Services
 
             var current = new MerchantProfileDataDto
             {
+                DocumentsSnapshotIncluded = true,
+                BusinessLicenseDocumentId = merchant.BusinessLicenseDocumentId,
                 BaseMerchantVersion = MerchantWriteGuard.Version(merchant),
                 BusinessName = merchant.BusinessName,
                 Address = merchant.Address,
@@ -182,6 +193,8 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             }
             var proposed = new MerchantProfileDataDto
             {
+                DocumentsSnapshotIncluded = true,
+                BusinessLicenseDocumentId = command.RemoveBusinessLicenseDocument ? null : command.BusinessLicenseDocumentId ?? merchant.BusinessLicenseDocumentId,
                 BusinessName = name,
                 Address = address,
                 City = city,
@@ -198,6 +211,14 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             if (await _requestRepo.AnyAsync(x => x.MerchantId == merchant.Id && x.Status == ServiceApprovalStatus.Pending))
                 return BadRequest<MerchantProfileRequestDto>("Bạn đang có yêu cầu cập nhật chờ Admin phê duyệt.");
 
+            if (command.RemoveBusinessLicenseDocument && command.BusinessLicenseDocumentId.HasValue)
+                return BadRequest<MerchantProfileRequestDto>("Không được vừa gán vừa gỡ giấy phép.");
+            if (command.BusinessLicenseDocumentId is { } documentId)
+            {
+                var documentError = await _documents.ReferenceAsync([(documentId, MerchantDocumentKind.BusinessLicense)], merchant.Id, MerchantId, false);
+                if (documentError != null) return BadRequest<MerchantProfileRequestDto>(documentError);
+            }
+
             var request = new MerchantProfileRequest(GuidGenerator.Create())
             {
                 MerchantId = merchant.Id,
@@ -209,8 +230,11 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             await _notifications.SendToAdminsAsync(NotificationType.MerchantProfileUpdateRequested, "Yêu cầu cập nhật hồ sơ Merchant",
                 $"Merchant {merchant.BusinessName} gửi yêu cầu cập nhật hồ sơ cửa hàng, cần phê duyệt.",
                 "merchant-profile-request", request.Id);
+            var response = Created(ToDto(request, merchant.BusinessName), "Yêu cầu cập nhật đã được gửi. Vui lòng chờ Admin phê duyệt.");
+            await Audit.LogAsync(new AuditEntry("MerchantProfile", "Submit", "MerchantProfileRequest", request.Id.ToString(), merchant.BusinessName) { ChangedFields = response.Data!.ChangedFields });
+            await _writeGuard.RecordAsync(command.OperationId, MerchantId, merchant.Id, "SubmitProfile", command, response);
             await uow.CompleteAsync();
-            return Created(ToDto(request, merchant.BusinessName), "Yêu cầu cập nhật đã được gửi. Vui lòng chờ Admin phê duyệt.");
+            return response;
         }
 
         public async Task<PaginatedResult<MerchantProfileRequestDto>> GetRequestsAsync(MerchantProfileRequestFilterQuery query)
@@ -226,7 +250,7 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             var take = Math.Clamp(query.Take, 1, 100);
             var total = await AsyncExecuter.CountAsync(queryable);
             var items = await AsyncExecuter.ToListAsync(queryable
-                .OrderBy(x => x.Status == ServiceApprovalStatus.Pending ? 0 : 1).ThenByDescending(x => x.CreatedAt)
+                .OrderBy(x => x.Status == ServiceApprovalStatus.Pending ? 0 : 1).ThenByDescending(x => x.CreatedAt).ThenBy(x => x.Id)
                 .Skip((page - 1) * take).Take(take));
             var names = await MerchantNamesAsync(items.Select(x => x.MerchantId));
             return Success(items.Select(x => ToDto(x, names.GetValueOrDefault(x.MerchantId, string.Empty))).ToList(), total, page, take,
@@ -274,6 +298,7 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             var before = Read(request.CurrentData);
             var current = new MerchantProfileDataDto
             {
+                DocumentsSnapshotIncluded = true, BusinessLicenseDocumentId = merchant.BusinessLicenseDocumentId,
                 BusinessName = merchant.BusinessName, Address = merchant.Address, City = merchant.City,
                 Latitude = merchant.Latitude, Longitude = merchant.Longitude, Phone = merchant.Phone,
                 OpeningHours = MerchantRules.NormalizeJson(merchant.OpeningHours), ImageUrls = await StoreImagesAsync(merchant.Id),
@@ -284,6 +309,15 @@ namespace WashGo.Application.Features.MerchantApplication.Services
                 return MerchantWriteGuard.Error<MerchantProfileRequestDto>(System.Net.HttpStatusCode.Conflict, "MerchantProfileChanged", "Hồ sơ cửa hàng đã đổi từ lúc gửi yêu cầu; không thể áp dữ liệu cũ. Hãy từ chối và yêu cầu gửi lại.");
 
             var now = DateTime.UtcNow;
+            if (data.DocumentsSnapshotIncluded)
+            {
+                if (data.BusinessLicenseDocumentId is { } documentId)
+                {
+                    var documentError = await _documents.ReferenceAsync([(documentId, MerchantDocumentKind.BusinessLicense)], merchant.Id, CurrentUser.Id!.Value, true);
+                    if (documentError != null) return BadRequest<MerchantProfileRequestDto>(documentError);
+                }
+                merchant.BusinessLicenseDocumentId = data.BusinessLicenseDocumentId;
+            }
             merchant.BusinessName = data.BusinessName;
             merchant.Address = data.Address;
             if (!string.IsNullOrWhiteSpace(data.City))
@@ -299,6 +333,7 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             if (data.TaxCode != null)
             {
                 var tax = data.TaxCode.Length == 0 ? null : data.TaxCode;
+                var TaxCode = await _merchantRepo.AnyAsync(x => x.TaxCode == tax && x.Id != merchant.Id);
                 if (tax != null && await _merchantRepo.AnyAsync(x => x.TaxCode == tax && x.Id != merchant.Id))
                     return BadRequest<MerchantProfileRequestDto>("Mã số thuế đã được cửa hàng khác sử dụng; hãy từ chối yêu cầu.");
                 merchant.TaxCode = tax;
@@ -408,6 +443,7 @@ namespace WashGo.Application.Features.MerchantApplication.Services
         private static List<string> Changes(MerchantProfileDataDto current, MerchantProfileDataDto proposed)
         {
             var changed = new List<string>();
+            if (proposed.DocumentsSnapshotIncluded && current.BusinessLicenseDocumentId != proposed.BusinessLicenseDocumentId) changed.Add("businessLicenseDocumentId");
             if (current.BusinessName != proposed.BusinessName) changed.Add("businessName");
             if (current.Address != proposed.Address) changed.Add("address");
             if (current.City != proposed.City) changed.Add("city");

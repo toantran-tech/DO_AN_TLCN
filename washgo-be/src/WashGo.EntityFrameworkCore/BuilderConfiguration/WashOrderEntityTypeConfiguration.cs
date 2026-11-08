@@ -16,6 +16,8 @@ namespace WashGo.EntityFrameworkCore.BuilderConfiguration
         {
             base.Configure(builder);
             builder.ToTable(WashGoDbProperties.Orders, WashGoDbProperties.Schema);
+            builder.Property(x => x.OperationalSettingsJson).HasColumnType("jsonb");
+            builder.Property(x => x.OperationalPolicyBasis).HasMaxLength(40);
             builder.Property(x => x.OrderCode).HasMaxLength(50).IsRequired();
             builder.HasIndex(x => x.OrderCode).IsUnique();
             builder.Property(x => x.MerchantOrderCode).HasMaxLength(50);

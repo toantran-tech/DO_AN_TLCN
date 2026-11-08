@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using Volo.Abp.Application.Services;
 using WashGo.Core.Domain.Shared.Bases;
 using WashGo.Domain.Shared.Enums;
+using System.Text.Json.Serialization;
 
 namespace WashGo.Application.Contracts.Features.MerchantContracts.Commands
 {
@@ -11,7 +12,7 @@ namespace WashGo.Application.Contracts.Features.MerchantContracts.Commands
     public class CreateMerchantCommand
     {
         /// <summary>Key riêng của tạo Merchant; giữ nguyên key/payload khi gửi lại. Không áp dụng khi sửa.</summary>
-        [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+        [JsonIgnore(Condition =JsonIgnoreCondition.WhenWritingNull)]
         public Guid? ClientRequestId { get; set; }
         public string Email { get; set; } = string.Empty;
         public string BusinessName { get; set; } = string.Empty;
@@ -37,6 +38,18 @@ namespace WashGo.Application.Contracts.Features.MerchantContracts.Commands
         public string? SlaDocUrl { get; set; }
         /// <summary>Khi sửa: null = giữ nguyên vùng phục vụ (thiết lập chi tiết ở UC 3.2.5).</summary>
         public List<Guid>? ServiceAreaIds { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public Guid? BusinessLicenseDocumentId { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public Guid? ContractDocumentId { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public Guid? SlaDocumentId { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public bool RemoveBusinessLicenseDocument { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public bool RemoveContractDocument { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public bool RemoveSlaDocument { get; set; }
     }
 
     /// <summary>UC 3.2.3: Admin chỉnh sửa thông tin Merchant, SLA, chiết khấu.</summary>

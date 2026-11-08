@@ -16,6 +16,9 @@ namespace WashGo.EntityFrameworkCore.BuilderConfiguration
             builder.Property(x => x.Id).HasValueGenerator<SequentialGuidValueGenerator>();
             builder.Property<NpgsqlTsVector>("SearchVector");
             builder.Property(x => x.Amount).HasPrecision(18, 2);
+            builder.Property(x => x.CommissionRateSnapshot).HasPrecision(5, 2);
+            builder.Property(x => x.FinancialSnapshotBasis).HasMaxLength(40);
+            builder.HasIndex(x => x.OriginalPaymentTransactionId);
             builder.Property(x => x.Reason).HasMaxLength(1000).IsRequired();
             builder.Property(x => x.ReviewNote).HasMaxLength(1000);
             builder.Property(x => x.RefundReference).HasMaxLength(120);
