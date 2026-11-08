@@ -46,6 +46,13 @@ namespace WashGo.HttpApi.Endpoints.WashOrder
                 .WithSummary("Xem chi tiết đơn hàng được phép truy cập theo tài khoản đang đăng nhập.")
                 .WithOpenApi();
 
+            group.MapGet("/{id:guid}/access-codes", async (Guid id, IWashOrderAppService svc) =>
+                (await svc.GetAccessCodesAsync(id)).CustomResult())
+                .RequireAuthorization("AdminOnly")
+                .WithName("Admin xem mã mở tủ của đơn")
+                .WithSummary("Mã gửi/nhận đồ và mã nhiệm vụ Shipper của một đơn, chỉ Admin (hỗ trợ đặc biệt); danh sách/chi tiết đơn của Admin không còn trả các mã này. Mỗi lần xem được ghi vào lịch sử đơn.")
+                .WithOpenApi();
+
             group.MapGet("/{id:guid}/receipt", async (Guid id, IOrderReceiptAppService svc) =>
                 (await svc.GetAsync(id)).CustomResult())
                 .RequireAuthorization()

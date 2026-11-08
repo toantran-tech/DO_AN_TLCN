@@ -24,6 +24,25 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Results
         public LockerBoxSize? BoxSize { get; set; }
         /// <summary>Tên các dịch vụ của đơn (danh sách đơn của Customer/Merchant).</summary>
         public List<string> ServiceNames { get; set; } = [];
+        /// <summary>Dịch vụ của đơn theo ID kèm ảnh đại diện hiện tại (null khi dịch vụ không có ảnh).</summary>
+        public List<OrderServiceRefDto> Services { get; set; } = [];
+        /// <summary>Ảnh trạm gửi / trạm nhận (trạm nhận = returnLockerId, mặc định trạm gửi). Ảnh hiện tại, không phải snapshot.</summary>
+        public List<string> LockerImageUrls { get; set; } = [];
+        public string? LockerThumbnailUrl => LockerImageUrls.Count > 0 ? LockerImageUrls[0] : null;
+        public List<string> ReturnLockerImageUrls { get; set; } = [];
+        public string? ReturnLockerThumbnailUrl => ReturnLockerImageUrls.Count > 0 ? ReturnLockerImageUrls[0] : null;
+        /// <summary>Số điện thoại và ảnh cửa hàng hiện tại của Merchant được phân công; null khi chưa phân công.</summary>
+        public string? MerchantPhoneNumber { get; set; }
+        public List<string> MerchantImageUrls { get; set; } = [];
+        public string? MerchantThumbnailUrl => MerchantImageUrls.Count > 0 ? MerchantImageUrls[0] : null;
+        /// <summary>Ảnh đại diện tài khoản khách (chỉ trả cho Admin).</summary>
+        public string? CustomerAvatarUrl { get; set; }
+        /// <summary>Liên hệ của Shipper đang được giao (chỉ Admin/Merchant của đơn); null khi chưa giao hoặc Shipper đã bị xóa.</summary>
+        public string? ShipperAvatarUrl { get; set; }
+        public string? ShipperPhone { get; set; }
+        public string? ShipperEmail { get; set; }
+        public VehicleType? ShipperVehicleType { get; set; }
+        public string? ShipperVehiclePlate { get; set; }
         /// <summary>Đơn mới cần xử lý để highlight: Merchant = đã gửi đồ, chưa phân công Shipper; Shipper = nhiệm vụ chưa làm.</summary>
         public bool IsNew { get; set; }
         public Guid? ReturnLockerId { get; set; }
@@ -189,6 +208,26 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Results
         public List<WashOrderTimelineDto> Timeline { get; set; } = [];
     }
 
+    public class OrderServiceRefDto
+    {
+        public Guid ServiceId { get; set; }
+        public string ServiceName { get; set; } = string.Empty;
+        public string? ServiceThumbnailUrl { get; set; }
+    }
+
+    /// <summary>Mã mở tủ / mã nhiệm vụ của một đơn: chỉ Admin xem qua endpoint riêng, mỗi lần xem được ghi lại.</summary>
+    public class OrderAccessCodesDto
+    {
+        public Guid OrderId { get; set; }
+        public string OrderCode { get; set; } = string.Empty;
+        public string DepositPinCode { get; set; } = string.Empty;
+        public string QrCodeString { get; set; } = string.Empty;
+        public string PickupPinCode { get; set; } = string.Empty;
+        public string? PickupQrCodeString { get; set; }
+        public string? ShipperTaskPinCode { get; set; }
+        public string? ShipperTaskQrString { get; set; }
+    }
+
     public class WashOrderItemDto
     {
         public Guid Id { get; set; }
@@ -200,6 +239,9 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Results
         public decimal? WeightKg { get; set; }
         public bool IsWeightBased { get; set; }
         public string? Note { get; set; }
+        /// <summary>Ảnh hiện tại của dịch vụ (kể cả dịch vụ đã ngừng/xóa mềm).</summary>
+        public List<string> ServiceImageUrls { get; set; } = [];
+        public string? ServiceThumbnailUrl => ServiceImageUrls.Count > 0 ? ServiceImageUrls[0] : null;
     }
 
     public class WashOrderTimelineDto

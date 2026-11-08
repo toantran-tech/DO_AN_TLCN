@@ -15,6 +15,7 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Services
         Task<PaginatedResult<WashOrderResultDto>> GetMyOrdersAsync(WashOrderFilterQuery query);
         Task<BaseResponse<WashOrderSummaryDto>> GetSummaryAsync(WashOrderFilterQuery query);
         Task<BaseResponse<WashOrderDetailDto>> GetByIdAsync(Guid id);
+        Task<BaseResponse<OrderAccessCodesDto>> GetAccessCodesAsync(Guid id);
         Task<BaseResponse<WashOrderDetailDto>> CreateAsync(CreateWashOrderCommand command);
         Task<BaseResponse<VoucherQuoteDto>> ApplyVoucherAsync(ApplyVoucherCommand command);
         Task<BaseResponse<WashOrderDetailDto>> CancelAsync(Guid orderId, CancelWashOrderCommand command);
