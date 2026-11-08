@@ -232,6 +232,18 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 q = q.Where(x => x.AssignedTaskType == query.TaskType.Value);
             if (query.PendingOnly == true)
                 q = DeliveryTaskRules.ActiveDeliveries(q);
+            if (!string.IsNullOrWhiteSpace(query.OverdueType))
+            {
+                var now = DateTime.UtcNow;
+                q = query.OverdueType.Trim().ToLowerInvariant() switch
+                {
+                    "depositexpired" => q.Where(x => x.Status == WashOrderStatus.Pending && x.DepositDeadline != null && x.DepositDeadline < now),
+                    "paymentoverdue" => q.Where(x => x.Status == WashOrderStatus.AwaitingPayment && x.PaymentStatus == PaymentStatus.Unpaid &&
+                                                     x.PaymentDeadline != null && x.PaymentDeadline < now),
+                    "pickupoverdue" => q.Where(x => x.Status == WashOrderStatus.ReadyToReturn && x.PickupDeadline != null && x.PickupDeadline < now),
+                    _ => q.Where(x => false)
+                };
+            }
             if (!string.IsNullOrWhiteSpace(query.Keyword))
             {
                 var kw = query.Keyword.Trim().ToLower();
@@ -720,6 +732,134 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 FeeOutstanding = order.Status == WashOrderStatus.Cancelled
                     ? Math.Max(0m, order.CancelFeeAmount - order.CancelFeePaidAmount) : Math.Max(0m, fee - paid)
             }, "Báo phí chỉ là ước tính tại thời điểm xem; hệ thống tính lại khi xác nhận hủy.");
+        }
+
+        public async Task<BaseResponse<AdminCancellationQuoteDto>> GetAdminCancellationQuoteAsync(Guid orderId)
+        {
+            var scope = await GetOrderScopeAsync();
+            var order = await _orderRepo.FindAsync(orderId);
+            if (scope.Role != "Admin" || order == null || order.IsDeleted)
+                return NotFound<AdminCancellationQuoteDto>("Không tìm thấy đơn hàng!");
+            return Success(await AdminQuoteAsync(order, scope, DateTime.UtcNow),
+                "Báo phí chỉ là ước tính tại thời điểm xem; hệ thống tính lại và đối chiếu khi xác nhận hủy.");
+        }
+
+        private async Task<AdminCancellationQuoteDto> AdminQuoteAsync(WashOrder order, OrderScope scope, DateTime now)
+        {
+            var settings = await _settings.GetAsync();
+            var block = OrderActionRules.CancelExpiredDeposit(order, scope.Role, now);
+            var allowed = OrderCancellationPolicy.TryCalculate(order, now, settings, out var basis, out var percent, out var fee);
+            var paid = await GetVerifiedPaidAmountAsync(order);
+            if (block == null && !allowed)
+                block = new OrderActionRules.Block("NotPending", "Đơn không đủ điều kiện hủy.");
+            if (block == null && order.PaymentStatus == PaymentStatus.Paid && paid <= 0m)
+                block = new OrderActionRules.Block("NoVerifiedPayment", "Không có giao dịch thanh toán gốc hợp lệ để đối chiếu hoàn tiền.");
+            if (block == null && await _refunds.AnyAsync(x => x.OrderId == order.Id && x.Status != RefundRequestStatus.Rejected))
+                block = new OrderActionRules.Block("RefundInProgress", "Đơn đã có yêu cầu hoàn tiền; vui lòng xử lý yêu cầu đó trước.");
+            return new AdminCancellationQuoteDto
+            {
+                OrderId = order.Id, Status = order.Status, Revision = order.Revision,
+                CanCancel = block == null, ReasonCode = block?.Code, Reason = block?.Message,
+                DepositDeadline = OrderDepositRules.DeadlineOf(order, settings.DepositWindowMinutes), ServerNow = now,
+                BasisAmount = basis, FeePercent = percent, FeeAmount = fee, PaidAmount = paid,
+                RefundAmount = Math.Max(0m, paid - fee), FeeOutstanding = Math.Max(0m, fee - paid)
+            };
+        }
+
+        public async Task<BaseResponse<WashOrderDetailDto>> CancelExpiredDepositAsync(Guid orderId, AdminCancelExpiredDepositCommand command)
+        {
+            var scope = await GetOrderScopeAsync();
+            if (scope.Role != "Admin")
+                return NotFound<WashOrderDetailDto>("Không tìm thấy đơn hàng!");
+            var reason = command.Reason?.Trim();
+            if (string.IsNullOrWhiteSpace(reason) || reason.Length > 500)
+                return BadRequest<WashOrderDetailDto>("Lý do hủy phải có từ 1 đến 500 ký tự.");
+
+            // Same row lock as the deposit flow: either the customer deposits or the Admin cancels, never both.
+            using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            await _orderRepo.GetForUpdateAsync(orderId);
+            var order = await _orderRepo.GetWithDetailsAsync(orderId);
+            if (order == null || order.IsDeleted)
+                return NotFound<WashOrderDetailDto>("Không tìm thấy đơn hàng!");
+            var request = OrderWriteGuard.Fingerprint(
+                $"cancelExpiredDeposit;fee={command.ExpectedFeeAmount?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "-"}", reason);
+            if (await GuardAsync(order, scope, command, "CancelExpiredDeposit", request) is { } stop)
+                return stop;
+            var now = DateTime.UtcNow;
+            var quote = await AdminQuoteAsync(order, scope, now);
+            if (!quote.CanCancel)
+                return new BaseResponse<WashOrderDetailDto>
+                {
+                    Succeeded = false, StatusCode = System.Net.HttpStatusCode.BadRequest, Message = quote.Reason,
+                    Meta = new { code = quote.ReasonCode }
+                };
+            if (command.ExpectedFeeAmount.HasValue && command.ExpectedFeeAmount.Value != quote.FeeAmount)
+                return new BaseResponse<WashOrderDetailDto>
+                {
+                    Succeeded = false, StatusCode = System.Net.HttpStatusCode.Conflict, Data = MapForAdmin(order, scope),
+                    Message = $"Phí hủy đã thay đổi ({command.ExpectedFeeAmount:N0}đ → {quote.FeeAmount:N0}đ); vui lòng xem lại trước khi xác nhận.",
+                    Meta = new { code = "QuoteChanged", feeAmount = quote.FeeAmount }
+                };
+            // Release only the box still reserved for this pending order; anything else is a conflict and rolls back.
+            if (!await _lockerRepo.TryReleaseReservedBoxAsync(order.LockerId, order.BoxId))
+            {
+                await uow.RollbackAsync();
+                return new BaseResponse<WashOrderDetailDto>
+                {
+                    Succeeded = false, StatusCode = System.Net.HttpStatusCode.Conflict,
+                    Message = "Ô tủ không còn được giữ chỗ cho đơn này; chưa hủy đơn.", Meta = new { code = "BoxNotReserved" }
+                };
+            }
+
+            order.CancelledGoodsStatus = CancelledGoodsStatus.None;
+            order.Status = WashOrderStatus.Cancelled;
+            order.CancellationFromStatus = WashOrderStatus.Pending;
+            order.CancelledAt = now;
+            order.CancelledBy = CurrentUser.Id;
+            order.CancelledByType = OrderActorType.Admin;
+            order.CancellationReason = reason;
+            order.CancelFeeAmount = quote.FeeAmount;
+            order.CancelFeePaidAmount = Math.Min(quote.FeeAmount, quote.PaidAmount);
+            order.CancellationRefundAmount = quote.RefundAmount;
+            if (order.CancellationRefundAmount > 0m)
+            {
+                await _refunds.InsertAsync(new RefundRequest
+                {
+                    OrderId = order.Id, CustomerId = order.CustomerId, Amount = order.CancellationRefundAmount,
+                    Reason = $"Hoàn tiền sau khi Admin hủy đơn quá hạn gửi đồ; phí {quote.FeePercent}%. {reason}",
+                    Status = RefundRequestStatus.Pending
+                }, autoSave: true);
+                await _notifications.RefundRequestedAsync(order, order.CancellationRefundAmount);
+            }
+            var usage = order.PromotionId.HasValue
+                ? await _promotionUsageRepo.FirstOrDefaultAsync(x => x.OrderId == order.Id && !x.IsReverted)
+                : null;
+            if (usage != null)
+            {
+                usage.IsReverted = true;
+                usage.RevertedAt = now;
+                await _promotionUsageRepo.UpdateAsync(usage, autoSave: true);
+                await _promotionRepo.TryReleaseAsync(usage.PromotionId);
+            }
+            order.Timeline.Add(new WashOrderTimeline
+            {
+                WashOrderId = order.Id, FromStatus = WashOrderStatus.Pending, Status = WashOrderStatus.Cancelled,
+                ActorId = CurrentUser.Id, ActorName = CurrentUser.UserName ?? "Admin", ActorRole = "Admin",
+                Timestamp = new DateTimeOffset(now).ToUnixTimeSeconds(),
+                Note = $"Admin hủy do quá hạn gửi đồ; phí {quote.FeePercent}% = {quote.FeeAmount:N0}đ; lý do: {reason}."
+            });
+            await _orderRepo.UpdateAsync(order, autoSave: true);
+            await _writeGuard.RecordAsync(order, CurrentUser.Id!.Value, command, "CancelExpiredDeposit", request);
+            await _notifications.CancelledAsync(order, null);
+            await uow.CompleteAsync();
+            return Success(MapForAdmin(order, scope), "Đã hủy đơn quá hạn gửi đồ và giải phóng ô tủ.");
+        }
+
+        private WashOrderDetailDto MapForAdmin(WashOrder order, OrderScope scope)
+        {
+            var dto = RedactStaffData(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), scope);
+            dto.AllowedActions = OrderActionRules.Build(order, scope.Role);
+            return dto;
         }
 
         public async Task<BaseResponse<WashOrderDetailDto>> CancelAsync(Guid orderId, CancelWashOrderCommand command)

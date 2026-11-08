@@ -35,6 +35,10 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Results
         public string? MoveToStorageReason { get; set; }
         /// <summary>Thời điểm (UTC) được phép chuyển kho = hạn nhận đồ + số giờ cấu hình; null khi chưa có hạn nhận đồ.</summary>
         public DateTime? TransferToStorageEligibleAt { get; set; }
+        /// <summary>Admin hủy đơn chờ gửi đã quá hạn gửi đồ.</summary>
+        public bool CanCancelExpiredDeposit { get; set; }
+        /// <summary>RoleNotAllowed, NotPending, NotExpired.</summary>
+        public string? CancelExpiredDepositReasonCode { get; set; }
     }
 
     public class OrderStatusOptionDto

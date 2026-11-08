@@ -20,6 +20,13 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Commands
         public string Reason { get; set; } = string.Empty;
     }
 
+    /// <summary>Admin hủy đơn quá hạn gửi đồ: lý do 1–500 ký tự; expectedFeeAmount = phí Admin đã xem ở quote.</summary>
+    public class AdminCancelExpiredDepositCommand : GuardedOrderCommand
+    {
+        public string Reason { get; set; } = string.Empty;
+        public decimal? ExpectedFeeAmount { get; set; }
+    }
+
     public class CreateWashOrderItemDto
     {
         public Guid ServiceId { get; set; }
