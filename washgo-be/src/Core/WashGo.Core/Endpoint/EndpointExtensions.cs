@@ -15,6 +15,7 @@ namespace WashGo.Core.Endpoint
                 HttpStatusCode.NotFound => Results.NotFound(response),
                 HttpStatusCode.Conflict => Results.Conflict(response),
                 HttpStatusCode.Unauthorized => Results.Unauthorized(),
+                HttpStatusCode.TooManyRequests => Results.Json(response, statusCode: 429),
                 _ => Results.BadRequest(response)
             };
 

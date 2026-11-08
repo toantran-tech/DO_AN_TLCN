@@ -345,7 +345,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
             var role = await _roleRepo.FindAsync(user.RoleId);
             var roleName = role?.Name ?? "Customer";
 
-            var (newRefreshToken, sessionId) = await GenerateAndSaveRefreshTokenAsync(user.Id);
+            var (newRefreshToken, sessionId) = await GenerateAndSaveRefreshTokenAsync(user.Id, storedToken.StartedAt ?? storedToken.CreatedAt);
             var (accessToken, expiresAt) = GenerateJwtToken(user, roleName, sessionId);
 
             var result = new AuthResponseDto
@@ -679,12 +679,17 @@ namespace WashGo.Application.Features.AuthApplication.Services
 
             user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(command.NewPassword);
             user.UpdatedAt = DateTime.UtcNow;
+            user.PasswordChangedAt = DateTime.UtcNow;
 
             validOtp.IsUsed = true;
             validOtp.UsedAt = DateTime.UtcNow;
             await _otpRepo.UpdateAsync(validOtp, autoSave: true);
             await _userRepo.UpdateAsync(user, autoSave: true);
             await RevokeAllRefreshTokensAsync(user.Id);
+            await Audit.LogAsync(new AuditEntry("Auth", "ResetPassword", "User", user.Id.ToString(), user.Email)
+            {
+                ActorId = user.Id, ActorName = user.FullName, ActorRole = "User", ChangedFields = ["password"]
+            });
             await uow.CompleteAsync();
             return Success(true, "Đặt lại mật khẩu thành công! Vui lòng đăng nhập bằng mật khẩu mới.");
         }
@@ -756,8 +761,10 @@ namespace WashGo.Application.Features.AuthApplication.Services
             return (new JwtSecurityTokenHandler().WriteToken(token), expiresAt);
         }
 
-        private async Task<(string token, Guid sessionId)> GenerateAndSaveRefreshTokenAsync(Guid userId)
+        private async Task<(string token, Guid sessionId)> GenerateAndSaveRefreshTokenAsync(Guid userId, DateTime? startedAt = null)
         {
+            var userAgent = LazyServiceProvider.LazyGetService<Microsoft.AspNetCore.Http.IHttpContextAccessor>()?
+                .HttpContext?.Request.Headers.UserAgent.ToString();
             var randomBytes = new byte[64];
             using var rng = RandomNumberGenerator.Create();
             rng.GetBytes(randomBytes);
@@ -771,7 +778,9 @@ namespace WashGo.Application.Features.AuthApplication.Services
                 Token = HashRefreshToken(refreshTokenString),
                 ExpiryDate = DateTime.UtcNow.AddDays(expDays),
                 IsRevoked = false,
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = DateTime.UtcNow,
+                StartedAt = startedAt ?? DateTime.UtcNow,
+                UserAgent = string.IsNullOrWhiteSpace(userAgent) ? null : userAgent.Length <= 300 ? userAgent : userAgent[..300]
             };
 
             await _refreshTokenRepo.InsertAsync(entity, autoSave: true);
@@ -830,7 +839,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
             return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
         }
 
-        private static string? ValidatePassword(string? password)
+        internal static string? ValidatePassword(string? password)
         {
             if (string.IsNullOrWhiteSpace(password) || password.Length < 8 || password.Length > 128)
             {

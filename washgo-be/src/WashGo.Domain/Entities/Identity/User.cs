@@ -23,6 +23,8 @@ namespace WashGo.Domain.Entities.Identity
         public string? Avatar { get; set; }
         public bool IsActive { get; set; } = true;
         public DateTime? LastLoginAt { get; set; }
+        /// <summary>Lần đổi/đặt lại mật khẩu gần nhất (null = chưa đổi kể từ khi có trường này).</summary>
+        public DateTime? PasswordChangedAt { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     }
