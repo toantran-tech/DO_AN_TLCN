@@ -1,3 +1,4 @@
+using WashGo.Application.Features.AuditApplication.Services;
 using System;
 using System.Collections.Generic;
 using System.IdentityModel.Tokens.Jwt;
@@ -71,6 +72,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
             var user = await _userRepo.FirstOrDefaultAsync(u => u.Email.ToLower() == email);
             if (user == null)
             {
+                await AuditLoginFailedAsync(command.Email, user, "InvalidCredentials");
                 return BadRequest<AuthResponseDto>(InvalidCredentials);
             }
 
@@ -83,6 +85,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
             // Spec order: credentials (4a), then locked account (5a), then role of the portal (6a).
             if (!isPasswordValid)
             {
+                await AuditLoginFailedAsync(command.Email, user, "InvalidCredentials");
                 return BadRequest<AuthResponseDto>(InvalidCredentials);
             }
 
@@ -91,12 +94,18 @@ namespace WashGo.Application.Features.AuthApplication.Services
 
             if (!user.IsActive)
             {
+                await AuditLoginFailedAsync(command.Email, user, "AccountLocked");
                 return BadRequest<AuthResponseDto>(LockedMessage(roleName));
             }
 
             if (!string.IsNullOrWhiteSpace(command.Portal) &&
                 !string.Equals(command.Portal.Trim(), roleName, StringComparison.OrdinalIgnoreCase))
             {
+                await Audit.LogAsync(new AuditEntry("Auth", "Login", "User", user.Id.ToString(), user.Email)
+                {
+                    Result = WashGo.Domain.Shared.Enums.AuditResult.Denied, ErrorCode = "WrongPortal",
+                    ActorId = user.Id, ActorName = user.FullName, ActorRole = roleName, Details = new { portal = command.Portal.Trim() }
+                });
                 return BadRequest<AuthResponseDto>("Bạn không có quyền truy cập trang này.");
             }
 
@@ -125,9 +134,21 @@ namespace WashGo.Application.Features.AuthApplication.Services
                 }
             };
             await FillTermsAsync(result.User);
+            await Audit.LogAsync(new AuditEntry("Auth", "Login", "User", user.Id.ToString(), user.Email)
+            {
+                ActorId = user.Id, ActorName = user.FullName, ActorRole = roleName, Details = new { sessionId, portal = command.Portal }
+            });
 
             return Success(result, "Đăng nhập thành công!");
         }
+
+        // A failed sign-in has no signed-in actor: the attempted account (if it exists) is the actor.
+        private Task AuditLoginFailedAsync(string email, WashGo.Domain.Entities.Identity.User? user, string code) =>
+            Audit.LogAsync(new AuditEntry("Auth", "Login", "User", user?.Id.ToString(), email.Trim().ToLowerInvariant())
+            {
+                Result = WashGo.Domain.Shared.Enums.AuditResult.Failed, ErrorCode = code,
+                ActorId = user?.Id, ActorName = user?.FullName ?? email.Trim().ToLowerInvariant(), ActorRole = user == null ? "Anonymous" : "User"
+            });
 
         private const string InvalidCredentials = "Email hoặc mật khẩu không đúng.";
 
@@ -368,6 +389,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
                 }
             }
 
+            await Audit.LogAsync(new AuditEntry("Auth", "Logout", "User", userId.ToString(), null) { ActorId = userId, Details = new { sessionId } });
             return Success(true, "Đăng xuất thành công!");
         }
 

@@ -1,3 +1,4 @@
+using WashGo.Application.Features.AuditApplication.Services;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -378,6 +379,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
                 Note = "Admin xem mã mở tủ/mã nhiệm vụ để hỗ trợ."
             }, autoSave: true);
+            await Audit.LogAsync(new AuditEntry("Order", "RevealAccessCodes", "Order", order.Id.ToString(), order.OrderCode));
             return Success(new OrderAccessCodesDto
             {
                 OrderId = order.Id, OrderCode = order.OrderCode,

@@ -1,3 +1,4 @@
+using WashGo.Application.Features.AuditApplication.Services;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -408,6 +409,10 @@ namespace WashGo.Application.Features.ServiceProposalApplication.Services
                 $"Yêu cầu {(request.RequestType == ServiceChangeRequestType.Create ? "thêm dịch vụ" : "chỉnh sửa dịch vụ")} {data.Name} của bạn đã được phê duyệt.",
                 "service", service.Id);
             await uow.CompleteAsync();
+            await Audit.LogAsync(new AuditEntry("ServiceProposal", "Approve", "ServiceProposal", request.Id.ToString(), data.Name)
+            {
+                Details = new { merchantId = merchant.Id, serviceId = service.Id, requestType = request.RequestType.ToString() }
+            });
             return Success(ToDto(request, merchant.BusinessName), "Đã phê duyệt đề xuất!");
         }
 
@@ -436,6 +441,10 @@ namespace WashGo.Application.Features.ServiceProposalApplication.Services
                 "service-proposal", request.Id);
             await uow.CompleteAsync();
             var names = await MerchantNamesAsync([request.MerchantId]);
+            await Audit.LogAsync(new AuditEntry("ServiceProposal", "Reject", "ServiceProposal", request.Id.ToString(), data?.Name)
+            {
+                Reason = reason, Details = new { merchantId = request.MerchantId, requestType = request.RequestType.ToString() }
+            });
             return Success(ToDto(request, names.GetValueOrDefault(request.MerchantId, string.Empty)), "Đã từ chối đề xuất!");
         }
 

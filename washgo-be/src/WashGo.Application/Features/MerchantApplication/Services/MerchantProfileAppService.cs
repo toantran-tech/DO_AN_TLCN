@@ -1,3 +1,4 @@
+using WashGo.Application.Features.AuditApplication.Services;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -283,6 +284,10 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             await _notifications.SendAsync([merchant.Id], NotificationType.MerchantProfileReviewed, "Hồ sơ đã được cập nhật",
                 "Yêu cầu cập nhật hồ sơ cửa hàng của bạn đã được Admin phê duyệt.", "merchant-profile-request", request.Id);
             await uow.CompleteAsync();
+            await Audit.LogAsync(new AuditEntry("MerchantProfile", "Approve", "MerchantProfileRequest", request.Id.ToString(), merchant.BusinessName)
+            {
+                ChangedFields = ToDto(request, merchant.BusinessName).ChangedFields, Details = new { merchantId = merchant.Id }
+            });
             return Success(ToDto(request, merchant.BusinessName), "Đã phê duyệt yêu cầu cập nhật!");
         }
 
@@ -306,6 +311,8 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             await _notifications.SendAsync([request.MerchantId], NotificationType.MerchantProfileReviewed, "Yêu cầu cập nhật bị từ chối",
                 $"Yêu cầu cập nhật hồ sơ cửa hàng của bạn đã bị từ chối. Lý do: {reason}", "merchant-profile-request", request.Id);
             var names = await MerchantNamesAsync([request.MerchantId]);
+            await Audit.LogAsync(new AuditEntry("MerchantProfile", "Reject", "MerchantProfileRequest", request.Id.ToString(),
+                names.GetValueOrDefault(request.MerchantId, string.Empty)) { Reason = reason, Details = new { merchantId = request.MerchantId } });
             return Success(ToDto(request, names.GetValueOrDefault(request.MerchantId, string.Empty)), "Đã từ chối yêu cầu cập nhật!");
         }
 

@@ -1,3 +1,4 @@
+using WashGo.Application.Features.AuditApplication.Services;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -299,6 +300,11 @@ namespace WashGo.Application.Features.FinanceApplication.Services
                 $"Kỳ đối soát {(from + VietnamOffset):dd/MM/yyyy} - {(to + VietnamOffset):dd/MM/yyyy}: doanh thu {settlement.NetRevenue:N0}đ, " +
                 $"hoa hồng {settlement.CommissionAmount:N0}đ, thực nhận {settlement.PayoutAmount:N0}đ.");
             await uow.CompleteAsync();
+            await Audit.LogAsync(new AuditEntry("Finance", "CreateSettlement", "Settlement", settlement.Id.ToString(), merchant.BusinessName)
+            {
+                Details = new { merchantId = merchant.Id, settlement.PeriodFrom, settlement.PeriodTo, settlement.OrderCount, settlement.NetRevenue,
+                                settlement.CommissionAmount, settlement.PayoutAmount }
+            });
             return Created(ToDto(settlement), "Đã tạo kỳ đối soát.");
         }
 
@@ -372,6 +378,11 @@ namespace WashGo.Application.Features.FinanceApplication.Services
             await _notifications.SendAsync([settlement.MerchantId], NotificationType.SettlementPaid, "Đã chi trả đối soát",
                 $"WashGo đã chuyển {settlement.PayoutAmount:N0}đ cho kỳ đối soát {(settlement.PeriodFrom + VietnamOffset):dd/MM/yyyy} - " +
                 $"{(settlement.PeriodTo + VietnamOffset):dd/MM/yyyy} (mã {reference}).");
+            await Audit.LogAsync(new AuditEntry("Finance", "ConfirmSettlementPaid", "Settlement", settlement.Id.ToString(), reference)
+            {
+                ChangedFields = ["status", "paymentReference", "paidAt"],
+                Details = new { merchantId = settlement.MerchantId, settlement.PayoutAmount }
+            });
             return Success(ToDto(settlement), "Đã ghi nhận chi trả cho Merchant.");
         }
 
