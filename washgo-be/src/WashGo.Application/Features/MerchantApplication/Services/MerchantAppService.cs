@@ -1,3 +1,4 @@
+using WashGo.Application.Features.AuditApplication.Services;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -194,6 +195,10 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             var sent = await _emailSender.SendAccountCredentialsAsync(email, entity.BusinessName, temporaryPassword);
             if (!sent)
                 _logger.LogWarning("Could not send Merchant credentials to {Email}.", email);
+            await Audit.LogAsync(new AuditEntry("Merchant", "Create", "Merchant", entity.Id.ToString(), entity.BusinessName)
+            {
+                Details = new { email, entity.CommissionRate, status = entity.Status.ToString(), credentialEmailSent = sent }
+            });
             return Created((await ToDtosAsync([entity]))[0], "Thêm Merchant thành công!");
         }
 
@@ -211,6 +216,7 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             {
                 return NotFound<MerchantResultDto>("Không tìm thấy hồ sơ đối tác giặt sấy!");
             }
+            var auditBefore = (await ToDtosAsync([entity]))[0];
 
             // Email is optional on edit: blank keeps the login email.
             var email = string.IsNullOrWhiteSpace(command.Email) ? user.Email : command.Email.Trim().ToLowerInvariant();
@@ -254,7 +260,12 @@ namespace WashGo.Application.Features.MerchantApplication.Services
                 await ReplaceAreasAsync(entity.Id, command.ServiceAreaIds);
             await uow.CompleteAsync();
 
-            return Success((await ToDtosAsync([entity]))[0], "Cập nhật Merchant thành công!");
+            var auditAfter = (await ToDtosAsync([entity]))[0];
+            await Audit.LogAsync(new AuditEntry("Merchant", "Update", "Merchant", entity.Id.ToString(), entity.BusinessName)
+            {
+                ChangedFields = AuditLogWriter.Diff(auditBefore, auditAfter)
+            });
+            return Success(auditAfter, "Cập nhật Merchant thành công!");
         }
 
         // UC 3.2.4: lock needs a reason and, with unfinished orders, an explicit confirmation.
@@ -326,6 +337,10 @@ namespace WashGo.Application.Features.MerchantApplication.Services
                         : $"Tài khoản cửa hàng {entity.BusinessName} đã được Admin kích hoạt lại.",
                 "merchant", entity.Id);
             await uow.CompleteAsync();
+            await Audit.LogAsync(new AuditEntry("Merchant", locking ? "Lock" : "Unlock", "Merchant", entity.Id.ToString(), entity.BusinessName)
+            {
+                Reason = reason, ChangedFields = ["status"], Details = new { status = entity.Status.ToString() }
+            });
             return Success((await ToDtosAsync([entity]))[0], locking ? "Đã khóa Merchant thành công!" : "Đã mở khóa Merchant thành công!");
         }
 

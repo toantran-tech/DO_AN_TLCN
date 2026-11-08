@@ -1,3 +1,4 @@
+using WashGo.Application.Features.AuditApplication.Services;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -163,6 +164,7 @@ namespace WashGo.Application.Features.OrderAssignmentApplication.Services
                 return Fail<AssignmentResultDto>(failure!);
             if (command.OperationId is { } op)
                 await RecordAsync(op, op, AssignOperation, result);
+            await AuditAssignAsync(result, "AssignMerchant");
             await uow.CompleteAsync();
             return Success(result, "Phân công thành công!");
         }
@@ -208,6 +210,13 @@ namespace WashGo.Application.Features.OrderAssignmentApplication.Services
                 };
             }).ToList();
         }
+
+        private Task AuditAssignAsync(AssignmentResultDto result, string action) =>
+            Audit.LogAsync(new AuditEntry("Order", action, "Order", result.OrderId.ToString(), result.OrderCode)
+            {
+                ChangedFields = ["merchantId", "commissionRateApplied"],
+                Details = new { result.MerchantId, result.MerchantName, result.CommissionRateApplied, result.ResultRevision }
+            });
 
         private async Task RecordAsync(Guid id, Guid groupId, string operation, AssignmentResultDto result)
         {
@@ -302,6 +311,8 @@ namespace WashGo.Application.Features.OrderAssignmentApplication.Services
             if (command.OperationId is { } op)
                 foreach (var result in results)
                     await RecordAsync(ItemId(op, result.OrderId), op, AutoAssignOperation, result);
+            foreach (var result in results)
+                await AuditAssignAsync(result, "AutoAssignMerchant");
             await uow.CompleteAsync();
             return Success(results, "Phân công tự động thành công!");
         }

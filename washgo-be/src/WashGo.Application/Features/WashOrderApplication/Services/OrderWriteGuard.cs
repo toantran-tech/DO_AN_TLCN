@@ -1,3 +1,4 @@
+using WashGo.Application.Features.AuditApplication.Services;
 using System;
 using System.Threading.Tasks;
 using Volo.Abp.DependencyInjection;
@@ -20,8 +21,13 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
         public sealed record Decision(Outcome Outcome, string? Code = null, string? Message = null, OrderOperation? Previous = null);
 
         private readonly IRepository<OrderOperation, Guid> _operations;
+        private readonly AuditLogWriter _audit;
 
-        public OrderWriteGuard(IRepository<OrderOperation, Guid> operations) => _operations = operations;
+        public OrderWriteGuard(IRepository<OrderOperation, Guid> operations, AuditLogWriter audit)
+        {
+            _operations = operations;
+            _audit = audit;
+        }
 
         public async Task<Decision> CheckAsync(WashOrder order, Guid actorId, GuardedOrderCommand command, string operation, string request)
         {
@@ -45,6 +51,11 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
 
         public async Task RecordAsync(WashOrder order, Guid actorId, GuardedOrderCommand command, string operation, string request)
         {
+            // Every successful guarded action is also written to the central audit trail.
+            await _audit.LogAsync(new AuditEntry("Order", operation, "Order", order.Id.ToString(), order.OrderCode)
+            {
+                Details = new { status = order.Status.ToString(), revision = order.Revision, operationId = command.OperationId }
+            });
             if (command.OperationId is not { } operationId)
                 return;
             await _operations.InsertAsync(new OrderOperation(operationId)

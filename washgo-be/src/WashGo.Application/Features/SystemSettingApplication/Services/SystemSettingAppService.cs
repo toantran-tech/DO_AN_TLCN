@@ -1,3 +1,4 @@
+using WashGo.Application.Features.AuditApplication.Services;
 using System;
 using System.Threading.Tasks;
 using Volo.Abp.Domain.Repositories;
@@ -91,6 +92,7 @@ namespace WashGo.Application.Features.SystemSettingApplication.Services
             var setting = await _repo.FindAsync(SystemSetting.SingletonId);
             var isNew = setting == null;
             setting ??= new SystemSetting();
+            var auditBefore = isNew ? null : ToDto(setting);
             apply(setting);
             setting.UpdatedBy = CurrentUser.Id;
             setting.UpdatedAt = DateTime.UtcNow;
@@ -98,7 +100,13 @@ namespace WashGo.Application.Features.SystemSettingApplication.Services
                 await _repo.InsertAsync(setting, autoSave: true);
             else
                 await _repo.UpdateAsync(setting, autoSave: true);
-            return Success(ToDto(setting), message);
+            var auditAfter = ToDto(setting);
+            var changed = AuditLogWriter.Diff(auditBefore, auditAfter);
+            await Audit.LogAsync(new AuditEntry("SystemSetting", "Update", "SystemSetting", SystemSetting.SingletonId.ToString(), null)
+            {
+                ChangedFields = changed, Details = new { before = AuditLogWriter.Pick(auditBefore, changed), after = AuditLogWriter.Pick(auditAfter, changed) }
+            });
+            return Success(auditAfter, message);
         }
 
         private static SystemSettingDto ToDto(SystemSetting s) => new()
