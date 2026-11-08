@@ -56,8 +56,6 @@ namespace WashGo.Application.Features.MerchantReportApplication.Services
         private sealed record Range(DateTime From, DateTime To);
         private sealed record Plan(string Period, string Granularity, DateTime Start, DateTime End, DateTime AsOf,
             TimeSpan Length, List<(DateTime Start, DateTime End, string Label)> Buckets);
-        private sealed record PayRow(Guid OrderId, PaymentPurpose Purpose, decimal Amount, DateTime At, decimal Rate);
-        private sealed record RefundRow(Guid OrderId, decimal Amount, DateTime At, decimal Rate);
 
         private BaseResponse<T> Invalid<T>(string code, string message) => new()
         {
@@ -159,84 +157,104 @@ namespace WashGo.Application.Features.MerchantReportApplication.Services
             var merchantId = CurrentUser.Id!.Value;
             var current = new Range(plan.Start, plan.AsOf);
             var previous = new Range(plan.Start - plan.Length, plan.AsOf - plan.Length);
-            var all = new Range(previous.From, current.To);
-            // Timeline/creation times are whole seconds: round "now" up so an event in the current second is included
-            // (the exact cut at asOf is applied again in memory).
-            var fromUnix = CeilUnix(all.From);
-            var toUnix = CeilUnix(all.To);
+            var hourly = plan.Granularity == "hour";
+            var unit = hourly ? 3600L : 86400L;
+            var finance = LazyServiceProvider.LazyGetRequiredService<MerchantFinanceAggregator>();
 
+            // Every number below is a SQL aggregate read inside one repeatable-read transaction (one snapshot).
             using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true,
                 isolationLevel: System.Data.IsolationLevel.RepeatableRead);
+            var cur = await finance.TotalsAsync(merchantId, current.From, current.To);
+            var prev = await finance.TotalsAsync(merchantId, previous.From, previous.To);
+            var curMoney = await finance.SeriesAsync(merchantId, current.From, current.To, hourly);
+            var prevMoney = await finance.SeriesAsync(merchantId, previous.From, previous.To, hourly);
+
             var orders = (await _orderRepo.GetQueryableAsync()).Where(o => !o.IsDeleted && o.MerchantId == merchantId);
-            var payments = await AsyncExecuter.ToListAsync(
-                from p in await _paymentRepo.GetQueryableAsync()
-                join o in orders on p.OrderId equals o.Id
-                where (p.Status == PaymentTransactionStatus.Succeeded || p.Status == PaymentTransactionStatus.Refunded) &&
-                      p.CompletedAt != null && p.CompletedAt >= all.From && p.CompletedAt < all.To
-                select new { o.Id, p.Purpose, p.Amount, At = p.CompletedAt!.Value, CommissionRateApplied = o.CommissionRateApplied ?? -1m });
-            var refunds = await AsyncExecuter.ToListAsync(
-                from r in await _refundRepo.GetQueryableAsync()
-                join o in orders on r.OrderId equals o.Id
-                where r.Status == RefundRequestStatus.Refunded && r.RefundedAt != null &&
-                      r.RefundedAt >= all.From && r.RefundedAt < all.To
-                select new { o.Id, r.Amount, At = r.RefundedAt!.Value, CommissionRateApplied = o.CommissionRateApplied ?? -1m });
-            var created = await AsyncExecuter.ToListAsync(orders
-                .Where(o => o.CreatedOn >= fromUnix && o.CreatedOn < toUnix).Select(o => o.CreatedOn));
-            var cancelled = await AsyncExecuter.ToListAsync(orders
-                .Where(o => o.CancelledAt != null && o.CancelledAt >= all.From && o.CancelledAt < all.To).Select(o => o.CancelledAt!.Value));
             var timeline = await _timelineRepo.GetQueryableAsync();
-            var completed = await AsyncExecuter.ToListAsync(
-                from t in timeline
-                join o in orders on t.WashOrderId equals o.Id
-                where t.Status == WashOrderStatus.Completed && t.Timestamp >= fromUnix && t.Timestamp < toUnix
-                group t by t.WashOrderId into g
-                select g.Min(x => x.Timestamp));
-            var finished = await AsyncExecuter.ToListAsync(
-                from t in timeline
-                join o in orders on t.WashOrderId equals o.Id
-                where t.Status == WashOrderStatus.AwaitingPayment && t.Timestamp >= fromUnix && t.Timestamp < toUnix
-                group new { t.Timestamp, o.EstimatedFinishAt } by t.WashOrderId into g
-                select new { At = g.Min(x => x.Timestamp), Eta = g.Max(x => x.EstimatedFinishAt) });
-            var laundryOrderIds = payments.Where(x => x.Purpose == PaymentPurpose.Order).Select(x => x.Id).Distinct().ToList();
-            var items = await AsyncExecuter.ToListAsync((await _itemRepo.GetQueryableAsync())
-                .Where(i => laundryOrderIds.Contains(i.WashOrderId))
-                .Select(i => new { i.WashOrderId, i.ServiceId, i.ServiceName, i.Quantity, i.UnitPrice }));
-            var serviceIds = items.Select(x => x.ServiceId).Distinct().ToList();
+            async Task<Dictionary<long, int>> CreatedAsync(Range r)
+            {
+                long fromTs = CeilUnix(r.From), toTs = CeilUnix(r.To);
+                return (await AsyncExecuter.ToListAsync(orders.Where(o => o.CreatedOn >= fromTs && o.CreatedOn < toTs)
+                        .GroupBy(o => (o.CreatedOn + 25200) / unit).Select(g => new { g.Key, Count = g.Count() })))
+                    .ToDictionary(x => x.Key, x => x.Count);
+            }
+            async Task<Dictionary<long, int>> CompletedAsync(Range r)
+            {
+                long fromTs = CeilUnix(r.From), toTs = CeilUnix(r.To);
+                return (await AsyncExecuter.ToListAsync(
+                        (from t in timeline
+                         join o in orders on t.WashOrderId equals o.Id
+                         where t.Status == WashOrderStatus.Completed && t.Timestamp >= fromTs && t.Timestamp < toTs
+                         select t.Timestamp)
+                        .GroupBy(ts => (ts + 25200) / unit).Select(g => new { g.Key, Count = g.Count() })))
+                    .ToDictionary(x => x.Key, x => x.Count);
+            }
+            Task<int> CancelledAsync(Range r) =>
+                AsyncExecuter.CountAsync(orders.Where(o => o.CancelledAt != null && o.CancelledAt >= r.From && o.CancelledAt < r.To));
+            async Task<(int OnTime, int Total)> OnTimeAsync(Range r)
+            {
+                long fromTs = CeilUnix(r.From), toTs = CeilUnix(r.To);
+                var rows = from t in timeline
+                           join o in orders on t.WashOrderId equals o.Id
+                           where t.Status == WashOrderStatus.AwaitingPayment && o.EstimatedFinishAt != null &&
+                                 t.Timestamp >= fromTs && t.Timestamp < toTs
+                           select new { t.Timestamp, Eta = o.EstimatedFinishAt!.Value };
+                // ETA is stored to the microsecond, the history to the second: compare at second precision.
+                var onTime = await AsyncExecuter.CountAsync(rows.Where(x => DateTime.UnixEpoch.AddSeconds(x.Timestamp) <= x.Eta.AddSeconds(1)));
+                return (onTime, await AsyncExecuter.CountAsync(rows));
+            }
+            var createdCur = await CreatedAsync(current);
+            var createdPrev = await CreatedAsync(previous);
+            var completedCur = await CompletedAsync(current);
+            var completedPrev = await CompletedAsync(previous);
+            var cancelledCur = await CancelledAsync(current);
+            var cancelledPrev = await CancelledAsync(previous);
+            var onTimeCur = await OnTimeAsync(current);
+            var onTimePrev = await OnTimeAsync(previous);
+
+            // Top services: distinct orders with a laundry payment in the period, ranked in SQL; only the top rows come back.
+            async Task<IQueryable<Guid>> PaidOrderIdsAsync(Range r) =>
+                (from p in await _paymentRepo.GetQueryableAsync()
+                 join o in orders on p.OrderId equals o.Id
+                 where p.Purpose == PaymentPurpose.Order && p.CompletedAt != null && p.CompletedAt >= r.From && p.CompletedAt < r.To &&
+                       (p.Status == PaymentTransactionStatus.Succeeded || p.Status == PaymentTransactionStatus.Refunded)
+                 select o.Id).Distinct();
+            var items = await _itemRepo.GetQueryableAsync();
+            var curPaid = await PaidOrderIdsAsync(current);
+            var ranking = await AsyncExecuter.ToListAsync(items.Where(i => curPaid.Contains(i.WashOrderId))
+                .GroupBy(i => i.ServiceId)
+                .Select(g => new
+                {
+                    ServiceId = g.Key, Name = g.Max(x => x.ServiceName), Orders = g.Select(x => x.WashOrderId).Distinct().Count(),
+                    Quantity = g.Sum(x => x.Quantity), Value = g.Sum(x => x.UnitPrice * x.Quantity)
+                })
+                .OrderByDescending(x => x.Orders).ThenByDescending(x => x.Value).ThenBy(x => x.ServiceId).Take(top));
+            var topIds = ranking.Select(x => x.ServiceId).ToList();
+            var prevPaid = await PaidOrderIdsAsync(previous);
+            var prevCounts = (await AsyncExecuter.ToListAsync(items.Where(i => topIds.Contains(i.ServiceId) && prevPaid.Contains(i.WashOrderId))
+                    .GroupBy(i => i.ServiceId).Select(g => new { g.Key, Orders = g.Select(x => x.WashOrderId).Distinct().Count() })))
+                .ToDictionary(x => x.Key, x => x.Orders);
             var services = (await AsyncExecuter.ToListAsync((await _serviceRepo.GetQueryableAsync())
-                    .Where(s => serviceIds.Contains(s.Id)).Select(s => new { s.Id, s.Name, s.Code, s.Images })))
+                    .Where(s => topIds.Contains(s.Id)).Select(s => new { s.Id, s.Name, s.Code, s.Images })))
                 .ToDictionary(x => x.Id);
             await uow.CompleteAsync();
 
-            var pays = payments.Select(x => new PayRow(x.Id, x.Purpose, x.Amount, x.At, x.CommissionRateApplied)).ToList();
-            var refs = refunds.Select(x => new RefundRow(x.Id, x.Amount, x.At, x.CommissionRateApplied)).ToList();
-            static bool In(Range r, DateTime at) => at >= r.From && at < r.To;
-            DateTime FromUnix(long s) => DateTimeOffset.FromUnixTimeSeconds(s).UtcDateTime;
-
-            decimal Gross(Range r) => pays.Where(x => x.Purpose == PaymentPurpose.Order && In(r, x.At)).Sum(x => x.Amount);
-            decimal Refunded(Range r) => refs.Where(x => In(r, x.At)).Sum(x => x.Amount);
-            decimal Fees(Range r) => pays.Where(x => x.Purpose != PaymentPurpose.Order && In(r, x.At)).Sum(x => x.Amount);
-            // Commission follows each order's locked rate; a refund reverses it at the same rate.
-            decimal Commission(Range r) =>
-                pays.Where(x => x.Purpose == PaymentPurpose.Order && x.Rate >= 0 && In(r, x.At))
-                    .GroupBy(x => x.OrderId).Sum(g => Round(g.Sum(x => x.Amount) * g.First().Rate / 100m)) -
-                refs.Where(x => x.Rate >= 0 && In(r, x.At))
-                    .GroupBy(x => x.OrderId).Sum(g => Round(g.Sum(x => x.Amount) * g.First().Rate / 100m));
-            int Count(IEnumerable<DateTime> times, Range r) => times.Count(t => In(r, t));
-
-            var createdAt = created.Select(FromUnix).ToList();
-            var completedAt = completed.Select(FromUnix).ToList();
+            var complete = cur.CommissionComplete && prev.CommissionComplete;
+            KpiValueDto Estimated(KpiValueDto k)
+            {
+                // Missing commission snapshots make commission and payout provisional: no comparison percentage.
+                if (complete) return k;
+                k.IsEstimated = true;
+                k.ChangePercent = null;
+                return k;
+            }
             RateKpiDto OnTime()
             {
-                var rows = finished.Where(x => x.Eta != null).Select(x => (At: FromUnix(x.At), Eta: x.Eta!.Value)).ToList();
-                var cur = rows.Where(x => In(current, x.At)).ToList();
-                var prev = rows.Where(x => In(previous, x.At)).ToList();
                 decimal? Rate(int n, int d) => d == 0 ? null : Math.Round(n * 100m / d, 1);
-                // ETA is stored to the microsecond, timeline to the second: compare at second precision.
-                int OnTimeCount(List<(DateTime At, DateTime Eta)> list) => list.Count(x => x.At <= x.Eta.AddSeconds(1));
                 var dto = new RateKpiDto
                 {
-                    Numerator = OnTimeCount(cur), Denominator = cur.Count,
-                    PreviousNumerator = OnTimeCount(prev), PreviousDenominator = prev.Count
+                    Numerator = onTimeCur.OnTime, Denominator = onTimeCur.Total,
+                    PreviousNumerator = onTimePrev.OnTime, PreviousDenominator = onTimePrev.Total
                 };
                 dto.Rate = Rate(dto.Numerator, dto.Denominator);
                 dto.PreviousRate = Rate(dto.PreviousNumerator, dto.PreviousDenominator);
@@ -245,10 +263,6 @@ namespace WashGo.Application.Features.MerchantReportApplication.Services
                 return dto;
             }
 
-            var gross = Kpi(Gross(current), Gross(previous));
-            var refund = Kpi(Refunded(current), Refunded(previous));
-            var net = Kpi(gross.Current - refund.Current, gross.Previous - refund.Previous);
-            var commission = Kpi(Commission(current), Commission(previous));
             var report = new MerchantReportDto
             {
                 Period = plan.Period,
@@ -260,68 +274,76 @@ namespace WashGo.Application.Features.MerchantReportApplication.Services
                 GeneratedAt = DateTime.UtcNow,
                 Kpis = new MerchantReportKpisDto
                 {
-                    GrossLaundryRevenue = gross,
-                    Refunds = refund,
-                    NetRevenue = net,
-                    Commission = commission,
-                    MerchantPayout = Kpi(net.Current - commission.Current, net.Previous - commission.Previous),
-                    FeesCollected = Kpi(Fees(current), Fees(previous)),
-                    OrdersCreated = Kpi(Count(createdAt, current), Count(createdAt, previous)),
-                    OrdersCompleted = Kpi(Count(completedAt, current), Count(completedAt, previous)),
-                    OrdersCancelled = Kpi(Count(cancelled, current), Count(cancelled, previous)),
+                    GrossLaundryRevenue = Kpi(cur.Gross, prev.Gross),
+                    Refunds = Kpi(cur.Refunds, prev.Refunds),
+                    NetRevenue = Kpi(cur.Net, prev.Net),
+                    Commission = Estimated(Kpi(cur.Commission, prev.Commission)),
+                    MerchantPayout = Estimated(Kpi(cur.Payout, prev.Payout)),
+                    FeesCollected = Kpi(cur.Fees, prev.Fees),
+                    OrdersCreated = Kpi(createdCur.Values.Sum(), createdPrev.Values.Sum()),
+                    OrdersCompleted = Kpi(completedCur.Values.Sum(), completedPrev.Values.Sum()),
+                    OrdersCancelled = Kpi(cancelledCur, cancelledPrev),
                     OnTimeRate = OnTime(),
-                    OrdersWithoutCommissionSnapshot = pays.Where(x => x.Purpose == PaymentPurpose.Order && x.Rate < 0 && In(current, x.At))
-                        .Select(x => x.OrderId).Distinct().Count()
+                    OrdersWithoutCommissionSnapshot = cur.UncoveredOrders,
+                    CommissionCoverage = new CommissionCoverageDto
+                    {
+                        CurrentComplete = cur.CommissionComplete, PreviousComplete = prev.CommissionComplete,
+                        CurrentUncoveredOrders = cur.UncoveredOrders, PreviousUncoveredOrders = prev.UncoveredOrders,
+                        CurrentUncoveredNetAmount = cur.UncoveredAmount, PreviousUncoveredNetAmount = prev.UncoveredAmount
+                    }
                 },
                 Definitions = Definitions
             };
 
+            // Buckets are filled from the per-hour/per-day SQL aggregates (local UTC+7 keys).
+            decimal NetIn(List<MerchantFinanceAggregator.Bucket> rows, DateTime from, DateTime to) =>
+                rows.Where(b => Utc(b.LocalStart - Vn) >= from && Utc(b.LocalStart - Vn) < to).Sum(b => b.Gross - b.Refunds);
+            int CountIn(Dictionary<long, int> rows, DateTime from, DateTime to) =>
+                rows.Where(x => Utc(DateTime.UnixEpoch.AddSeconds(x.Key * unit) - Vn) >= from &&
+                                Utc(DateTime.UnixEpoch.AddSeconds(x.Key * unit) - Vn) < to).Sum(x => x.Value);
             for (var i = 0; i < plan.Buckets.Count; i++)
             {
                 var (bStart, bEnd, label) = plan.Buckets[i];
                 var computed = bStart < plan.AsOf;
-                var cur = new Range(bStart, bEnd < plan.AsOf ? bEnd : plan.AsOf);
-                var prev = new Range(bStart - plan.Length, cur.To - plan.Length);
                 report.Series.Add(new ReportBucketDto
                 {
                     Index = i, Label = label, Start = bStart, End = bEnd,
                     PreviousStart = bStart - plan.Length, PreviousEnd = bEnd - plan.Length,
                     Computed = computed,
-                    NetRevenue = computed ? Gross(cur) - Refunded(cur) : 0,
-                    PreviousNetRevenue = computed ? Gross(prev) - Refunded(prev) : 0,
-                    OrdersCreated = computed ? Count(createdAt, cur) : 0,
-                    OrdersCompleted = computed ? Count(completedAt, cur) : 0
+                    NetRevenue = computed ? NetIn(curMoney, bStart, bEnd) : 0,
+                    PreviousNetRevenue = computed ? NetIn(prevMoney, bStart - plan.Length, bEnd - plan.Length) : 0,
+                    OrdersCreated = computed ? CountIn(createdCur, bStart, bEnd) : 0,
+                    OrdersCompleted = computed ? CountIn(completedCur, bStart, bEnd) : 0
                 });
             }
 
-            // Top services by distinct orders whose laundry payment fell in the period (list value at the order's price).
-            var paidIn = (Range r) => pays.Where(x => x.Purpose == PaymentPurpose.Order && In(r, x.At)).Select(x => x.OrderId).ToHashSet();
-            var curOrders = paidIn(current);
-            var prevOrders = paidIn(previous);
-            var ranking = items.Where(x => curOrders.Contains(x.WashOrderId)).GroupBy(x => x.ServiceId)
-                .Select(g => new
-                {
-                    ServiceId = g.Key, Name = g.First().ServiceName,
-                    Orders = g.Select(x => x.WashOrderId).Distinct().Count(),
-                    Quantity = g.Sum(x => x.Quantity),
-                    Value = g.Sum(x => x.UnitPrice * x.Quantity)
-                })
-                .OrderByDescending(x => x.Orders).ThenByDescending(x => x.Value).ThenBy(x => x.ServiceId).Take(top).ToList();
             var rank = 0;
             foreach (var row in ranking)
             {
-                var prevCount = items.Where(x => x.ServiceId == row.ServiceId && prevOrders.Contains(x.WashOrderId))
-                    .Select(x => x.WashOrderId).Distinct().Count();
+                var prevCount = prevCounts.GetValueOrDefault(row.ServiceId);
                 var info = services.GetValueOrDefault(row.ServiceId);
-                var change = Kpi(row.Orders, prevCount);
                 report.TopServices.Add(new TopServiceDto
                 {
                     Rank = ++rank, ServiceId = row.ServiceId, Name = info?.Name ?? row.Name, Code = info?.Code,
                     ImageUrls = ReadImages(info?.Images), OrderCount = row.Orders, PreviousOrderCount = prevCount,
-                    OrderCountChangePercent = change.ChangePercent, Quantity = row.Quantity, ListValue = row.Value
+                    OrderCountChangePercent = Kpi(row.Orders, prevCount).ChangePercent, Quantity = row.Quantity, ListValue = row.Value
                 });
             }
             return report;
+        }
+
+        public async Task<BaseResponse<MerchantLifetimeFinanceDto>> GetLifetimeAsync()
+        {
+            var totals = await LazyServiceProvider.LazyGetRequiredService<MerchantFinanceAggregator>()
+                .TotalsAsync(CurrentUser.Id!.Value, null, null);
+            return Success(new MerchantLifetimeFinanceDto
+            {
+                GrossLaundryRevenue = totals.Gross, Refunds = totals.Refunds, NetRevenue = totals.Net,
+                Commission = totals.Commission, MerchantPayout = totals.Payout, FeesCollected = totals.Fees,
+                PaidOrderCount = totals.PaidOrders, CommissionComplete = totals.CommissionComplete,
+                OrdersWithoutCommissionSnapshot = totals.UncoveredOrders, UncoveredNetAmount = totals.UncoveredAmount,
+                GeneratedAt = DateTime.UtcNow
+            });
         }
 
         private static readonly Dictionary<string, string> Definitions = new()
@@ -331,8 +353,8 @@ namespace WashGo.Application.Features.MerchantReportApplication.Services
             ["grossLaundryRevenue"] = "Tiền giặt khách đã trả cho đơn của tiệm, theo ngày giao dịch thành công.",
             ["refunds"] = "Tiền đã hoàn cho khách của đơn của tiệm, theo ngày hoàn tiền.",
             ["netRevenue"] = "Doanh thu thuần = tiền giặt − tiền hoàn.",
-            ["commission"] = "Hoa hồng sàn theo tỷ lệ chốt trên từng đơn; tiền hoàn giảm hoa hồng theo cùng tỷ lệ. Đơn chưa có tỷ lệ chốt không được tính (xem ordersWithoutCommissionSnapshot).",
-            ["merchantPayout"] = "Thực nhận của tiệm = doanh thu thuần − hoa hồng.",
+            ["commission"] = "Hoa hồng sàn theo tỷ lệ chốt trên từng đơn (0% là hợp lệ); tiền hoàn giảm hoa hồng theo cùng tỷ lệ. Đơn chưa có tỷ lệ chốt không được tính và không dùng tỷ lệ hiện tại: commissionCoverage cho biết từng kỳ đã đủ chưa; chưa đủ thì commission/merchantPayout là tạm tính (isEstimated) và không có % thay đổi.",
+            ["merchantPayout"] = "Thu nhập phát sinh của tiệm = doanh thu thuần − hoa hồng; chưa phải số đã được chi trả qua kỳ đối soát.",
             ["feesCollected"] = "Phí hủy và phí lưu kho/quá hạn đã thu; không tính vào doanh thu tiệm.",
             ["ordersCreated"] = "Số đơn của tiệm được tạo trong kỳ (ngày tạo đơn).",
             ["ordersCompleted"] = "Số đơn của tiệm chuyển sang Hoàn thành trong kỳ.",
@@ -395,8 +417,8 @@ namespace WashGo.Application.Features.MerchantReportApplication.Services
             KpiRow("Tiền giặt", r.Kpis.GrossLaundryRevenue);
             KpiRow("Tiền hoàn", r.Kpis.Refunds);
             KpiRow("Doanh thu thuần", r.Kpis.NetRevenue);
-            KpiRow("Hoa hồng", r.Kpis.Commission);
-            KpiRow("Thực nhận", r.Kpis.MerchantPayout);
+            KpiRow(r.Kpis.Commission.IsEstimated ? "Hoa hồng (tạm tính, thiếu tỷ lệ chốt)" : "Hoa hồng", r.Kpis.Commission);
+            KpiRow(r.Kpis.MerchantPayout.IsEstimated ? "Thu nhập phát sinh (tạm tính, chưa phải số đã chi trả)" : "Thu nhập phát sinh (chưa phải số đã chi trả)", r.Kpis.MerchantPayout);
             KpiRow("Phí hủy/lưu kho đã thu", r.Kpis.FeesCollected);
             KpiRow("Đơn tạo", r.Kpis.OrdersCreated);
             KpiRow("Đơn hoàn thành", r.Kpis.OrdersCompleted);
@@ -405,7 +427,9 @@ namespace WashGo.Application.Features.MerchantReportApplication.Services
             Row("Tỷ lệ đúng hạn (%)", Money(t.Rate), Money(t.PreviousRate),
                 t.ChangePoints.HasValue ? $"{t.ChangePoints.Value.ToString("0.#", CultureInfo.InvariantCulture)} điểm" : "unavailable");
             Row("Đúng hạn / tổng (kỳ này)", $"{t.Numerator}/{t.Denominator}");
-            Row("Đơn chưa có tỷ lệ hoa hồng chốt", r.Kpis.OrdersWithoutCommissionSnapshot);
+            var cov = r.Kpis.CommissionCoverage;
+            Row("Đơn chưa có tỷ lệ hoa hồng chốt", cov.CurrentUncoveredOrders, cov.PreviousUncoveredOrders);
+            Row("Doanh thu thuần chưa xác định hoa hồng", Money(cov.CurrentUncoveredNetAmount), Money(cov.PreviousUncoveredNetAmount));
             Row();
             Row("Mốc", "Bắt đầu (UTC)", "Doanh thu thuần", "Doanh thu thuần kỳ trước", "Đơn tạo", "Đơn hoàn thành");
             foreach (var b in r.Series)

@@ -41,6 +41,38 @@ namespace WashGo.Application.Contracts.Features.MerchantReportContracts.Results
         public decimal Previous { get; set; }
         public decimal? ChangePercent { get; set; }
         public bool IsNew { get; set; }
+        /// <summary>Tạm tính: có khoản thu/hoàn của đơn chưa có tỷ lệ hoa hồng chốt ở kỳ này hoặc kỳ trước.</summary>
+        public bool IsEstimated { get; set; }
+    }
+
+    /// <summary>Mức bao phủ tỷ lệ hoa hồng chốt của từng kỳ, tính trên mọi khoản thu và khoản hoàn tiền giặt.</summary>
+    public class CommissionCoverageDto
+    {
+        public bool CurrentComplete { get; set; }
+        public bool PreviousComplete { get; set; }
+        public int CurrentUncoveredOrders { get; set; }
+        public int PreviousUncoveredOrders { get; set; }
+        /// <summary>Doanh thu thuần của các đơn chưa có tỷ lệ chốt (phần hoa hồng chưa xác định).</summary>
+        public decimal CurrentUncoveredNetAmount { get; set; }
+        public decimal PreviousUncoveredNetAmount { get; set; }
+    }
+
+    /// <summary>Tổng tài chính toàn lịch sử của Merchant (theo ngày giao dịch), cho hồ sơ cửa hàng.</summary>
+    public class MerchantLifetimeFinanceDto
+    {
+        public string Currency { get; set; } = "VND";
+        public decimal GrossLaundryRevenue { get; set; }
+        public decimal Refunds { get; set; }
+        public decimal NetRevenue { get; set; }
+        public decimal Commission { get; set; }
+        public decimal MerchantPayout { get; set; }
+        public decimal FeesCollected { get; set; }
+        public int PaidOrderCount { get; set; }
+        /// <summary>false: có đơn chưa có tỷ lệ chốt, Commission/MerchantPayout là tạm tính.</summary>
+        public bool CommissionComplete { get; set; }
+        public int OrdersWithoutCommissionSnapshot { get; set; }
+        public decimal UncoveredNetAmount { get; set; }
+        public DateTime GeneratedAt { get; set; }
     }
 
     /// <summary>Tỷ lệ có tử số/mẫu số; rate null khi mẫu số 0. changePoints = chênh lệch điểm phần trăm.</summary>
@@ -80,6 +112,7 @@ namespace WashGo.Application.Contracts.Features.MerchantReportContracts.Results
         public RateKpiDto OnTimeRate { get; set; } = new();
         /// <summary>Số đơn có giao dịch tiền giặt trong kỳ nhưng chưa có tỷ lệ hoa hồng chốt (đơn cũ).</summary>
         public int OrdersWithoutCommissionSnapshot { get; set; }
+        public CommissionCoverageDto CommissionCoverage { get; set; } = new();
     }
 
     public class ReportBucketDto

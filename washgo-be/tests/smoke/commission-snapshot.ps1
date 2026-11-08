@@ -66,6 +66,10 @@ try {
     if($r.totalGrossRevenue -ne $gross -or $r.totalCommission -ne $c15 -or $r.totalPayoutAmount -ne ($gross-$c15) -or $r.commissionComplete -or $r.ordersWithoutCommissionSnapshot -ne 1 -or $null -ne $r.growthRate){throw "Old report wrong: $($r | ConvertTo-Json -Depth 2 -Compress)"}
     $o=(Call-Api Get '/merchant-reports/overview?period=today' $null $team).data.kpis
     if($o.commission.current -ne $c15 -or $o.ordersWithoutCommissionSnapshot -ne 1){throw 'Overview not aligned.'}
+    $full=(Call-Api Get '/merchant-reports/overview?period=today' $null $team).data.kpis
+    if($full.commissionCoverage.currentComplete -or $full.commissionCoverage.currentUncoveredOrders -ne 1 -or !$full.merchantPayout.isEstimated -or $null -ne $full.merchantPayout.changePercent){throw 'Estimated payout not flagged.'}
+    $life=(Call-Api Get '/merchant-reports/lifetime' $null $team).data
+    if($life.commissionComplete -or $life.ordersWithoutCommissionSnapshot -ne 1 -or $life.commission -ne $c15){throw 'Lifetime coverage wrong.'}
 
     Write-Output '4. Settlement breakdown per order'
     Start-Sleep -Seconds 2

@@ -22,6 +22,12 @@ namespace WashGo.HttpApi.Endpoints.MerchantReport
                 .WithSummary("KPI kỳ này/kỳ trước (tiền giặt, hoàn tiền, doanh thu thuần, hoa hồng theo tỷ lệ chốt từng đơn, thực nhận, phí đã thu, đơn tạo/hoàn thành/hủy, tỷ lệ đúng hạn có tử/mẫu số), chuỗi theo hour/day/week/month, dịch vụ bán chạy; giờ Việt Nam; một snapshot. period=today|week|month|custom (from,to yyyy-MM-dd). Lỗi có meta.code: InvalidPeriod, InvalidRange, InvalidGranularity, TooManyBuckets.")
                 .WithOpenApi();
 
+            group.MapGet("/lifetime", async (IMerchantReportAppService svc) =>
+                (await svc.GetLifetimeAsync()).CustomResult())
+                .WithName("Tổng tài chính toàn lịch sử của Merchant")
+                .WithSummary("Tổng tiền giặt đã thu, hoàn tiền, doanh thu thuần, hoa hồng (tỷ lệ chốt từng đơn), thu nhập phát sinh, phí đã thu, số đơn đã thu và số đơn thiếu snapshot, tính tại DB; dùng cho hồ sơ cửa hàng.")
+                .WithOpenApi();
+
             group.MapGet("/export", async ([AsParameters] MerchantReportQuery query, IMerchantReportAppService svc) =>
             {
                 var result = await svc.ExportCsvAsync(query);
