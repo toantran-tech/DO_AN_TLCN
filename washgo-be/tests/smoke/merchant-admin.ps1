@@ -34,7 +34,7 @@ function Body([hashtable]$Extra=@{}) {
     return $b
 }
 function Get-Merchant { (Call-Api Get "/merchant/$merchantId" $null $admin).data }
-function Status-Body($Status,[hashtable]$Extra=@{}) { $b=@{merchantId="$merchantId";status=$Status};foreach($k in $Extra.Keys){$b[$k]=$Extra[$k]};$b }
+function Status-Body($Status,[hashtable]$Extra=@{}) { $b=@{merchantId="$merchantId";status=$Status;expectedVersion=(Get-Merchant).version};foreach($k in $Extra.Keys){$b[$k]=$Extra[$k]};$b }
 
 try {
     foreach($role in @('Admin','Merchant','Customer')){
@@ -78,6 +78,7 @@ try {
     Write-Output '3. Edit (UC 3.2.3)'
     $upd=Body @{id="$merchantId";businessName="Admin Merchant Edited $run";phone='0987 654 321';commissionRate=12;serviceRadiusKm=3;maxCapacity=10}
     $upd.Remove('serviceAreaIds')
+    $upd.expectedVersion=(Get-Merchant).version
     $bad=$upd.Clone();$bad.phone='123'
     Assert-Status 400 Put '/merchant/' $bad $admin
     $bad=$upd.Clone();$bad.commissionRate=101
@@ -88,6 +89,7 @@ try {
     $m=Get-Merchant
     if(!$u.message -or $m.businessName -ne "Admin Merchant Edited $run" -or $m.phone -ne '0987654321' -or $m.commissionRate -ne 12 -or $m.maxCapacity -ne 10 -or (@($m.serviceAreaIds) -join ',') -ne "$area" -or (@($m.imageUrls) -join ',') -ne $img){throw 'Edit not applied.'}
     $upd.commissionRate=$null
+    $upd.expectedVersion=(Get-Merchant).version
     Call-Api Put '/merchant/' $upd $admin | Out-Null
     if((Get-Merchant).commissionRate -ne 12){throw 'Omitted commission changed.'}
     if((Call-Api Post '/merchant/filter' @{serviceAreaId="$area"} $admin).total -ne 1){throw 'Area filter wrong.'}

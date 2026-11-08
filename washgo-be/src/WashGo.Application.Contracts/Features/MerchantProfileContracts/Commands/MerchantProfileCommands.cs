@@ -26,5 +26,7 @@ namespace WashGo.Application.Contracts.Features.MerchantProfileContracts.Command
     public class RejectMerchantProfileRequestCommand
     {
         public string? Reason { get; set; }
+        public string? ExpectedVersion { get; set; }
+        public Guid? OperationId { get; set; }
     }
 }

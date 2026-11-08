@@ -34,8 +34,8 @@ try {
 
     Write-Output '3. Merchant lock/unlock with reason; detail by id'
     $sessions.Team=New-FixtureMerchant $run; $teamId="$($sessions.Team.user.id)"
-    Call-Api Put '/merchant/status' @{merchantId=$teamId;status=3;rejectionReason="Smoke lock $run";confirm=$true} $admin | Out-Null
-    Call-Api Put '/merchant/status' @{merchantId=$teamId;status=1;confirm=$true} $admin | Out-Null
+    Call-Api Put '/merchant/status' @{merchantId=$teamId;status=3;rejectionReason="Smoke lock $run";confirm=$true;expectedVersion=(Call-Api Get "/merchant/$teamId" $null $admin).data.version} $admin | Out-Null
+    Call-Api Put '/merchant/status' @{merchantId=$teamId;status=1;confirm=$true;expectedVersion=(Call-Api Get "/merchant/$teamId" $null $admin).data.version} $admin | Out-Null
     # Locking revoked the Merchant's sessions: sign in again for the access-control checks.
     $sessions.Team=(Call-Api Post '/auth/login' @{email="team-$run@example.com";password='Merchant@123'} $null).data
     $m=(Call-Api Post '/admin/audit-logs/filter' @{resourceType='Merchant';resourceId=$teamId;take=10} $admin)

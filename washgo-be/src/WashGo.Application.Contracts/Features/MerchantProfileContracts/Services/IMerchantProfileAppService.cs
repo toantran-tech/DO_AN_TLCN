@@ -15,7 +15,7 @@ namespace WashGo.Application.Contracts.Features.MerchantProfileContracts.Service
         Task<BaseResponse<MerchantProfileRequestDto>> RequestUpdateAsync(MerchantProfileUpdateCommand command);
         Task<PaginatedResult<MerchantProfileRequestDto>> GetRequestsAsync(MerchantProfileRequestFilterQuery query);
         Task<BaseResponse<MerchantProfileRequestDto>> GetRequestAsync(Guid id);
-        Task<BaseResponse<MerchantProfileRequestDto>> ApproveAsync(Guid id);
+        Task<BaseResponse<MerchantProfileRequestDto>> ApproveAsync(Guid id, string? expectedVersion = null, Guid? operationId = null);
         Task<BaseResponse<MerchantProfileRequestDto>> RejectAsync(Guid id, RejectMerchantProfileRequestCommand command);
     }
 }

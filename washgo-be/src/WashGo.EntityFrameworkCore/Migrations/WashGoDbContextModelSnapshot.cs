@@ -1609,6 +1609,48 @@ namespace WashGo.EntityFrameworkCore.Migrations
                     b.ToTable("merchant_service_areas", "washgo");
                 });
 
+            modelBuilder.Entity("WashGo.Domain.Entities.Partner.MerchantWriteOperation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ActorId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("actor_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("MerchantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("merchant_id");
+
+                    b.Property<string>("Operation")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("operation");
+
+                    b.Property<string>("PayloadHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("payload_hash");
+
+                    b.Property<string>("ResponseJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("response_json");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ActorId", "MerchantId");
+
+                    b.ToTable("merchant_write_operations", "washgo");
+                });
+
             modelBuilder.Entity("WashGo.Domain.Entities.Partner.ServiceArea", b =>
                 {
                     b.Property<Guid>("Id")
