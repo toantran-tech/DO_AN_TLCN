@@ -2,7 +2,9 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.OpenApi;
 using Microsoft.AspNetCore.Routing;
-using WashGo.Application.Contracts.Features.AdminContracts;
+using WashGo.Application.Contracts.Features.AdminContracts.Commands;
+using WashGo.Application.Contracts.Features.AdminContracts.Results;
+using WashGo.Application.Contracts.Features.AdminContracts.Services;
 using WashGo.Core.Endpoint;
 
 namespace WashGo.HttpApi.Endpoints.Admin
