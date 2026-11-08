@@ -52,5 +52,12 @@ namespace WashGo.Application.Contracts.Features.MerchantContracts.Queries
         /// <summary>Mốc kết thúc (Unix timestamp tính bằng giây) khi chọn Period = "custom".</summary>
         public long? ToDate { get; set; }
     }
-}
 
+    /// <summary>Phân trang danh sách cảnh báo SLA; alertType lọc một loại (1 lấy đồ, 2 giặt sấy, 3 trả đồ).</summary>
+    public class MerchantSlaAlertsQuery
+    {
+        public int? Page { get; set; }
+        public int? Take { get; set; }
+        public WashGo.Domain.Shared.Enums.MerchantSlaAlertType? AlertType { get; set; }
+    }
+}

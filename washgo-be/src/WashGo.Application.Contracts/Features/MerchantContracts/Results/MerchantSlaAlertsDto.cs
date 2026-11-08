@@ -21,10 +21,16 @@ namespace WashGo.Application.Contracts.Features.MerchantContracts.Results
         /// <summary>Số đơn quá hạn trả đồ (đơn Paid > thời gian SLA kể từ lúc thanh toán mà chưa trả đồ vào tủ).</summary>
         public int ReturnAlertsCount { get; set; }
 
-        /// <summary>Danh sách các đơn ưu tiên xử lý khẩn cấp xếp theo số phút quá hạn giảm dần.</summary>
+        /// <summary>Trang danh sách ưu tiên (tổng cảnh báo vẫn tính trên toàn bộ phạm vi Merchant).</summary>
+        public int Page { get; set; }
+        public int Take { get; set; }
+        /// <summary>Tổng số đơn của danh sách ưu tiên theo bộ lọc alertType (để phân trang).</summary>
+        public int PriorityTotal { get; set; }
+
+        /// <summary>Các đơn ưu tiên của trang hiện tại, quá hạn lâu nhất trước (hạn chót sớm nhất), thứ tự phụ theo Id.</summary>
         public List<MerchantPriorityOrderDto> PriorityOrders { get; set; } = [];
 
-        /// <summary>Thời điểm server hiện tại (theo giờ VN UTC+7).</summary>
+        /// <summary>Thời điểm server hiện tại (UTC, hậu tố Z; FE đổi sang giờ Việt Nam).</summary>
         public DateTime ServerNow { get; set; }
     }
 
@@ -43,7 +49,7 @@ namespace WashGo.Application.Contracts.Features.MerchantContracts.Results
         /// <summary>Mã hành động gợi ý xử lý tương ứng.</summary>
         public MerchantSlaActionType ActionType => AlertType.GetSuggestedActionType();
 
-        /// <summary>Mốc hạn chót SLA (theo giờ VN UTC+7).</summary>
+        /// <summary>Mốc hạn chót SLA (UTC, hậu tố Z; FE đổi sang giờ Việt Nam).</summary>
         public DateTime Deadline { get; set; }
 
         /// <summary>Số phút đã quá hạn tính đến hiện tại.</summary>
