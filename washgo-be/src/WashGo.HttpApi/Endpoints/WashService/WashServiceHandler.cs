@@ -20,6 +20,8 @@ namespace WashGo.HttpApi.Endpoints.WashService
             .WithTags("Wash Service - Quản lý dịch vụ")
             // UC 3.5: only Admin manages services directly; Merchants use /merchant-service proposals (UC 2.6).
             .RequireAuthorization("AdminOnly");
+            group.MapGet("/summary", async (IWashServiceAppService svc) => (await svc.GetSummaryAsync()).CustomResult())
+                .WithSummary("Tổng dịch vụ và phân bố trạng thái duyệt/hoạt động, loại trừ xóa mềm.").WithOpenApi();
 
             group.MapPost("/filter", async (WashServiceFilterQuery request, IWashServiceAppService svc) =>
                 (await svc.GetListAsync(request)).CustomResult())
@@ -27,8 +29,10 @@ namespace WashGo.HttpApi.Endpoints.WashService
                 .WithSummary("Admin xem dịch vụ, lọc theo Merchant, danh mục, trạng thái hoạt động và trạng thái duyệt.")
                 .WithOpenApi();
 
-            group.MapDelete("/{id:guid}", async (Guid id, IWashServiceAppService svc) =>
-                (await svc.DeleteAsync(id)).CustomResult())
+            group.MapPost("/batch", async (WashGo.Application.Contracts.Features.AuditContracts.Commands.AdministrativeBatchCommand command, IWashServiceAppService svc) => (await svc.BatchAsync(command)).CustomResult())
+                .RequireAuthorization("AdminOnly").WithSummary("Xử lý 1–50 dịch vụ: Delete hoặc Status đích; id/expectedVersion từng dòng, operationId cho toàn batch.").WithOpenApi();
+            group.MapDelete("/{id:guid}", async (Guid id, string? expectedVersion, Guid? operationId, IWashServiceAppService svc) =>
+                (await svc.DeleteAsync(id, expectedVersion, operationId)).CustomResult())
                 .WithName("Xóa dịch vụ WashGo")
                 .WithSummary("Xóa mềm dịch vụ; từ chối khi dịch vụ đang có đơn hàng chưa hoàn tất.")
                 .WithOpenApi();

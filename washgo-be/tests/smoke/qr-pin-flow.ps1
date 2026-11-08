@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$BaseUrl = 'http://localhost:5000',
     [string]$PostgresContainer = 'washgo_postgres',
     [string]$PostgresUser = 'postgres',
@@ -45,7 +45,7 @@ FROM washgo.shippers s WHERE user_id = '$seedUser';
 
     Write-Host "=== 3. Tim Locker va Service cua Merchant ===" -ForegroundColor Cyan
     $locker = (Call-Api Post '/locker/' @{
-        merchantId="$merchantId"; code="QR_$([Guid]::NewGuid().ToString('N'))"; name='QR PIN Smoke Locker'
+        merchantId="$merchantId"; code="QR_$([Guid]::NewGuid().ToString('N'))"; name="QR PIN Smoke Locker $fixtureUser"
         address='Development fixture'; district='Test'; city='Test'; latitude=10.77; longitude=106.69
         boxes=@(@{boxNumber='1';size=2},@{boxNumber='2';size=3})
     } $admin).data

@@ -8,6 +8,7 @@ namespace WashGo.Application.Contracts.Features.LockerContracts.Commands
 {
     public class CreateLockerCommand
     {
+        public Guid? OperationId { get; set; }
         /// <summary>Merchant phụ trách locker theo thứ tự ưu tiên (phần tử đầu = ưu tiên 1). Khi sửa: null = giữ nguyên.</summary>
         public List<Guid>? MerchantIds { get; set; }
         /// <summary>Cách viết ngắn khi locker chỉ có một Merchant phụ trách (dùng khi không gửi MerchantIds).</summary>
@@ -33,6 +34,7 @@ namespace WashGo.Application.Contracts.Features.LockerContracts.Commands
 
     public class UpdateLockerCommand : CreateLockerCommand
     {
+        public string? ExpectedVersion { get; set; }
         public Guid Id { get; set; }
         public LockerStatus Status { get; set; } = LockerStatus.Active;
     }
@@ -45,9 +47,17 @@ namespace WashGo.Application.Contracts.Features.LockerContracts.Commands
 
     public class UpdateLockerBoxStatusCommand
     {
+        public Guid? OperationId { get; set; }
+        public string? ExpectedVersion { get; set; }
         public Guid LockerId { get; set; }
         public Guid BoxId { get; set; }
         public LockerBoxStatus NewStatus { get; set; }
+    }
+    public class SetLockerStatusCommand
+    {
+        public Guid? OperationId { get; set; }
+        public string? ExpectedVersion { get; set; }
+        public LockerStatus Status { get; set; }
     }
 }
 

@@ -3,6 +3,12 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Volo.Abp.Domain.Repositories;
+using Volo.Abp.Uow;
+using System.Text.Json;
+using System.Net;
+using WashGo.Application.Features.AuditApplication.Services;
+using WashGo.Application.Features.FileApplication.Services;
+using Microsoft.Extensions.Configuration;
 using WashGo.Application.Contracts.Features.WashServiceContracts.Commands;
 using WashGo.Application.Contracts.Features.WashServiceContracts.Queries;
 using WashGo.Application.Contracts.Features.WashServiceContracts.Results;
@@ -37,11 +43,17 @@ namespace WashGo.Application.Features.WashServiceApplication.Services
         }
 
         // UC 3.5.4: soft delete; blocked while any unfinished order uses the service.
-        public async Task<BaseResponse<bool>> DeleteAsync(Guid id)
+        public async Task<BaseResponse<bool>> DeleteAsync(Guid id, string? expectedVersion = null, Guid? operationId = null)
         {
+            using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            var payload = new { id, expectedVersion };
+            if (await Writes.ReplayAsync<bool>(operationId, CurrentUser.Id!.Value, "Service", "Delete", id.ToString(), payload) is { } replay) return replay;
+            await _serviceRepo.AcquireLockAsync("service-catalog");
             var entity = await _serviceRepo.FindAsync(id);
             if (entity == null || entity.IsDeleted)
                 return NotFound<bool>("Không tìm thấy dịch vụ!");
+            if (string.IsNullOrWhiteSpace(expectedVersion)) return AdministrativeWriteGuard.Error<bool>(HttpStatusCode.BadRequest, "ExpectedVersionRequired", "Thiếu expectedVersion.");
+            if (expectedVersion != Version(entity)) return AdministrativeWriteGuard.Error<bool>(HttpStatusCode.Conflict, "VersionMismatch", "Dịch vụ đã thay đổi.");
             var items = await _itemRepo.GetQueryableAsync();
             var orders = await _orderRepo.GetQueryableAsync();
             var inUse = await AsyncExecuter.AnyAsync(
@@ -58,7 +70,10 @@ namespace WashGo.Application.Features.WashServiceApplication.Services
             entity.DeletedOn = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             entity.DeletedBy = CurrentUser.Id?.ToString();
             await _serviceRepo.UpdateAsync(entity, autoSave: true);
-            return Success(true, "Xóa Dịch vụ thành công!");
+            var response = Success(true, "Xóa Dịch vụ thành công!");
+            await Audit.LogAsync(new AuditEntry("Service", "Delete", "WashService", id.ToString(), entity.Code));
+            await Writes.RecordAsync(operationId, CurrentUser.Id!.Value, "Service", "Delete", id.ToString(), payload, response);
+            await uow.CompleteAsync(); return response;
         }
 
         public async Task<PaginatedResult<WashServiceResultDto>> GetListAsync(WashServiceFilterQuery query)
@@ -83,9 +98,12 @@ namespace WashGo.Application.Features.WashServiceApplication.Services
                     return q;
                 },
                 parameters: query,
-                defaultOrder: q => q.OrderBy(x => x.Code)
+                defaultOrder: q => q.OrderBy(x => x.Code).ThenBy(x => x.Id)
             );
 
+            var ids = data.Select(x => x.Id).ToList();
+            var entities = await _serviceRepo.GetListAsync(x => ids.Contains(x.Id));
+            foreach (var dto in data) Fill(dto, entities.First(x => x.Id == dto.Id));
             return Success(data, total, query.Page, query.Take, total == 0 ? "Chưa có dịch vụ nào." : null);
         }
 
@@ -98,13 +116,21 @@ namespace WashGo.Application.Features.WashServiceApplication.Services
             }
 
             var dto = ObjectMapper.Map<WashService, WashServiceResultDto>(entity);
+            Fill(dto, entity);
             return Success(dto);
+        }
+        public async Task<BaseResponse<WashGo.Application.Contracts.Features.AuditContracts.Results.AdministrativeSummaryDto>> GetSummaryAsync()
+        {
+            var groups = await AsyncExecuter.ToListAsync((await _serviceRepo.GetQueryableAsync()).Where(x => !x.IsDeleted)
+                .GroupBy(x => new { x.ApprovalStatus, x.IsActive }).Select(g => new { g.Key.ApprovalStatus, g.Key.IsActive, Count = g.Count() }));
+            return Success(new WashGo.Application.Contracts.Features.AuditContracts.Results.AdministrativeSummaryDto { Total = groups.Sum(x => x.Count), Counts = groups.ToDictionary(x => $"{x.ApprovalStatus}:{(x.IsActive ? "Active" : "Inactive")}", x => x.Count), GeneratedAt = DateTime.UtcNow });
         }
 
         private async Task<string?> ValidateAsync(CreateWashServiceCommand command, Guid? currentId)
         {
             if (string.IsNullOrWhiteSpace(command.Code))
                 return "Mã dịch vụ không được để trống.";
+            if (command.Code.Trim().Length > 50 || command.Description?.Length > 2000) return "Mã tối đa 50, mô tả 2000 ký tự.";
             var error = WashServiceRules.Validate(command.Name, command.UnitPrice, command.PricePerKg, command.PricePerItem,
                 command.EstimatedDurationHours, command.ServiceType, command.Unit);
             if (error != null)
@@ -120,43 +146,69 @@ namespace WashGo.Application.Features.WashServiceApplication.Services
 
         public async Task<BaseResponse<WashServiceResultDto>> CreateAsync(CreateWashServiceCommand command)
         {
+            using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            if (await Writes.ReplayAsync<WashServiceResultDto>(command.OperationId, CurrentUser.Id!.Value, "Service", "Create", "new", command) is { } replay) return replay;
+            await _serviceRepo.AcquireLockAsync("service-catalog");
             var error = await ValidateAsync(command, null);
             if (error != null)
                 return BadRequest<WashServiceResultDto>(error);
 
             var entity = ObjectMapper.Map<CreateWashServiceCommand, WashService>(command);
+            var imageError = ApplyImages(entity, command.ImageUrls);
+            if (imageError != null) return BadRequest<WashServiceResultDto>(imageError);
             entity.ApprovalStatus = Domain.Shared.Enums.ServiceApprovalStatus.Approved;
             entity.IsActive = true;
             await _serviceRepo.InsertAsync(entity, autoSave: true);
             var dto = ObjectMapper.Map<WashService, WashServiceResultDto>(entity);
-            return Created(dto, "Thêm Dịch vụ thành công!");
+            Fill(dto, entity);
+            var response = Created(dto, "Thêm Dịch vụ thành công!");
+            await Audit.LogAsync(new AuditEntry("Service", "Create", "WashService", entity.Id.ToString(), entity.Code));
+            await Writes.RecordAsync(command.OperationId, CurrentUser.Id!.Value, "Service", "Create", "new", command, response);
+            await uow.CompleteAsync(); return response;
         }
 
         public async Task<BaseResponse<WashServiceResultDto>> UpdateAsync(UpdateWashServiceCommand command)
         {
+            using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            if (await Writes.ReplayAsync<WashServiceResultDto>(command.OperationId, CurrentUser.Id!.Value, "Service", "Update", command.Id.ToString(), command) is { } replay) return replay;
+            await _serviceRepo.AcquireLockAsync("service-catalog");
             var entity = await _serviceRepo.FindAsync(command.Id);
-            if (entity == null)
+            if (entity == null || entity.IsDeleted)
             {
                 return NotFound<WashServiceResultDto>("Không tìm thấy dịch vụ để cập nhật!");
             }
+            if (string.IsNullOrWhiteSpace(command.ExpectedVersion)) return AdministrativeWriteGuard.Error<WashServiceResultDto>(HttpStatusCode.BadRequest, "ExpectedVersionRequired", "Thiếu expectedVersion.");
+            if (command.ExpectedVersion != Version(entity)) return AdministrativeWriteGuard.Error<WashServiceResultDto>(HttpStatusCode.Conflict, "VersionMismatch", "Dịch vụ đã thay đổi.");
 
             var error = await ValidateAsync(command, command.Id);
             if (error != null)
                 return BadRequest<WashServiceResultDto>(error);
 
             ObjectMapper.Map(command, entity);
+            var imageError = ApplyImages(entity, command.ImageUrls);
+            if (imageError != null) return BadRequest<WashServiceResultDto>(imageError);
             await _serviceRepo.UpdateAsync(entity, autoSave: true);
             var dto = ObjectMapper.Map<WashService, WashServiceResultDto>(entity);
-            return Success(dto, "Cập nhật Dịch vụ thành công!");
+            Fill(dto, entity);
+            var response = Success(dto, "Cập nhật Dịch vụ thành công!");
+            await Audit.LogAsync(new AuditEntry("Service", "Update", "WashService", entity.Id.ToString(), entity.Code));
+            await Writes.RecordAsync(command.OperationId, CurrentUser.Id!.Value, "Service", "Update", command.Id.ToString(), command, response);
+            await uow.CompleteAsync(); return response;
         }
 
         public async Task<BaseResponse<WashServiceResultDto>> UpdateStatusAsync(UpdateWashServiceStatusCommand command)
         {
+            using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            if (await Writes.ReplayAsync<WashServiceResultDto>(command.OperationId, CurrentUser.Id!.Value, "Service", "Status", command.ServiceId.ToString(), command) is { } replay) return replay;
+            await _serviceRepo.AcquireLockAsync("service-catalog");
             var entity = await _serviceRepo.FindAsync(command.ServiceId);
-            if (entity == null)
+            if (entity == null || entity.IsDeleted)
             {
                 return NotFound<WashServiceResultDto>("Không tìm thấy dịch vụ!");
             }
+            if (string.IsNullOrWhiteSpace(command.ExpectedVersion)) return AdministrativeWriteGuard.Error<WashServiceResultDto>(HttpStatusCode.BadRequest, "ExpectedVersionRequired", "Thiếu expectedVersion.");
+            if (command.ExpectedVersion != Version(entity)) return AdministrativeWriteGuard.Error<WashServiceResultDto>(HttpStatusCode.Conflict, "VersionMismatch", "Dịch vụ đã thay đổi.");
+            if (!Enum.IsDefined(command.ApprovalStatus) || command.RejectionReason?.Length > 1000 || command.ApprovalStatus == ServiceApprovalStatus.Rejected && string.IsNullOrWhiteSpace(command.RejectionReason)) return BadRequest<WashServiceResultDto>("Trạng thái/lý do từ chối không hợp lệ.");
 
             entity.ApprovalStatus = command.ApprovalStatus;
             entity.IsActive = command.IsActive;
@@ -164,8 +216,35 @@ namespace WashGo.Application.Features.WashServiceApplication.Services
 
             await _serviceRepo.UpdateAsync(entity, autoSave: true);
             var dto = ObjectMapper.Map<WashService, WashServiceResultDto>(entity);
-            return Success(dto, "Cập nhật trạng thái dịch vụ thành công!");
+            Fill(dto, entity);
+            var response = Success(dto, "Cập nhật trạng thái dịch vụ thành công!");
+            await Audit.LogAsync(new AuditEntry("Service", "Status", "WashService", entity.Id.ToString(), entity.Code));
+            await Writes.RecordAsync(command.OperationId, CurrentUser.Id!.Value, "Service", "Status", command.ServiceId.ToString(), command, response);
+            await uow.CompleteAsync(); return response;
         }
+
+        private string? ApplyImages(WashService entity, List<string>? images)
+        {
+            if (images == null) return null;
+            var existing = ReadImages(entity.Images);
+            var added = images.Where(x => !existing.Contains(x?.Trim() ?? string.Empty)).ToList();
+            var error = UploadStorage.ValidateOwnedImages(LazyServiceProvider.LazyGetRequiredService<IConfiguration>(), added, CurrentUser.Id!.Value, 0, out _);
+            if (error != null) return error;
+            var clean = images.Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x.Trim()).Distinct().ToList();
+            if (clean.Count > UploadStorage.MaxImagesPerSubmission) return "Quá số ảnh cho phép.";
+            entity.Images = clean.Count == 0 ? null : JsonSerializer.Serialize(clean); return null;
+        }
+        public Task<BaseResponse<WashGo.Application.Contracts.Features.AuditContracts.Results.AdministrativeBatchResultDto>> BatchAsync(WashGo.Application.Contracts.Features.AuditContracts.Commands.AdministrativeBatchCommand command) =>
+            LazyServiceProvider.LazyGetRequiredService<AdministrativeBatchExecutor>().RunAsync("Service", command, 50, async (item, key) =>
+            {
+                if (command.Action == "Delete") return AdministrativeBatchExecutor.Item(item.Id, await DeleteAsync(item.Id, item.ExpectedVersion, key));
+                if (!command.IsActive.HasValue || !command.Status.HasValue || !Enum.IsDefined((ServiceApprovalStatus)command.Status.Value)) return new() { Id = item.Id, StatusCode = 400, Message = "Status cần isActive và approval status hợp lệ." };
+                return AdministrativeBatchExecutor.Item(item.Id, await UpdateStatusAsync(new() { ServiceId = item.Id, ExpectedVersion = item.ExpectedVersion, OperationId = key, IsActive = command.IsActive.Value, ApprovalStatus = (ServiceApprovalStatus)command.Status.Value }));
+            });
+        private static List<string> ReadImages(string? json)
+        { try { return json == null ? [] : JsonSerializer.Deserialize<List<string>>(json) ?? []; } catch (JsonException) { return []; } }
+        private static string Version(WashService x) => AdministrativeWriteGuard.Version(new { x.Id, x.Name, x.Code, x.Description, x.UnitPrice, x.PricePerKg, x.PricePerItem, x.Unit, x.ServiceType, x.EstimatedDurationHours, Images = ReadImages(x.Images), x.IsActive, x.ApprovalStatus, x.MerchantId, x.IsDeleted });
+        private static void Fill(WashServiceResultDto dto, WashService entity) { dto.Version = Version(entity); dto.ImageUrls = ReadImages(entity.Images); }
 
         public async Task<BaseResponse<List<ColumnFilterDistinctValueDto>>> GetColumnDistinctValuesAsync(string fieldName, WashServiceFilterQuery query)
         {

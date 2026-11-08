@@ -189,6 +189,7 @@ namespace WashGo.Application.Features.ServiceProposalApplication.Services
 
             using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
             await _serviceRepo.AcquireLockAsync(SubmitLock);
+            await _serviceRepo.AcquireLockAsync("service-catalog");
             if (command.ClientRequestId.HasValue)
             {
                 var previous = await _requestRepo.FirstOrDefaultAsync(x => x.MerchantId == merchant.Id && x.ClientRequestId == command.ClientRequestId);
@@ -341,16 +342,21 @@ namespace WashGo.Application.Features.ServiceProposalApplication.Services
 
         private const string AlreadyReviewed = "Đề xuất đã được xử lý trước đó.";
 
-        public async Task<BaseResponse<ServiceProposalDto>> ApproveAsync(Guid id)
+        public async Task<BaseResponse<ServiceProposalDto>> ApproveAsync(Guid id, string? expectedVersion = null, Guid? operationId = null)
         {
             using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            var payload = new { id, expectedVersion };
+            if (await Writes.ReplayAsync<ServiceProposalDto>(operationId, CurrentUser.Id!.Value, "Service", "ApproveProposal", id.ToString(), payload) is { } replay) return replay;
             // One reviewer at a time per proposal: a second approve/reject waits, then sees the stored result.
             await _serviceRepo.AcquireLockAsync($"service-proposal:{id}");
+            await _serviceRepo.AcquireLockAsync("service-catalog");
             var request = await _requestRepo.FindAsync(id);
             if (request == null)
                 return NotFound<ServiceProposalDto>("Không tìm thấy đề xuất!");
             if (request.Status != ServiceApprovalStatus.Pending)
                 return Fail<ServiceProposalDto>(HttpStatusCode.BadRequest, "AlreadyReviewed", AlreadyReviewed);
+            if (string.IsNullOrWhiteSpace(expectedVersion)) return Fail<ServiceProposalDto>(HttpStatusCode.BadRequest, "ExpectedVersionRequired", "Thiếu expectedVersion của đề xuất.");
+            if (expectedVersion != (request.UpdatedAt.Ticks / 10).ToString()) return Fail<ServiceProposalDto>(HttpStatusCode.Conflict, "VersionMismatch", "Đề xuất đã thay đổi.");
             var data = Read(request.ProposedData);
             if (data == null)
                 return BadRequest<ServiceProposalDto>("Có lỗi xảy ra. Vui lòng thử lại.");
@@ -408,12 +414,13 @@ namespace WashGo.Application.Features.ServiceProposalApplication.Services
             await _notifications.SendAsync([merchant.Id], NotificationType.ServiceProposalReviewed, "Đề xuất được phê duyệt",
                 $"Yêu cầu {(request.RequestType == ServiceChangeRequestType.Create ? "thêm dịch vụ" : "chỉnh sửa dịch vụ")} {data.Name} của bạn đã được phê duyệt.",
                 "service", service.Id);
-            await uow.CompleteAsync();
             await Audit.LogAsync(new AuditEntry("ServiceProposal", "Approve", "ServiceProposal", request.Id.ToString(), data.Name)
             {
                 Details = new { merchantId = merchant.Id, serviceId = service.Id, requestType = request.RequestType.ToString() }
             });
-            return Success(ToDto(request, merchant.BusinessName), "Đã phê duyệt đề xuất!");
+            var response = Success(ToDto(request, merchant.BusinessName), "Đã phê duyệt đề xuất!");
+            await Writes.RecordAsync(operationId, CurrentUser.Id.Value, "Service", "ApproveProposal", id.ToString(), payload, response);
+            await uow.CompleteAsync(); return response;
         }
 
         public async Task<BaseResponse<ServiceProposalDto>> RejectAsync(Guid id, RejectServiceProposalCommand command)
@@ -422,12 +429,15 @@ namespace WashGo.Application.Features.ServiceProposalApplication.Services
             if (string.IsNullOrWhiteSpace(reason) || reason.Length > 1000)
                 return BadRequest<ServiceProposalDto>("Vui lòng nhập lý do từ chối (tối đa 1000 ký tự).");
             using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            if (await Writes.ReplayAsync<ServiceProposalDto>(command.OperationId, CurrentUser.Id!.Value, "Service", "RejectProposal", id.ToString(), command) is { } replay) return replay;
             await _serviceRepo.AcquireLockAsync($"service-proposal:{id}");
             var request = await _requestRepo.FindAsync(id);
             if (request == null)
                 return NotFound<ServiceProposalDto>("Không tìm thấy đề xuất!");
             if (request.Status != ServiceApprovalStatus.Pending)
                 return Fail<ServiceProposalDto>(HttpStatusCode.BadRequest, "AlreadyReviewed", AlreadyReviewed);
+            if (string.IsNullOrWhiteSpace(command.ExpectedVersion)) return Fail<ServiceProposalDto>(HttpStatusCode.BadRequest, "ExpectedVersionRequired", "Thiếu expectedVersion của đề xuất.");
+            if (command.ExpectedVersion != (request.UpdatedAt.Ticks / 10).ToString()) return Fail<ServiceProposalDto>(HttpStatusCode.Conflict, "VersionMismatch", "Đề xuất đã thay đổi.");
 
             request.Status = ServiceApprovalStatus.Rejected;
             request.RejectionReason = reason;
@@ -439,13 +449,14 @@ namespace WashGo.Application.Features.ServiceProposalApplication.Services
             await _notifications.SendAsync([request.MerchantId], NotificationType.ServiceProposalReviewed, "Đề xuất bị từ chối",
                 $"Yêu cầu {(request.RequestType == ServiceChangeRequestType.Create ? "thêm dịch vụ" : "chỉnh sửa dịch vụ")} {data?.Name} của bạn đã bị từ chối. Lý do: {reason}",
                 "service-proposal", request.Id);
-            await uow.CompleteAsync();
             var names = await MerchantNamesAsync([request.MerchantId]);
             await Audit.LogAsync(new AuditEntry("ServiceProposal", "Reject", "ServiceProposal", request.Id.ToString(), data?.Name)
             {
                 Reason = reason, Details = new { merchantId = request.MerchantId, requestType = request.RequestType.ToString() }
             });
-            return Success(ToDto(request, names.GetValueOrDefault(request.MerchantId, string.Empty)), "Đã từ chối đề xuất!");
+            var response = Success(ToDto(request, names.GetValueOrDefault(request.MerchantId, string.Empty)), "Đã từ chối đề xuất!");
+            await Writes.RecordAsync(command.OperationId, CurrentUser.Id.Value, "Service", "RejectProposal", id.ToString(), command, response);
+            await uow.CompleteAsync(); return response;
         }
 
         private async Task<Dictionary<Guid, string>> MerchantNamesAsync(IEnumerable<Guid> ids)
@@ -496,6 +507,7 @@ namespace WashGo.Application.Features.ServiceProposalApplication.Services
 
         private static ServiceProposalDto ToDto(ServiceChangeRequest x, string merchantName) => new()
         {
+            Version = (x.UpdatedAt.Ticks / 10).ToString(),
             Id = x.Id,
             MerchantId = x.MerchantId,
             MerchantName = merchantName,

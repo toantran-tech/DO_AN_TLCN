@@ -72,8 +72,12 @@ namespace WashGo.HttpApi.Endpoints.Locker
                 .WithSummary("Cập nhật trạng thái ô tủ Locker.")
                 .WithOpenApi();
 
-            group.MapDelete("/{id:guid}", async (Guid id, ILockerAppService svc) =>
-                (await svc.DeleteAsync(id)).CustomResult())
+            group.MapPost("/batch", async (WashGo.Application.Contracts.Features.AuditContracts.Commands.AdministrativeBatchCommand command, ILockerAppService svc) => (await svc.BatchAsync(command)).CustomResult())
+                .RequireAuthorization("AdminOnly").WithSummary("1–50 locker: action=Delete|Status, status đích, id/expectedVersion từng dòng; operationId bắt buộc và replay.").WithOpenApi();
+            group.MapPut("/{id:guid}/status", async (Guid id, SetLockerStatusCommand command, ILockerAppService svc) => (await svc.SetStatusAsync(id, command)).CustomResult())
+                .RequireAuthorization("AdminOnly").WithSummary("Đổi trạng thái locker với expectedVersion và operationId; chặn ngừng hoạt động khi còn giữ ô/đồ.").WithOpenApi();
+            group.MapDelete("/{id:guid}", async (Guid id, string? expectedVersion, Guid? operationId, ILockerAppService svc) =>
+                (await svc.DeleteAsync(id, expectedVersion, operationId)).CustomResult())
                 .RequireAuthorization("AdminOnly")
                 .WithName("Xóa Locker")
                 .WithSummary("Xóa mềm locker và các ô tủ; từ chối khi locker còn đơn hàng chưa xử lý.")

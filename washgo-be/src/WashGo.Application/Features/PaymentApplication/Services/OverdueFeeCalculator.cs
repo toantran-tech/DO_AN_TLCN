@@ -37,6 +37,7 @@ namespace WashGo.Application.Features.PaymentApplication.Services
         // Total fee due when picking up: includes locker overdue fee + warehouse storage fee (if moved to storage).
         public static decimal GetTotalStorageDue(WashOrder order, DateTime now, SystemSetting settings)
         {
+            settings = OrderOperationalPolicy.Resolve(order, settings);
             if (order.MovedToStorageAt.HasValue)
             {
                 var lockerFee = order.LockerOverdueFeeAtStorageTransfer

@@ -8,6 +8,8 @@ namespace WashGo.Application.Contracts.Features.LockerContracts.Results
 {
     public class LockerResultDto
     {
+        public string Version { get; set; } = string.Empty;
+        public bool CanDelete { get; set; }
         public Guid Id { get; set; }
         /// <summary>Các Merchant phụ trách locker, sắp theo độ ưu tiên.</summary>
         public List<LockerMerchantDto> Merchants { get; set; } = [];

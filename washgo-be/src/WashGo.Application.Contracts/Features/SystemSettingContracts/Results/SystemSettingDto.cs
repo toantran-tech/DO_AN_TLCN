@@ -4,6 +4,11 @@ namespace WashGo.Application.Contracts.Features.SystemSettingContracts.Results
 {
     public class SystemSettingDto
     {
+        public string Version { get; set; } = string.Empty;
+        public bool IsPersisted { get; set; }
+        public string Source => IsPersisted ? "database" : "defaults";
+        public DateTime ServerNow { get; set; }
+        public Guid? UpdatedBy { get; set; }
         public int DepositWindowMinutes { get; set; }
         public int MerchantCollectSlaHours { get; set; }
         public int MerchantReturnSlaHours { get; set; }
