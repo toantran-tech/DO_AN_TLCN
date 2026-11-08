@@ -10,6 +10,7 @@ namespace WashGo.Application.Contracts.Features.MerchantContracts.Results
     public class MerchantResultDto
     {
         public Guid Id { get; set; }
+        public string Version { get; set; } = string.Empty;
         public string BusinessName { get; set; } = string.Empty;
         public string Email { get; set; } = string.Empty;
         public string? TaxCode { get; set; }

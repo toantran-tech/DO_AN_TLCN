@@ -92,11 +92,15 @@ INSERT INTO washgo.services SELECT (jsonb_populate_record(NULL::washgo.services,
     $merchantUser=[Guid]$m.id
     if($m.commissionRate -ne 27.5){throw "Default commission not applied: $($m.commissionRate)."}
     $upd=@{id="$merchantUser";businessName='Settings Smoke Laundry 2';address='Test';district='Test';city='Test';phone='0900000000';latitude=10.7;longitude=106.6}
+    $upd.expectedVersion=$m.version
     $kept=(Call-Api Put '/merchant/' $upd $admin).data
     if($kept.commissionRate -ne 27.5 -or $kept.businessName -ne 'Settings Smoke Laundry 2'){throw 'Update without commission changed it.'}
     $upd.commissionRate=15
-    if((Call-Api Put '/merchant/' $upd $admin).data.commissionRate -ne 15){throw 'Explicit commission not saved.'}
+    $upd.expectedVersion=$kept.version
+    $updated=(Call-Api Put '/merchant/' $upd $admin).data
+    if($updated.commissionRate -ne 15){throw 'Explicit commission not saved.'}
     $upd.commissionRate=150
+    $upd.expectedVersion=$updated.version
     Assert-Status 400 Put '/merchant/' $upd $admin
 
     Write-Output 'PASS: settings authorization/validation, deposit window, configured late-cancel fee kept on cancelled orders, default commission for new Merchants.'

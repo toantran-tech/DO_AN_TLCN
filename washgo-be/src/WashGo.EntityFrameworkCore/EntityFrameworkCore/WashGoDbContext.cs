@@ -27,6 +27,7 @@ namespace WashGo.EntityFrameworkCore.EntityFrameworkCore
         public DbSet<OtpCode> OtpCodes { get; set; } = null!;
         public DbSet<Customer> Customers { get; set; } = null!;
         public DbSet<Merchant> Merchants { get; set; } = null!;
+        public DbSet<MerchantWriteOperation> MerchantWriteOperations { get; set; } = null!;
         public DbSet<Shipper> Shippers { get; set; } = null!;
         public DbSet<ServiceArea> ServiceAreas { get; set; } = null!;
         public DbSet<MerchantServiceArea> MerchantServiceAreas { get; set; } = null!;
@@ -75,6 +76,7 @@ namespace WashGo.EntityFrameworkCore.EntityFrameworkCore
             builder.ApplyConfiguration(new OtpCodeEntityTypeConfiguration());
             builder.ApplyConfiguration(new CustomerEntityTypeConfiguration());
             builder.ApplyConfiguration(new MerchantEntityTypeConfiguration());
+            builder.ApplyConfiguration(new MerchantWriteOperationEntityTypeConfiguration());
             builder.ApplyConfiguration(new ShipperEntityTypeConfiguration());
             builder.ApplyConfiguration(new ServiceAreaEntityTypeConfiguration());
             builder.ApplyConfiguration(new MerchantServiceAreaEntityTypeConfiguration());

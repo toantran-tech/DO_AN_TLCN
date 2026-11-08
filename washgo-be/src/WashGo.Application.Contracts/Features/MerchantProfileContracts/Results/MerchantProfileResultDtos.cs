@@ -6,6 +6,8 @@ namespace WashGo.Application.Contracts.Features.MerchantProfileContracts.Results
 {
     public class MerchantProfileDataDto
     {
+        /// <summary>Phiên bản hồ sơ lúc gửi yêu cầu; null cho yêu cầu legacy.</summary>
+        public string? BaseMerchantVersion { get; set; }
         public string BusinessName { get; set; } = string.Empty;
         public string Address { get; set; } = string.Empty;
         public string City { get; set; } = string.Empty;
@@ -22,6 +24,7 @@ namespace WashGo.Application.Contracts.Features.MerchantProfileContracts.Results
     public class MerchantProfileRequestDto
     {
         public Guid Id { get; set; }
+        public string Version { get; set; } = string.Empty;
         public Guid MerchantId { get; set; }
         public string MerchantName { get; set; } = string.Empty;
         public ServiceApprovalStatus Status { get; set; }
