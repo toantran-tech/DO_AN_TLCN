@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$BaseUrl='http://localhost:5000',
     [string]$PostgresContainer='washgo_postgres',
     [string]$PostgresUser='postgres',
@@ -32,7 +32,7 @@ function Locker-Body([hashtable]$Extra=@{}) {
     return $b
 }
 function Detail { (Call-Api Get "/locker/$lockerId" $null $admin).data }
-function Box-Status($BoxId,$Status) { Call-Api Put '/locker/box-status' @{lockerId="$lockerId";boxId="$BoxId";newStatus=$Status} $admin }
+function Box-Status($BoxId,$Status) { Call-Api Put '/locker/box-status' @{lockerId="$lockerId";boxId="$BoxId";newStatus=$Status;expectedVersion=(Detail).version} $admin }
 
 try {
     foreach($role in @('Admin','Merchant','Customer')){
@@ -74,7 +74,7 @@ try {
 
     Write-Output '3. Edit (UC 3.4.3)'
     $upd=Locker-Body @{id="$lockerId";status=1;name="Admin Locker Edited $run";description='Edited';latitude=10.79}
-    $upd.Remove('imageUrls')
+    $upd.Remove('imageUrls');$upd.expectedVersion=(Detail).version
     $bad=$upd.Clone();$bad.name=$existing.name
     Assert-Status 400 Put '/locker/' $bad $admin
     $bad=$upd.Clone();$bad.longitude=181
@@ -84,38 +84,40 @@ try {
     $d=Detail
     if($d.name -ne "Admin Locker Edited $run" -or $d.description -ne 'Edited' -or $d.latitude -ne 10.79 -or (@($d.imageUrls) -join ',') -ne $img){throw 'Update not applied or images lost.'}
     $upd.serviceAreaId=$null;$upd.imageUrls=@()
+    $upd.expectedVersion=(Detail).version
     Call-Api Put '/locker/' $upd $admin | Out-Null
     $d=Detail
     if($d.serviceAreaId -or @($d.imageUrls).Count -ne 0){throw 'Area/images not cleared.'}
-    $upd.serviceAreaId="$area";$upd.Remove('imageUrls')
+    $upd.serviceAreaId="$area";$upd.Remove('imageUrls');$upd.expectedVersion=(Detail).version
+    $upd.expectedVersion=(Detail).version
     Call-Api Put '/locker/' $upd $admin | Out-Null
 
     Write-Output '4. Box maintenance (UC 3.4.5)'
     $b1=$d.boxes[0].id;$b2=$d.boxes[1].id
-    Assert-Status 400 Put '/locker/box-status' @{lockerId="$lockerId";boxId="$b1";newStatus=2} $admin
+    Assert-Status 400 Put '/locker/box-status' @{lockerId="$lockerId";boxId="$b1";newStatus=2;expectedVersion=(Detail).version} $admin
     if(!(Box-Status $b1 4).message){throw 'Maintenance failed.'}
     if((Call-Api Get "/customer/lockers/$lockerId" $null $customer).data.availableSlots.Count -ne 2){throw 'Maintenance box still offered.'}
     Box-Status $b1 1 | Out-Null
     Box-Status $b1 4 | Out-Null
     $o=(Call-Api Post '/wash-order/' @{lockerId="$lockerId";boxId="$b2";paymentMethod=2;items=@(@{serviceId="$serviceId";quantity=1})} $customer).data
     $orderId=$o.id
-    Assert-Status 400 Put '/locker/box-status' @{lockerId="$lockerId";boxId="$b2";newStatus=4} $admin
-    Assert-Status 400 Delete "/locker/$lockerId" $null $admin
+    Assert-Status 400 Put '/locker/box-status' @{lockerId="$lockerId";boxId="$b2";newStatus=4;expectedVersion=(Detail).version} $admin
+    Assert-Status 400 Delete "/locker/${lockerId}?expectedVersion=$((Detail).version)" $null $admin
     Invoke-TestDelivery $orderId deposit $customer | Out-Null
-    Assert-Status 400 Put '/locker/box-status' @{lockerId="$lockerId";boxId="$b2";newStatus=4} $admin
+    Assert-Status 400 Put '/locker/box-status' @{lockerId="$lockerId";boxId="$b2";newStatus=4;expectedVersion=(Detail).version} $admin
     $h=Call-Api Get "/locker/$lockerId/usage-history?boxId=$b2" $null $admin
     if($h.total -ne 1 -or $h.list[0].orderCode -ne $o.orderCode){throw 'Box usage history wrong.'}
     if((Call-Api Get "/locker/$lockerId/usage-history?boxId=$b1" $null $admin).total -ne 0){throw 'Unused box has history.'}
 
     Write-Output '5. Delete (UC 3.4.4)'
-    Assert-Status 403 Delete "/locker/$lockerId" $null $merchant
-    Assert-Status 400 Delete "/locker/$lockerId" $null $admin
+    Assert-Status 403 Delete "/locker/${lockerId}?expectedVersion=$((Detail).version)" $null $merchant
+    Assert-Status 400 Delete "/locker/${lockerId}?expectedVersion=$((Detail).version)" $null $admin
     # Fixture shortcut: finish the order directly so the locker is no longer in use.
     Sql "UPDATE washgo.orders SET status=12 WHERE id='$orderId'; UPDATE washgo.locker_slots SET status=1 WHERE id='$b2';" | Out-Null
-    if(!(Call-Api Delete "/locker/$lockerId" $null $admin).message){throw 'Delete failed.'}
+    if(!(Call-Api Delete "/locker/${lockerId}?expectedVersion=$((Detail).version)" $null $admin).message){throw 'Delete failed.'}
     Assert-Status 404 Get "/locker/$lockerId" $null $admin
     Assert-Status 404 Get "/customer/lockers/$lockerId" $null $customer
-    Assert-Status 404 Delete "/locker/$lockerId" $null $admin
+    Assert-Status 404 Delete "/locker/${lockerId}?expectedVersion=$($d.version)" $null $admin
     if((Call-Api Post '/locker/filter' @{serviceAreaId="$area"} $admin).total -ne 0){throw 'Deleted locker still listed.'}
     if((Sql "SELECT count(*) FROM washgo.locker_slots WHERE locker_id='$lockerId' AND NOT is_deleted;") -ne '0'){throw 'Boxes not deleted.'}
     $reuse=(Call-Api Post '/locker/' (Locker-Body @{code="LB_$run";name="Admin Locker Edited $run"}) $admin).data

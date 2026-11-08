@@ -23,6 +23,10 @@ namespace WashGo.HttpApi.Endpoints.SystemSetting
                 .WithName("Xem cài đặt hệ thống")
                 .WithSummary("Admin xem SLA, phí hoa hồng mặc định, phí quá hạn/lưu kho, phí hủy và mức bồi thường hiện hành.")
                 .WithOpenApi();
+            group.MapGet("/operations/{id:guid}", async (Guid id, ISystemSettingAppService svc) => (await svc.GetOperationAsync(id)).CustomResult())
+                .WithSummary("Tra kết quả lưu cấu hình theo operationId của chính Admin; 404 chưa xác định được yêu cầu đang chạy.").WithOpenApi();
+            group.MapPost("/history/filter", async (WashGo.Application.Contracts.Features.AuditContracts.Queries.AuditLogFilterQuery query, ISystemSettingAppService svc) => (await svc.GetHistoryAsync(query)).CustomResult())
+                .WithSummary("Lịch sử cấu hình append-only; lọc actor/thời gian/action=UpdateSla|UpdateCommission|UpdatePenalty, phân trang.").WithOpenApi();
 
             group.MapPut("/sla", async (UpdateSlaSettingsCommand command, ISystemSettingAppService svc) =>
                 (await svc.UpdateSlaAsync(command)).CustomResult())

@@ -66,8 +66,8 @@ namespace WashGo.HttpApi.Endpoints.ServiceProposal
                 .WithSummary("Dữ liệu đề xuất kèm dữ liệu hiện tại của dịch vụ (với đề xuất chỉnh sửa).")
                 .WithOpenApi();
 
-            proposals.MapPost("/{id:guid}/approve", async (Guid id, IServiceProposalAppService svc) =>
-                (await svc.ApproveAsync(id)).CustomResult())
+            proposals.MapPost("/{id:guid}/approve", async (Guid id, string? expectedVersion, Guid? operationId, IServiceProposalAppService svc) =>
+                (await svc.ApproveAsync(id, expectedVersion, operationId)).CustomResult())
                 .RequireAuthorization("AdminOnly")
                 .WithName("Phê duyệt đề xuất dịch vụ")
                 .WithSummary("Áp dụng đề xuất: tạo dịch vụ mới (Đã duyệt) hoặc cập nhật dịch vụ; báo Merchant.")
