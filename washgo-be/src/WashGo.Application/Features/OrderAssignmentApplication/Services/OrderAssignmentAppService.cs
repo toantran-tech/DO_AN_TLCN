@@ -336,6 +336,7 @@ namespace WashGo.Application.Features.OrderAssignmentApplication.Services
             order.MerchantId = target.MerchantId;
             order.MerchantName = target.BusinessName;
             order.CommissionRateApplied = target.CommissionRate;
+            order.CommissionLockedAt = DateTime.UtcNow;
             await _orderRepo.UpdateAsync(order, autoSave: true);
             await _timelineRepo.InsertAsync(new WashOrderTimeline
             {

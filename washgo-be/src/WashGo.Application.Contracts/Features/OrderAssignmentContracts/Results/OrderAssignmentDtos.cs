@@ -63,7 +63,7 @@ namespace WashGo.Application.Contracts.Features.OrderAssignmentContracts.Results
         public string OrderCode { get; set; } = string.Empty;
         public Guid MerchantId { get; set; }
         public string MerchantName { get; set; } = string.Empty;
-        public decimal CommissionRateApplied { get; set; }
+        public decimal? CommissionRateApplied { get; set; }
         public long ResultRevision { get; set; }
     }
 

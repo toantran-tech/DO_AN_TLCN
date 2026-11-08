@@ -173,13 +173,13 @@ namespace WashGo.Application.Features.MerchantReportApplication.Services
                 join o in orders on p.OrderId equals o.Id
                 where (p.Status == PaymentTransactionStatus.Succeeded || p.Status == PaymentTransactionStatus.Refunded) &&
                       p.CompletedAt != null && p.CompletedAt >= all.From && p.CompletedAt < all.To
-                select new { o.Id, p.Purpose, p.Amount, At = p.CompletedAt!.Value, o.CommissionRateApplied });
+                select new { o.Id, p.Purpose, p.Amount, At = p.CompletedAt!.Value, CommissionRateApplied = o.CommissionRateApplied ?? -1m });
             var refunds = await AsyncExecuter.ToListAsync(
                 from r in await _refundRepo.GetQueryableAsync()
                 join o in orders on r.OrderId equals o.Id
                 where r.Status == RefundRequestStatus.Refunded && r.RefundedAt != null &&
                       r.RefundedAt >= all.From && r.RefundedAt < all.To
-                select new { o.Id, r.Amount, At = r.RefundedAt!.Value, o.CommissionRateApplied });
+                select new { o.Id, r.Amount, At = r.RefundedAt!.Value, CommissionRateApplied = o.CommissionRateApplied ?? -1m });
             var created = await AsyncExecuter.ToListAsync(orders
                 .Where(o => o.CreatedOn >= fromUnix && o.CreatedOn < toUnix).Select(o => o.CreatedOn));
             var cancelled = await AsyncExecuter.ToListAsync(orders
@@ -217,9 +217,9 @@ namespace WashGo.Application.Features.MerchantReportApplication.Services
             decimal Fees(Range r) => pays.Where(x => x.Purpose != PaymentPurpose.Order && In(r, x.At)).Sum(x => x.Amount);
             // Commission follows each order's locked rate; a refund reverses it at the same rate.
             decimal Commission(Range r) =>
-                pays.Where(x => x.Purpose == PaymentPurpose.Order && x.Rate > 0 && In(r, x.At))
+                pays.Where(x => x.Purpose == PaymentPurpose.Order && x.Rate >= 0 && In(r, x.At))
                     .GroupBy(x => x.OrderId).Sum(g => Round(g.Sum(x => x.Amount) * g.First().Rate / 100m)) -
-                refs.Where(x => x.Rate > 0 && In(r, x.At))
+                refs.Where(x => x.Rate >= 0 && In(r, x.At))
                     .GroupBy(x => x.OrderId).Sum(g => Round(g.Sum(x => x.Amount) * g.First().Rate / 100m));
             int Count(IEnumerable<DateTime> times, Range r) => times.Count(t => In(r, t));
 
@@ -270,7 +270,7 @@ namespace WashGo.Application.Features.MerchantReportApplication.Services
                     OrdersCompleted = Kpi(Count(completedAt, current), Count(completedAt, previous)),
                     OrdersCancelled = Kpi(Count(cancelled, current), Count(cancelled, previous)),
                     OnTimeRate = OnTime(),
-                    OrdersWithoutCommissionSnapshot = pays.Where(x => x.Purpose == PaymentPurpose.Order && x.Rate <= 0 && In(current, x.At))
+                    OrdersWithoutCommissionSnapshot = pays.Where(x => x.Purpose == PaymentPurpose.Order && x.Rate < 0 && In(current, x.At))
                         .Select(x => x.OrderId).Distinct().Count()
                 },
                 Definitions = Definitions

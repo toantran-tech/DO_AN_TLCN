@@ -61,6 +61,13 @@ namespace WashGo.HttpApi.Endpoints.Finance
                 .WithSummary("Admin xem mọi kỳ (lọc Merchant/trạng thái); Merchant chỉ xem kỳ của mình.")
                 .WithOpenApi();
 
+            group.MapGet("/settlements/{id:guid}/orders", async (Guid id, IFinanceAppService svc) =>
+                (await svc.GetSettlementBreakdownAsync(id)).CustomResult())
+                .RequireAuthorization("MerchantOrAdmin")
+                .WithName("Chi tiết kỳ đối soát theo đơn")
+                .WithSummary("Từng đơn trong kỳ: tiền thu, hoàn, tỷ lệ hoa hồng chốt trên đơn (null = chưa có snapshot, cần đối chiếu), hoa hồng, thực nhận; kèm số đã chốt của kỳ. Merchant chỉ xem kỳ của mình.")
+                .WithOpenApi();
+
             group.MapPost("/settlements/{id:guid}/confirm-paid", async (Guid id, ConfirmSettlementPaidCommand command, IFinanceAppService svc) =>
                 (await svc.ConfirmSettlementPaidAsync(id, command)).CustomResult())
                 .RequireAuthorization("AdminOnly")

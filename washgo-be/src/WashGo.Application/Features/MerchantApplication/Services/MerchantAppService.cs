@@ -587,142 +587,63 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             var merchantId = CurrentUser.Id;
             if (!merchantId.HasValue)
                 return BadRequest<MerchantRevenueReportDto>("Không xác định được danh tính Merchant.");
-
-            var merchant = await _merchantRepo.FindAsync(merchantId.Value);
-            if (merchant == null)
+            if (await _merchantRepo.FindAsync(merchantId.Value) == null)
                 return NotFound<MerchantRevenueReportDto>("Không tìm thấy thông tin Merchant.");
 
             var (period, fromUtc, toUtc, prevFromUtc, prevToUtc, error) = DateTimePeriodHelper.ResolvePeriod(query.Period, query.FromDate, query.ToDate, "month");
             if (error != null)
                 return BadRequest<MerchantRevenueReportDto>(error);
+            // Same definitions as /merchant-reports: money by transaction/refund date, commission at each order's locked rate.
+            var finance = LazyServiceProvider.LazyGetRequiredService<WashGo.Application.Features.MerchantReportApplication.Services.MerchantFinanceAggregator>();
+            DateTime? Exclusive(DateTime? inclusiveEnd) => inclusiveEnd?.AddTicks(1);
+            var current = await finance.TotalsAsync(merchantId.Value, fromUtc, Exclusive(toUtc));
+            var series = await finance.SeriesAsync(merchantId.Value, fromUtc, Exclusive(toUtc), hourly: false);
+            var orders = (await _orderRepo.GetQueryableAsync()).Where(o => !o.IsDeleted && o.MerchantId == merchantId.Value && o.CancelledAt != null);
+            if (fromUtc.HasValue) orders = orders.Where(o => o.CancelledAt >= fromUtc.Value);
+            if (toUtc.HasValue) orders = orders.Where(o => o.CancelledAt <= toUtc.Value);
+            var cancelled = await AsyncExecuter.CountAsync(orders);
 
-            var ordersQueryable = (await _orderRepo.GetQueryableAsync())
-                .Where(o => !o.IsDeleted && o.MerchantId == merchantId.Value);
-
-            // Fetch candidate orders for current period
-            var currentOrders = await AsyncExecuter.ToListAsync(ordersQueryable);
-
-            // Filter current period
-            var paidOrdersInPeriod = currentOrders.Where(o => o.PaymentStatus == PaymentStatus.Paid).ToList();
-            var cancelledOrdersInPeriod = currentOrders.Where(o => o.Status == WashOrderStatus.Cancelled).ToList();
-
-            if (fromUtc.HasValue && toUtc.HasValue)
-            {
-                paidOrdersInPeriod = paidOrdersInPeriod.Where(o =>
-                {
-                    var dt = o.PaidAt ?? DateTimeOffset.FromUnixTimeSeconds(o.CreatedOn).UtcDateTime;
-                    return dt >= fromUtc.Value && dt <= toUtc.Value;
-                }).ToList();
-
-                cancelledOrdersInPeriod = cancelledOrdersInPeriod.Where(o =>
-                {
-                    var dt = o.CancelledAt ?? DateTimeOffset.FromUnixTimeSeconds(o.CreatedOn).UtcDateTime;
-                    return dt >= fromUtc.Value && dt <= toUtc.Value;
-                }).ToList();
-            }
-
-            decimal totalGross = 0m;
-            decimal totalCommission = 0m;
-            decimal totalRefunded = 0m;
-
-            var dailyMap = new SortedDictionary<DateTime, (decimal Gross, decimal Commission, decimal Payout, int Count)>();
-
-            foreach (var o in paidOrdersInPeriod)
-            {
-                var rate = o.CommissionRateApplied > 0m ? o.CommissionRateApplied : merchant.CommissionRate;
-                var gross = o.FinalAmount;
-                var comm = decimal.Round(gross * rate / 100m, 0, MidpointRounding.AwayFromZero);
-                var payout = Math.Max(0m, gross - comm);
-
-                totalGross += gross;
-                totalCommission += comm;
-                if (o.CancellationRefundAmount > 0)
-                {
-                    totalRefunded += o.CancellationRefundAmount;
-                }
-
-                var paidDt = DateTimePeriodHelper.ToVietnamTime(o.PaidAt ?? DateTimeOffset.FromUnixTimeSeconds(o.CreatedOn).UtcDateTime);
-                var dayKey = paidDt.Date;
-
-                if (dailyMap.TryGetValue(dayKey, out var existingDay))
-                {
-                    dailyMap[dayKey] = (existingDay.Gross + gross, existingDay.Commission + comm, existingDay.Payout + payout, existingDay.Count + 1);
-                }
-                else
-                {
-                    dailyMap[dayKey] = (gross, comm, payout, 1);
-                }
-            }
-
-            decimal totalPayout = Math.Max(0m, totalGross - totalCommission);
-
-            // Calculate growth rate against previous period
-            decimal? prevPayout = null;
-            decimal? growthRate = null;
-
+            decimal? previousPayout = null;
+            decimal? growth = null;
+            var isNew = false;
             if (prevFromUtc.HasValue && prevToUtc.HasValue)
             {
-                var prevPaidOrders = currentOrders.Where(o =>
-                {
-                    if (o.PaymentStatus != PaymentStatus.Paid) return false;
-                    var dt = o.PaidAt ?? DateTimeOffset.FromUnixTimeSeconds(o.CreatedOn).UtcDateTime;
-                    return dt >= prevFromUtc.Value && dt <= prevToUtc.Value;
-                }).ToList();
-
-                decimal pGross = 0m;
-                decimal pComm = 0m;
-                foreach (var po in prevPaidOrders)
-                {
-                    var prate = po.CommissionRateApplied > 0m ? po.CommissionRateApplied : merchant.CommissionRate;
-                    var pg = po.FinalAmount;
-                    var pc = decimal.Round(pg * prate / 100m, 0, MidpointRounding.AwayFromZero);
-                    pGross += pg;
-                    pComm += pc;
-                }
-                var pNet = Math.Max(0m, pGross - pComm);
-                prevPayout = pNet;
-
-                if (pNet > 0)
-                {
-                    growthRate = Math.Round(((totalPayout - pNet) / pNet) * 100m, 1);
-                }
-                else if (totalPayout > 0)
-                {
-                    growthRate = 100m;
-                }
+                var previous = await finance.TotalsAsync(merchantId.Value, prevFromUtc, Exclusive(prevToUtc));
+                previousPayout = previous.Payout;
+                // No baseline: growth is undefined (null + isNewRevenue), never a made-up 100%.
+                if (previous.Payout != 0m)
+                    growth = Math.Round((current.Payout - previous.Payout) / Math.Abs(previous.Payout) * 100m, 1);
+                else if (current.Payout == 0m)
+                    growth = 0m;
                 else
-                {
-                    growthRate = 0m;
-                }
+                    isNew = true;
+                if (!current.CommissionComplete || !previous.CommissionComplete)
+                    growth = null;
             }
 
-            var dailySeries = dailyMap.Select(kv => new MerchantDailyRevenueDto
-            {
-                Date = kv.Key,
-                GrossRevenue = kv.Value.Gross,
-                Commission = kv.Value.Commission,
-                Payout = kv.Value.Payout,
-                OrderCount = kv.Value.Count
-            }).ToList();
-
-            var report = new MerchantRevenueReportDto
+            return Success(new MerchantRevenueReportDto
             {
                 Period = period,
-                FromDate = fromUtc.HasValue ? DateTimePeriodHelper.ToVietnamTime(fromUtc.Value) : null,
-                ToDate = toUtc.HasValue ? DateTimePeriodHelper.ToVietnamTime(toUtc.Value) : null,
-                TotalGrossRevenue = totalGross,
-                TotalCommission = totalCommission,
-                TotalPayoutAmount = totalPayout,
-                RefundedAmount = totalRefunded,
-                PaidOrderCount = paidOrdersInPeriod.Count,
-                CancelledOrderCount = cancelledOrdersInPeriod.Count,
-                PreviousPayoutAmount = prevPayout,
-                GrowthRate = growthRate,
-                DailySeries = dailySeries,
-                GeneratedAt = DateTimePeriodHelper.NowVietnam
-            };
-
-            return Success(report);
+                FromDate = fromUtc,
+                ToDate = toUtc,
+                TotalGrossRevenue = current.Gross,
+                TotalCommission = current.Commission,
+                TotalPayoutAmount = current.Payout,
+                RefundedAmount = current.Refunds,
+                PaidOrderCount = current.PaidOrders,
+                CancelledOrderCount = cancelled,
+                PreviousPayoutAmount = previousPayout,
+                GrowthRate = growth,
+                IsNewRevenue = isNew,
+                CommissionComplete = current.CommissionComplete,
+                OrdersWithoutCommissionSnapshot = current.UncoveredOrders,
+                DailySeries = series.Select(b => new MerchantDailyRevenueDto
+                {
+                    Date = b.LocalStart, GrossRevenue = b.Gross, Commission = b.Commission,
+                    Payout = b.Gross - b.Refunds - b.Commission, OrderCount = b.PaidOrders
+                }).ToList(),
+                GeneratedAt = DateTime.UtcNow
+            });
         }
 
         // UC 2.2.2: Cảnh báo vi phạm SLA (Overdue Attention)
