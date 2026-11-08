@@ -199,7 +199,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             OrderScope scope, bool includeStatus)
         {
             var isStaff = scope.Role is "Merchant" or "Shipper";
-            q = ApplyScope(q, scope);
+            // WashOrder uses the project's own ISoftDelete (no global filter): exclude deleted orders explicitly.
+            q = ApplyScope(q.Where(x => !x.IsDeleted), scope);
             if (includeStatus && query.Status.HasValue)
                 q = q.Where(x => x.Status == query.Status.Value);
             if (query.PaymentStatus.HasValue)
@@ -849,7 +850,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             {
                 return NotFound<WashOrderDetailDto>("Không tìm thấy đơn hàng được phép cập nhật.");
             }
-            var statusRequest = $"status={(int)command.NewStatus}";
+            var statusRequest = OrderWriteGuard.Fingerprint($"status={(int)command.NewStatus}", command.Note);
             if (await GuardAsync(order, scope, command, "UpdateStatus", statusRequest) is { } stop)
                 return stop;
 
@@ -951,7 +952,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             {
                 return NotFound<WashOrderDetailDto>("Không tìm thấy đơn hàng được phép phân công.");
             }
-            var assignRequest = $"shipperId={command.ShipperId}";
+            var assignRequest = OrderWriteGuard.Fingerprint($"shipperId={command.ShipperId}",
+                string.IsNullOrWhiteSpace(command.Note) ? null : command.Note.Trim());
             if (await GuardAsync(order, scope, command, "AssignShipper", assignRequest) is { } stop)
                 return stop;
 
