@@ -15,6 +15,9 @@ namespace WashGo.Domain.Entities.Feedback
         public const int ReportWindowDays = 3;
 
         public Guid OrderId { get; set; }
+        public long Revision { get; set; }
+        public int? CompensationPercentApplied { get; set; }
+        public string? CompensationSettingsVersion { get; set; }
         public string OrderCode { get; set; } = string.Empty;
         public Guid CustomerId { get; set; }
         public string CustomerName { get; set; } = string.Empty;

@@ -36,6 +36,7 @@ namespace WashGo.HttpApi
         {
             context.Services.AddTransient<IEndpointBase, AuthHandler>();
             context.Services.AddTransient<IEndpointBase, WashGo.HttpApi.Endpoints.Audit.AuditLogHandler>();
+            context.Services.AddTransient<IEndpointBase, WashGo.HttpApi.Endpoints.Audit.AdministrativeOperationHandler>();
             context.Services.AddTransient<IEndpointBase, WashGo.HttpApi.Endpoints.Auth.AccountSecurityHandler>();
             context.Services.AddTransient<IEndpointBase, WashGo.HttpApi.Endpoints.Admin.AdminProfileHandler>();
             context.Services.AddTransient<IEndpointBase, WashGo.HttpApi.Endpoints.Admin.AdminDashboardHandler>();

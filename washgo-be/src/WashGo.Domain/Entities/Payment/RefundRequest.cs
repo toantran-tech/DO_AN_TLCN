@@ -12,6 +12,10 @@ namespace WashGo.Domain.Entities.Payment
     {
         public Guid OrderId { get; set; }
         public Guid CustomerId { get; set; }
+        public Guid? OriginalPaymentTransactionId { get; set; }
+        public Guid? MerchantIdSnapshot { get; set; }
+        public decimal? CommissionRateSnapshot { get; set; }
+        public string? FinancialSnapshotBasis { get; set; }
         public decimal Amount { get; set; }
         public string Reason { get; set; } = string.Empty;
         public RefundRequestStatus Status { get; set; } = RefundRequestStatus.Pending;

@@ -8,6 +8,7 @@ namespace WashGo.Domain.Entities.Locker.Interfaces
     public interface ILockerRepository : IMesRepository<Locker, Guid>
     {
         Task<Locker?> GetWithBoxesAsync(Guid id);
+        Task LockAsync(Guid id);
         Task<bool> TryReserveBoxAsync(Guid lockerId, Guid boxId);
         Task<bool> TryReleaseReservedBoxAsync(Guid lockerId, Guid boxId);
         Task<bool> TryReleaseOccupiedBoxAsync(Guid lockerId, Guid boxId);

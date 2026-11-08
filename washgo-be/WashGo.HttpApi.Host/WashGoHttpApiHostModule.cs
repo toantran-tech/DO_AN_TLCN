@@ -166,6 +166,7 @@ namespace WashGo.HttpApi.Host
 
             context.Services.AddSignalR();
             context.Services.AddHostedService<ReminderWorker>();
+            context.Services.AddHostedService<PrivateDocumentCleanupWorker>();
             context.Services.AddEndpointsApiExplorer();
             context.Services.AddSwaggerGen(options =>
             {
@@ -222,6 +223,20 @@ namespace WashGo.HttpApi.Host
                 ServeUnknownFileTypes = false
             });
             app.UseRouting();
+            app.Use(async (http, next) =>
+            {
+                try { await next(http); }
+                catch (WashGo.Domain.Shared.Validation.FinancialReportLimitException) when (!http.Response.HasStarted)
+                {
+                    http.Response.StatusCode = 413;
+                    await http.Response.WriteAsJsonAsync(new { succeeded = false, statusCode = 413, message = "Báo cáo vượt giới hạn xử lý trực tiếp. Vui lòng thu hẹp khoảng ngày hoặc chọn một Merchant.", meta = new { code = "ReportTooLarge", maxRowsPerSource = WashGo.Domain.Shared.Validation.FinancialReportLimitException.MaximumSourceRows } });
+                }
+                catch (WashGo.Domain.Shared.Validation.UploadAttachmentExpiredException) when (!http.Response.HasStarted)
+                {
+                    http.Response.StatusCode = 400;
+                    await http.Response.WriteAsJsonAsync(new { succeeded = false, statusCode = 400, message = "Ảnh/video bản nháp đã hết hạn; vui lòng upload lại.", meta = new { code = "UploadExpired" } });
+                }
+            });
             app.UseRateLimiter();
             app.UseCors();
 

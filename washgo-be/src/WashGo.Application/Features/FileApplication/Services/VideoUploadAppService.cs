@@ -53,6 +53,8 @@ namespace WashGo.Application.Features.FileApplication.Services
                     File.Delete(path);
                     return BadRequest<UploadedImageDto>(SizeMessage);
                 }
+                await output.FlushAsync();
+                await LazyServiceProvider.LazyGetRequiredService<UploadedAssetRegistry>().RegisterAsync(CurrentUser.Id!.Value, fileName);
                 return Created(new UploadedImageDto
                 {
                     Url = $"{UploadStorage.RequestPath}/{owner}/{fileName}",

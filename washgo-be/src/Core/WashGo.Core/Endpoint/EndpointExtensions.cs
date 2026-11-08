@@ -15,6 +15,7 @@ namespace WashGo.Core.Endpoint
                 HttpStatusCode.NotFound => Results.NotFound(response),
                 HttpStatusCode.Conflict => Results.Conflict(response),
                 HttpStatusCode.Unauthorized => Results.Unauthorized(),
+                HttpStatusCode.Forbidden => Results.Json(response, statusCode: 403),
                 HttpStatusCode.TooManyRequests => Results.Json(response, statusCode: 429),
                 _ => Results.BadRequest(response)
             };
@@ -23,6 +24,9 @@ namespace WashGo.Core.Endpoint
             response.StatusCode switch
             {
                 HttpStatusCode.OK => Results.Ok(response),
+                HttpStatusCode.NotFound => Results.NotFound(response),
+                HttpStatusCode.Forbidden => Results.Json(response, statusCode: 403),
+                HttpStatusCode.Conflict => Results.Conflict(response),
                 _ => Results.BadRequest(response)
             };
     }

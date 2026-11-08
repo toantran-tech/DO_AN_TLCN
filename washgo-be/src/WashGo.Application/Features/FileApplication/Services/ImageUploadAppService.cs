@@ -50,6 +50,8 @@ namespace WashGo.Application.Features.FileApplication.Services
                     File.Delete(path);
                     return BadRequest<UploadedImageDto>("Ảnh phải có dung lượng từ 1 byte đến 5MB.");
                 }
+                await output.FlushAsync();
+                await LazyServiceProvider.LazyGetRequiredService<UploadedAssetRegistry>().RegisterAsync(CurrentUser.Id.Value, fileName);
                 return Created(new UploadedImageDto
                 {
                     Url = $"{UploadStorage.RequestPath}/{owner}/{fileName}",

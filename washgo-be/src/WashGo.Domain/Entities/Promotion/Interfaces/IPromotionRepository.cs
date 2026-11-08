@@ -9,5 +9,6 @@ namespace WashGo.Domain.Entities.Promotion.Interfaces
         /// <summary>Tăng lượt dùng bằng một UPDATE có điều kiện; giữ khóa dòng đến hết transaction.</summary>
         Task<bool> TryConsumeAsync(Guid promotionId, DateTime now);
         Task<bool> TryReleaseAsync(Guid promotionId);
+        Task<Promotion?> GetForUpdateAsync(Guid promotionId);
     }
 }

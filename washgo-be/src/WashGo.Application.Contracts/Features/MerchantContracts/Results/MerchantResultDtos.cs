@@ -9,6 +9,10 @@ namespace WashGo.Application.Contracts.Features.MerchantContracts.Results
 {
     public class MerchantResultDto
     {
+        public Guid? BusinessLicenseDocumentId { get; set; }
+        public Guid? ContractDocumentId { get; set; }
+        public Guid? SlaDocumentId { get; set; }
+        public List<WashGo.Application.Contracts.Features.FileContracts.Results.PrivateDocumentDto> Documents { get; set; } = [];
         public Guid Id { get; set; }
         public string Version { get; set; } = string.Empty;
         /// <summary>Sent = SMTP đã chấp nhận, không bảo đảm đã vào inbox. Unknown có thể đang gửi hoặc chưa xác định.</summary>
@@ -29,6 +33,9 @@ namespace WashGo.Application.Contracts.Features.MerchantContracts.Results
         public MerchantStatus Status { get; set; }
         public string? RejectionReason { get; set; }
         public decimal Rating { get; set; }
+        public int PublicRatingCount { get; set; }
+        public string TotalRevenueBasis => "Sum of FinalAmount of orders currently Paid; face value, not net receipts, profit or Merchant payout.";
+        public string ContractDateBasis => "UTC timestamp; display calendar dates in Asia/Ho_Chi_Minh.";
         public int TotalOrders { get; set; }
         public decimal TotalRevenue { get; set; }
         public decimal DepositAmount { get; set; }

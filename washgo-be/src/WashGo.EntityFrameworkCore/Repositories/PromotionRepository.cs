@@ -31,6 +31,14 @@ namespace WashGo.EntityFrameworkCore.Repositories
                 .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.UsedCount, x => x.UsedCount + 1)) == 1;
         }
 
+        public async Task<Promotion?> GetForUpdateAsync(Guid promotionId)
+        {
+            var db = await GetDbContextAsync();
+            var entity = await db.Promotions.FromSqlInterpolated($"SELECT * FROM washgo.promotions WHERE id={promotionId} FOR UPDATE").FirstOrDefaultAsync();
+            if (entity != null) await db.Entry(entity).ReloadAsync();
+            return entity;
+        }
+
         public async Task<bool> TryReleaseAsync(Guid promotionId)
         {
             var db = await GetDbContextAsync();
