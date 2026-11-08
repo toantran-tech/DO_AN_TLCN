@@ -15,10 +15,13 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Services
         Task<PaginatedResult<WashOrderResultDto>> GetMyOrdersAsync(WashOrderFilterQuery query);
         Task<BaseResponse<WashOrderSummaryDto>> GetSummaryAsync(WashOrderFilterQuery query);
         Task<BaseResponse<WashOrderDetailDto>> GetByIdAsync(Guid id);
+        Task<BaseResponse<OrderAccessCodesDto>> GetAccessCodesAsync(Guid id);
         Task<BaseResponse<WashOrderDetailDto>> CreateAsync(CreateWashOrderCommand command);
         Task<BaseResponse<VoucherQuoteDto>> ApplyVoucherAsync(ApplyVoucherCommand command);
         Task<BaseResponse<WashOrderDetailDto>> CancelAsync(Guid orderId, CancelWashOrderCommand command);
         Task<BaseResponse<CancellationQuoteDto>> GetCancellationQuoteAsync(Guid orderId);
+        Task<BaseResponse<AdminCancellationQuoteDto>> GetAdminCancellationQuoteAsync(Guid orderId);
+        Task<BaseResponse<WashOrderDetailDto>> CancelExpiredDepositAsync(Guid orderId, AdminCancelExpiredDepositCommand command);
         Task<BaseResponse<WashOrderDetailDto>> UpdateStatusAsync(UpdateWashOrderStatusCommand command);
         Task<BaseResponse<WashOrderDetailDto>> UpdateActualWeightAsync(Guid orderId, UpdateActualWeightCommand command);
         Task<BaseResponse<WashOrderDetailDto>> MoveToStorageAsync(MoveOrderToStorageCommand command);

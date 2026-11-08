@@ -17,5 +17,6 @@ namespace WashGo.Application.Contracts.Features.OrderAssignmentContracts.Service
         Task<BaseResponse<AssignmentResultDto>> AssignAsync(Guid orderId, AssignOrderCommand command);
         Task<BaseResponse<List<AutoSuggestionDto>>> SuggestAsync(AutoSuggestCommand command);
         Task<BaseResponse<List<AssignmentResultDto>>> AutoAssignAsync(AutoAssignCommand command);
+        Task<BaseResponse<AssignmentOperationDto>> GetOperationAsync(Guid operationId);
     }
 }

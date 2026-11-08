@@ -1,3 +1,4 @@
+using WashGo.Application.Features.AuditApplication.Services;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -55,6 +56,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
         private readonly LockerMerchantResolver _lockerMerchants;
         private readonly OrderWriteGuard _writeGuard;
         private readonly DeliveryTaskRecorder _taskRecorder;
+        private readonly OrderMediaEnricher _media;
+        private readonly IRepository<WashOrderTimeline, Guid> _timelineRepo;
 
         public WashOrderAppService(
             IWashOrderRepository orderRepo,
@@ -75,7 +78,9 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             EtaPredictor eta,
             LockerMerchantResolver lockerMerchants,
             OrderWriteGuard writeGuard,
-            DeliveryTaskRecorder taskRecorder)
+            DeliveryTaskRecorder taskRecorder,
+            OrderMediaEnricher media,
+            IRepository<WashOrderTimeline, Guid> timelineRepo)
         {
             _orderRepo = orderRepo;
             _lockerRepo = lockerRepo;
@@ -96,6 +101,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             _lockerMerchants = lockerMerchants;
             _writeGuard = writeGuard;
             _taskRecorder = taskRecorder;
+            _media = media;
+            _timelineRepo = timelineRepo;
         }
 
         private readonly record struct OrderScope(string Role, Guid Id);
@@ -136,7 +143,16 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
 
         private static T RedactStaffData<T>(T dto, OrderScope scope) where T : WashOrderResultDto
         {
-            if (scope.Role == "Customer")
+            if (scope.Role == "Admin")
+            {
+                // Admin screens do not need locker/task codes; support reads them via GET /wash-order/{id}/access-codes.
+                dto.DepositPinCode = string.Empty;
+                dto.PickupPinCode = string.Empty;
+                dto.QrCodeString = string.Empty;
+                dto.ShipperTaskPinCode = null;
+                dto.ShipperTaskQrString = null;
+            }
+            else if (scope.Role == "Customer")
             {
                 // Customer cannot see Shipper task codes
                 dto.ShipperTaskPinCode = null;
@@ -199,7 +215,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             OrderScope scope, bool includeStatus)
         {
             var isStaff = scope.Role is "Merchant" or "Shipper";
-            q = ApplyScope(q, scope);
+            // WashOrder uses the project's own ISoftDelete (no global filter): exclude deleted orders explicitly.
+            q = ApplyScope(q.Where(x => !x.IsDeleted), scope);
             if (includeStatus && query.Status.HasValue)
                 q = q.Where(x => x.Status == query.Status.Value);
             if (query.PaymentStatus.HasValue)
@@ -216,6 +233,18 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 q = q.Where(x => x.AssignedTaskType == query.TaskType.Value);
             if (query.PendingOnly == true)
                 q = DeliveryTaskRules.ActiveDeliveries(q);
+            if (!string.IsNullOrWhiteSpace(query.OverdueType))
+            {
+                var now = DateTime.UtcNow;
+                q = query.OverdueType.Trim().ToLowerInvariant() switch
+                {
+                    "depositexpired" => q.Where(x => x.Status == WashOrderStatus.Pending && x.DepositDeadline != null && x.DepositDeadline < now),
+                    "paymentoverdue" => q.Where(x => x.Status == WashOrderStatus.AwaitingPayment && x.PaymentStatus == PaymentStatus.Unpaid &&
+                                                     x.PaymentDeadline != null && x.PaymentDeadline < now),
+                    "pickupoverdue" => q.Where(x => x.Status == WashOrderStatus.ReadyToReturn && x.PickupDeadline != null && x.PickupDeadline < now),
+                    _ => q.Where(x => false)
+                };
+            }
             if (!string.IsNullOrWhiteSpace(query.Keyword))
             {
                 var kw = query.Keyword.Trim().ToLower();
@@ -254,6 +283,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
 
             var list = data.Select(x => RedactStaffData(x, scope)).ToList();
             await _enricher.FillAsync(list, scope.Role);
+            await _media.FillAsync(list, scope.Role);
+            await LazyServiceProvider.LazyGetRequiredService<OrderFinanceEnricher>().FillAsync(list, scope.Role);
             return Success(list, total, query.Page, query.Take, total > 0 ? null : scope.Role switch
             {
                 "Shipper" => "Bạn chưa có đơn hàng nào được phân công.",
@@ -329,7 +360,34 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             if (scope.Role is "Shipper" or "Merchant" or "Admin")
                 await _enricher.FillTaskAsync(dto);
             dto.AllowedActions = OrderActionRules.Build(order, scope.Role);
+            await _media.FillAsync([dto], scope.Role);
+            await LazyServiceProvider.LazyGetRequiredService<OrderFinanceEnricher>().FillAsync([dto], scope.Role);
             return Success(RedactStaffData(dto, scope));
+        }
+
+        public async Task<BaseResponse<OrderAccessCodesDto>> GetAccessCodesAsync(Guid id)
+        {
+            var scope = await GetOrderScopeAsync();
+            var order = await _orderRepo.FindAsync(id);
+            if (order == null || order.IsDeleted || scope.Role != "Admin")
+                return NotFound<OrderAccessCodesDto>("Không tìm thấy đơn hàng!");
+            // Every reveal is recorded on the order history (who and when, never the codes themselves).
+            await _timelineRepo.InsertAsync(new WashOrderTimeline
+            {
+                WashOrderId = order.Id, FromStatus = order.Status, Status = order.Status,
+                ActorId = CurrentUser.Id, ActorName = CurrentUser.UserName ?? "Admin", ActorRole = "Admin",
+                Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                Note = "Admin xem mã mở tủ/mã nhiệm vụ để hỗ trợ."
+            }, autoSave: true);
+            await Audit.LogAsync(new AuditEntry("Order", "RevealAccessCodes", "Order", order.Id.ToString(), order.OrderCode));
+            return Success(new OrderAccessCodesDto
+            {
+                OrderId = order.Id, OrderCode = order.OrderCode,
+                DepositPinCode = order.DepositPinCode, QrCodeString = order.QrCodeString,
+                PickupPinCode = order.PickupPinCode,
+                PickupQrCodeString = string.IsNullOrEmpty(order.PickupPinCode) ? null : $"WASHGO:PICKUP:{order.OrderCode}:{order.PickupPinCode}",
+                ShipperTaskPinCode = order.ShipperTaskPinCode, ShipperTaskQrString = order.ShipperTaskQrString
+            });
         }
 
         private sealed record PricedOrder(List<WashOrderItem> Items, decimal Total, bool HasWeightService, int BaseProcessingHours);
@@ -680,6 +738,134 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             }, "Báo phí chỉ là ước tính tại thời điểm xem; hệ thống tính lại khi xác nhận hủy.");
         }
 
+        public async Task<BaseResponse<AdminCancellationQuoteDto>> GetAdminCancellationQuoteAsync(Guid orderId)
+        {
+            var scope = await GetOrderScopeAsync();
+            var order = await _orderRepo.FindAsync(orderId);
+            if (scope.Role != "Admin" || order == null || order.IsDeleted)
+                return NotFound<AdminCancellationQuoteDto>("Không tìm thấy đơn hàng!");
+            return Success(await AdminQuoteAsync(order, scope, DateTime.UtcNow),
+                "Báo phí chỉ là ước tính tại thời điểm xem; hệ thống tính lại và đối chiếu khi xác nhận hủy.");
+        }
+
+        private async Task<AdminCancellationQuoteDto> AdminQuoteAsync(WashOrder order, OrderScope scope, DateTime now)
+        {
+            var settings = await _settings.GetAsync();
+            var block = OrderActionRules.CancelExpiredDeposit(order, scope.Role, now);
+            var allowed = OrderCancellationPolicy.TryCalculate(order, now, settings, out var basis, out var percent, out var fee);
+            var paid = await GetVerifiedPaidAmountAsync(order);
+            if (block == null && !allowed)
+                block = new OrderActionRules.Block("NotPending", "Đơn không đủ điều kiện hủy.");
+            if (block == null && order.PaymentStatus == PaymentStatus.Paid && paid <= 0m)
+                block = new OrderActionRules.Block("NoVerifiedPayment", "Không có giao dịch thanh toán gốc hợp lệ để đối chiếu hoàn tiền.");
+            if (block == null && await _refunds.AnyAsync(x => x.OrderId == order.Id && x.Status != RefundRequestStatus.Rejected))
+                block = new OrderActionRules.Block("RefundInProgress", "Đơn đã có yêu cầu hoàn tiền; vui lòng xử lý yêu cầu đó trước.");
+            return new AdminCancellationQuoteDto
+            {
+                OrderId = order.Id, Status = order.Status, Revision = order.Revision,
+                CanCancel = block == null, ReasonCode = block?.Code, Reason = block?.Message,
+                DepositDeadline = OrderDepositRules.DeadlineOf(order, settings.DepositWindowMinutes), ServerNow = now,
+                BasisAmount = basis, FeePercent = percent, FeeAmount = fee, PaidAmount = paid,
+                RefundAmount = Math.Max(0m, paid - fee), FeeOutstanding = Math.Max(0m, fee - paid)
+            };
+        }
+
+        public async Task<BaseResponse<WashOrderDetailDto>> CancelExpiredDepositAsync(Guid orderId, AdminCancelExpiredDepositCommand command)
+        {
+            var scope = await GetOrderScopeAsync();
+            if (scope.Role != "Admin")
+                return NotFound<WashOrderDetailDto>("Không tìm thấy đơn hàng!");
+            var reason = command.Reason?.Trim();
+            if (string.IsNullOrWhiteSpace(reason) || reason.Length > 500)
+                return BadRequest<WashOrderDetailDto>("Lý do hủy phải có từ 1 đến 500 ký tự.");
+
+            // Same row lock as the deposit flow: either the customer deposits or the Admin cancels, never both.
+            using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            await _orderRepo.GetForUpdateAsync(orderId);
+            var order = await _orderRepo.GetWithDetailsAsync(orderId);
+            if (order == null || order.IsDeleted)
+                return NotFound<WashOrderDetailDto>("Không tìm thấy đơn hàng!");
+            var request = OrderWriteGuard.Fingerprint(
+                $"cancelExpiredDeposit;fee={command.ExpectedFeeAmount?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "-"}", reason);
+            if (await GuardAsync(order, scope, command, "CancelExpiredDeposit", request) is { } stop)
+                return stop;
+            var now = DateTime.UtcNow;
+            var quote = await AdminQuoteAsync(order, scope, now);
+            if (!quote.CanCancel)
+                return new BaseResponse<WashOrderDetailDto>
+                {
+                    Succeeded = false, StatusCode = System.Net.HttpStatusCode.BadRequest, Message = quote.Reason,
+                    Meta = new { code = quote.ReasonCode }
+                };
+            if (command.ExpectedFeeAmount.HasValue && command.ExpectedFeeAmount.Value != quote.FeeAmount)
+                return new BaseResponse<WashOrderDetailDto>
+                {
+                    Succeeded = false, StatusCode = System.Net.HttpStatusCode.Conflict, Data = MapForAdmin(order, scope),
+                    Message = $"Phí hủy đã thay đổi ({command.ExpectedFeeAmount:N0}đ → {quote.FeeAmount:N0}đ); vui lòng xem lại trước khi xác nhận.",
+                    Meta = new { code = "QuoteChanged", feeAmount = quote.FeeAmount }
+                };
+            // Release only the box still reserved for this pending order; anything else is a conflict and rolls back.
+            if (!await _lockerRepo.TryReleaseReservedBoxAsync(order.LockerId, order.BoxId))
+            {
+                await uow.RollbackAsync();
+                return new BaseResponse<WashOrderDetailDto>
+                {
+                    Succeeded = false, StatusCode = System.Net.HttpStatusCode.Conflict,
+                    Message = "Ô tủ không còn được giữ chỗ cho đơn này; chưa hủy đơn.", Meta = new { code = "BoxNotReserved" }
+                };
+            }
+
+            order.CancelledGoodsStatus = CancelledGoodsStatus.None;
+            order.Status = WashOrderStatus.Cancelled;
+            order.CancellationFromStatus = WashOrderStatus.Pending;
+            order.CancelledAt = now;
+            order.CancelledBy = CurrentUser.Id;
+            order.CancelledByType = OrderActorType.Admin;
+            order.CancellationReason = reason;
+            order.CancelFeeAmount = quote.FeeAmount;
+            order.CancelFeePaidAmount = Math.Min(quote.FeeAmount, quote.PaidAmount);
+            order.CancellationRefundAmount = quote.RefundAmount;
+            if (order.CancellationRefundAmount > 0m)
+            {
+                await _refunds.InsertAsync(new RefundRequest
+                {
+                    OrderId = order.Id, CustomerId = order.CustomerId, Amount = order.CancellationRefundAmount,
+                    Reason = $"Hoàn tiền sau khi Admin hủy đơn quá hạn gửi đồ; phí {quote.FeePercent}%. {reason}",
+                    Status = RefundRequestStatus.Pending
+                }, autoSave: true);
+                await _notifications.RefundRequestedAsync(order, order.CancellationRefundAmount);
+            }
+            var usage = order.PromotionId.HasValue
+                ? await _promotionUsageRepo.FirstOrDefaultAsync(x => x.OrderId == order.Id && !x.IsReverted)
+                : null;
+            if (usage != null)
+            {
+                usage.IsReverted = true;
+                usage.RevertedAt = now;
+                await _promotionUsageRepo.UpdateAsync(usage, autoSave: true);
+                await _promotionRepo.TryReleaseAsync(usage.PromotionId);
+            }
+            order.Timeline.Add(new WashOrderTimeline
+            {
+                WashOrderId = order.Id, FromStatus = WashOrderStatus.Pending, Status = WashOrderStatus.Cancelled,
+                ActorId = CurrentUser.Id, ActorName = CurrentUser.UserName ?? "Admin", ActorRole = "Admin",
+                Timestamp = new DateTimeOffset(now).ToUnixTimeSeconds(),
+                Note = $"Admin hủy do quá hạn gửi đồ; phí {quote.FeePercent}% = {quote.FeeAmount:N0}đ; lý do: {reason}."
+            });
+            await _orderRepo.UpdateAsync(order, autoSave: true);
+            await _writeGuard.RecordAsync(order, CurrentUser.Id!.Value, command, "CancelExpiredDeposit", request);
+            await _notifications.CancelledAsync(order, null);
+            await uow.CompleteAsync();
+            return Success(MapForAdmin(order, scope), "Đã hủy đơn quá hạn gửi đồ và giải phóng ô tủ.");
+        }
+
+        private WashOrderDetailDto MapForAdmin(WashOrder order, OrderScope scope)
+        {
+            var dto = RedactStaffData(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), scope);
+            dto.AllowedActions = OrderActionRules.Build(order, scope.Role);
+            return dto;
+        }
+
         public async Task<BaseResponse<WashOrderDetailDto>> CancelAsync(Guid orderId, CancelWashOrderCommand command)
         {
             var scope = await GetOrderScopeAsync();
@@ -849,7 +1035,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             {
                 return NotFound<WashOrderDetailDto>("Không tìm thấy đơn hàng được phép cập nhật.");
             }
-            var statusRequest = $"status={(int)command.NewStatus}";
+            var statusRequest = OrderWriteGuard.Fingerprint($"status={(int)command.NewStatus}", command.Note);
             if (await GuardAsync(order, scope, command, "UpdateStatus", statusRequest) is { } stop)
                 return stop;
 
@@ -898,14 +1084,14 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             var order = await _orderRepo.GetWithDetailsAsync(command.OrderId);
             if (order == null || !CanAccess(order, scope) || scope.Role is not ("Shipper" or "Admin"))
                 return NotFound<WashOrderDetailDto>("Không tìm thấy đơn hàng được phép chuyển kho.");
-            if (order.Status != WashOrderStatus.ReadyToReturn)
-                return BadRequest<WashOrderDetailDto>("Chỉ chuyển kho cho đồ đang nằm tại locker trả.");
-            if (order.MovedToStorageAt.HasValue)
-                return BadRequest<WashOrderDetailDto>("Đơn hàng đã được ghi nhận chuyển kho trước đó.");
+            var storageRequest = OrderWriteGuard.Fingerprint("moveToStorage",
+                $"{command.StorageLocation.Trim()}|{command.StorageReference.Trim()}|{command.Note?.Trim()}");
+            if (await GuardAsync(order, scope, command, "MoveToStorage", storageRequest) is { } stop)
+                return stop;
 
             var now = DateTime.UtcNow;
-            if (!OverdueFeeCalculator.IsTransferToStorageDue(order.PickupDeadline, now))
-                return BadRequest<WashOrderDetailDto>("Chỉ chuyển kho khi đã quá 72 giờ kể từ hạn nhận đồ.");
+            if (OrderActionRules.MoveToStorage(order, scope.Role, now) is { } blocked)
+                return BadRequest<WashOrderDetailDto>(blocked.Message);
 
             var previousStatus = order.Status;
             if (!await _orderRepo.TryChangeStatusAsync(order.Id, WashOrderStatus.ReadyToReturn,
@@ -936,6 +1122,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             });
 
             await _orderRepo.UpdateAsync(order, autoSave: true);
+            await _writeGuard.RecordAsync(order, CurrentUser.Id!.Value, command, "MoveToStorage", storageRequest);
             await _notifications.MovedToStorageAsync(order);
             await uow.CompleteAsync();
             return Success(RedactStaffData(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), scope), "Đã ghi nhận chuyển đồ sang kho và giải phóng ô locker.");
@@ -951,7 +1138,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             {
                 return NotFound<WashOrderDetailDto>("Không tìm thấy đơn hàng được phép phân công.");
             }
-            var assignRequest = $"shipperId={command.ShipperId}";
+            var assignRequest = OrderWriteGuard.Fingerprint($"shipperId={command.ShipperId}",
+                string.IsNullOrWhiteSpace(command.Note) ? null : command.Note.Trim());
             if (await GuardAsync(order, scope, command, "AssignShipper", assignRequest) is { } stop)
                 return stop;
 
@@ -1096,7 +1284,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                              orderby user.FullName, shipper.Id
                              select new AvailableShipperDto
                              {
-                                 Id = shipper.Id, FullName = user.FullName, AvatarUrl = user.Avatar, Phone = user.Phone,
+                                 Id = shipper.Id, FullName = user.FullName, AvatarUrl = user.Avatar, Phone = user.Phone, Email = user.Email,
                                  VehicleType = shipper.VehicleType, VehiclePlate = shipper.VehiclePlate,
                                  Rating = shipper.Rating, ActiveDeliveryCount = activeOrders.Count(x => x.ShipperId == shipper.Id),
                                  TaskType = task.Value

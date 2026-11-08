@@ -58,6 +58,8 @@ function Assign-Order($Id, $MerchantId, $AdminToken) {
 }
 function Invoke-TestDelivery($Id, $Action, $Token) {
     $view=(Call-Api Get "/wash-order/$Id" $null $Token).data
+    # Admin list/detail no longer carry locker/task codes; support reads them from the audited access-codes endpoint.
+    if ($admin -and $Token -eq $admin) { $view=(Call-Api Get "/wash-order/$Id/access-codes" $null $Token).data }
     switch($Action){
         'deposit' {
             Call-Api Post "/wash-order/$Id/deposit" @{pinCode=$view.depositPinCode} $Token

@@ -1,3 +1,4 @@
+using WashGo.Application.Features.AuditApplication.Services;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -703,6 +704,10 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             var message = command.Approve
                 ? "Yêu cầu được duyệt. Admin cần hoàn tiền ngoài hệ thống rồi xác nhận mã tham chiếu."
                 : "Yêu cầu hoàn tiền đã bị từ chối.";
+            await Audit.LogAsync(new AuditEntry("Refund", command.Approve ? "ApproveRefund" : "RejectRefund", "RefundRequest", request.Id.ToString(), null)
+            {
+                Reason = request.ReviewNote, Details = new { orderId = request.OrderId, request.Amount }
+            });
             return Success(ToDto(request), message);
         }
 
@@ -747,6 +752,10 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             request.RefundedAt = DateTime.UtcNow;
             await _refundRequestRepo.UpdateAsync(request, autoSave: true);
             await uow.CompleteAsync();
+            await Audit.LogAsync(new AuditEntry("Refund", "ConfirmRefunded", "RefundRequest", request.Id.ToString(), order.OrderCode)
+            {
+                Details = new { orderId = order.Id, request.Amount, refundReference = request.RefundReference }
+            });
             return Success(ToDto(request), "Đã ghi nhận Admin xác nhận hoàn tiền.");
         }
 

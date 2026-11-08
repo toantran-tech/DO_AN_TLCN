@@ -10,5 +10,7 @@ namespace WashGo.Domain.Entities.WashOrder.Interfaces
         Task<WashOrder?> GetWithDetailsAsync(Guid id);
         Task<bool> TryChangeStatusAsync(Guid id, WashOrderStatus expected, WashOrderStatus next);
         Task<WashOrder?> GetForUpdateAsync(Guid id);
+        /// <summary>pg_advisory_xact_lock theo khóa chuỗi, giữ tới hết transaction hiện tại.</summary>
+        Task AcquireLockAsync(string key);
     }
 }

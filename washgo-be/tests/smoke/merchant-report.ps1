@@ -80,6 +80,11 @@ try {
     Assert-Status 403 Get '/merchant-reports/overview?period=today' $null $customer
     Assert-Status 403 Get '/merchant-reports/overview?period=today' $null $admin
 
+    Write-Output '4b. Lifetime totals and commission coverage'
+    $life=(Call-Api Get '/merchant-reports/lifetime' $null $team).data
+    if($life.grossLaundryRevenue -ne $final -or $life.commission -ne $comm -or $life.merchantPayout -ne ($final-$comm) -or !$life.commissionComplete -or $life.paidOrderCount -ne 2){throw "Lifetime wrong: $($life | ConvertTo-Json -Compress)"}
+    if(!$k.commissionCoverage.currentComplete -or !$k.commissionCoverage.previousComplete -or $k.commission.isEstimated){throw 'Coverage wrong for a fully locked Merchant.'}
+
     Write-Output '5. CSV export'
     $f=Invoke-WebRequest -UseBasicParsing -Uri "$BaseUrl/merchant-reports/export?period=today" -Headers @{Authorization="Bearer $team"}
     $bytes=$f.RawContentStream.ToArray()

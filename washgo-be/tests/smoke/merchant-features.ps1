@@ -31,7 +31,12 @@ try {
     $orderList = if ($ordersRes.list) { $ordersRes.list } else { @() }
     if ($orderList.Count -eq 0) { throw "No orders found for merchant" }
     foreach ($ord in $orderList) {
-        if ($null -eq $ord.commissionRateApplied -or $null -eq $ord.commissionBaseAmount -or $null -eq $ord.commissionAmount -or $null -eq $ord.merchantNetAmount) {
+        # Orders without a locked rate (old data) report Missing with null amounts instead of a guessed rate.
+        if ($ord.commissionStatus -eq 'Missing') {
+            if ($null -ne $ord.commissionRateApplied -or $null -ne $ord.commissionAmount -or $null -ne $ord.merchantNetAmount) { throw "Order $($ord.orderCode) Missing but has amounts" }
+            continue
+        }
+        if ($ord.commissionStatus -ne 'Locked' -or $null -eq $ord.commissionRateApplied -or $null -eq $ord.commissionBaseAmount -or $null -eq $ord.commissionAmount -or $null -eq $ord.merchantNetAmount) {
             throw "Order $($ord.orderCode) missing commission fields"
         }
         $expectedNet = [Math]::Max(0, $ord.commissionBaseAmount - $ord.commissionAmount)
@@ -39,7 +44,7 @@ try {
             throw "Net amount formula mismatch for order $($ord.orderCode): $expectedNet vs $($ord.merchantNetAmount)"
         }
     }
-    Write-Output "  Phase 2 PASS: All $($orderList.Count) orders have commission snapshot and Net = Base - Commission."
+    Write-Output "  Phase 2 PASS: $($orderList.Count) orders: locked ones have Net = Base - Commission, missing snapshots report null."
 
     Write-Output "`n==> STEP 4: Phase 3 - Merchant Dashboard (GET /merchant/dashboard)"
     Assert-Status 401 Get '/merchant/dashboard' $null $null
@@ -89,7 +94,8 @@ try {
     if ($repMonth.period -ne 'month' -or $null -eq $repMonth.totalGrossRevenue -or $null -eq $repMonth.totalCommission -or $null -eq $repMonth.totalPayoutAmount) {
         throw "Revenue report month missing required fields"
     }
-    $expectedPayoutMonth = [Math]::Max(0, $repMonth.totalGrossRevenue - $repMonth.totalCommission)
+    # Payout = laundry collected - refunds - commission at each order's locked rate.
+    $expectedPayoutMonth = $repMonth.totalGrossRevenue - $repMonth.refundedAmount - $repMonth.totalCommission
     if ([Math]::Abs($repMonth.totalPayoutAmount - $expectedPayoutMonth) -gt 0.01) {
         throw "Payout amount mismatch on revenue report: $expectedPayoutMonth vs $($repMonth.totalPayoutAmount)"
     }

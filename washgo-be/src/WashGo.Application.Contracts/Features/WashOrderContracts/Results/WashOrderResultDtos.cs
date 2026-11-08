@@ -24,6 +24,25 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Results
         public LockerBoxSize? BoxSize { get; set; }
         /// <summary>Tên các dịch vụ của đơn (danh sách đơn của Customer/Merchant).</summary>
         public List<string> ServiceNames { get; set; } = [];
+        /// <summary>Dịch vụ của đơn theo ID kèm ảnh đại diện hiện tại (null khi dịch vụ không có ảnh).</summary>
+        public List<OrderServiceRefDto> Services { get; set; } = [];
+        /// <summary>Ảnh trạm gửi / trạm nhận (trạm nhận = returnLockerId, mặc định trạm gửi). Ảnh hiện tại, không phải snapshot.</summary>
+        public List<string> LockerImageUrls { get; set; } = [];
+        public string? LockerThumbnailUrl => LockerImageUrls.Count > 0 ? LockerImageUrls[0] : null;
+        public List<string> ReturnLockerImageUrls { get; set; } = [];
+        public string? ReturnLockerThumbnailUrl => ReturnLockerImageUrls.Count > 0 ? ReturnLockerImageUrls[0] : null;
+        /// <summary>Số điện thoại và ảnh cửa hàng hiện tại của Merchant được phân công; null khi chưa phân công.</summary>
+        public string? MerchantPhoneNumber { get; set; }
+        public List<string> MerchantImageUrls { get; set; } = [];
+        public string? MerchantThumbnailUrl => MerchantImageUrls.Count > 0 ? MerchantImageUrls[0] : null;
+        /// <summary>Ảnh đại diện tài khoản khách (chỉ trả cho Admin).</summary>
+        public string? CustomerAvatarUrl { get; set; }
+        /// <summary>Liên hệ của Shipper đang được giao (chỉ Admin/Merchant của đơn); null khi chưa giao hoặc Shipper đã bị xóa.</summary>
+        public string? ShipperAvatarUrl { get; set; }
+        public string? ShipperPhone { get; set; }
+        public string? ShipperEmail { get; set; }
+        public VehicleType? ShipperVehicleType { get; set; }
+        public string? ShipperVehiclePlate { get; set; }
         /// <summary>Đơn mới cần xử lý để highlight: Merchant = đã gửi đồ, chưa phân công Shipper; Shipper = nhiệm vụ chưa làm.</summary>
         public bool IsNew { get; set; }
         public Guid? ReturnLockerId { get; set; }
@@ -43,13 +62,25 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Results
         public decimal DiscountAmount { get; set; }
         public decimal FinalAmount { get; set; }
         /// <summary>Tỷ lệ hoa hồng (%) chốt cố định theo đơn (UC 2.3.2, UC 3.8).</summary>
-        public decimal CommissionRateApplied { get; set; }
+        public decimal? CommissionRateApplied { get; set; }
+        public DateTime? CommissionLockedAt { get; set; }
+        /// <summary>Locked (đã chốt tỷ lệ, kể cả 0%) hoặc Missing (đơn cũ chưa có snapshot: hoa hồng không xác định).</summary>
+        public string CommissionStatus => CommissionRateApplied.HasValue ? "Locked" : "Missing";
         /// <summary>Số tiền tính hoa hồng = FinalAmount (tiền giặt sau giảm giá).</summary>
         public decimal CommissionBaseAmount => FinalAmount;
-        /// <summary>Tiền hoa hồng hệ thống giữ (làm tròn số nguyên đồng).</summary>
-        public decimal CommissionAmount => decimal.Round(FinalAmount * CommissionRateApplied / 100m, 0, MidpointRounding.AwayFromZero);
-        /// <summary>Doanh thu thực nhận của tiệm giặt cho đơn này = CommissionBaseAmount - CommissionAmount.</summary>
-        public decimal MerchantNetAmount => Math.Max(0m, CommissionBaseAmount - CommissionAmount);
+        /// <summary>Hoa hồng tạm tính trên FinalAmount theo tỷ lệ chốt; null khi chưa có tỷ lệ chốt (không phải số đã thu/đối soát).</summary>
+        public decimal? CommissionAmount => CommissionRateApplied.HasValue ? decimal.Round(FinalAmount * CommissionRateApplied.Value / 100m, 0, MidpointRounding.AwayFromZero) : null;
+        /// <summary>Thực nhận tạm tính trên FinalAmount = FinalAmount − hoa hồng tạm tính; null khi chưa có tỷ lệ chốt.</summary>
+        public decimal? MerchantNetAmount => CommissionAmount.HasValue ? Math.Max(0m, CommissionBaseAmount - CommissionAmount.Value) : null;
+        /// <summary>Tiền giặt khách đã thanh toán thành công (Admin/Merchant).</summary>
+        public decimal? CollectedLaundryAmount { get; set; }
+        /// <summary>Tiền đã hoàn cho khách (Admin/Merchant).</summary>
+        public decimal? RefundedAmount { get; set; }
+        /// <summary>Hoa hồng trên số đã thu sau hoàn theo tỷ lệ chốt; null khi chưa có tỷ lệ chốt.</summary>
+        public decimal? CommissionOnCollected { get; set; }
+        public decimal? MerchantPayoutOnCollected { get; set; }
+        /// <summary>Unpaid (chưa thu), Collected (đã thu, tạm tính), Adjusted (có hoàn tiền), Settled (đã nằm trong kỳ đối soát đã chi trả).</summary>
+        public string? FinancialStatus { get; set; }
         public decimal? ActualWeightKg { get; set; }
         public decimal? IncludedWeightKg { get; set; }
         public decimal? ExcessWeightKg => ActualWeightKg.HasValue && IncludedWeightKg.HasValue
@@ -189,6 +220,26 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Results
         public List<WashOrderTimelineDto> Timeline { get; set; } = [];
     }
 
+    public class OrderServiceRefDto
+    {
+        public Guid ServiceId { get; set; }
+        public string ServiceName { get; set; } = string.Empty;
+        public string? ServiceThumbnailUrl { get; set; }
+    }
+
+    /// <summary>Mã mở tủ / mã nhiệm vụ của một đơn: chỉ Admin xem qua endpoint riêng, mỗi lần xem được ghi lại.</summary>
+    public class OrderAccessCodesDto
+    {
+        public Guid OrderId { get; set; }
+        public string OrderCode { get; set; } = string.Empty;
+        public string DepositPinCode { get; set; } = string.Empty;
+        public string QrCodeString { get; set; } = string.Empty;
+        public string PickupPinCode { get; set; } = string.Empty;
+        public string? PickupQrCodeString { get; set; }
+        public string? ShipperTaskPinCode { get; set; }
+        public string? ShipperTaskQrString { get; set; }
+    }
+
     public class WashOrderItemDto
     {
         public Guid Id { get; set; }
@@ -200,6 +251,9 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Results
         public decimal? WeightKg { get; set; }
         public bool IsWeightBased { get; set; }
         public string? Note { get; set; }
+        /// <summary>Ảnh hiện tại của dịch vụ (kể cả dịch vụ đã ngừng/xóa mềm).</summary>
+        public List<string> ServiceImageUrls { get; set; } = [];
+        public string? ServiceThumbnailUrl => ServiceImageUrls.Count > 0 ? ServiceImageUrls[0] : null;
     }
 
     public class WashOrderTimelineDto

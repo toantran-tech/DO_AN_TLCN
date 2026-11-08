@@ -1,3 +1,4 @@
+using WashGo.Application.Features.AuditApplication.Services;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -194,6 +195,10 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             var sent = await _emailSender.SendAccountCredentialsAsync(email, entity.BusinessName, temporaryPassword);
             if (!sent)
                 _logger.LogWarning("Could not send Merchant credentials to {Email}.", email);
+            await Audit.LogAsync(new AuditEntry("Merchant", "Create", "Merchant", entity.Id.ToString(), entity.BusinessName)
+            {
+                Details = new { email, entity.CommissionRate, status = entity.Status.ToString(), credentialEmailSent = sent }
+            });
             return Created((await ToDtosAsync([entity]))[0], "Thêm Merchant thành công!");
         }
 
@@ -211,6 +216,7 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             {
                 return NotFound<MerchantResultDto>("Không tìm thấy hồ sơ đối tác giặt sấy!");
             }
+            var auditBefore = (await ToDtosAsync([entity]))[0];
 
             // Email is optional on edit: blank keeps the login email.
             var email = string.IsNullOrWhiteSpace(command.Email) ? user.Email : command.Email.Trim().ToLowerInvariant();
@@ -254,7 +260,12 @@ namespace WashGo.Application.Features.MerchantApplication.Services
                 await ReplaceAreasAsync(entity.Id, command.ServiceAreaIds);
             await uow.CompleteAsync();
 
-            return Success((await ToDtosAsync([entity]))[0], "Cập nhật Merchant thành công!");
+            var auditAfter = (await ToDtosAsync([entity]))[0];
+            await Audit.LogAsync(new AuditEntry("Merchant", "Update", "Merchant", entity.Id.ToString(), entity.BusinessName)
+            {
+                ChangedFields = AuditLogWriter.Diff(auditBefore, auditAfter)
+            });
+            return Success(auditAfter, "Cập nhật Merchant thành công!");
         }
 
         // UC 3.2.4: lock needs a reason and, with unfinished orders, an explicit confirmation.
@@ -326,6 +337,10 @@ namespace WashGo.Application.Features.MerchantApplication.Services
                         : $"Tài khoản cửa hàng {entity.BusinessName} đã được Admin kích hoạt lại.",
                 "merchant", entity.Id);
             await uow.CompleteAsync();
+            await Audit.LogAsync(new AuditEntry("Merchant", locking ? "Lock" : "Unlock", "Merchant", entity.Id.ToString(), entity.BusinessName)
+            {
+                Reason = reason, ChangedFields = ["status"], Details = new { status = entity.Status.ToString() }
+            });
             return Success((await ToDtosAsync([entity]))[0], locking ? "Đã khóa Merchant thành công!" : "Đã mở khóa Merchant thành công!");
         }
 
@@ -483,6 +498,9 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             var (period, fromUtc, toUtc, _, _, error) = DateTimePeriodHelper.ResolvePeriod(query.Period, query.FromDate, query.ToDate, "all");
             if (error != null)
                 return BadRequest<MerchantDashboardDto>(error);
+            // Counts, latest orders and settlements are read in one repeatable-read transaction: one consistent snapshot.
+            using var snapshot = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true,
+                isolationLevel: System.Data.IsolationLevel.RepeatableRead);
 
             var ordersQuery = (await _orderRepo.GetQueryableAsync())
                 .Where(o => !o.IsDeleted && o.MerchantId == merchantId.Value);
@@ -569,15 +587,15 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             var result = new MerchantDashboardDto
             {
                 Period = period,
-                FromDate = fromUtc.HasValue ? DateTimePeriodHelper.ToVietnamTime(fromUtc.Value) : null,
-                ToDate = toUtc.HasValue ? DateTimePeriodHelper.ToVietnamTime(toUtc.Value) : null,
+                FromDate = fromUtc,
+                ToDate = toUtc,
                 TotalOrders = totalOrders,
                 StatusCounts = statusCounts,
                 LatestOrders = latestDtos,
                 RecentSettlements = recentSettlements,
-                GeneratedAt = DateTimePeriodHelper.NowVietnam
+                GeneratedAt = DateTime.UtcNow
             };
-
+            await snapshot.CompleteAsync();
             return Success(result);
         }
 
@@ -587,146 +605,67 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             var merchantId = CurrentUser.Id;
             if (!merchantId.HasValue)
                 return BadRequest<MerchantRevenueReportDto>("Không xác định được danh tính Merchant.");
-
-            var merchant = await _merchantRepo.FindAsync(merchantId.Value);
-            if (merchant == null)
+            if (await _merchantRepo.FindAsync(merchantId.Value) == null)
                 return NotFound<MerchantRevenueReportDto>("Không tìm thấy thông tin Merchant.");
 
             var (period, fromUtc, toUtc, prevFromUtc, prevToUtc, error) = DateTimePeriodHelper.ResolvePeriod(query.Period, query.FromDate, query.ToDate, "month");
             if (error != null)
                 return BadRequest<MerchantRevenueReportDto>(error);
+            // Same definitions as /merchant-reports: money by transaction/refund date, commission at each order's locked rate.
+            var finance = LazyServiceProvider.LazyGetRequiredService<WashGo.Application.Features.MerchantReportApplication.Services.MerchantFinanceAggregator>();
+            DateTime? Exclusive(DateTime? inclusiveEnd) => inclusiveEnd?.AddTicks(1);
+            var current = await finance.TotalsAsync(merchantId.Value, fromUtc, Exclusive(toUtc));
+            var series = await finance.SeriesAsync(merchantId.Value, fromUtc, Exclusive(toUtc), hourly: false);
+            var orders = (await _orderRepo.GetQueryableAsync()).Where(o => !o.IsDeleted && o.MerchantId == merchantId.Value && o.CancelledAt != null);
+            if (fromUtc.HasValue) orders = orders.Where(o => o.CancelledAt >= fromUtc.Value);
+            if (toUtc.HasValue) orders = orders.Where(o => o.CancelledAt <= toUtc.Value);
+            var cancelled = await AsyncExecuter.CountAsync(orders);
 
-            var ordersQueryable = (await _orderRepo.GetQueryableAsync())
-                .Where(o => !o.IsDeleted && o.MerchantId == merchantId.Value);
-
-            // Fetch candidate orders for current period
-            var currentOrders = await AsyncExecuter.ToListAsync(ordersQueryable);
-
-            // Filter current period
-            var paidOrdersInPeriod = currentOrders.Where(o => o.PaymentStatus == PaymentStatus.Paid).ToList();
-            var cancelledOrdersInPeriod = currentOrders.Where(o => o.Status == WashOrderStatus.Cancelled).ToList();
-
-            if (fromUtc.HasValue && toUtc.HasValue)
-            {
-                paidOrdersInPeriod = paidOrdersInPeriod.Where(o =>
-                {
-                    var dt = o.PaidAt ?? DateTimeOffset.FromUnixTimeSeconds(o.CreatedOn).UtcDateTime;
-                    return dt >= fromUtc.Value && dt <= toUtc.Value;
-                }).ToList();
-
-                cancelledOrdersInPeriod = cancelledOrdersInPeriod.Where(o =>
-                {
-                    var dt = o.CancelledAt ?? DateTimeOffset.FromUnixTimeSeconds(o.CreatedOn).UtcDateTime;
-                    return dt >= fromUtc.Value && dt <= toUtc.Value;
-                }).ToList();
-            }
-
-            decimal totalGross = 0m;
-            decimal totalCommission = 0m;
-            decimal totalRefunded = 0m;
-
-            var dailyMap = new SortedDictionary<DateTime, (decimal Gross, decimal Commission, decimal Payout, int Count)>();
-
-            foreach (var o in paidOrdersInPeriod)
-            {
-                var rate = o.CommissionRateApplied > 0m ? o.CommissionRateApplied : merchant.CommissionRate;
-                var gross = o.FinalAmount;
-                var comm = decimal.Round(gross * rate / 100m, 0, MidpointRounding.AwayFromZero);
-                var payout = Math.Max(0m, gross - comm);
-
-                totalGross += gross;
-                totalCommission += comm;
-                if (o.CancellationRefundAmount > 0)
-                {
-                    totalRefunded += o.CancellationRefundAmount;
-                }
-
-                var paidDt = DateTimePeriodHelper.ToVietnamTime(o.PaidAt ?? DateTimeOffset.FromUnixTimeSeconds(o.CreatedOn).UtcDateTime);
-                var dayKey = paidDt.Date;
-
-                if (dailyMap.TryGetValue(dayKey, out var existingDay))
-                {
-                    dailyMap[dayKey] = (existingDay.Gross + gross, existingDay.Commission + comm, existingDay.Payout + payout, existingDay.Count + 1);
-                }
-                else
-                {
-                    dailyMap[dayKey] = (gross, comm, payout, 1);
-                }
-            }
-
-            decimal totalPayout = Math.Max(0m, totalGross - totalCommission);
-
-            // Calculate growth rate against previous period
-            decimal? prevPayout = null;
-            decimal? growthRate = null;
-
+            decimal? previousPayout = null;
+            decimal? growth = null;
+            var isNew = false;
             if (prevFromUtc.HasValue && prevToUtc.HasValue)
             {
-                var prevPaidOrders = currentOrders.Where(o =>
-                {
-                    if (o.PaymentStatus != PaymentStatus.Paid) return false;
-                    var dt = o.PaidAt ?? DateTimeOffset.FromUnixTimeSeconds(o.CreatedOn).UtcDateTime;
-                    return dt >= prevFromUtc.Value && dt <= prevToUtc.Value;
-                }).ToList();
-
-                decimal pGross = 0m;
-                decimal pComm = 0m;
-                foreach (var po in prevPaidOrders)
-                {
-                    var prate = po.CommissionRateApplied > 0m ? po.CommissionRateApplied : merchant.CommissionRate;
-                    var pg = po.FinalAmount;
-                    var pc = decimal.Round(pg * prate / 100m, 0, MidpointRounding.AwayFromZero);
-                    pGross += pg;
-                    pComm += pc;
-                }
-                var pNet = Math.Max(0m, pGross - pComm);
-                prevPayout = pNet;
-
-                if (pNet > 0)
-                {
-                    growthRate = Math.Round(((totalPayout - pNet) / pNet) * 100m, 1);
-                }
-                else if (totalPayout > 0)
-                {
-                    growthRate = 100m;
-                }
+                var previous = await finance.TotalsAsync(merchantId.Value, prevFromUtc, Exclusive(prevToUtc));
+                previousPayout = previous.Payout;
+                // No baseline: growth is undefined (null + isNewRevenue), never a made-up 100%.
+                if (previous.Payout != 0m)
+                    growth = Math.Round((current.Payout - previous.Payout) / Math.Abs(previous.Payout) * 100m, 1);
+                else if (current.Payout == 0m)
+                    growth = 0m;
                 else
-                {
-                    growthRate = 0m;
-                }
+                    isNew = true;
+                if (!current.CommissionComplete || !previous.CommissionComplete)
+                    growth = null;
             }
 
-            var dailySeries = dailyMap.Select(kv => new MerchantDailyRevenueDto
-            {
-                Date = kv.Key,
-                GrossRevenue = kv.Value.Gross,
-                Commission = kv.Value.Commission,
-                Payout = kv.Value.Payout,
-                OrderCount = kv.Value.Count
-            }).ToList();
-
-            var report = new MerchantRevenueReportDto
+            return Success(new MerchantRevenueReportDto
             {
                 Period = period,
-                FromDate = fromUtc.HasValue ? DateTimePeriodHelper.ToVietnamTime(fromUtc.Value) : null,
-                ToDate = toUtc.HasValue ? DateTimePeriodHelper.ToVietnamTime(toUtc.Value) : null,
-                TotalGrossRevenue = totalGross,
-                TotalCommission = totalCommission,
-                TotalPayoutAmount = totalPayout,
-                RefundedAmount = totalRefunded,
-                PaidOrderCount = paidOrdersInPeriod.Count,
-                CancelledOrderCount = cancelledOrdersInPeriod.Count,
-                PreviousPayoutAmount = prevPayout,
-                GrowthRate = growthRate,
-                DailySeries = dailySeries,
-                GeneratedAt = DateTimePeriodHelper.NowVietnam
-            };
-
-            return Success(report);
+                FromDate = fromUtc,
+                ToDate = toUtc,
+                TotalGrossRevenue = current.Gross,
+                TotalCommission = current.Commission,
+                TotalPayoutAmount = current.Payout,
+                RefundedAmount = current.Refunds,
+                PaidOrderCount = current.PaidOrders,
+                CancelledOrderCount = cancelled,
+                PreviousPayoutAmount = previousPayout,
+                GrowthRate = growth,
+                IsNewRevenue = isNew,
+                CommissionComplete = current.CommissionComplete,
+                OrdersWithoutCommissionSnapshot = current.UncoveredOrders,
+                DailySeries = series.Select(b => new MerchantDailyRevenueDto
+                {
+                    Date = b.LocalStart, GrossRevenue = b.Gross, Commission = b.Commission,
+                    Payout = b.Gross - b.Refunds - b.Commission, OrderCount = b.PaidOrders
+                }).ToList(),
+                GeneratedAt = DateTime.UtcNow
+            });
         }
 
         // UC 2.2.2: Cảnh báo vi phạm SLA (Overdue Attention)
-        public async Task<BaseResponse<MerchantSlaAlertsDto>> GetSlaAlertsAsync()
+        public async Task<BaseResponse<MerchantSlaAlertsDto>> GetSlaAlertsAsync(MerchantSlaAlertsQuery query)
         {
             var merchantId = CurrentUser.Id;
             if (!merchantId.HasValue)
@@ -735,104 +674,74 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             var settings = await _settings.GetAsync();
             int collectSlaHours = settings.MerchantCollectSlaHours > 0 ? settings.MerchantCollectSlaHours : 4;
             int returnSlaHours = settings.MerchantReturnSlaHours > 0 ? settings.MerchantReturnSlaHours : 24;
+            var page = Math.Max(1, query.Page ?? 1);
+            var take = Math.Clamp(query.Take ?? 20, 1, 100);
+            var now = DateTime.UtcNow;
+            var collectBefore = now.AddHours(-collectSlaHours);
+            var returnBefore = now.AddHours(-returnSlaHours);
 
-            var nowUtc = DateTime.UtcNow;
-            var nowVn = DateTimePeriodHelper.NowVietnam;
-
-            var activeOrders = await AsyncExecuter.ToListAsync(
-                (await _orderRepo.GetQueryableAsync())
-                    .Where(o => !o.IsDeleted && o.MerchantId == merchantId.Value
-                                && o.Status != WashOrderStatus.Completed
-                                && o.Status != WashOrderStatus.Cancelled
-                                && o.Status != WashOrderStatus.Returned)
-            );
-
-            var priorityOrders = new List<MerchantPriorityOrderDto>();
-            int collectionAlerts = 0;
-            int processingAlerts = 0;
-            int returnAlerts = 0;
-
-            foreach (var o in activeOrders)
+            using var snapshot = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true,
+                isolationLevel: System.Data.IsolationLevel.RepeatableRead);
+            var orders = (await _orderRepo.GetQueryableAsync()).Where(o => !o.IsDeleted && o.MerchantId == merchantId.Value);
+            // Same rules as before, evaluated by the database for the whole scope; only the requested page is loaded.
+            var collection = orders.Where(o => o.Status == WashOrderStatus.Deposited && o.DepositedAt != null && o.DepositedAt < collectBefore)
+                .Select(o => new SlaRow { Id = o.Id, Type = MerchantSlaAlertType.CollectionOverdue, Deadline = o.DepositedAt!.Value.AddHours(collectSlaHours) });
+            var processing = orders.Where(o => (o.Status == WashOrderStatus.Washing || o.Status == WashOrderStatus.Drying ||
+                                                o.Status == WashOrderStatus.Ironing || o.Status == WashOrderStatus.Folding) &&
+                                               o.EstimatedFinishAt != null && o.EstimatedFinishAt < now)
+                .Select(o => new SlaRow { Id = o.Id, Type = MerchantSlaAlertType.ProcessingOverdue, Deadline = o.EstimatedFinishAt!.Value });
+            var returns = orders.Where(o => o.Status == WashOrderStatus.Paid && o.PaidAt != null && o.PaidAt < returnBefore)
+                .Select(o => new SlaRow { Id = o.Id, Type = MerchantSlaAlertType.ReturnOverdue, Deadline = o.PaidAt!.Value.AddHours(returnSlaHours) });
+            var collectionCount = await AsyncExecuter.CountAsync(collection);
+            var processingCount = await AsyncExecuter.CountAsync(processing);
+            var returnCount = await AsyncExecuter.CountAsync(returns);
+            var all = query.AlertType switch
             {
-                // 1. Quá hạn lấy đồ: Đơn Deposited > collectSlaHours
-                if (o.Status == WashOrderStatus.Deposited)
-                {
-                    var depositedTime = o.DepositedAt ?? DateTimeOffset.FromUnixTimeSeconds(o.CreatedOn).UtcDateTime;
-                    var deadline = depositedTime.AddHours(collectSlaHours);
-                    if (nowUtc > deadline)
-                    {
-                        collectionAlerts++;
-                        var overdueMins = (int)(nowUtc - deadline).TotalMinutes;
-                        priorityOrders.Add(new MerchantPriorityOrderDto
-                        {
-                            OrderId = o.Id,
-                            OrderCode = o.OrderCode,
-                            MerchantOrderCode = o.MerchantOrderCode,
-                            Status = o.Status,
-                            AlertType = MerchantSlaAlertType.CollectionOverdue,
-                            Deadline = DateTimePeriodHelper.ToVietnamTime(deadline),
-                            OverdueMinutes = overdueMins,
-                            LockerName = o.LockerName,
-                            BoxNumber = o.BoxNumber
-                        });
-                    }
-                }
-                // 2. Quá hạn giặt sấy: Đơn đang xử lý (Washing/Drying/Ironing/Folding) quá EstimatedFinishAt
-                else if (o.Status is WashOrderStatus.Washing or WashOrderStatus.Drying or WashOrderStatus.Ironing or WashOrderStatus.Folding)
-                {
-                    if (o.EstimatedFinishAt.HasValue && nowUtc > o.EstimatedFinishAt.Value)
-                    {
-                        processingAlerts++;
-                        var overdueMins = (int)(nowUtc - o.EstimatedFinishAt.Value).TotalMinutes;
-                        priorityOrders.Add(new MerchantPriorityOrderDto
-                        {
-                            OrderId = o.Id,
-                            OrderCode = o.OrderCode,
-                            MerchantOrderCode = o.MerchantOrderCode,
-                            Status = o.Status,
-                            AlertType = MerchantSlaAlertType.ProcessingOverdue,
-                            Deadline = DateTimePeriodHelper.ToVietnamTime(o.EstimatedFinishAt.Value),
-                            OverdueMinutes = overdueMins,
-                            LockerName = o.LockerName,
-                            BoxNumber = o.BoxNumber
-                        });
-                    }
-                }
-                // 3. Quá hạn trả đồ: Đơn Paid > returnSlaHours chưa chuyển sang tủ trả
-                else if (o.Status == WashOrderStatus.Paid)
-                {
-                    var paidTime = o.PaidAt ?? DateTimeOffset.FromUnixTimeSeconds(o.CreatedOn).UtcDateTime;
-                    var deadline = paidTime.AddHours(returnSlaHours);
-                    if (nowUtc > deadline)
-                    {
-                        returnAlerts++;
-                        var overdueMins = (int)(nowUtc - deadline).TotalMinutes;
-                        priorityOrders.Add(new MerchantPriorityOrderDto
-                        {
-                            OrderId = o.Id,
-                            OrderCode = o.OrderCode,
-                            MerchantOrderCode = o.MerchantOrderCode,
-                            Status = o.Status,
-                            AlertType = MerchantSlaAlertType.ReturnOverdue,
-                            Deadline = DateTimePeriodHelper.ToVietnamTime(deadline),
-                            OverdueMinutes = overdueMins,
-                            LockerName = o.LockerName,
-                            BoxNumber = o.BoxNumber
-                        });
-                    }
-                }
-            }
-
-            var result = new MerchantSlaAlertsDto
-            {
-                CollectionAlertsCount = collectionAlerts,
-                ProcessingAlertsCount = processingAlerts,
-                ReturnAlertsCount = returnAlerts,
-                PriorityOrders = priorityOrders.OrderByDescending(x => x.OverdueMinutes).ToList(),
-                ServerNow = nowVn
+                MerchantSlaAlertType.CollectionOverdue => collection,
+                MerchantSlaAlertType.ProcessingOverdue => processing,
+                MerchantSlaAlertType.ReturnOverdue => returns,
+                _ => collection.Concat(processing).Concat(returns)
             };
+            var rows = await AsyncExecuter.ToListAsync(all.OrderBy(x => x.Deadline).ThenBy(x => x.Id).Skip((page - 1) * take).Take(take));
+            var ids = rows.Select(x => x.Id).ToList();
+            var details = (await AsyncExecuter.ToListAsync(orders.Where(o => ids.Contains(o.Id))
+                    .Select(o => new { o.Id, o.OrderCode, o.MerchantOrderCode, o.Status, o.LockerName, o.BoxNumber })))
+                .ToDictionary(x => x.Id);
+            await snapshot.CompleteAsync();
 
-            return Success(result);
+            return Success(new MerchantSlaAlertsDto
+            {
+                CollectionAlertsCount = collectionCount,
+                ProcessingAlertsCount = processingCount,
+                ReturnAlertsCount = returnCount,
+                Page = page,
+                Take = take,
+                PriorityTotal = query.AlertType switch
+                {
+                    MerchantSlaAlertType.CollectionOverdue => collectionCount,
+                    MerchantSlaAlertType.ProcessingOverdue => processingCount,
+                    MerchantSlaAlertType.ReturnOverdue => returnCount,
+                    _ => collectionCount + processingCount + returnCount
+                },
+                PriorityOrders = rows.Where(x => details.ContainsKey(x.Id)).Select(x =>
+                {
+                    var o = details[x.Id];
+                    return new MerchantPriorityOrderDto
+                    {
+                        OrderId = o.Id, OrderCode = o.OrderCode, MerchantOrderCode = o.MerchantOrderCode, Status = o.Status,
+                        AlertType = x.Type, Deadline = DateTime.SpecifyKind(x.Deadline, DateTimeKind.Utc),
+                        OverdueMinutes = (int)(now - x.Deadline).TotalMinutes, LockerName = o.LockerName, BoxNumber = o.BoxNumber
+                    };
+                }).ToList(),
+                ServerNow = now
+            });
+        }
+
+        private sealed class SlaRow
+        {
+            public Guid Id { get; init; }
+            public MerchantSlaAlertType Type { get; init; }
+            public DateTime Deadline { get; init; }
         }
     }
 }

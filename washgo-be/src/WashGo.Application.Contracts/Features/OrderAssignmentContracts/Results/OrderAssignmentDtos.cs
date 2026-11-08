@@ -30,6 +30,9 @@ namespace WashGo.Application.Contracts.Features.OrderAssignmentContracts.Results
         public Guid MerchantId { get; set; }
         public string BusinessName { get; set; } = string.Empty;
         public decimal Rating { get; set; }
+        /// <summary>Số đánh giá công khai (không ẩn); 0 = Rating là giá trị mặc định, chưa có khách đánh giá.</summary>
+        public int PublicRatingCount { get; set; }
+        public bool HasPublicRating => PublicRatingCount > 0;
         public decimal CommissionRate { get; set; }
         public int CurrentLoad { get; set; }
         public int MaxCapacity { get; set; }
@@ -60,6 +63,16 @@ namespace WashGo.Application.Contracts.Features.OrderAssignmentContracts.Results
         public string OrderCode { get; set; } = string.Empty;
         public Guid MerchantId { get; set; }
         public string MerchantName { get; set; } = string.Empty;
-        public decimal CommissionRateApplied { get; set; }
+        public decimal? CommissionRateApplied { get; set; }
+        public long ResultRevision { get; set; }
+    }
+
+    /// <summary>Kết quả một thao tác phân công Merchant (đơn lẻ hoặc lô) tra theo operationId sau timeout.</summary>
+    public class AssignmentOperationDto
+    {
+        public Guid OperationId { get; set; }
+        public string Operation { get; set; } = string.Empty;
+        public DateTime CreatedAt { get; set; }
+        public List<AssignmentResultDto> Results { get; set; } = [];
     }
 }

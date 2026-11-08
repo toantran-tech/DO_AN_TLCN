@@ -1,3 +1,4 @@
+using WashGo.Application.Features.AuditApplication.Services;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -264,6 +265,10 @@ namespace WashGo.Application.Features.ShipperApplication.Services
                 await uow.CompleteAsync();
                 shipper = saved;
             }
+            await Audit.LogAsync(new AuditEntry("Shipper", "Create", "Shipper", shipper.Id.ToString(), user.FullName)
+            {
+                Details = new { merchantId = shipper.MerchantId, email = user.Email, credentialEmailSent = sent }
+            });
             return Created(ToDto(shipper, user, 0), sent
                 ? "Thêm Shipper thành công! Thông tin đăng nhập đã được gửi qua email."
                 : "Thêm Shipper thành công! Chưa gửi được email thông tin đăng nhập; Shipper có thể dùng Quên mật khẩu.");
@@ -335,6 +340,10 @@ namespace WashGo.Application.Features.ShipperApplication.Services
             if (identityChanges.Count > 0)
                 await AuditAsync(shipper, ShipperAuditAction.IdentityUpdated, null, string.Join(",", identityChanges));
             await uow.CompleteAsync();
+            await Audit.LogAsync(new AuditEntry("Shipper", "Update", "Shipper", shipper.Id.ToString(), user.FullName)
+            {
+                Details = new { merchantId = shipper.MerchantId }
+            });
             return Success(ToDto(shipper, user, active), "Cập nhật Shipper thành công!");
         }
 
@@ -594,6 +603,10 @@ namespace WashGo.Application.Features.ShipperApplication.Services
                 Details = details,
                 CreatedAt = DateTime.UtcNow
             }, autoSave: true);
+            await Audit.LogAsync(new AuditEntry("Shipper", action.ToString(), "Shipper", shipper.Id.ToString(), null)
+            {
+                Reason = reason, ChangedFields = details?.Split(',', StringSplitOptions.RemoveEmptyEntries), Details = new { merchantId = shipper.MerchantId }
+            });
         }
 
         private async Task<ShipperDto> ToDtoAsync(Shipper shipper, User user) =>

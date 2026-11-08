@@ -55,6 +55,39 @@ namespace WashGo.Application.Contracts.Features.FinanceContracts.Results
         public decimal CommissionRate { get; set; }
         public decimal CommissionAmount { get; set; }
         public decimal PayoutAmount { get; set; }
+        /// <summary>Số đơn có thu/hoàn trong kỳ nhưng chưa có tỷ lệ hoa hồng chốt (cần đối chiếu; không tính hoa hồng).</summary>
+        public int OrdersWithoutCommissionSnapshot { get; set; }
+        /// <summary>Doanh thu thuần của các đơn trên (chưa xác định hoa hồng).</summary>
+        public decimal UncoveredNetAmount { get; set; }
+        /// <summary>true khi hoa hồng/thực nhận tính đủ cho toàn bộ kỳ.</summary>
+        public bool CommissionComplete => OrdersWithoutCommissionSnapshot == 0;
+    }
+
+    /// <summary>Chi tiết một kỳ đối soát theo đơn: thu, hoàn, tỷ lệ chốt, hoa hồng, thực nhận.</summary>
+    public class SettlementOrderLineDto
+    {
+        public Guid OrderId { get; set; }
+        public string OrderCode { get; set; } = string.Empty;
+        public decimal Collected { get; set; }
+        public decimal Refunded { get; set; }
+        public decimal Net => Collected - Refunded;
+        /// <summary>Tỷ lệ chốt trên đơn; null = chưa có snapshot (cần đối chiếu).</summary>
+        public decimal? CommissionRate { get; set; }
+        public decimal? Commission { get; set; }
+        public decimal? Payout { get; set; }
+    }
+
+    public class SettlementBreakdownDto
+    {
+        public Guid SettlementId { get; set; }
+        public DateTime PeriodFrom { get; set; }
+        public DateTime PeriodTo { get; set; }
+        public SettlementStatus Status { get; set; }
+        /// <summary>Số đã chốt khi tạo kỳ (không đổi theo cấu hình sau này).</summary>
+        public decimal SettledCommissionAmount { get; set; }
+        public decimal SettledPayoutAmount { get; set; }
+        public int OrdersWithoutCommissionSnapshot { get; set; }
+        public List<SettlementOrderLineDto> Lines { get; set; } = [];
     }
 
     public class SettlementDto

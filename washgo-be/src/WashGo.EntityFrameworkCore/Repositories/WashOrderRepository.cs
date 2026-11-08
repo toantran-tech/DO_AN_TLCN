@@ -37,7 +37,13 @@ namespace WashGo.EntityFrameworkCore.Repositories
                 .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.Status, next)) == 1;
         }
 
-        public async Task<WashOrder?> GetForUpdateAsync(Guid id)
+        public async Task AcquireLockAsync(string key)
+    {
+        var db = await GetDbContextAsync();
+        await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtext({key}))");
+    }
+
+    public async Task<WashOrder?> GetForUpdateAsync(Guid id)
         {
             var db = await GetDbContextAsync();
             var rows = await db.WashOrders.FromSqlInterpolated(

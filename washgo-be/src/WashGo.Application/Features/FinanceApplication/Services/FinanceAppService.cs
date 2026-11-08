@@ -1,3 +1,4 @@
+using WashGo.Application.Features.AuditApplication.Services;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -58,8 +59,8 @@ namespace WashGo.Application.Features.FinanceApplication.Services
             _notifications = notifications;
         }
 
-        private sealed record PaymentRow(Guid OrderId, Guid? MerchantId, PaymentPurpose Purpose, decimal Amount, DateTime CompletedAt, decimal CommissionRateApplied);
-        private sealed record RefundRow(Guid OrderId, Guid? MerchantId, decimal Amount, DateTime RefundedAt, decimal CommissionRateApplied);
+        private sealed record PaymentRow(Guid OrderId, Guid? MerchantId, PaymentPurpose Purpose, decimal Amount, DateTime CompletedAt, decimal? CommissionRateApplied);
+        private sealed record RefundRow(Guid OrderId, Guid? MerchantId, decimal Amount, DateTime RefundedAt, decimal? CommissionRateApplied);
 
         private static (DateTime From, DateTime To, string? Error) Period(long? fromDate, long? toDate)
         {
@@ -209,25 +210,27 @@ namespace WashGo.Application.Features.FinanceApplication.Services
                 var refunded = Math.Min(gross, mRefunds.Sum(x => x.Amount));
                 var net = gross - refunded;
 
-                // Tính hoa hồng theo từng đơn (UC 2.3.2 & UC 3.8):
-                // Mỗi đơn giặt sử dụng CommissionRateApplied được snapshot trên đơn (hoặc fallback về merchant.CommissionRate nếu đơn cũ = 0)
+                // Commission per order at the rate locked on that order (0% is a valid rate). Orders without a locked
+                // rate are not guessed from the Merchant's current rate: they are counted as needing reconciliation.
                 var orderIds = mPayments.Select(x => x.OrderId).Concat(mRefunds.Select(x => x.OrderId)).Distinct().ToList();
                 decimal totalCommission = 0m;
+                var uncovered = 0;
+                decimal uncoveredNet = 0m;
                 foreach (var oId in orderIds)
                 {
                     var oGross = mPayments.Where(x => x.OrderId == oId).Sum(x => x.Amount);
-                    var oRefund = Math.Min(oGross, mRefunds.Where(x => x.OrderId == oId).Sum(x => x.Amount));
-                    var oNet = oGross - oRefund;
-                    if (oNet <= 0) continue;
-
+                    var oRefund = mRefunds.Where(x => x.OrderId == oId).Sum(x => x.Amount);
                     var rate = mPayments.FirstOrDefault(x => x.OrderId == oId)?.CommissionRateApplied
-                               ?? mRefunds.FirstOrDefault(x => x.OrderId == oId)?.CommissionRateApplied
-                               ?? 0m;
-                    if (rate <= 0m)
+                               ?? mRefunds.FirstOrDefault(x => x.OrderId == oId)?.CommissionRateApplied;
+                    if (!rate.HasValue)
                     {
-                        rate = merchant.CommissionRate;
+                        uncovered++;
+                        uncoveredNet += oGross - oRefund;
+                        continue;
                     }
-                    totalCommission += decimal.Round(oNet * rate / 100m, 0, MidpointRounding.AwayFromZero);
+                    // A refund reverses commission at the same locked rate, also when it falls in a later period.
+                    totalCommission += decimal.Round(oGross * rate.Value / 100m, 0, MidpointRounding.AwayFromZero)
+                                       - decimal.Round(oRefund * rate.Value / 100m, 0, MidpointRounding.AwayFromZero);
                 }
 
                 return new MerchantCommissionDto
@@ -240,7 +243,9 @@ namespace WashGo.Application.Features.FinanceApplication.Services
                     NetRevenue = net,
                     CommissionRate = merchant.CommissionRate,
                     CommissionAmount = totalCommission,
-                    PayoutAmount = net - totalCommission
+                    PayoutAmount = net - totalCommission,
+                    OrdersWithoutCommissionSnapshot = uncovered,
+                    UncoveredNetAmount = uncoveredNet
                 };
             }).OrderByDescending(x => x.NetRevenue).ToList();
         }
@@ -295,6 +300,11 @@ namespace WashGo.Application.Features.FinanceApplication.Services
                 $"Kỳ đối soát {(from + VietnamOffset):dd/MM/yyyy} - {(to + VietnamOffset):dd/MM/yyyy}: doanh thu {settlement.NetRevenue:N0}đ, " +
                 $"hoa hồng {settlement.CommissionAmount:N0}đ, thực nhận {settlement.PayoutAmount:N0}đ.");
             await uow.CompleteAsync();
+            await Audit.LogAsync(new AuditEntry("Finance", "CreateSettlement", "Settlement", settlement.Id.ToString(), merchant.BusinessName)
+            {
+                Details = new { merchantId = merchant.Id, settlement.PeriodFrom, settlement.PeriodTo, settlement.OrderCount, settlement.NetRevenue,
+                                settlement.CommissionAmount, settlement.PayoutAmount }
+            });
             return Created(ToDto(settlement), "Đã tạo kỳ đối soát.");
         }
 
@@ -315,6 +325,41 @@ namespace WashGo.Application.Features.FinanceApplication.Services
             return Success(items.Select(ToDto).ToList(), total, page, take, total == 0 ? "Chưa có kỳ đối soát nào." : null);
         }
 
+        public async Task<BaseResponse<SettlementBreakdownDto>> GetSettlementBreakdownAsync(Guid id)
+        {
+            var settlement = await _settlementRepo.FindAsync(id);
+            if (settlement == null || settlement.IsDeleted ||
+                !CurrentUser.IsInRole("Admin") && settlement.MerchantId != CurrentUser.Id)
+                return NotFound<SettlementBreakdownDto>("Không tìm thấy kỳ đối soát!");
+            var payments = (await PaymentsAsync(settlement.PeriodFrom, settlement.PeriodTo, settlement.MerchantId))
+                .Where(x => x.Purpose == PaymentPurpose.Order).ToList();
+            var refunds = await RefundsAsync(settlement.PeriodFrom, settlement.PeriodTo, settlement.MerchantId);
+            var orderIds = payments.Select(x => x.OrderId).Concat(refunds.Select(x => x.OrderId)).Distinct().ToList();
+            var codes = (await _orderRepo.GetListAsync(o => orderIds.Contains(o.Id))).ToDictionary(o => o.Id, o => o.OrderCode);
+            var lines = orderIds.Select(oid =>
+            {
+                var collected = payments.Where(x => x.OrderId == oid).Sum(x => x.Amount);
+                var refunded = refunds.Where(x => x.OrderId == oid).Sum(x => x.Amount);
+                var rate = payments.FirstOrDefault(x => x.OrderId == oid)?.CommissionRateApplied
+                           ?? refunds.FirstOrDefault(x => x.OrderId == oid)?.CommissionRateApplied;
+                decimal? commission = rate.HasValue
+                    ? decimal.Round(collected * rate.Value / 100m, 0, MidpointRounding.AwayFromZero)
+                      - decimal.Round(refunded * rate.Value / 100m, 0, MidpointRounding.AwayFromZero)
+                    : null;
+                return new SettlementOrderLineDto
+                {
+                    OrderId = oid, OrderCode = codes.GetValueOrDefault(oid, string.Empty), Collected = collected, Refunded = refunded,
+                    CommissionRate = rate, Commission = commission, Payout = commission.HasValue ? collected - refunded - commission.Value : null
+                };
+            }).OrderBy(x => x.OrderCode).ToList();
+            return Success(new SettlementBreakdownDto
+            {
+                SettlementId = settlement.Id, PeriodFrom = settlement.PeriodFrom, PeriodTo = settlement.PeriodTo, Status = settlement.Status,
+                SettledCommissionAmount = settlement.CommissionAmount, SettledPayoutAmount = settlement.PayoutAmount,
+                OrdersWithoutCommissionSnapshot = lines.Count(x => !x.CommissionRate.HasValue), Lines = lines
+            });
+        }
+
         public async Task<BaseResponse<SettlementDto>> ConfirmSettlementPaidAsync(Guid id, ConfirmSettlementPaidCommand command)
         {
             var reference = command.Reference?.Trim();
@@ -333,6 +378,11 @@ namespace WashGo.Application.Features.FinanceApplication.Services
             await _notifications.SendAsync([settlement.MerchantId], NotificationType.SettlementPaid, "Đã chi trả đối soát",
                 $"WashGo đã chuyển {settlement.PayoutAmount:N0}đ cho kỳ đối soát {(settlement.PeriodFrom + VietnamOffset):dd/MM/yyyy} - " +
                 $"{(settlement.PeriodTo + VietnamOffset):dd/MM/yyyy} (mã {reference}).");
+            await Audit.LogAsync(new AuditEntry("Finance", "ConfirmSettlementPaid", "Settlement", settlement.Id.ToString(), reference)
+            {
+                ChangedFields = ["status", "paymentReference", "paidAt"],
+                Details = new { merchantId = settlement.MerchantId, settlement.PayoutAmount }
+            });
             return Success(ToDto(settlement), "Đã ghi nhận chi trả cho Merchant.");
         }
 

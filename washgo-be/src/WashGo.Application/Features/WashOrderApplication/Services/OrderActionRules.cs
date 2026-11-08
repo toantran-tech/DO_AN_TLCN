@@ -80,6 +80,35 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             return null;
         }
 
+        /// <summary>Lý do không được ghi nhận chuyển kho; null = được phép (cùng luật với POST /wash-order/move-to-storage).</summary>
+        public static Block? MoveToStorage(WashOrder order, string role, DateTime now)
+        {
+            if (role is not ("Admin" or "Shipper"))
+                return new("RoleNotAllowed", "Chỉ Shipper hoặc Admin được ghi nhận chuyển kho.");
+            if (order.MovedToStorageAt.HasValue)
+                return new("AlreadyMoved", "Đơn hàng đã được ghi nhận chuyển kho trước đó.");
+            if (order.Status != WashOrderStatus.ReadyToReturn)
+                return new("WrongStage", "Chỉ chuyển kho cho đồ đang nằm tại locker trả.");
+            if (!WashGo.Application.Features.PaymentApplication.Services.OverdueFeeCalculator.IsTransferToStorageDue(order.PickupDeadline, now))
+                return new("NotYetDue", $"Chỉ chuyển kho khi đã quá {WashGo.Domain.Entities.SystemConfig.SystemSetting.StorageTransferAfterHours} giờ kể từ hạn nhận đồ.");
+            return null;
+        }
+
+        /// <summary>Lý do Admin chưa được hủy đơn quá hạn gửi đồ (deadline lưu trên đơn; đơn cũ đã backfill).</summary>
+        public static Block? CancelExpiredDeposit(WashOrder order, string role, DateTime now)
+        {
+            if (role != "Admin")
+                return new("RoleNotAllowed", "Chỉ Admin được hủy đơn quá hạn gửi đồ.");
+            if (order.Status != WashOrderStatus.Pending)
+                return new("NotPending", "Chỉ hủy theo luồng này khi đơn còn chờ gửi đồ.");
+            if (order.DepositDeadline is not { } deadline || now <= deadline)
+                return new("NotExpired", "Đơn chưa quá hạn gửi đồ.");
+            return null;
+        }
+
+        public static DateTime? TransferToStorageEligibleAt(WashOrder order) =>
+            order.PickupDeadline?.AddHours(WashGo.Domain.Entities.SystemConfig.SystemSetting.StorageTransferAfterHours);
+
         /// <summary>Metadata cho FE; null với vai trò không thao tác (Customer, Shipper).</summary>
         public static OrderAllowedActionsDto? Build(WashOrder order, string role)
         {
@@ -95,6 +124,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             }).ToList();
             var weigh = Weigh(order, role);
             var assign = Assign(order, role, out var task);
+            var storage = MoveToStorage(order, role, DateTime.UtcNow);
+            var expired = CancelExpiredDeposit(order, role, DateTime.UtcNow);
             return new OrderAllowedActionsDto
             {
                 AllowedNextStatuses = options.Where(x => x.Allowed).Select(x => x.Status).ToList(),
@@ -107,7 +138,13 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 AssignTaskType = assign == null ? task : null,
                 AssignShipperReasonCode = assign?.Code,
                 AssignShipperReason = assign?.Message,
-                HasAssignedShipper = assign == null && order.ShipperId.HasValue && order.AssignedTaskType == task
+                HasAssignedShipper = assign == null && order.ShipperId.HasValue && order.AssignedTaskType == task,
+                CanMoveToStorage = storage == null,
+                MoveToStorageReasonCode = storage?.Code,
+                MoveToStorageReason = storage?.Message,
+                TransferToStorageEligibleAt = TransferToStorageEligibleAt(order),
+                CanCancelExpiredDeposit = expired == null,
+                CancelExpiredDepositReasonCode = expired?.Code
             };
         }
     }

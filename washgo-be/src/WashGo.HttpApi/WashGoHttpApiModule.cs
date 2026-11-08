@@ -35,6 +35,10 @@ namespace WashGo.HttpApi
         public override void ConfigureServices(ServiceConfigurationContext context)
         {
             context.Services.AddTransient<IEndpointBase, AuthHandler>();
+            context.Services.AddTransient<IEndpointBase, WashGo.HttpApi.Endpoints.Audit.AuditLogHandler>();
+            context.Services.AddTransient<IEndpointBase, WashGo.HttpApi.Endpoints.Auth.AccountSecurityHandler>();
+            context.Services.AddTransient<IEndpointBase, WashGo.HttpApi.Endpoints.Admin.AdminProfileHandler>();
+            context.Services.AddTransient<IEndpointBase, WashGo.HttpApi.Endpoints.Admin.AdminDashboardHandler>();
             context.Services.AddTransient<IEndpointBase, CustomerHandler>();
             context.Services.AddTransient<IEndpointBase, WashOrderHandler>();
             context.Services.AddTransient<IEndpointBase, LockerHandler>();

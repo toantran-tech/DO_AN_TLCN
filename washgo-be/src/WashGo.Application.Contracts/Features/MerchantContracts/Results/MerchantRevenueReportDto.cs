@@ -11,22 +11,22 @@ namespace WashGo.Application.Contracts.Features.MerchantContracts.Results
         /// <summary>Kỳ báo cáo áp dụng: "today", "week", "month", "custom", "all".</summary>
         public string Period { get; set; } = "month";
 
-        /// <summary>Mốc bắt đầu (theo giờ VN UTC+7).</summary>
+        /// <summary>Mốc bắt đầu kỳ (UTC, có hậu tố Z).</summary>
         public DateTime? FromDate { get; set; }
 
-        /// <summary>Mốc kết thúc (theo giờ VN UTC+7).</summary>
+        /// <summary>Mốc kết thúc kỳ (UTC, có hậu tố Z).</summary>
         public DateTime? ToDate { get; set; }
 
-        /// <summary>Tổng doanh thu tiền giặt các đơn đã thanh toán trong kỳ.</summary>
+        /// <summary>Tiền giặt khách đã thanh toán thành công trong kỳ (theo ngày giao dịch).</summary>
         public decimal TotalGrossRevenue { get; set; }
 
         /// <summary>Tổng phí hoa hồng hệ thống giữ lại theo snapshot từng đơn.</summary>
         public decimal TotalCommission { get; set; }
 
-        /// <summary>Doanh thu thực nhận của tiệm giặt = TotalGrossRevenue - TotalCommission.</summary>
+        /// <summary>Thực nhận = tiền giặt − tiền hoàn − hoa hồng (theo tỷ lệ chốt từng đơn; xem CommissionComplete).</summary>
         public decimal TotalPayoutAmount { get; set; }
 
-        /// <summary>Tổng tiền hoàn trả cho khách hàng (nếu có đơn phát sinh hoàn tiền).</summary>
+        /// <summary>Tiền đã hoàn cho khách trong kỳ (theo ngày hoàn).</summary>
         public decimal RefundedAmount { get; set; }
 
         /// <summary>Số lượng đơn hàng đã thanh toán trong kỳ.</summary>
@@ -35,8 +35,13 @@ namespace WashGo.Application.Contracts.Features.MerchantContracts.Results
         /// <summary>Số lượng đơn hàng bị hủy trong kỳ.</summary>
         public int CancelledOrderCount { get; set; }
 
-        /// <summary>Tỷ lệ tăng trưởng doanh thu thực nhận so với kỳ trước tương đương (%), null nếu kỳ trước không có doanh thu.</summary>
+        /// <summary>% thay đổi thực nhận so với kỳ trước; null khi kỳ trước bằng 0 (xem IsNewRevenue) hoặc hoa hồng chưa tính đủ.</summary>
         public decimal? GrowthRate { get; set; }
+        /// <summary>Kỳ trước không có thực nhận nhưng kỳ này có: phát sinh mới, không có % tăng trưởng.</summary>
+        public bool IsNewRevenue { get; set; }
+        /// <summary>false khi có đơn chưa có tỷ lệ hoa hồng chốt: hoa hồng/thực nhận chỉ là tạm tính.</summary>
+        public bool CommissionComplete { get; set; } = true;
+        public int OrdersWithoutCommissionSnapshot { get; set; }
 
         /// <summary>Doanh thu thực nhận của kỳ trước tương ứng để đối chiếu so sánh.</summary>
         public decimal? PreviousPayoutAmount { get; set; }
@@ -44,7 +49,7 @@ namespace WashGo.Application.Contracts.Features.MerchantContracts.Results
         /// <summary>Chuỗi dữ liệu chi tiết doanh thu theo từng ngày trong kỳ.</summary>
         public List<MerchantDailyRevenueDto> DailySeries { get; set; } = [];
 
-        /// <summary>Thời điểm tạo báo cáo trên server (theo giờ VN UTC+7).</summary>
+        /// <summary>Thời điểm tạo báo cáo trên server (UTC, hậu tố Z; FE đổi sang giờ Việt Nam).</summary>
         public DateTime GeneratedAt { get; set; } = DateTime.UtcNow;
     }
 

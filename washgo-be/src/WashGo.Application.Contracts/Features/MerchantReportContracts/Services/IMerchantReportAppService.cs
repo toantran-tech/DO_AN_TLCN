@@ -10,5 +10,6 @@ namespace WashGo.Application.Contracts.Features.MerchantReportContracts.Services
     {
         Task<BaseResponse<MerchantReportDto>> GetOverviewAsync(MerchantReportQuery query);
         Task<BaseResponse<ReportFileDto>> ExportCsvAsync(MerchantReportQuery query);
+        Task<BaseResponse<MerchantLifetimeFinanceDto>> GetLifetimeAsync();
     }
 }

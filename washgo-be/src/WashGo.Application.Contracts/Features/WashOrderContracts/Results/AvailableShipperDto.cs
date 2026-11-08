@@ -9,6 +9,7 @@ public class AvailableShipperDto
     /// <summary>Ảnh đại diện của Shipper; null khi chưa có.</summary>
     public string? AvatarUrl { get; set; }
     public string? Phone { get; set; }
+    public string? Email { get; set; }
     public VehicleType VehicleType { get; set; }
     public string? VehiclePlate { get; set; }
     public int ActiveDeliveryCount { get; set; }

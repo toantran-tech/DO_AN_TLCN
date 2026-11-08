@@ -13,10 +13,10 @@ namespace WashGo.Application.Contracts.Features.MerchantContracts.Results
         /// <summary>Kỳ lọc áp dụng: "today", "week", "month", "custom", "all".</summary>
         public string Period { get; set; } = "all";
 
-        /// <summary>Mốc bắt đầu của kỳ lọc (theo giờ VN UTC+7).</summary>
+        /// <summary>Mốc bắt đầu của kỳ lọc (UTC, hậu tố Z; FE đổi sang giờ Việt Nam).</summary>
         public DateTime? FromDate { get; set; }
 
-        /// <summary>Mốc kết thúc của kỳ lọc (theo giờ VN UTC+7).</summary>
+        /// <summary>Mốc kết thúc của kỳ lọc (UTC, hậu tố Z; FE đổi sang giờ Việt Nam).</summary>
         public DateTime? ToDate { get; set; }
 
         /// <summary>Tổng số đơn gán cho tiệm trong kỳ lọc.</summary>
@@ -31,7 +31,7 @@ namespace WashGo.Application.Contracts.Features.MerchantContracts.Results
         /// <summary>Tối đa 4 kỳ đối soát tài chính gần nhất của tiệm.</summary>
         public List<SettlementDto> RecentSettlements { get; set; } = [];
 
-        /// <summary>Thời điểm tạo snapshot trên server (theo giờ VN UTC+7).</summary>
+        /// <summary>Thời điểm tạo snapshot trên server (UTC, hậu tố Z; FE đổi sang giờ Việt Nam).</summary>
         public DateTime GeneratedAt { get; set; }
     }
 

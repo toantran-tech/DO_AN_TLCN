@@ -17,6 +17,8 @@ namespace WashGo.Domain.Entities.WashOrder
         public OrderOperation(Guid id) : base(id) { }
 
         public Guid OrderId { get; set; }
+        /// <summary>operationId của yêu cầu gốc; một thao tác lô (phân công nhiều đơn) có nhiều dòng cùng GroupId.</summary>
+        public Guid? GroupId { get; set; }
         public Guid ActorId { get; set; }
         /// <summary>UpdateStatus, UpdateWeight, AssignShipper.</summary>
         public string Operation { get; set; } = string.Empty;

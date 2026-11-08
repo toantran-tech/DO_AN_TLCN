@@ -46,6 +46,13 @@ namespace WashGo.HttpApi.Endpoints.WashOrder
                 .WithSummary("Xem chi tiết đơn hàng được phép truy cập theo tài khoản đang đăng nhập.")
                 .WithOpenApi();
 
+            group.MapGet("/{id:guid}/access-codes", async (Guid id, IWashOrderAppService svc) =>
+                (await svc.GetAccessCodesAsync(id)).CustomResult())
+                .RequireAuthorization("AdminOnly")
+                .WithName("Admin xem mã mở tủ của đơn")
+                .WithSummary("Mã gửi/nhận đồ và mã nhiệm vụ Shipper của một đơn, chỉ Admin (hỗ trợ đặc biệt); danh sách/chi tiết đơn của Admin không còn trả các mã này. Mỗi lần xem được ghi vào lịch sử đơn.")
+                .WithOpenApi();
+
             group.MapGet("/{id:guid}/receipt", async (Guid id, IOrderReceiptAppService svc) =>
                 (await svc.GetAsync(id)).CustomResult())
                 .RequireAuthorization()
@@ -86,6 +93,20 @@ namespace WashGo.HttpApi.Endpoints.WashOrder
                 .WithSummary("Customer xem điều kiện hủy, phí 0%/30%/50%, tiền hoàn và phí còn thiếu; tính lại khi xác nhận hủy.")
                 .WithOpenApi();
 
+            group.MapGet("/{id:guid}/admin-cancellation-quote", async (Guid id, IWashOrderAppService svc) =>
+                (await svc.GetAdminCancellationQuoteAsync(id)).CustomResult())
+                .RequireAuthorization("AdminOnly")
+                .WithName("Admin xem dự kiến hủy đơn quá hạn gửi đồ")
+                .WithSummary("Chỉ đọc: được hủy hay không (reasonCode), hạn gửi đồ, giờ server, phí hủy theo chính sách, tiền đã thu được xác minh, tiền hoàn, phí còn thiếu, revision.")
+                .WithOpenApi();
+
+            group.MapPost("/{id:guid}/cancel-expired-deposit", async (Guid id, AdminCancelExpiredDepositCommand command, HttpContext http, IWashOrderAppService svc) =>
+                (await svc.CancelExpiredDepositAsync(id, OrderWriteHeaders.Apply(command, http))).CustomResult())
+                .RequireAuthorization("AdminOnly")
+                .WithName("Admin hủy đơn quá hạn gửi đồ")
+                .WithSummary("Hủy đơn còn chờ gửi đồ đã quá hạn (giờ server): lý do 1–500 ký tự, giải phóng đúng ô đang giữ chỗ, áp chính sách phí hủy hiện hành, ghi lịch sử và báo khách. expectedRevision/expectedStatus/expectedFeeAmount lệch → 409 (QuoteChanged); operationId/Idempotency-Key gửi lại không hủy lại; ô không còn giữ chỗ → 409 BoxNotReserved.")
+                .WithOpenApi();
+
             group.MapPost("/{id:guid}/cancel", async (Guid id, CancelWashOrderCommand command, IWashOrderAppService svc) =>
                 (await svc.CancelAsync(id, command)).CustomResult())
                 .RequireAuthorization("CustomerOnly")
@@ -107,11 +128,11 @@ namespace WashGo.HttpApi.Endpoints.WashOrder
                 .WithSummary("Merchant cân đồ đã thu gom, tính lại giá và thời gian dự kiến; đơn giữ trạng thái Collected. Hỗ trợ expectedRevision/expectedStatus (409) và operationId như PUT /status.")
                 .WithOpenApi();
 
-            group.MapPost("/move-to-storage", async (MoveOrderToStorageCommand command, IWashOrderAppService svc) =>
-                (await svc.MoveToStorageAsync(command)).CustomResult())
+            group.MapPost("/move-to-storage", async (MoveOrderToStorageCommand command, HttpContext http, IWashOrderAppService svc) =>
+                (await svc.MoveToStorageAsync(OrderWriteHeaders.Apply(command, http))).CustomResult())
                 .RequireAuthorization("ShipperOrAdmin")
                 .WithName("Ghi nhận chuyển đồ quá hạn sang kho")
-                .WithSummary("Shipper hoặc Admin ghi nhận chuyển đồ quá hạn khỏi locker sang kho.")
+                .WithSummary("Shipper hoặc Admin ghi nhận chuyển đồ quá hạn khỏi locker sang kho. Hỗ trợ expectedRevision/expectedStatus (409) và operationId (gửi lại không thực hiện lại; tra cứu bằng GET /wash-order/{id}/operations/{operationId}). Điều kiện xem trước ở allowedActions.canMoveToStorage.")
                 .WithOpenApi();
 
             group.MapPut("/assign-shipper", async (AssignShipperCommand command, HttpContext http, IWashOrderAppService svc) =>

@@ -56,6 +56,7 @@ namespace WashGo.EntityFrameworkCore.EntityFrameworkCore
         public DbSet<OrderOperation> OrderOperations { get; set; } = null!;
         public DbSet<ShipperAudit> ShipperAudits { get; set; } = null!;
         public DbSet<DeliveryTask> DeliveryTasks { get; set; } = null!;
+        public DbSet<WashGo.Domain.Entities.Audit.AuditLog> AuditLogs { get; set; } = null!;
 
         public WashGoDbContext(DbContextOptions<WashGoDbContext> options)
             : base(options)
@@ -99,6 +100,7 @@ namespace WashGo.EntityFrameworkCore.EntityFrameworkCore
             builder.ApplyConfiguration(new OrderOperationEntityTypeConfiguration());
             builder.ApplyConfiguration(new ShipperAuditEntityTypeConfiguration());
             builder.ApplyConfiguration(new DeliveryTaskEntityTypeConfiguration());
+            builder.ApplyConfiguration(new AuditLogEntityTypeConfiguration());
             builder.ApplyConfiguration(new IncidentMessageEntityTypeConfiguration());
             builder.ApplyConfiguration(new MerchantSettlementEntityTypeConfiguration());
             builder.ApplyConfiguration(new MerchantProfileRequestEntityTypeConfiguration());
