@@ -1352,6 +1352,14 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
+                    b.Property<int>("CredentialDelivery")
+                        .HasColumnType("integer")
+                        .HasColumnName("credential_delivery");
+
+                    b.Property<DateTime?>("CredentialSentAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("credential_sent_at");
+
                     b.Property<int>("CurrentWorkload")
                         .HasColumnType("integer")
                         .HasColumnName("current_workload");

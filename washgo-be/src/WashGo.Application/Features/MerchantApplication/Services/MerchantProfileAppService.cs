@@ -242,7 +242,10 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             return Success(ToDto(request, names.GetValueOrDefault(request.MerchantId, string.Empty)));
         }
 
-        public async Task<BaseResponse<MerchantProfileRequestDto>> ApproveAsync(Guid id, string? expectedVersion = null, Guid? operationId = null)
+        public Task<BaseResponse<MerchantProfileRequestDto>> ApproveAsync(Guid id, string? expectedVersion = null, Guid? operationId = null) =>
+            _writeGuard.IdentitySafeAsync(() => ApproveCoreAsync(id, expectedVersion, operationId));
+
+        private async Task<BaseResponse<MerchantProfileRequestDto>> ApproveCoreAsync(Guid id, string? expectedVersion, Guid? operationId)
         {
             var lookup = await _requestRepo.FindAsync(id);
             if (lookup == null)
@@ -251,6 +254,9 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             var payload = new { id, expectedVersion };
             if (await _writeGuard.ReplayAsync<MerchantProfileRequestDto>(operationId, CurrentUser.Id!.Value, lookup.MerchantId, "ApproveProfile", payload) is { } replay)
                 return replay;
+            var identityEmail = await AsyncExecuter.FirstOrDefaultAsync((await _userRepo.GetQueryableAsync())
+                .Where(x => x.Id == lookup.MerchantId).Select(x => x.Email)) ?? string.Empty;
+            await _writeGuard.LockIdentityAsync(identityEmail.Trim().ToLowerInvariant(), Read(lookup.ProposedData).TaxCode);
             await _writeGuard.LockMerchantAsync(lookup.MerchantId);
             var request = await _requestRepo.FindAsync(id);
             if (request == null)

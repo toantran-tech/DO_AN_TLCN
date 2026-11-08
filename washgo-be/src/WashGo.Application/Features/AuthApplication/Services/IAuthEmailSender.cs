@@ -11,4 +11,6 @@ public interface IAuthEmailSender
 
     /// <summary>Gửi thông tin đăng nhập cho tài khoản do Merchant/Admin tạo (UC 2.4.2).</summary>
     Task<bool> SendAccountCredentialsAsync(string email, string fullName, string temporaryPassword);
+    /// <summary>Merchant credential message; Sent means SMTP accepted, Unknown is not safe to auto-retry.</summary>
+    Task<CredentialDeliveryStatus> SendMerchantCredentialsAsync(string email, string fullName, string temporaryPassword);
 }

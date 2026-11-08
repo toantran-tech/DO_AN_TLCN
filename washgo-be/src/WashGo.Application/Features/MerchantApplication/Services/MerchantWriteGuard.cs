@@ -9,6 +9,7 @@ using Volo.Abp.Domain.Repositories;
 using WashGo.Core.Domain.Shared.Bases;
 using WashGo.Domain.Entities.Partner;
 using WashGo.Domain.Entities.WashOrder.Interfaces;
+using WashGo.Domain.Services.Identity;
 
 namespace WashGo.Application.Features.MerchantApplication.Services;
 
@@ -18,8 +19,9 @@ public class MerchantWriteGuard : ITransientDependency
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private readonly IRepository<MerchantWriteOperation, Guid> _repo;
     private readonly IWashOrderRepository _locks;
-    public MerchantWriteGuard(IRepository<MerchantWriteOperation, Guid> repo, IWashOrderRepository locks)
-    { _repo = repo; _locks = locks; }
+    private readonly IIdentityConflictClassifier _conflicts;
+    public MerchantWriteGuard(IRepository<MerchantWriteOperation, Guid> repo, IWashOrderRepository locks, IIdentityConflictClassifier conflicts)
+    { _repo = repo; _locks = locks; _conflicts = conflicts; }
 
     // Opaque string: .NET ticks/microseconds exceed JavaScript's safe integer range.
     public static string Version(DateTime timestamp) => (timestamp.Ticks / 10).ToString(System.Globalization.CultureInfo.InvariantCulture);
@@ -32,14 +34,14 @@ public class MerchantWriteGuard : ITransientDependency
     public static string Hash(object payload) => Convert.ToHexString(SHA256.HashData(
         Encoding.UTF8.GetBytes(JsonSerializer.Serialize(payload, Json)))).ToLowerInvariant();
 
-    public async Task<BaseResponse<T>?> ReplayAsync<T>(Guid? id, Guid actor, Guid merchant, string operation, object payload)
+    public async Task<BaseResponse<T>?> ReplayAsync<T>(Guid? id, Guid actor, Guid? merchant, string operation, object payload)
     {
         if (!id.HasValue) return null;
         if (id == Guid.Empty) return Error<T>(HttpStatusCode.BadRequest, "InvalidOperationId", "operationId không hợp lệ.");
         await _locks.AcquireLockAsync($"merchant-write-operation:{id}");
         var previous = await _repo.FindAsync(id.Value);
         if (previous == null) return null;
-        if (previous.ActorId != actor || previous.MerchantId != merchant ||
+        if (previous.ActorId != actor || (merchant.HasValue && previous.MerchantId != merchant) ||
             previous.Operation != operation || previous.PayloadHash != Hash(payload))
             return Error<T>(HttpStatusCode.Conflict, "OperationIdReused", "operationId đã dùng cho yêu cầu khác.");
         return JsonSerializer.Deserialize<BaseResponse<T>>(previous.ResponseJson, Json)
@@ -47,6 +49,24 @@ public class MerchantWriteGuard : ITransientDependency
     }
 
     public Task LockMerchantAsync(Guid id) => _locks.AcquireLockAsync($"merchant-capacity:{id}");
+    public async Task LockIdentityAsync(string email, string? taxCode)
+    {
+        // Email then tax is the global ordering for identity creation. Locks contain hashes, not raw PII.
+        await _locks.AcquireLockAsync($"merchant-email:{Hash(email)}");
+        if (!string.IsNullOrWhiteSpace(taxCode))
+            await _locks.AcquireLockAsync($"merchant-tax:{Hash(taxCode)}");
+    }
+
+    public async Task<BaseResponse<T>> IdentitySafeAsync<T>(Func<Task<BaseResponse<T>>> action)
+    {
+        try { return await action(); }
+        catch (Exception error) when (_conflicts.Classify(error) != null)
+        {
+            var code = _conflicts.Classify(error)!;
+            return Error<T>(HttpStatusCode.Conflict, code,
+                code == "EmailAlreadyUsed" ? "Email này đã được sử dụng." : "Mã số thuế này đã được sử dụng.");
+        }
+    }
     public async Task RecordAsync<T>(Guid? id, Guid actor, Guid merchant, string operation, object payload, BaseResponse<T> response)
     {
         if (!id.HasValue) return;
