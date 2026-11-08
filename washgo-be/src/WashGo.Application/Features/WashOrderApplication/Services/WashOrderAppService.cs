@@ -283,6 +283,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             var list = data.Select(x => RedactStaffData(x, scope)).ToList();
             await _enricher.FillAsync(list, scope.Role);
             await _media.FillAsync(list, scope.Role);
+            await LazyServiceProvider.LazyGetRequiredService<OrderFinanceEnricher>().FillAsync(list, scope.Role);
             return Success(list, total, query.Page, query.Take, total > 0 ? null : scope.Role switch
             {
                 "Shipper" => "Bạn chưa có đơn hàng nào được phân công.",
@@ -359,6 +360,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 await _enricher.FillTaskAsync(dto);
             dto.AllowedActions = OrderActionRules.Build(order, scope.Role);
             await _media.FillAsync([dto], scope.Role);
+            await LazyServiceProvider.LazyGetRequiredService<OrderFinanceEnricher>().FillAsync([dto], scope.Role);
             return Success(RedactStaffData(dto, scope));
         }
 

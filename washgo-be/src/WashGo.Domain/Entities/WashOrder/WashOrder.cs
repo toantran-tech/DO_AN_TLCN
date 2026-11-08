@@ -60,7 +60,9 @@ namespace WashGo.Domain.Entities.WashOrder
         /// <summary>Phiên bản dữ liệu của đơn: DB tự tăng mỗi lần cập nhật (trigger), dùng cho expectedRevision/If-Match.</summary>
         public long Revision { get; set; }
         /// <summary>Tỷ lệ hoa hồng (%) chốt cố định theo đơn tại thời điểm gán Merchant (UC 2.3.2, UC 3.8).</summary>
-        public decimal CommissionRateApplied { get; set; }
+        public decimal? CommissionRateApplied { get; set; }
+        /// <summary>Thời điểm chốt tỷ lệ hoa hồng (lúc Admin phân công Merchant); null với đơn cũ chưa có snapshot.</summary>
+        public DateTime? CommissionLockedAt { get; set; }
         public decimal? ActualWeightKg { get; set; }
         public decimal? IncludedWeightKg { get; set; }
         public decimal WeightSurchargeAmount { get; set; }

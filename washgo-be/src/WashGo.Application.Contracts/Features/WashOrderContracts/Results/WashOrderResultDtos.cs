@@ -62,13 +62,25 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Results
         public decimal DiscountAmount { get; set; }
         public decimal FinalAmount { get; set; }
         /// <summary>Tỷ lệ hoa hồng (%) chốt cố định theo đơn (UC 2.3.2, UC 3.8).</summary>
-        public decimal CommissionRateApplied { get; set; }
+        public decimal? CommissionRateApplied { get; set; }
+        public DateTime? CommissionLockedAt { get; set; }
+        /// <summary>Locked (đã chốt tỷ lệ, kể cả 0%) hoặc Missing (đơn cũ chưa có snapshot: hoa hồng không xác định).</summary>
+        public string CommissionStatus => CommissionRateApplied.HasValue ? "Locked" : "Missing";
         /// <summary>Số tiền tính hoa hồng = FinalAmount (tiền giặt sau giảm giá).</summary>
         public decimal CommissionBaseAmount => FinalAmount;
-        /// <summary>Tiền hoa hồng hệ thống giữ (làm tròn số nguyên đồng).</summary>
-        public decimal CommissionAmount => decimal.Round(FinalAmount * CommissionRateApplied / 100m, 0, MidpointRounding.AwayFromZero);
-        /// <summary>Doanh thu thực nhận của tiệm giặt cho đơn này = CommissionBaseAmount - CommissionAmount.</summary>
-        public decimal MerchantNetAmount => Math.Max(0m, CommissionBaseAmount - CommissionAmount);
+        /// <summary>Hoa hồng tạm tính trên FinalAmount theo tỷ lệ chốt; null khi chưa có tỷ lệ chốt (không phải số đã thu/đối soát).</summary>
+        public decimal? CommissionAmount => CommissionRateApplied.HasValue ? decimal.Round(FinalAmount * CommissionRateApplied.Value / 100m, 0, MidpointRounding.AwayFromZero) : null;
+        /// <summary>Thực nhận tạm tính trên FinalAmount = FinalAmount − hoa hồng tạm tính; null khi chưa có tỷ lệ chốt.</summary>
+        public decimal? MerchantNetAmount => CommissionAmount.HasValue ? Math.Max(0m, CommissionBaseAmount - CommissionAmount.Value) : null;
+        /// <summary>Tiền giặt khách đã thanh toán thành công (Admin/Merchant).</summary>
+        public decimal? CollectedLaundryAmount { get; set; }
+        /// <summary>Tiền đã hoàn cho khách (Admin/Merchant).</summary>
+        public decimal? RefundedAmount { get; set; }
+        /// <summary>Hoa hồng trên số đã thu sau hoàn theo tỷ lệ chốt; null khi chưa có tỷ lệ chốt.</summary>
+        public decimal? CommissionOnCollected { get; set; }
+        public decimal? MerchantPayoutOnCollected { get; set; }
+        /// <summary>Unpaid (chưa thu), Collected (đã thu, tạm tính), Adjusted (có hoàn tiền), Settled (đã nằm trong kỳ đối soát đã chi trả).</summary>
+        public string? FinancialStatus { get; set; }
         public decimal? ActualWeightKg { get; set; }
         public decimal? IncludedWeightKg { get; set; }
         public decimal? ExcessWeightKg => ActualWeightKg.HasValue && IncludedWeightKg.HasValue

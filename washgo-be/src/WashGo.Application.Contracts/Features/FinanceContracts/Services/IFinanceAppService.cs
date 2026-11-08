@@ -16,6 +16,7 @@ namespace WashGo.Application.Contracts.Features.FinanceContracts.Services
         Task<BaseResponse<List<MerchantCommissionDto>>> GetCommissionsAsync(FinancePeriodQuery query);
         Task<BaseResponse<SettlementDto>> CreateSettlementAsync(CreateSettlementCommand command);
         Task<PaginatedResult<SettlementDto>> GetSettlementsAsync(SettlementFilterQuery query);
+        Task<BaseResponse<SettlementBreakdownDto>> GetSettlementBreakdownAsync(Guid id);
         Task<BaseResponse<SettlementDto>> ConfirmSettlementPaidAsync(Guid id, ConfirmSettlementPaidCommand command);
     }
 }

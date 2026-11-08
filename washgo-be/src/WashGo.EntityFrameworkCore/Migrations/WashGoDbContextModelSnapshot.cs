@@ -2554,7 +2554,11 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("cancelled_goods_status");
 
-                    b.Property<decimal>("CommissionRateApplied")
+                    b.Property<DateTime?>("CommissionLockedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("commission_locked_at");
+
+                    b.Property<decimal?>("CommissionRateApplied")
                         .HasPrecision(5, 2)
                         .HasColumnType("numeric(5,2)")
                         .HasColumnName("commission_rate_applied");
