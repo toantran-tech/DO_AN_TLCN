@@ -1,3 +1,4 @@
+using WashGo.Core.Domain.Shared.Bases;
 using System;
 using WashGo.Domain.Shared.Enums;
 
@@ -11,11 +12,12 @@ namespace WashGo.Application.Contracts.Features.FinanceContracts.Queries
         public Guid? MerchantId { get; set; }
     }
 
-    public class SettlementFilterQuery
+    public class SettlementFilterQuery : BaseFilterQuery
     {
         public Guid? MerchantId { get; set; }
         public SettlementStatus? Status { get; set; }
-        public int Page { get; set; } = 1;
-        public int Take { get; set; } = 20;
+        public SettlementFilterQuery() { Page = 1; Take = 20; }
+        public long PaidFromDate { get; set; }
+        public long PaidToDate { get; set; }
     }
 }

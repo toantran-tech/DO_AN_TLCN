@@ -19,7 +19,7 @@ namespace WashGo.Application.Contracts.Features.ServiceProposalContracts.Service
         Task<BaseResponse<ServiceProposalDto>> ProposeUpdateAsync(Guid serviceId, ServiceProposalCommand command);
         Task<PaginatedResult<ServiceProposalDto>> GetListAsync(ServiceProposalFilterQuery query);
         Task<BaseResponse<ServiceProposalDto>> GetByIdAsync(Guid id);
-        Task<BaseResponse<ServiceProposalDto>> ApproveAsync(Guid id);
+        Task<BaseResponse<ServiceProposalDto>> ApproveAsync(Guid id, string? expectedVersion = null, Guid? operationId = null);
         Task<BaseResponse<ServiceProposalDto>> RejectAsync(Guid id, RejectServiceProposalCommand command);
     }
 }

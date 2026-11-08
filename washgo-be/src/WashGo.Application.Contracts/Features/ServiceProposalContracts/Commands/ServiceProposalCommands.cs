@@ -31,6 +31,8 @@ namespace WashGo.Application.Contracts.Features.ServiceProposalContracts.Command
 
     public class RejectServiceProposalCommand
     {
+        public Guid? OperationId { get; set; }
+        public string? ExpectedVersion { get; set; }
         public string Reason { get; set; } = string.Empty;
     }
 }

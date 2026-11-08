@@ -10,6 +10,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Volo.Abp.DependencyInjection;
 using WashGo.Application.Contracts.Features.PaymentContracts.Commands;
+using  System.Text.Json;
 
 namespace WashGo.Application.Features.PaymentApplication.Services
 {
@@ -72,7 +73,7 @@ namespace WashGo.Application.Features.PaymentApplication.Services
                 _logger.LogWarning("MoMo create payment {Reference} failed: {Code} {Message}", reference, body?.ResultCode, body?.Message);
                 return (null, $"MoMo từ chối tạo giao dịch: {body?.Message ?? response.StatusCode.ToString()}");
             }
-            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
             {
                 _logger.LogWarning(ex, "MoMo create payment {Reference} failed", reference);
                 return (null, "Không kết nối được cổng thanh toán MoMo. Vui lòng thử lại.");

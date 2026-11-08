@@ -17,5 +17,7 @@ namespace WashGo.Application.Features.SystemSettingApplication.Services
 
         public async Task<SystemSetting> GetAsync() =>
             await _repo.FindAsync(SystemSetting.SingletonId) ?? new SystemSetting();
+        public async Task<SystemSetting> ForOrderAsync(WashGo.Domain.Entities.WashOrder.WashOrder order) =>
+            WashGo.Domain.Entities.WashOrder.OrderOperationalPolicy.Resolve(order, await GetAsync());
     }
 }

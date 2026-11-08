@@ -21,6 +21,9 @@ namespace WashGo.Application.Contracts.Features.MerchantProfileContracts.Command
         /// chính Merchant upload). null = giữ nguyên, chuỗi rỗng = xóa. Chỉ áp dụng khi Admin duyệt.
         /// </summary>
         public string? BusinessLicense { get; set; }
+        public Guid? BusinessLicenseDocumentId { get; set; }
+        public bool RemoveBusinessLicenseDocument { get; set; }
+        public Guid? OperationId { get; set; }
     }
 
     public class RejectMerchantProfileRequestCommand

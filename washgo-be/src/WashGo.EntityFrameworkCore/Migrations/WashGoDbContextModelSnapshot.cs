@@ -27,6 +27,56 @@ namespace WashGo.EntityFrameworkCore.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("WashGo.Domain.Entities.Audit.AdministrativeOperation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("action");
+
+                    b.Property<Guid>("ActorId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("actor_id");
+
+                    b.Property<DateTime>("CompletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("completed_at");
+
+                    b.Property<string>("Module")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("module");
+
+                    b.Property<string>("PayloadHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("payload_hash");
+
+                    b.Property<string>("ResourceId")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasColumnName("resource_id");
+
+                    b.Property<string>("ResponseJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("response_json");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ActorId", "Module", "CompletedAt");
+
+                    b.ToTable("administrative_operations", "washgo");
+                });
+
             modelBuilder.Entity("WashGo.Domain.Entities.Audit.AuditLog", b =>
                 {
                     b.Property<Guid>("Id")
@@ -144,10 +194,18 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("compensation_paid_at");
 
+                    b.Property<int?>("CompensationPercentApplied")
+                        .HasColumnType("integer")
+                        .HasColumnName("compensation_percent_applied");
+
                     b.Property<string>("CompensationReference")
                         .HasMaxLength(120)
                         .HasColumnType("character varying(120)")
                         .HasColumnName("compensation_reference");
+
+                    b.Property<string>("CompensationSettingsVersion")
+                        .HasColumnType("text")
+                        .HasColumnName("compensation_settings_version");
 
                     b.Property<int>("CompensationStatus")
                         .HasColumnType("integer")
@@ -254,6 +312,10 @@ namespace WashGo.EntityFrameworkCore.Migrations
                     b.Property<Guid?>("ReviewedBy")
                         .HasColumnType("uuid")
                         .HasColumnName("reviewed_by");
+
+                    b.Property<long>("Revision")
+                        .HasColumnType("bigint")
+                        .HasColumnName("revision");
 
                     b.Property<NpgsqlTsVector>("SearchVector")
                         .HasColumnType("tsvector")
@@ -499,6 +561,10 @@ namespace WashGo.EntityFrameworkCore.Migrations
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid")
                         .HasColumnName("id");
+
+                    b.Property<string>("BreakdownSnapshotJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("breakdown_snapshot_json");
 
                     b.Property<decimal>("CommissionAmount")
                         .HasPrecision(18, 2)
@@ -1323,6 +1389,10 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("jsonb")
                         .HasColumnName("business_license");
 
+                    b.Property<Guid?>("BusinessLicenseDocumentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("business_license_document_id");
+
                     b.Property<string>("BusinessName")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -1339,6 +1409,10 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasPrecision(5, 2)
                         .HasColumnType("numeric(5,2)")
                         .HasColumnName("commission_rate");
+
+                    b.Property<Guid?>("ContractDocumentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("contract_document_id");
 
                     b.Property<DateTime?>("ContractEndDate")
                         .HasColumnType("timestamp with time zone")
@@ -1419,6 +1493,10 @@ namespace WashGo.EntityFrameworkCore.Migrations
                     b.Property<string>("SlaDocUrl")
                         .HasColumnType("text")
                         .HasColumnName("sla_doc_url");
+
+                    b.Property<Guid?>("SlaDocumentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("sla_document_id");
 
                     b.Property<int>("Status")
                         .HasColumnType("integer")
@@ -1657,6 +1735,79 @@ namespace WashGo.EntityFrameworkCore.Migrations
                     b.HasIndex("ActorId", "MerchantId");
 
                     b.ToTable("merchant_write_operations", "washgo");
+                });
+
+            modelBuilder.Entity("WashGo.Domain.Entities.Partner.PrivateDocument", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("content_type");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<string>("Extension")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)")
+                        .HasColumnName("extension");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(180)
+                        .HasColumnType("character varying(180)")
+                        .HasColumnName("file_name");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("integer")
+                        .HasColumnName("kind");
+
+                    b.Property<Guid?>("MerchantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("merchant_id");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_id");
+
+                    b.Property<DateTime?>("ReferencedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("referenced_at");
+
+                    b.Property<string>("Sha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("sha256");
+
+                    b.Property<long>("Size")
+                        .HasColumnType("bigint")
+                        .HasColumnName("size");
+
+                    b.Property<DateTime>("UploadedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("uploaded_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MerchantId");
+
+                    b.HasIndex("OwnerId");
+
+                    b.HasIndex("IsDeleted", "ReferencedAt", "ExpiresAt");
+
+                    b.ToTable("private_documents", "washgo");
                 });
 
             modelBuilder.Entity("WashGo.Domain.Entities.Partner.ServiceArea", b =>
@@ -1923,6 +2074,48 @@ namespace WashGo.EntityFrameworkCore.Migrations
                     b.ToTable("shipper_audits", "washgo");
                 });
 
+            modelBuilder.Entity("WashGo.Domain.Entities.Partner.UploadedAsset", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_id");
+
+                    b.Property<DateTime?>("ReferencedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("referenced_at");
+
+                    b.Property<DateTime>("UploadedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("uploaded_at");
+
+                    b.Property<string>("Url")
+                        .IsRequired()
+                        .HasMaxLength(180)
+                        .HasColumnType("character varying(180)")
+                        .HasColumnName("url");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Url")
+                        .IsUnique();
+
+                    b.HasIndex("IsDeleted", "ReferencedAt", "ExpiresAt");
+
+                    b.ToTable("uploaded_assets", "washgo");
+                });
+
             modelBuilder.Entity("WashGo.Domain.Entities.Payment.PaymentTransaction", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1933,6 +2126,11 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)")
                         .HasColumnName("amount");
+
+                    b.Property<decimal?>("CommissionRateSnapshot")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)")
+                        .HasColumnName("commission_rate_snapshot");
 
                     b.Property<DateTime?>("CompletedAt")
                         .HasColumnType("timestamp with time zone")
@@ -1963,9 +2161,18 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("character varying(500)")
                         .HasColumnName("failure_reason");
 
+                    b.Property<string>("FinancialSnapshotBasis")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("financial_snapshot_basis");
+
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("boolean")
                         .HasColumnName("is_deleted");
+
+                    b.Property<Guid?>("MerchantIdSnapshot")
+                        .HasColumnType("uuid")
+                        .HasColumnName("merchant_id_snapshot");
 
                     b.Property<string>("Modified")
                         .HasColumnType("jsonb")
@@ -2038,6 +2245,11 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("numeric(18,2)")
                         .HasColumnName("amount");
 
+                    b.Property<decimal?>("CommissionRateSnapshot")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)")
+                        .HasColumnName("commission_rate_snapshot");
+
                     b.Property<string>("Created")
                         .HasColumnType("jsonb")
                         .HasColumnName("created");
@@ -2062,9 +2274,18 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("bigint")
                         .HasColumnName("deleted_on");
 
+                    b.Property<string>("FinancialSnapshotBasis")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("financial_snapshot_basis");
+
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("boolean")
                         .HasColumnName("is_deleted");
+
+                    b.Property<Guid?>("MerchantIdSnapshot")
+                        .HasColumnType("uuid")
+                        .HasColumnName("merchant_id_snapshot");
 
                     b.Property<string>("Modified")
                         .HasColumnType("jsonb")
@@ -2081,6 +2302,10 @@ namespace WashGo.EntityFrameworkCore.Migrations
                     b.Property<Guid>("OrderId")
                         .HasColumnType("uuid")
                         .HasColumnName("order_id");
+
+                    b.Property<Guid?>("OriginalPaymentTransactionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("original_payment_transaction_id");
 
                     b.Property<string>("Reason")
                         .IsRequired()
@@ -2123,6 +2348,8 @@ namespace WashGo.EntityFrameworkCore.Migrations
                     b.HasIndex("CustomerId");
 
                     b.HasIndex("OrderId");
+
+                    b.HasIndex("OriginalPaymentTransactionId");
 
                     b.HasIndex("Status");
 
@@ -2709,6 +2936,10 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("cancelled_goods_status");
 
+                    b.Property<int?>("CollectSlaHoursSnapshot")
+                        .HasColumnType("integer")
+                        .HasColumnName("collect_sla_hours_snapshot");
+
                     b.Property<DateTime?>("CommissionLockedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("commission_locked_at");
@@ -2873,6 +3104,19 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("moved_to_storage_at");
 
+                    b.Property<string>("OperationalPolicyBasis")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("operational_policy_basis");
+
+                    b.Property<DateTime?>("OperationalPolicyCapturedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("operational_policy_captured_at");
+
+                    b.Property<string>("OperationalSettingsJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("operational_settings_json");
+
                     b.Property<string>("OrderCode")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -2958,6 +3202,10 @@ namespace WashGo.EntityFrameworkCore.Migrations
                     b.Property<Guid?>("ReturnLockerId")
                         .HasColumnType("uuid")
                         .HasColumnName("return_locker_id");
+
+                    b.Property<int?>("ReturnSlaHoursSnapshot")
+                        .HasColumnType("integer")
+                        .HasColumnName("return_sla_hours_snapshot");
 
                     b.Property<long>("Revision")
                         .ValueGeneratedOnAddOrUpdate()

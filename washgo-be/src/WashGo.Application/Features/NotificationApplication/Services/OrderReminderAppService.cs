@@ -93,7 +93,7 @@ namespace WashGo.Application.Features.NotificationApplication.Services
             var since = new DateTimeOffset(now.AddDays(-1)).ToUnixTimeSeconds();
             foreach (var o in await OrdersAsync(q => q.Where(x => x.Status == WashOrderStatus.Pending && x.CreatedOn > since)))
             {
-                var deadline = OrderDepositRules.DeadlineOf(o, s.DepositWindowMinutes);
+                var deadline = OrderDepositRules.DeadlineOf(o, OrderOperationalPolicy.Resolve(o, s).DepositWindowMinutes);
                 if (now >= deadline)
                 {
                     if (await ClaimAsync("deposit-expired", $"deposit-expired:{o.Id}", o.Id, now))
@@ -143,12 +143,14 @@ namespace WashGo.Application.Features.NotificationApplication.Services
                     "order", o.Id);
             }
 
-            var slaDue = now.AddHours(-s.MerchantCollectSlaHours);
+            var slaDue = now.AddHours(-1);
             foreach (var o in await OrdersAsync(q => q.Where(x => x.Status == WashOrderStatus.Deposited
                          && x.DepositedAt != null && x.DepositedAt <= slaDue)))
             {
+                var policy = OrderOperationalPolicy.Resolve(o, s);
+                if (o.DepositedAt!.Value.AddHours(policy.MerchantCollectSlaHours) > now) continue;
                 if (!await ClaimAsync("collect-late", $"collect-late:{o.Id}", o.Id, now)) continue;
-                var late = $"⚠️ Đơn #{o.OrderCode} đã quá {s.MerchantCollectSlaHours} giờ kể từ khi khách gửi đồ nhưng chưa được lấy khỏi locker.";
+                var late = $"⚠️ Đơn #{o.OrderCode} đã quá {policy.MerchantCollectSlaHours} giờ kể từ khi khách gửi đồ nhưng chưa được lấy khỏi locker.";
                 await _notifications.SendAsync([o.MerchantId], NotificationType.SlaWarning, "Cảnh báo trễ lấy đồ", late, "order", o.Id);
                 await _notifications.SendToAdminsAsync(NotificationType.SlaWarning, "Cảnh báo trễ lấy đồ", late, "order", o.Id);
             }
@@ -157,11 +159,12 @@ namespace WashGo.Application.Features.NotificationApplication.Services
         // Đơn đã thanh toán nhưng chưa trả về locker: nhắc ở nửa SLA trả đồ, cảnh báo khi trễ SLA.
         private async Task RemindReturnAsync(DateTime now, SystemSetting s)
         {
-            var sla = TimeSpan.FromHours(s.MerchantReturnSlaHours);
-            var remindDue = now - sla / 2;
+            var remindDue = now.AddMinutes(-30);
             foreach (var o in await OrdersAsync(q => q.Where(x => x.Status == WashOrderStatus.Paid
                          && x.PaidAt != null && x.PaidAt <= remindDue)))
             {
+                var sla = TimeSpan.FromHours(OrderOperationalPolicy.Resolve(o, s).MerchantReturnSlaHours);
+                if (o.PaidAt!.Value + sla / 2 > now) continue;
                 if (!await ClaimAsync("return-remind", $"return-remind:{o.Id}", o.Id, now)) continue;
                 var left = o.PaidAt!.Value + sla - now;
                 await _notifications.SendAsync([o.MerchantId], NotificationType.MerchantReturnReminder, "Nhắc nhở trả đồ",
@@ -173,15 +176,17 @@ namespace WashGo.Application.Features.NotificationApplication.Services
                         $"Đơn #{o.OrderCode} đã giặt xong. Vui lòng trả vào locker.", "order", o.Id);
             }
 
-            var lateDue = now - sla;
+            var lateDue = now.AddHours(-1);
             foreach (var o in await OrdersAsync(q => q.Where(x => x.Status == WashOrderStatus.Paid
                          && x.PaidAt != null && x.PaidAt <= lateDue)))
             {
+                var policy = OrderOperationalPolicy.Resolve(o, s);
+                if (o.PaidAt!.Value.AddHours(policy.MerchantReturnSlaHours) > now) continue;
                 if (!await ClaimAsync("return-late", $"return-late:{o.Id}", o.Id, now)) continue;
                 await _notifications.SendAsync([o.MerchantId], NotificationType.SlaWarning, "Cảnh báo trễ trả đồ",
-                    $"⚠️ Đơn #{o.OrderCode} đã quá hạn trả đồ {s.MerchantReturnSlaHours} giờ. Phí phạt sẽ được áp dụng.", "order", o.Id);
+                    $"⚠️ Đơn #{o.OrderCode} đã quá hạn trả đồ {policy.MerchantReturnSlaHours} giờ.", "order", o.Id);
                 await _notifications.SendToAdminsAsync(NotificationType.SlaWarning, "Merchant trễ trả đồ",
-                    $"⚠️ Merchant {o.MerchantName ?? "(chưa rõ)"} trễ trả đồ đơn #{o.OrderCode} quá {s.MerchantReturnSlaHours} giờ.", "order", o.Id);
+                    $"⚠️ Merchant {o.MerchantName ?? "(chưa rõ)"} trễ trả đồ đơn #{o.OrderCode} quá {policy.MerchantReturnSlaHours} giờ.", "order", o.Id);
             }
         }
 
@@ -216,6 +221,7 @@ namespace WashGo.Application.Features.NotificationApplication.Services
             var overdueCount = 0;
             foreach (var o in orders)
             {
+                var policy = OrderOperationalPolicy.Resolve(o, s);
                 var deadline = o.PickupDeadline!.Value;
                 var lockerId = o.ReturnLockerId ?? o.LockerId;
                 if (!lockerNames.TryGetValue(lockerId, out var lockerName))
@@ -224,7 +230,7 @@ namespace WashGo.Application.Features.NotificationApplication.Services
 
                 if (now < deadline)
                 {
-                    if (now >= deadline.AddHours(-s.FreePickupHours / 2.0) &&
+                    if (now >= deadline.AddHours(-policy.FreePickupHours / 2.0) &&
                         await ClaimAsync("pickup-remind", $"pickup-remind:{o.Id}", o.Id, now))
                         await _notifications.SendAsync([o.CustomerId], NotificationType.PickupReminder, "Nhắc nhở lấy đồ",
                             $"Đồ của bạn đang chờ tại {place}. Còn {Hours((deadline - now).TotalHours)} để lấy miễn phí.", "order", o.Id,
@@ -234,7 +240,7 @@ namespace WashGo.Application.Features.NotificationApplication.Services
                 }
 
                 overdueCount++;
-                var fee = OverdueFeeCalculator.Calculate(deadline, now, s);
+                var fee = OverdueFeeCalculator.Calculate(deadline, now, policy);
                 var chargedDays = (int)Math.Ceiling((now - deadline).TotalHours / 24d);
                 // One message per started overdue day (the first one also announces the overdue status).
                 if (chargedDays <= 3 && await ClaimAsync("overdue-fee", $"overdue-fee:{o.Id}:{chargedDays}", o.Id, now))

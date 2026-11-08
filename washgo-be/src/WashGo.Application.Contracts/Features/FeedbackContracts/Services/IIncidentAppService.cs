@@ -14,6 +14,7 @@ namespace WashGo.Application.Contracts.Features.FeedbackContracts.Services
         Task<PaginatedResult<IncidentResultDto>> GetMineAsync(int page, int take);
         Task<PaginatedResult<IncidentResultDto>> GetListAsync(IncidentFilterQuery query);
         Task<BaseResponse<IncidentResultDto>> GetByIdAsync(Guid id);
+        Task<BaseResponse<WashGo.Application.Contracts.Features.AuditContracts.Results.AdministrativeSummaryDto>> GetSummaryAsync();
         Task<BaseResponse<IncidentResultDto>> ResolveAsync(Guid id, ResolveIncidentCommand command);
         Task<BaseResponse<IncidentResultDto>> RejectAsync(Guid id, RejectIncidentCommand command);
         Task<BaseResponse<IncidentResultDto>> ConfirmCompensationAsync(Guid id, ConfirmCompensationCommand command);

@@ -331,16 +331,16 @@ namespace WashGo.Application.Features.AdminApplication.Services
                     .Where(o => o.Status == WashOrderStatus.Deposited && o.MerchantId == null && o.DepositedAt != null && o.DepositedAt < assignBefore)
                     .Select(o => new AlertRow { Id = o.Id, Type = AdminAlertType.AssignmentOverdue, Deadline = o.DepositedAt!.Value.AddMinutes(assignMinutes) }),
                 [AdminAlertType.CollectionOverdue] = orders
-                    .Where(o => o.Status == WashOrderStatus.Deposited && o.MerchantId != null && o.DepositedAt != null && o.DepositedAt < collectBefore)
-                    .Select(o => new AlertRow { Id = o.Id, Type = AdminAlertType.CollectionOverdue, Deadline = o.DepositedAt!.Value.AddHours(collectSla) }),
+                    .Where(o => o.Status == WashOrderStatus.Deposited && o.MerchantId != null && o.DepositedAt != null && o.DepositedAt.Value.AddHours(o.CollectSlaHoursSnapshot ?? collectSla) < now)
+                    .Select(o => new AlertRow { Id = o.Id, Type = AdminAlertType.CollectionOverdue, Deadline = o.DepositedAt!.Value.AddHours(o.CollectSlaHoursSnapshot ?? collectSla) }),
                 [AdminAlertType.ProcessingOverdue] = orders
                     .Where(o => (o.Status == WashOrderStatus.Washing || o.Status == WashOrderStatus.Drying ||
                                  o.Status == WashOrderStatus.Ironing || o.Status == WashOrderStatus.Folding) &&
                                 o.EstimatedFinishAt != null && o.EstimatedFinishAt < now)
                     .Select(o => new AlertRow { Id = o.Id, Type = AdminAlertType.ProcessingOverdue, Deadline = o.EstimatedFinishAt!.Value }),
                 [AdminAlertType.ReturnOverdue] = orders
-                    .Where(o => o.Status == WashOrderStatus.Paid && o.PaidAt != null && o.PaidAt < returnBefore)
-                    .Select(o => new AlertRow { Id = o.Id, Type = AdminAlertType.ReturnOverdue, Deadline = o.PaidAt!.Value.AddHours(returnSla) }),
+                    .Where(o => o.Status == WashOrderStatus.Paid && o.PaidAt != null && o.PaidAt.Value.AddHours(o.ReturnSlaHoursSnapshot ?? returnSla) < now)
+                    .Select(o => new AlertRow { Id = o.Id, Type = AdminAlertType.ReturnOverdue, Deadline = o.PaidAt!.Value.AddHours(o.ReturnSlaHoursSnapshot ?? returnSla) }),
                 [AdminAlertType.PickupOverdue] = orders
                     .Where(o => o.Status == WashOrderStatus.ReadyToReturn && o.PickupDeadline != null && o.PickupDeadline < now)
                     .Select(o => new AlertRow { Id = o.Id, Type = AdminAlertType.PickupOverdue, Deadline = o.PickupDeadline!.Value }),

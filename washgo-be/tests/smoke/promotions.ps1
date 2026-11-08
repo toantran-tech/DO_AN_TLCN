@@ -148,6 +148,7 @@ INSERT INTO washgo.services SELECT (jsonb_populate_record(NULL::washgo.services,
 
     Write-Output '5. Edit/delete rules for used codes (UC 3.6.3, 3.6.4)'
     $upd=Promo-Body 'PCT10' 1 15 @{id=$pct.id;maxDiscountAmount=8000;minOrderAmount=50000;usageLimit=1;usageLimitPerCustomer=1}
+    $upd.expectedVersion=(Promo-State $pct.id).version
     Assert-Status 400 Put '/promotion/' $upd $admin
     $upd.usageLimit=3; $upd.code="$prefix-RENAMED"
     Assert-Status 400 Put '/promotion/' $upd $admin
@@ -155,8 +156,8 @@ INSERT INTO washgo.services SELECT (jsonb_populate_record(NULL::washgo.services,
     $updated=(Call-Api Put '/promotion/' $upd $admin).data
     if($updated.discountValue -ne 15 -or $updated.usedCount -ne 2 -or $updated.status -ne 2){throw 'Update lost used count or status.'}
     if((Call-Api Get "/wash-order/$($o1.id)" $null $customer).data.discountAmount -ne 8000){throw 'Editing a promotion changed an existing order.'}
-    Assert-Status 400 Delete "/promotion/$($pct.id)" $null $admin
-    Call-Api Delete "/promotion/$($min.id)" $null $admin | Out-Null
+    Assert-Status 400 Delete "/promotion/$($pct.id)?expectedVersion=$($updated.version)" $null $admin
+    Call-Api Delete "/promotion/$($min.id)?expectedVersion=$((Promo-State $min.id).version)" $null $admin | Out-Null
     Assert-Status 404 Get "/promotion/$($min.id)" $null $admin
     $reuse=New-Promotion (Promo-Body 'MIN' 2 10000)
     if($reuse.code -ne "$prefix-MIN"){throw 'Deleted code could not be reused.'}
@@ -206,7 +207,7 @@ INSERT INTO washgo.services SELECT (jsonb_populate_record(NULL::washgo.services,
     Assert-Status 403 Get "/promotion/$($pct.id)/statistics" $null $customer
 
     Write-Output '10. Toggle off hides the code from customers'
-    Call-Api Patch "/promotion/$($fix.id)/toggle-active" $null $admin | Out-Null
+    Call-Api Put "/promotion/$($fix.id)/status" @{expectedVersion=(Promo-State $fix.id).version;isActive=$false} $admin | Out-Null
     Assert-Status 400 Post '/wash-order/apply-voucher' @{lockerId="$lockerId";items=(Kg-Items);promotionCode="$prefix-FIX"} $customer
     if((Promo-State $fix.id).status -ne 0){throw 'Toggle did not deactivate.'}
 

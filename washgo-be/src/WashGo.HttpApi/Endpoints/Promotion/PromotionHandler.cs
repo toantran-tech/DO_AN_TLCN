@@ -20,12 +20,20 @@ namespace WashGo.HttpApi.Endpoints.Promotion
             var group = app.MapGroup(_endpoint)
             .WithTags("Promotion - Quản lý khuyến mãi")
             .RequireAuthorization("AdminOnly");
+            group.MapGet("/summary", async (IPromotionAppService svc) => (await svc.GetSummaryAsync()).CustomResult())
+                .WithSummary("Thống kê mã giảm giá theo trạng thái từ DB tại thời điểm generatedAt.").WithOpenApi();
+            group.MapPost("/{id:guid}/usages/filter", async (Guid id, PromotionUsageFilterQuery query, IPromotionAppService svc) =>
+                (await svc.GetUsageHistoryAsync(id, query)).CustomResult())
+                .WithSummary("Admin xem lịch sử dùng/hoàn lượt voucher; lọc orderId/customerId/isReverted, fromDate/toDate theo UsedAt (Unix giây); phân trang và sort UsedAt/RevertedAt/DiscountAmount/OrderAmount/Id. Lý do hoàn lượt cũ chưa lưu trả null.")
+                .WithOpenApi();
 
             group.MapPost("/filter", async (PromotionFilterQuery request, IPromotionAppService svc) =>
                 (await svc.GetListAsync(request)).CustomResult())
                 .WithName("Lọc danh sách mã giảm giá")
-                .WithSummary("Admin xem mã giảm giá, lọc theo trạng thái, loại giảm và khoảng thời gian hiệu lực.")
+                .WithSummary("Lọc mã theo trạng thái, loại giảm, khoảng hiệu lực; sortBy nhiều tiêu chí Code/CreatedOn/StartAt/EndAt/UsageLimit/UsedCount/Id, Id phụ ổn định. UsageLimit null đứng cuối khi tăng dần theo PostgreSQL.")
                 .WithOpenApi();
+            group.MapPost("/batch", async (WashGo.Application.Contracts.Features.AuditContracts.Commands.AdministrativeBatchCommand command, IPromotionAppService svc) => (await svc.BatchAsync(command)).CustomResult())
+                .WithSummary("Xử lý 1–100 mã: action=Delete|Status, isActive đích, items gồm id/expectedVersion; bắt buộc operationId, kết quả từng ID và replay.").WithOpenApi();
 
             group.MapGet("/{id:guid}", async (Guid id, IPromotionAppService svc) =>
                 (await svc.GetByIdAsync(id)).CustomResult())
@@ -45,11 +53,13 @@ namespace WashGo.HttpApi.Endpoints.Promotion
                 .WithSummary("Cập nhật mã giảm giá; không đổi mã khi đã có lượt dùng, tổng lượt không nhỏ hơn số đã dùng.")
                 .WithOpenApi();
 
-            group.MapDelete("/{id:guid}", async (Guid id, IPromotionAppService svc) =>
-                (await svc.DeleteAsync(id)).CustomResult())
+            group.MapDelete("/{id:guid}", async (Guid id, string? expectedVersion, Guid? operationId, IPromotionAppService svc) =>
+                (await svc.DeleteAsync(id, expectedVersion, operationId)).CustomResult())
                 .WithName("Xóa mã giảm giá")
                 .WithSummary("Xóa mã giảm giá chưa có lượt sử dụng.")
                 .WithOpenApi();
+            group.MapPut("/{id:guid}/status", async (Guid id, SetPromotionStatusCommand command, IPromotionAppService svc) => (await svc.SetStatusAsync(id, command)).CustomResult())
+                .WithSummary("Gán trạng thái isActive đích; bắt buộc expectedVersion, hỗ trợ operationId chống gửi trùng.").WithOpenApi();
 
             group.MapPatch("/{id:guid}/toggle-active", async (Guid id, IPromotionAppService svc) =>
                 (await svc.ToggleActiveAsync(id)).CustomResult())

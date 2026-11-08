@@ -106,6 +106,11 @@ namespace WashGo.Domain.Entities.WashOrder
         public DateTime? EtaUpdatedAt { get; set; }
         public DateTime? FinishedAt { get; set; }
         public DateTime? DepositDeadline { get; set; }
+        public string? OperationalSettingsJson { get; set; }
+        public DateTime? OperationalPolicyCapturedAt { get; set; }
+        public string? OperationalPolicyBasis { get; set; }
+        public int? CollectSlaHoursSnapshot { get; set; }
+        public int? ReturnSlaHoursSnapshot { get; set; }
         public DateTime? ReturnDeadline { get; set; }
         public DateTime? PickupDeadline { get; set; }
         public DateTime? MovedToStorageAt { get; set; }

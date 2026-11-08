@@ -7,6 +7,8 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Results
     public class WashOrderResultDto
     {
         public Guid Id { get; set; }
+        public DateTime? OperationalPolicyCapturedAt { get; set; }
+        public string? OperationalPolicyBasis { get; set; }
         public string OrderCode { get; set; } = string.Empty;
         /// <summary>Mã đơn nội bộ của Merchant (UC 2.3.1).</summary>
         public string? MerchantOrderCode { get; set; }

@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$BaseUrl='http://localhost:5000',
     [string]$PostgresContainer='washgo_postgres',
     [string]$PostgresUser='postgres',
@@ -73,8 +73,8 @@ INSERT INTO washgo.shippers SELECT (jsonb_populate_record(NULL::washgo.shippers,
     Call-Api Post "/wash-order/$o2/cancel" @{reason='Finance smoke cancel'} $customer | Out-Null
     Pay $o2 '/payment/cancellation-fee/create-url'
     $refund=(Call-Api Post '/payment/refund-requests' @{orderId=$o3;reason='Finance smoke refund'} $customer).data
-    Call-Api Post "/payment/refund-requests/$($refund.id)/review" @{approve=$true;reviewNote='ok'} $admin | Out-Null
-    Call-Api Post "/payment/refund-requests/$($refund.id)/confirm-refunded" @{refundReference="RF-$run"} $admin | Out-Null
+    $approved=(Call-Api Post "/payment/refund-requests/$($refund.id)/review" @{approve=$true;reviewNote='ok';expectedVersion=$refund.version} $admin).data
+    Call-Api Post "/payment/refund-requests/$($refund.id)/confirm-refunded" @{refundReference="RF-$run";expectedVersion=$approved.version} $admin | Out-Null
     $to=[DateTimeOffset]::UtcNow.ToUnixTimeSeconds()+1
 
     Write-Output '2. Revenue report (UC 3.8.1)'
@@ -103,15 +103,16 @@ INSERT INTO washgo.shippers SELECT (jsonb_populate_record(NULL::washgo.shippers,
     Write-Output '4. Settlement period: create once, Merchant sees only own, confirm payout'
     Assert-Status 400 Post '/finance/settlements' @{merchantId="$merchantB";fromDate=$from;toDate=$to+3600} $admin
     Start-Sleep -Seconds 2
-    $s=(Call-Api Post '/finance/settlements' @{merchantId="$merchantB";fromDate=$from;toDate=$to} $admin).data
+    $quote=(Call-Api Post '/finance/settlements/quote' @{merchantId="$merchantB";fromDate=$from;toDate=$to} $admin).data
+    $s=(Call-Api Post '/finance/settlements' @{merchantId="$merchantB";fromDate=$from;toDate=$to;quoteToken=$quote.quoteToken} $admin).data
     if($s.status -ne 1 -or $s.payoutAmount -ne 75000 -or $s.commissionAmount -ne 25000){throw 'Settlement snapshot wrong.'}
-    Assert-Status 400 Post '/finance/settlements' @{merchantId="$merchantB";fromDate=$from+10;toDate=$to} $admin
+    Assert-Status 409 Post '/finance/settlements' @{merchantId="$merchantB";fromDate=$from;toDate=$to} $admin
     Sql "UPDATE washgo.merchants SET commission_rate=10 WHERE user_id='$merchantB';" | Out-Null
     $mine=Call-Api Post '/finance/settlements/filter' @{merchantId="$seedMerchantId"} $merchantTok
     if($mine.total -ne 1 -or $mine.list[0].id -ne $s.id -or $mine.list[0].commissionRate -ne 25){throw 'Merchant settlement scope or snapshot wrong.'}
     if(@((Call-Api Post '/finance/settlements/filter' @{take=100} $seedMerchant).list | Where-Object { $_.id -eq $s.id }).Count){throw 'Other Merchant sees the settlement.'}
     Assert-Status 400 Post "/finance/settlements/$($s.id)/confirm-paid" @{reference=' '} $admin
-    $paid=(Call-Api Post "/finance/settlements/$($s.id)/confirm-paid" @{reference="BANK-$run"} $admin).data
+    $paid=(Call-Api Post "/finance/settlements/$($s.id)/confirm-paid" @{reference="BANK-$run";expectedVersion=$s.version} $admin).data
     if($paid.status -ne 2 -or $paid.paymentReference -ne "BANK-$run"){throw 'Payout not recorded.'}
     $notes=@((Call-Api Get '/notification?take=50' $null $merchantTok).list | Where-Object { $_.type -in 24,25 })
     if($notes.Count -ne 2){throw 'Merchant not notified about settlement.'}

@@ -86,6 +86,7 @@ namespace WashGo.Application.Features.PaymentApplication.Services
 
             await _transactionRepo.InsertAsync(new PaymentTransaction
             {
+                MerchantIdSnapshot = order.MerchantId, CommissionRateSnapshot = order.CommissionRateApplied, FinancialSnapshotBasis = "payment-created",
                 OrderId = order.Id,
                 TransactionReference = transactionReference,
                 PaymentMethod = command.PaymentMethod,
@@ -146,6 +147,7 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             await _orders.UpdateAsync(order, autoSave: true);
             await _transactionRepo.InsertAsync(new PaymentTransaction
             {
+                MerchantIdSnapshot = order.MerchantId, CommissionRateSnapshot = order.CommissionRateApplied, FinancialSnapshotBasis = "payment-created",
                 OrderId = order.Id,
                 TransactionReference = reference,
                 PaymentMethod = command.PaymentMethod,
@@ -204,6 +206,7 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             await _orders.UpdateAsync(order, autoSave: true);
             await _transactionRepo.InsertAsync(new PaymentTransaction
             {
+                MerchantIdSnapshot = order.MerchantId, CommissionRateSnapshot = order.CommissionRateApplied, FinancialSnapshotBasis = "payment-created",
                 OrderId = order.Id,
                 TransactionReference = reference,
                 PaymentMethod = command.PaymentMethod,
@@ -614,10 +617,11 @@ namespace WashGo.Application.Features.PaymentApplication.Services
         {
             if (!CurrentUser.Id.HasValue)
                 return BadRequest<RefundRequestDto>("Không xác định được tài khoản khách hàng.");
-            if (string.IsNullOrWhiteSpace(command.Reason) || command.Reason.Trim().Length < 10)
+            if (string.IsNullOrWhiteSpace(command.Reason) || command.Reason.Trim().Length is < 10 or > 1000)
                 return BadRequest<RefundRequestDto>("Lý do hoàn tiền cần có ít nhất 10 ký tự.");
 
             using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            if (await Writes.ReplayAsync<RefundRequestDto>(command.OperationId, CurrentUser.Id.Value, "Refund", "Create", command.OrderId.ToString(), command) is { } replay) return replay;
             var order = await _orders.GetForUpdateAsync(command.OrderId);
             if (order == null || order.CustomerId != CurrentUser.Id.Value)
                 return NotFound<RefundRequestDto>("Không tìm thấy đơn hàng của khách hàng.");
@@ -636,19 +640,27 @@ namespace WashGo.Application.Features.PaymentApplication.Services
                 x.Purpose == PaymentPurpose.Order && x.Status == PaymentTransactionStatus.Succeeded);
             if (order.PaymentMethod != PaymentMethod.Cash && successfulPayment == null)
                 return BadRequest<RefundRequestDto>("Không tìm thấy giao dịch thanh toán thành công để đối chiếu.");
+            var alreadyRefunded = await AsyncExecuter.SumAsync((await _refundRequestRepo.GetQueryableAsync())
+                .Where(x => x.OrderId == order.Id && !x.IsDeleted && x.Status == RefundRequestStatus.Refunded).Select(x => x.Amount));
+            var remaining = (successfulPayment?.Amount ?? order.FinalAmount) - alreadyRefunded;
+            var amount = command.Amount ?? remaining;
+            if (amount <= 0 || amount > remaining || decimal.Round(amount, 2) != amount)
+                return BadRequest<RefundRequestDto>("Số tiền hoàn phải dương, tối đa hai chữ số lẻ và không vượt phần tiền gốc còn lại.");
 
             var request = new RefundRequest
             {
                 OrderId = order.Id,
                 CustomerId = order.CustomerId,
-                Amount = successfulPayment?.Amount ?? order.FinalAmount,
+                Amount = amount,
+                OriginalPaymentTransactionId = successfulPayment?.Id,
                 Reason = command.Reason.Trim(),
                 Status = RefundRequestStatus.Pending
             };
             await _refundRequestRepo.InsertAsync(request, autoSave: true);
             await _notifications.RefundRequestedAsync(order, request.Amount);
-            await uow.CompleteAsync();
-            return Success(ToDto(request), "Đã gửi yêu cầu hoàn tiền, chờ Admin duyệt.");
+            var response = Success(ToDto(request), "Đã gửi yêu cầu hoàn tiền, chờ Admin duyệt.");
+            await Writes.RecordAsync(command.OperationId, CurrentUser.Id.Value, "Refund", "Create", order.Id.ToString(), command, response);
+            await uow.CompleteAsync(); return response;
         }
 
         // UC 3.8.3: newest first, optional status filter, enriched with order code and customer name.
@@ -673,6 +685,7 @@ namespace WashGo.Application.Features.PaymentApplication.Services
                 dto.CustomerName = x.CustomerName;
                 return dto;
             }).ToList();
+            await FillRefundDetailsAsync(dtos);
             return Success(dtos, dtos.Count == 0 ? "Chưa có yêu cầu hoàn tiền nào." : null);
         }
 
@@ -685,16 +698,112 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             var dto = ToDto(request);
             dto.OrderCode = order?.OrderCode;
             dto.CustomerName = order?.CustomerName;
+            await FillRefundDetailsAsync([dto]);
             return Success(dto);
+        }
+
+        public async Task<PaginatedResult<RefundRequestDto>> FilterRefundRequestsAsync(WashGo.Application.Contracts.Features.PaymentContracts.Queries.RefundFilterQuery query)
+        {
+            var error = query.DateRangeError();
+            var sorts = query.SortBy ?? [];
+            if (error != null || query.MinAmount < 0 || query.MaxAmount < 0 || query.MinAmount > query.MaxAmount ||
+                query.DateBasis is not ("created" or "reviewed" or "refunded") || sorts.Any(x => x.Field?.ToLowerInvariant() is not ("createdon" or "amount" or "reviewedat" or "refundedat" or "id")) ||
+                query.Status.HasValue && !Enum.IsDefined(query.Status.Value))
+                return new() { Succeeded = false, StatusCode = HttpStatusCode.BadRequest, Message = error ?? "Bộ lọc không hợp lệ." };
+            var q = (await _refundRequestRepo.GetQueryableAsync()).Where(x => !x.IsDeleted);
+            if (query.Status.HasValue) q = q.Where(x => x.Status == query.Status);
+            if (query.OrderId.HasValue) q = q.Where(x => x.OrderId == query.OrderId);
+            if (query.CustomerId.HasValue) q = q.Where(x => x.CustomerId == query.CustomerId);
+            if (query.FromDate > 0)
+            {
+                var from = DateTimeOffset.FromUnixTimeSeconds(query.FromDate).UtcDateTime;
+                q = query.DateBasis switch { "reviewed" => q.Where(x => x.ReviewedAt >= from), "refunded" => q.Where(x => x.RefundedAt >= from), _ => q.Where(x => x.CreatedOn >= query.FromDate) };
+            }
+            if (query.ToDate > 0)
+            {
+                var to = DateTimeOffset.FromUnixTimeSeconds(query.ToDate).UtcDateTime;
+                q = query.DateBasis switch { "reviewed" => q.Where(x => x.ReviewedAt <= to), "refunded" => q.Where(x => x.RefundedAt <= to), _ => q.Where(x => x.CreatedOn <= query.ToDate) };
+            }
+            if (query.MerchantId.HasValue)
+            {
+                var orders = await _orders.GetQueryableAsync();
+                q = q.Where(r => r.FinancialSnapshotBasis != null ? r.MerchantIdSnapshot == query.MerchantId : orders.Any(o => o.Id == r.OrderId && o.MerchantId == query.MerchantId));
+            }
+            if (query.MinAmount.HasValue) q = q.Where(x => x.Amount >= query.MinAmount);
+            if (query.MaxAmount.HasValue) q = q.Where(x => x.Amount <= query.MaxAmount);
+            var joined = from r in q join o in await _orders.GetQueryableAsync() on r.OrderId equals o.Id
+                         select new { r, o.OrderCode, o.CustomerName };
+            if (!string.IsNullOrWhiteSpace(query.Keyword))
+            {
+                var keyword = query.Keyword.Trim().ToLower();
+                joined = joined.Where(x => x.OrderCode.ToLower().Contains(keyword) || x.CustomerName.ToLower().Contains(keyword) || x.r.RefundReference != null && x.r.RefundReference.ToLower().Contains(keyword));
+            }
+            var total = await AsyncExecuter.CountAsync(joined);
+            var page = Math.Max(1, query.Page); var take = Math.Clamp(query.Take, 1, 100);
+            var ordered = joined.OrderByDescending(x => x.r.CreatedOn);
+            for (var i = 0; i < sorts.Length; i++)
+            {
+                var descending = sorts[i].IsDescending; var first = i == 0;
+                ordered = sorts[i].Field.ToLowerInvariant() switch
+                {
+                    "amount" => first ? descending ? joined.OrderByDescending(x => x.r.Amount) : joined.OrderBy(x => x.r.Amount) : descending ? ordered.ThenByDescending(x => x.r.Amount) : ordered.ThenBy(x => x.r.Amount),
+                    "reviewedat" => first ? descending ? joined.OrderByDescending(x => x.r.ReviewedAt) : joined.OrderBy(x => x.r.ReviewedAt) : descending ? ordered.ThenByDescending(x => x.r.ReviewedAt) : ordered.ThenBy(x => x.r.ReviewedAt),
+                    "refundedat" => first ? descending ? joined.OrderByDescending(x => x.r.RefundedAt) : joined.OrderBy(x => x.r.RefundedAt) : descending ? ordered.ThenByDescending(x => x.r.RefundedAt) : ordered.ThenBy(x => x.r.RefundedAt),
+                    "id" => first ? descending ? joined.OrderByDescending(x => x.r.Id) : joined.OrderBy(x => x.r.Id) : descending ? ordered.ThenByDescending(x => x.r.Id) : ordered.ThenBy(x => x.r.Id),
+                    _ => first ? descending ? joined.OrderByDescending(x => x.r.CreatedOn) : joined.OrderBy(x => x.r.CreatedOn) : descending ? ordered.ThenByDescending(x => x.r.CreatedOn) : ordered.ThenBy(x => x.r.CreatedOn)
+                };
+            }
+            var rows = await AsyncExecuter.ToListAsync(ordered.ThenBy(x => x.r.Id).Skip((page - 1) * take).Take(take));
+            var dtos = rows.Select(x => { var dto = ToDto(x.r); dto.OrderCode = x.OrderCode; dto.CustomerName = x.CustomerName; return dto; }).ToList();
+            await FillRefundDetailsAsync(dtos);
+            return Success(dtos, total, page, take);
+        }
+
+        private async Task FillRefundDetailsAsync(List<RefundRequestDto> rows)
+        {
+            if (rows.Count == 0) return;
+            var ids = rows.Select(x => x.OrderId).Distinct().ToList();
+            var orders = (await _orders.GetListAsync(x => ids.Contains(x.Id))).ToDictionary(x => x.Id);
+            var transactions = await _transactionRepo.GetListAsync(x => ids.Contains(x.OrderId) && x.Purpose == PaymentPurpose.Order &&
+                (x.Status == PaymentTransactionStatus.Succeeded || x.Status == PaymentTransactionStatus.Refunded));
+            var refunds = await AsyncExecuter.ToListAsync((await _refundRequestRepo.GetQueryableAsync()).Where(x => ids.Contains(x.OrderId) && !x.IsDeleted && x.Status == RefundRequestStatus.Refunded)
+                .GroupBy(x => x.OrderId).Select(g => new { Id = g.Key, Amount = g.Sum(x => x.Amount) }));
+            var users = new Dictionary<Guid, WashGo.Domain.Entities.Identity.User>();
+            if (CurrentUser.IsInRole("Admin"))
+            {
+                var userIds = rows.Select(x => x.CustomerId).Distinct().ToList();
+                users = (await LazyServiceProvider.LazyGetRequiredService<IRepository<WashGo.Domain.Entities.Identity.User, Guid>>().GetListAsync(x => userIds.Contains(x.Id))).ToDictionary(x => x.Id);
+            }
+            foreach (var dto in rows)
+            {
+                if (!orders.TryGetValue(dto.OrderId, out var order)) continue;
+                var transaction = dto.OriginalPaymentTransactionId.HasValue ? transactions.FirstOrDefault(x => x.Id == dto.OriginalPaymentTransactionId) : transactions.Where(x => x.OrderId == dto.OrderId).OrderBy(x => x.CompletedAt).ThenBy(x => x.Id).FirstOrDefault();
+                dto.OrderCode = order.OrderCode; dto.CustomerName = order.CustomerName;
+                dto.MerchantId = transaction?.FinancialSnapshotBasis != null ? transaction.MerchantIdSnapshot : order.MerchantId;
+                dto.PaymentMethod = transaction?.PaymentMethod ?? order.PaymentMethod;
+                dto.OriginalAmount = transaction?.Amount ?? (order.PaymentMethod == PaymentMethod.Cash ? order.FinalAmount : null);
+                dto.RemainingRefundableAmount = dto.OriginalAmount.HasValue ? Math.Max(0, dto.OriginalAmount.Value - (refunds.FirstOrDefault(x => x.Id == order.Id)?.Amount ?? 0) -
+                    (order.Status == WashOrderStatus.Cancelled ? order.CancelFeePaidAmount : 0)) : null;
+                if (users.TryGetValue(dto.CustomerId, out var customer)) { dto.CustomerEmail = customer.Email; dto.CustomerPhoneNumber = customer.Phone; dto.CustomerAvatarUrl = customer.Avatar; }
+            }
+            var merchantIds = rows.Where(x => x.MerchantId.HasValue).Select(x => x.MerchantId!.Value).Distinct().ToList();
+            var merchants = (await LazyServiceProvider.LazyGetRequiredService<IRepository<WashGo.Domain.Entities.Partner.Merchant, Guid>>().GetListAsync(x => merchantIds.Contains(x.Id))).ToDictionary(x => x.Id);
+            foreach (var dto in rows) if (dto.MerchantId is { } merchantId) dto.MerchantName = merchants.GetValueOrDefault(merchantId)?.BusinessName;
         }
 
         public async Task<BaseResponse<RefundRequestDto>> ReviewRefundRequestAsync(Guid id, ReviewRefundRequestCommand command)
         {
+            using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            if (await Writes.ReplayAsync<RefundRequestDto>(command.OperationId, CurrentUser.Id!.Value, "Finance", "ReviewRefund", id.ToString(), command) is { } replay) return replay;
+            await Writes.LockAsync($"refund-request:{id}");
             var request = await _refundRequestRepo.FindAsync(id);
             if (request == null)
                 return NotFound<RefundRequestDto>("Không tìm thấy yêu cầu hoàn tiền.");
             if (request.Status != RefundRequestStatus.Pending)
-                return BadRequest<RefundRequestDto>("Yêu cầu này đã được xử lý trước đó.");
+                return AdministrativeWriteGuard.Error<RefundRequestDto>(System.Net.HttpStatusCode.Conflict, "AlreadyReviewed", "Yêu cầu này đã được xử lý trước đó.");
+            if (string.IsNullOrWhiteSpace(command.ExpectedVersion)) return AdministrativeWriteGuard.Error<RefundRequestDto>(System.Net.HttpStatusCode.BadRequest, "ExpectedVersionRequired", "Thiếu expectedVersion.");
+            if (command.ExpectedVersion != ToDto(request).Version) return AdministrativeWriteGuard.Error<RefundRequestDto>(System.Net.HttpStatusCode.Conflict, "VersionMismatch", "Yêu cầu hoàn tiền đã thay đổi.");
+            if (command.ReviewNote?.Trim().Length > 1000 || (!command.Approve && string.IsNullOrWhiteSpace(command.ReviewNote))) return BadRequest<RefundRequestDto>("Lý do từ chối bắt buộc; ghi chú tối đa 1000 ký tự.");
 
             request.Status = command.Approve ? RefundRequestStatus.Approved : RefundRequestStatus.Rejected;
             request.ReviewNote = string.IsNullOrWhiteSpace(command.ReviewNote) ? null : command.ReviewNote.Trim();
@@ -708,18 +817,32 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             {
                 Reason = request.ReviewNote, Details = new { orderId = request.OrderId, request.Amount }
             });
-            return Success(ToDto(request), message);
+            await _notifications.SendAsync([request.CustomerId], NotificationType.RefundReviewed, "Kết quả yêu cầu hoàn tiền", message, "refund-request", request.Id);
+            var response = Success(ToDto(request), message);
+            await Writes.RecordAsync(command.OperationId, CurrentUser.Id.Value, "Finance", "ReviewRefund", id.ToString(), command, response);
+            await uow.CompleteAsync(); return response;
         }
 
         public async Task<BaseResponse<RefundRequestDto>> ConfirmRefundedAsync(Guid id, ConfirmRefundCommand command)
         {
             using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            if (await Writes.ReplayAsync<RefundRequestDto>(command.OperationId, CurrentUser.Id!.Value, "Finance", "ConfirmRefund", id.ToString(), command) is { } replay) return replay;
+            await Writes.LockAsync($"refund-request:{id}");
             var request = await _refundRequestRepo.FindAsync(id);
             if (request == null)
                 return NotFound<RefundRequestDto>("Không tìm thấy yêu cầu hoàn tiền.");
+            if (request.Status == RefundRequestStatus.Refunded)
+            {
+                if (request.RefundReference != command.RefundReference?.Trim()) return AdministrativeWriteGuard.Error<RefundRequestDto>(System.Net.HttpStatusCode.Conflict, "RefundReferenceChanged", "Đã hoàn tiền với mã tham chiếu khác.");
+                var old = Success(ToDto(request), "Yêu cầu này đã được hoàn tiền.");
+                await Writes.RecordAsync(command.OperationId, CurrentUser.Id.Value, "Finance", "ConfirmRefund", id.ToString(), command, old);
+                await uow.CompleteAsync(); return old;
+            }
+            if (string.IsNullOrWhiteSpace(command.ExpectedVersion)) return AdministrativeWriteGuard.Error<RefundRequestDto>(System.Net.HttpStatusCode.BadRequest, "ExpectedVersionRequired", "Thiếu expectedVersion.");
+            if (command.ExpectedVersion != ToDto(request).Version) return AdministrativeWriteGuard.Error<RefundRequestDto>(System.Net.HttpStatusCode.Conflict, "VersionMismatch", "Yêu cầu hoàn tiền đã thay đổi.");
             if (request.Status != RefundRequestStatus.Approved)
                 return BadRequest<RefundRequestDto>("Chỉ xác nhận hoàn tiền sau khi yêu cầu đã được duyệt.");
-            if (string.IsNullOrWhiteSpace(command.RefundReference))
+            if (string.IsNullOrWhiteSpace(command.RefundReference) || command.RefundReference.Trim().Length > 120)
                 return BadRequest<RefundRequestDto>("Cần nhập mã tham chiếu giao dịch hoàn tiền.");
 
             // Match the payment callbacks' lock order: transaction, then order.
@@ -736,31 +859,43 @@ namespace WashGo.Application.Features.PaymentApplication.Services
 
             var refundable = (successful?.Amount ?? order.FinalAmount) -
                 (order.Status == WashOrderStatus.Cancelled ? order.CancelFeePaidAmount : 0m);
-            if (request.Amount <= 0m || request.Amount > refundable)
+            var alreadyRefunded = await AsyncExecuter.SumAsync((await _refundRequestRepo.GetQueryableAsync())
+                .Where(x => !x.IsDeleted && x.OrderId == order.Id && x.Status == RefundRequestStatus.Refunded).Select(x => x.Amount));
+            refundable -= alreadyRefunded;
+            if (request.Amount <= 0m || request.Amount > refundable || decimal.Round(request.Amount, 2) != request.Amount ||
+                (request.OriginalPaymentTransactionId.HasValue && request.OriginalPaymentTransactionId != successful?.Id))
                 return BadRequest<RefundRequestDto>("Số tiền hoàn vượt quá phần còn lại sau khi trừ phí hủy.");
             if (successful != null)
             {
-                successful.Status = PaymentTransactionStatus.Refunded;
+                successful.Status = request.Amount == refundable ? PaymentTransactionStatus.Refunded : PaymentTransactionStatus.Succeeded;
                 successful.FailureReason = null;
                 await _transactionRepo.UpdateAsync(successful, autoSave: true);
             }
-            order.PaymentStatus = PaymentStatus.Refunded;
+            order.PaymentStatus = request.Amount == refundable ? PaymentStatus.Refunded : PaymentStatus.Paid;
             await _orders.UpdateAsync(order, autoSave: true);
 
             request.Status = RefundRequestStatus.Refunded;
+            request.OriginalPaymentTransactionId = successful?.Id;
+            request.MerchantIdSnapshot = successful?.FinancialSnapshotBasis != null ? successful.MerchantIdSnapshot : order.MerchantId;
+            request.CommissionRateSnapshot = successful?.FinancialSnapshotBasis != null ? successful.CommissionRateSnapshot : order.CommissionRateApplied;
+            request.FinancialSnapshotBasis = successful?.FinancialSnapshotBasis ?? "confirmation-baseline";
             request.RefundReference = command.RefundReference.Trim();
             request.RefundedAt = DateTime.UtcNow;
             await _refundRequestRepo.UpdateAsync(request, autoSave: true);
-            await uow.CompleteAsync();
             await Audit.LogAsync(new AuditEntry("Refund", "ConfirmRefunded", "RefundRequest", request.Id.ToString(), order.OrderCode)
             {
                 Details = new { orderId = order.Id, request.Amount, refundReference = request.RefundReference }
             });
-            return Success(ToDto(request), "Đã ghi nhận Admin xác nhận hoàn tiền.");
+            await _notifications.SendAsync([request.CustomerId], NotificationType.RefundConfirmed, "Đã hoàn tiền", $"Yêu cầu #{request.Id}: đã hoàn {request.Amount:N0}đ, mã {request.RefundReference}.", "refund-request", request.Id);
+            var response = Success(ToDto(request), "Đã ghi nhận Admin xác nhận hoàn tiền.");
+            await Writes.RecordAsync(command.OperationId, CurrentUser.Id.Value, "Finance", "ConfirmRefund", id.ToString(), command, response);
+            await uow.CompleteAsync(); return response;
         }
 
         private static RefundRequestDto ToDto(RefundRequest request) => new()
         {
+            Version = AdministrativeWriteGuard.Version(new { request.Id, request.Status, request.Amount, request.ReviewNote, ReviewedAt = request.ReviewedAt?.Ticks / 10, request.RefundReference, RefundedAt = request.RefundedAt?.Ticks / 10, request.OriginalPaymentTransactionId }),
+            OriginalPaymentTransactionId = request.OriginalPaymentTransactionId,
             Id = request.Id,
             OrderId = request.OrderId,
             CustomerId = request.CustomerId,

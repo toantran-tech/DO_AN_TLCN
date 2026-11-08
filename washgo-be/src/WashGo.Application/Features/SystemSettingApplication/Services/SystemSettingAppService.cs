@@ -2,6 +2,12 @@ using WashGo.Application.Features.AuditApplication.Services;
 using System;
 using System.Threading.Tasks;
 using Volo.Abp.Domain.Repositories;
+using Volo.Abp.Uow;
+using System.Net;
+using System.Text.Json;
+using WashGo.Application.Contracts.Features.AuditContracts.Results;
+using WashGo.Application.Contracts.Features.AuditContracts.Queries;
+using WashGo.Application.Contracts.Features.AuditContracts.Services;
 using WashGo.Application.Contracts.Features.SystemSettingContracts.Commands;
 using WashGo.Application.Contracts.Features.SystemSettingContracts.Results;
 using WashGo.Application.Contracts.Features.SystemSettingContracts.Services;
@@ -16,7 +22,6 @@ namespace WashGo.Application.Features.SystemSettingApplication.Services
     /// </summary>
     public class SystemSettingAppService : WashGoAppService, ISystemSettingAppService
     {
-        private const string InvalidMessage = "Thông số không hợp lệ.";
         private const decimal MaxFee = 10_000_000m;
 
         private readonly IRepository<SystemSetting, Guid> _repo;
@@ -26,8 +31,11 @@ namespace WashGo.Application.Features.SystemSettingApplication.Services
             _repo = repo;
         }
 
-        public async Task<BaseResponse<SystemSettingDto>> GetAsync() =>
-            Success(ToDto(await _repo.FindAsync(SystemSetting.SingletonId) ?? new SystemSetting()));
+        public async Task<BaseResponse<SystemSettingDto>> GetAsync()
+        {
+            var stored = await _repo.FindAsync(SystemSetting.SingletonId);
+            return Success(ToDto(stored ?? new SystemSetting(), stored != null));
+        }
 
         public async Task<BaseResponse<SystemSettingDto>> UpdateSlaAsync(UpdateSlaSettingsCommand command)
         {
@@ -35,7 +43,7 @@ namespace WashGo.Application.Features.SystemSettingApplication.Services
                 command.MerchantCollectSlaHours is < 1 or > 168 ||
                 command.MerchantReturnSlaHours is < 1 or > 720 ||
                 command.FreePickupHours is < 1 or > 720)
-                return BadRequest<SystemSettingDto>(InvalidMessage);
+                return Invalid(command, "SLA phải nằm trong giới hạn số nguyên đã công bố.");
 
             return await SaveAsync(s =>
             {
@@ -43,17 +51,17 @@ namespace WashGo.Application.Features.SystemSettingApplication.Services
                 s.MerchantCollectSlaHours = command.MerchantCollectSlaHours;
                 s.MerchantReturnSlaHours = command.MerchantReturnSlaHours;
                 s.FreePickupHours = command.FreePickupHours;
-            }, "Cấu hình SLA thành công!");
+            }, "Cấu hình SLA thành công!", command, "Sla");
         }
 
         public async Task<BaseResponse<SystemSettingDto>> UpdateCommissionAsync(UpdateCommissionSettingsCommand command)
         {
             if (command.DefaultCommissionRate is < 0 or > 100 ||
                 decimal.Round(command.DefaultCommissionRate, 2) != command.DefaultCommissionRate)
-                return BadRequest<SystemSettingDto>("Tỷ lệ phí phải từ 0-100%.");
+                return Invalid(command, "Tỷ lệ phí phải từ 0–100%, tối đa hai chữ số thập phân.");
 
             return await SaveAsync(s => s.DefaultCommissionRate = command.DefaultCommissionRate,
-                "Cấu hình phí hoa hồng thành công!");
+                "Cấu hình phí hoa hồng thành công!", command, "Commission");
         }
 
         public async Task<BaseResponse<SystemSettingDto>> UpdatePenaltyAsync(UpdatePenaltySettingsCommand c)
@@ -69,7 +77,7 @@ namespace WashGo.Application.Features.SystemSettingApplication.Services
                 c.CompensationLightPercent > c.CompensationMediumPercent ||
                 c.CompensationMediumPercent > c.CompensationSeverePercent ||
                 c.CompensationSeverePercent > c.CompensationLostPercent)
-                return BadRequest<SystemSettingDto>(InvalidMessage);
+                return Invalid(c, "Phí/phần trăm không hợp lệ hoặc mức bồi thường không theo thứ tự nhẹ ≤ vừa ≤ nặng ≤ mất.");
 
             return await SaveAsync(s =>
             {
@@ -84,33 +92,60 @@ namespace WashGo.Application.Features.SystemSettingApplication.Services
                 s.CompensationMediumPercent = c.CompensationMediumPercent;
                 s.CompensationSeverePercent = c.CompensationSeverePercent;
                 s.CompensationLostPercent = c.CompensationLostPercent;
-            }, "Cấu hình thành công!");
+            }, "Cấu hình thành công!", c, "Penalty");
         }
 
-        private async Task<BaseResponse<SystemSettingDto>> SaveAsync(Action<SystemSetting> apply, string message)
+        private async Task<BaseResponse<SystemSettingDto>> SaveAsync(Action<SystemSetting> apply, string message, SettingWriteCommand command, string group)
         {
+            using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            var payload = JsonSerializer.SerializeToElement(command, command.GetType());
+            var resource = SystemSetting.SingletonId.ToString();
+            if (await Writes.ReplayAsync<SystemSettingDto>(command.OperationId, CurrentUser.Id!.Value, "SystemSetting", group, resource, payload) is { } replay) return replay;
+            await Writes.LockAsync("system-settings");
             var setting = await _repo.FindAsync(SystemSetting.SingletonId);
             var isNew = setting == null;
             setting ??= new SystemSetting();
-            var auditBefore = isNew ? null : ToDto(setting);
+            var auditBefore = ToDto(setting, !isNew);
+            if (string.IsNullOrWhiteSpace(command.ExpectedVersion))
+                return AdministrativeWriteGuard.Error<SystemSettingDto>(HttpStatusCode.BadRequest, "ExpectedVersionRequired", "Thiếu expectedVersion.");
+            if (command.ExpectedVersion != auditBefore.Version)
+                return AdministrativeWriteGuard.Error(HttpStatusCode.Conflict, "VersionMismatch", "Cấu hình đã thay đổi; hãy tải lại.", auditBefore);
             apply(setting);
             setting.UpdatedBy = CurrentUser.Id;
-            setting.UpdatedAt = DateTime.UtcNow;
+            setting.UpdatedAt = new DateTime(Math.Max(DateTime.UtcNow.Ticks / 10, (setting.UpdatedAt?.Ticks ?? 0) / 10 + 1) * 10, DateTimeKind.Utc);
             if (isNew)
                 await _repo.InsertAsync(setting, autoSave: true);
             else
                 await _repo.UpdateAsync(setting, autoSave: true);
             var auditAfter = ToDto(setting);
             var changed = AuditLogWriter.Diff(auditBefore, auditAfter);
-            await Audit.LogAsync(new AuditEntry("SystemSetting", "Update", "SystemSetting", SystemSetting.SingletonId.ToString(), null)
+            await Audit.LogAsync(new AuditEntry("SystemSetting", "Update" + group, "SystemSetting", SystemSetting.SingletonId.ToString(), null)
             {
                 ChangedFields = changed, Details = new { before = AuditLogWriter.Pick(auditBefore, changed), after = AuditLogWriter.Pick(auditAfter, changed) }
             });
-            return Success(auditAfter, message);
+            var response = Success(auditAfter, message);
+            await Writes.RecordAsync(command.OperationId, CurrentUser.Id.Value, "SystemSetting", group, resource, payload, response);
+            await uow.CompleteAsync();
+            return response;
         }
 
-        private static SystemSettingDto ToDto(SystemSetting s) => new()
+        public async Task<BaseResponse<AdministrativeOperationDto>> GetOperationAsync(Guid id)
         {
+            var operation = await Writes.FindAsync(id, CurrentUser.Id!.Value, "SystemSetting");
+            return operation == null ? NotFound<AdministrativeOperationDto>("Chưa có kết quả đã commit cho key này; không chứng minh yêu cầu đang chạy đã thất bại.") :
+                Success(new AdministrativeOperationDto { OperationId = operation.Id, Action = operation.Action, ResourceId = operation.ResourceId, CompletedAt = operation.CompletedAt, Result = JsonSerializer.Deserialize<JsonElement>(operation.ResponseJson) });
+        }
+
+        public Task<PaginatedResult<AuditLogDto>> GetHistoryAsync(AuditLogFilterQuery query)
+        {
+            query.Module = "SystemSetting"; query.ResourceType = "SystemSetting"; query.ResourceId = SystemSetting.SingletonId.ToString();
+            return LazyServiceProvider.LazyGetRequiredService<IAuditLogAppService>().GetListAsync(query);
+        }
+
+        private static SystemSettingDto ToDto(SystemSetting s, bool persisted = true) => new()
+        {
+            Version = s.UpdatedAt.HasValue ? (s.UpdatedAt.Value.Ticks / 10).ToString(System.Globalization.CultureInfo.InvariantCulture) : "defaults-v1",
+            IsPersisted = persisted, ServerNow = DateTime.UtcNow, UpdatedBy = s.UpdatedBy,
             DepositWindowMinutes = s.DepositWindowMinutes,
             MerchantCollectSlaHours = s.MerchantCollectSlaHours,
             MerchantReturnSlaHours = s.MerchantReturnSlaHours,
@@ -130,5 +165,27 @@ namespace WashGo.Application.Features.SystemSettingApplication.Services
             CompensationLostPercent = s.CompensationLostPercent,
             UpdatedAt = s.UpdatedAt
         };
+        private static BaseResponse<SystemSettingDto> Invalid(SettingWriteCommand command, string message)
+        {
+            var response = AdministrativeWriteGuard.Error<SystemSettingDto>(HttpStatusCode.BadRequest, "InvalidSettings", message);
+            foreach (var field in command.GetType().GetProperties().Where(p => p.PropertyType == typeof(int) || p.PropertyType == typeof(decimal)))
+            {
+                var value = Convert.ToDecimal(field.GetValue(command));
+                var (minimum, maximum, decimals) = field.Name switch
+                {
+                    "DepositWindowMinutes" => (5m, 1440m, 0), "MerchantCollectSlaHours" => (1m, 168m, 0),
+                    "MerchantReturnSlaHours" or "FreePickupHours" => (1m, 720m, 0),
+                    "DefaultCommissionRate" => (0m, 100m, 2),
+                    _ when field.Name.StartsWith("Compensation") => (0m, 500m, 0),
+                    _ when field.Name.StartsWith("Cancel") => (0m, 100m, 0),
+                    _ => (0m, MaxFee, 0)
+                };
+                if (value < minimum || value > maximum || decimal.Round(value, decimals) != value)
+                    response.Errors[JsonNamingPolicy.CamelCase.ConvertName(field.Name)] = [$"Giá trị phải từ {minimum} đến {maximum}, tối đa {decimals} chữ số thập phân."];
+            }
+            if (command is UpdatePenaltySettingsCommand p && (p.CompensationLightPercent > p.CompensationMediumPercent || p.CompensationMediumPercent > p.CompensationSeverePercent || p.CompensationSeverePercent > p.CompensationLostPercent))
+                response.Errors["compensationPercentOrder"] = ["Mức bồi thường phải theo thứ tự nhẹ ≤ vừa ≤ nặng ≤ mất."];
+            return response;
+        }
     }
 }

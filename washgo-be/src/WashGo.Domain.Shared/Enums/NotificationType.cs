@@ -43,6 +43,8 @@ namespace WashGo.Domain.Shared.Enums
         CustomerPickedUp = 44,
         OverdueSummary = 45,
         ServiceProposalSubmitted = 46,
-        MerchantProfileUpdateRequested = 47
+        MerchantProfileUpdateRequested = 47,
+        RefundReviewed = 48,
+        RefundConfirmed = 49
     }
 }

@@ -19,6 +19,7 @@ namespace WashGo.Application.Contracts.Features.ServiceProposalContracts.Results
 
     public class ServiceProposalDto
     {
+        public string Version { get; set; } = string.Empty;
         public Guid Id { get; set; }
         public Guid MerchantId { get; set; }
         public string MerchantName { get; set; } = string.Empty;

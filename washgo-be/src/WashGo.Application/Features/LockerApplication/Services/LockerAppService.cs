@@ -18,6 +18,7 @@ using WashGo.Domain.Entities.WashOrder.Interfaces;
 using WashGo.Domain.Shared.Enums;
 using Volo.Abp.Domain.Repositories;
 using Volo.Abp.Uow;
+using WashGo.Application.Features.AuditApplication.Services;
 
 namespace WashGo.Application.Features.LockerApplication.Services
 {
@@ -113,6 +114,9 @@ namespace WashGo.Application.Features.LockerApplication.Services
         // UC 3.4.2
         public async Task<BaseResponse<LockerResultDto>> CreateAsync(CreateLockerCommand command)
         {
+            using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            if (await Writes.ReplayAsync<LockerResultDto>(command.OperationId, CurrentUser.Id!.Value, "Locker", "Create", "new", command) is { } replay) return replay;
+            await Writes.LockAsync("locker-admin-names");
             var error = await ValidateAsync(command, null);
             if (error != null)
                 return BadRequest<LockerResultDto>(error);
@@ -120,6 +124,7 @@ namespace WashGo.Application.Features.LockerApplication.Services
             if (imageError != null)
                 return BadRequest<LockerResultDto>(imageError);
 
+            if (command.Boxes == null || command.Boxes.Count > MaxBoxes || command.BoxCount is < 1 or > MaxBoxes) return BadRequest<LockerResultDto>("Số ô phải từ 1 đến 200.");
             var boxes = command.Boxes.Count > 0
                 ? command.Boxes
                 : Enumerable.Range(1, command.BoxCount ?? 0)
@@ -165,14 +170,15 @@ namespace WashGo.Application.Features.LockerApplication.Services
                 });
             }
 
-            using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
             await _lockerRepo.InsertAsync(locker, autoSave: true);
             await ReplaceMerchantsAsync(locker.Id, MerchantIdsOf(command));
-            await uow.CompleteAsync();
             var dto = ObjectMapper.Map<Locker, LockerResultDto>(locker);
             await FillNamesAsync([dto]);
             dto.ImageUrls = images;
-            return Created(dto, "Thêm Locker thành công!");
+            var response = Created(dto, "Thêm Locker thành công!");
+            await Audit.LogAsync(new AuditEntry("Locker", "Create", "Locker", locker.Id.ToString(), locker.Code));
+            await Writes.RecordAsync(command.OperationId, CurrentUser.Id!.Value, "Locker", "Create", "new", command, response);
+            await uow.CompleteAsync(); return response;
         }
 
         // UC 3.4.3
@@ -182,11 +188,17 @@ namespace WashGo.Application.Features.LockerApplication.Services
                 return BadRequest<LockerResultDto>("Trạng thái tủ không hợp lệ.");
 
             using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            if (await Writes.ReplayAsync<LockerResultDto>(command.OperationId, CurrentUser.Id!.Value, "Locker", "Update", command.Id.ToString(), command) is { } replay) return replay;
+            await Writes.LockAsync("locker-admin-names");
+            await _lockerRepo.LockAsync(command.Id);
             var locker = await _lockerRepo.GetWithBoxesAsync(command.Id);
             if (locker == null)
             {
                 return NotFound<LockerResultDto>("Không tìm thấy trạm Locker để cập nhật!");
             }
+            var version = await VersionAsync(locker);
+            if (string.IsNullOrWhiteSpace(command.ExpectedVersion)) return AdministrativeWriteGuard.Error<LockerResultDto>(System.Net.HttpStatusCode.BadRequest, "ExpectedVersionRequired", "Thiếu expectedVersion.");
+            if (command.ExpectedVersion != version) return AdministrativeWriteGuard.Error<LockerResultDto>(System.Net.HttpStatusCode.Conflict, "VersionMismatch", "Locker đã thay đổi; hãy tải lại.");
             var error = await ValidateAsync(command, locker.Id);
             if (error != null)
                 return BadRequest<LockerResultDto>(error);
@@ -222,20 +234,27 @@ namespace WashGo.Application.Features.LockerApplication.Services
                     "Tủ đang có ô/đơn cần xử lý hoặc vừa đổi trạng thái; không thể cập nhật trạng thái tủ.");
             if (MerchantIdsOf(command) is { Count: > 0 } newMerchants)
                 await ReplaceMerchantsAsync(locker.Id, newMerchants);
-            await uow.CompleteAsync();
             var dto = ObjectMapper.Map<Locker, LockerResultDto>(locker);
             await FillNamesAsync([dto]);
             dto.ImageUrls = images;
-            return Success(dto, "Cập nhật Locker thành công!");
+            var response = Success(dto, "Cập nhật Locker thành công!");
+            await Audit.LogAsync(new AuditEntry("Locker", "Update", "Locker", locker.Id.ToString(), locker.Code));
+            await Writes.RecordAsync(command.OperationId, CurrentUser.Id!.Value, "Locker", "Update", command.Id.ToString(), command, response);
+            await uow.CompleteAsync(); return response;
         }
 
         // UC 3.4.4: soft delete the locker and its boxes; blocked while any unfinished order uses it.
-        public async Task<BaseResponse<bool>> DeleteAsync(Guid id)
+        public async Task<BaseResponse<bool>> DeleteAsync(Guid id, string? expectedVersion = null, Guid? operationId = null)
         {
             using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            var payload = new { id, expectedVersion };
+            if (await Writes.ReplayAsync<bool>(operationId, CurrentUser.Id!.Value, "Locker", "Delete", id.ToString(), payload) is { } replay) return replay;
+            await _lockerRepo.LockAsync(id);
             var locker = await _lockerRepo.GetWithBoxesAsync(id);
             if (locker == null)
                 return NotFound<bool>("Không tìm thấy thông tin tủ Locker!");
+            if (string.IsNullOrWhiteSpace(expectedVersion)) return AdministrativeWriteGuard.Error<bool>(System.Net.HttpStatusCode.BadRequest, "ExpectedVersionRequired", "Thiếu expectedVersion.");
+            if (expectedVersion != await VersionAsync(locker)) return AdministrativeWriteGuard.Error<bool>(System.Net.HttpStatusCode.Conflict, "VersionMismatch", "Locker đã thay đổi.");
             var inUse = locker.Boxes.Any(b => !b.IsDeleted && b.Status is LockerBoxStatus.Occupied or LockerBoxStatus.Reserved) ||
                         await _orderRepo.AnyAsync(o => !o.IsDeleted && (o.LockerId == id || o.ReturnLockerId == id) &&
                             (o.Status == WashOrderStatus.Cancelled
@@ -259,8 +278,10 @@ namespace WashGo.Application.Features.LockerApplication.Services
             locker.Status = LockerStatus.Inactive;
             locker.AvailableBoxes = 0;
             await _lockerRepo.UpdateAsync(locker, autoSave: true);
-            await uow.CompleteAsync();
-            return Success(true, "Xóa Locker thành công!");
+            var response = Success(true, "Xóa Locker thành công!");
+            await Audit.LogAsync(new AuditEntry("Locker", "Delete", "Locker", id.ToString(), locker.Code));
+            await Writes.RecordAsync(operationId, CurrentUser.Id!.Value, "Locker", "Delete", id.ToString(), payload, response);
+            await uow.CompleteAsync(); return response;
         }
 
         // UC 3.4.5: Admin only moves a box between Trống and Bảo trì; boxes holding goods cannot go to maintenance.
@@ -270,6 +291,8 @@ namespace WashGo.Application.Features.LockerApplication.Services
                 return BadRequest<bool>("Chỉ có thể chuyển ô tủ sang Trống hoặc Bảo trì.");
 
             using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            if (await Writes.ReplayAsync<bool>(command.OperationId, CurrentUser.Id!.Value, "Locker", "BoxStatus", command.BoxId.ToString(), command) is { } replay) return replay;
+            await _lockerRepo.LockAsync(command.LockerId);
             var locker = await _lockerRepo.GetWithBoxesAsync(command.LockerId);
             if (locker == null)
             {
@@ -281,16 +304,24 @@ namespace WashGo.Application.Features.LockerApplication.Services
             {
                 return NotFound<bool>("Không tìm thấy ô tủ!");
             }
+            if (string.IsNullOrWhiteSpace(command.ExpectedVersion)) return AdministrativeWriteGuard.Error<bool>(System.Net.HttpStatusCode.BadRequest, "ExpectedVersionRequired", "Thiếu expectedVersion của locker.");
+            if (command.ExpectedVersion != await VersionAsync(locker)) return AdministrativeWriteGuard.Error<bool>(System.Net.HttpStatusCode.Conflict, "VersionMismatch", "Locker đã thay đổi.");
 
             if (box.Status == command.NewStatus)
-                return Success(true, "Ô tủ đã ở trạng thái yêu cầu.");
+            {
+                var unchanged = Success(true, "Ô tủ đã ở trạng thái yêu cầu.");
+                await Writes.RecordAsync(command.OperationId, CurrentUser.Id!.Value, "Locker", "BoxStatus", command.BoxId.ToString(), command, unchanged);
+                await uow.CompleteAsync(); return unchanged;
+            }
             if (box.Status is LockerBoxStatus.Occupied or LockerBoxStatus.Reserved)
                 return BadRequest<bool>("Ô tủ đang có đồ hoặc đang được giữ chỗ, không thể chuyển sang Bảo trì.");
             if (!await _lockerRepo.TrySetUnassignedBoxStatusAsync(locker.Id, box.Id,
                     box.Status, command.NewStatus))
                 return BadRequest<bool>("Ô tủ đang gắn với đơn hàng hoặc vừa đổi trạng thái; không thể cập nhật trực tiếp.");
-            await uow.CompleteAsync();
-            return Success(true, "Cập nhật ô tủ thành công!");
+            var response = Success(true, "Cập nhật ô tủ thành công!");
+            await Audit.LogAsync(new AuditEntry("Locker", "BoxStatus", "LockerBox", box.Id.ToString(), locker.Code) { Details = new { command.NewStatus } });
+            await Writes.RecordAsync(command.OperationId, CurrentUser.Id!.Value, "Locker", "BoxStatus", command.BoxId.ToString(), command, response);
+            await uow.CompleteAsync(); return response;
         }
 
         private async Task<string?> ValidateAsync(CreateLockerCommand command, Guid? currentId)
@@ -300,6 +331,8 @@ namespace WashGo.Application.Features.LockerApplication.Services
                 return "Tên locker phải có từ 1 đến 200 ký tự.";
             if (string.IsNullOrWhiteSpace(command.Address) || command.Address.Trim().Length > 500)
                 return "Địa chỉ không được để trống (tối đa 500 ký tự).";
+            if (command.City?.Trim().Length is not (> 0 and <= 100) || command.District?.Length > 100 || command.Ward?.Length > 100 || command.Description?.Length > 2000 || command.Code?.Trim().Length is not (> 0 and <= 50))
+                return "Mã/tỉnh thành bắt buộc; mã tối đa 50, tỉnh/quận/phường 100, mô tả 2000 ký tự.";
             if (double.IsNaN(command.Latitude) || double.IsNaN(command.Longitude) ||
                 command.Latitude is < -90 or > 90 || command.Longitude is < -180 or > 180 ||
                 (command.Latitude == 0 && command.Longitude == 0))
@@ -326,6 +359,31 @@ namespace WashGo.Application.Features.LockerApplication.Services
                 return "Tên locker này đã được sử dụng.";
             return null;
         }
+        public async Task<BaseResponse<LockerResultDto>> SetStatusAsync(Guid id, SetLockerStatusCommand command)
+        {
+            using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            if (await Writes.ReplayAsync<LockerResultDto>(command.OperationId, CurrentUser.Id!.Value, "Locker", "Status", id.ToString(), command) is { } replay) return replay;
+            await _lockerRepo.LockAsync(id);
+            var locker = await _lockerRepo.GetWithBoxesAsync(id);
+            if (locker == null) return NotFound<LockerResultDto>("Không tìm thấy locker.");
+            if (!Enum.IsDefined(command.Status) || string.IsNullOrWhiteSpace(command.ExpectedVersion)) return BadRequest<LockerResultDto>("Cần trạng thái hợp lệ và expectedVersion.");
+            if (command.ExpectedVersion != await VersionAsync(locker)) return AdministrativeWriteGuard.Error<LockerResultDto>(System.Net.HttpStatusCode.Conflict, "VersionMismatch", "Locker đã thay đổi.");
+            var old = locker.Status; locker.Status = command.Status;
+            if (!await _lockerRepo.TryUpdateDetailsAsync(locker, old)) return BadRequest<LockerResultDto>("Locker đang có đồ/giữ chỗ; chưa thể đổi trạng thái.");
+            if (old != command.Status) await Audit.LogAsync(new AuditEntry("Locker", "Status", "Locker", id.ToString(), locker.Code) { ChangedFields = ["status"] });
+            var dto = ObjectMapper.Map<Locker, LockerResultDto>(locker); await FillNamesAsync([dto]);
+            var response = Success(dto);
+            await Writes.RecordAsync(command.OperationId, CurrentUser.Id!.Value, "Locker", "Status", id.ToString(), command, response);
+            await uow.CompleteAsync(); return response;
+        }
+
+        public Task<BaseResponse<WashGo.Application.Contracts.Features.AuditContracts.Results.AdministrativeBatchResultDto>> BatchAsync(WashGo.Application.Contracts.Features.AuditContracts.Commands.AdministrativeBatchCommand command) =>
+            LazyServiceProvider.LazyGetRequiredService<AdministrativeBatchExecutor>().RunAsync("Locker", command, 50, async (item, key) =>
+            {
+                if (command.Action == "Delete") return AdministrativeBatchExecutor.Item(item.Id, await DeleteAsync(item.Id, item.ExpectedVersion, key));
+                if (!command.Status.HasValue || !Enum.IsDefined((LockerStatus)command.Status.Value)) return new() { Id = item.Id, StatusCode = 400, Message = "Status đích không hợp lệ." };
+                return AdministrativeBatchExecutor.Item(item.Id, await SetStatusAsync(item.Id, new() { ExpectedVersion = item.ExpectedVersion, OperationId = key, Status = (LockerStatus)command.Status.Value }));
+            });
 
         private static List<Guid> MerchantIdsOf(CreateLockerCommand command) =>
             command.MerchantIds is { Count: > 0 } ids ? ids
@@ -361,6 +419,12 @@ namespace WashGo.Application.Features.LockerApplication.Services
             var images = (await AsyncExecuter.ToListAsync((await _lockerRepo.GetQueryableAsync())
                     .Where(x => lockerIds.Contains(x.Id)).Select(x => new { x.Id, x.Images })))
                 .ToDictionary(x => x.Id, x => ReadImages(x.Images));
+            var entities = await _lockerRepo.GetListAsync(x => lockerIds.Contains(x.Id));
+            var pending = (await _orderRepo.GetQueryableAsync()).Where(o => !o.IsDeleted &&
+                (o.Status == WashOrderStatus.Cancelled ? o.CancelledGoodsStatus == CancelledGoodsStatus.AtDepositLocker || o.CancelledGoodsStatus == CancelledGoodsStatus.AtReturnLocker :
+                    o.Status != WashOrderStatus.Completed && o.Status != WashOrderStatus.MovedToStorage));
+            var blocking = await AsyncExecuter.ToListAsync(pending.Where(o => lockerIds.Contains(o.LockerId)).Select(o => o.LockerId)
+                .Concat(pending.Where(o => o.ReturnLockerId.HasValue && lockerIds.Contains(o.ReturnLockerId.Value)).Select(o => o.ReturnLockerId!.Value)).Distinct());
             // Projected list rows do not load boxes, so count empty boxes here (UC 3.4.1 "Số ô trống").
             var empty = (await AsyncExecuter.ToListAsync((await _boxRepo.GetQueryableAsync())
                     .Where(b => lockerIds.Contains(b.LockerId) && !b.IsDeleted && b.Status == LockerBoxStatus.Available)
@@ -368,6 +432,9 @@ namespace WashGo.Application.Features.LockerApplication.Services
                 .ToDictionary(x => x.LockerId, x => x.Count);
             foreach (var dto in lockers)
             {
+                var entity = entities.First(x => x.Id == dto.Id);
+                dto.Version = Version(entity, links.Where(x => x.LockerId == dto.Id));
+                dto.CanDelete = CurrentUser.IsInRole("Admin") && entity.AvailableBoxes == entity.TotalBoxes && !blocking.Contains(dto.Id);
                 dto.EmptyBoxesCount = empty.GetValueOrDefault(dto.Id);
                 dto.ImageUrls = images.GetValueOrDefault(dto.Id) ?? [];
                 dto.Merchants = links.Where(x => x.LockerId == dto.Id).OrderBy(x => x.Priority)
@@ -380,6 +447,14 @@ namespace WashGo.Application.Features.LockerApplication.Services
                 dto.ServiceAreaName = dto.ServiceAreaId.HasValue ? areas.GetValueOrDefault(dto.ServiceAreaId.Value) : null;
             }
         }
+
+        private async Task<string> VersionAsync(Locker locker) => Version(locker, await _linkRepo.GetListAsync(x => x.LockerId == locker.Id));
+        private static string Version(Locker x, IEnumerable<LockerMerchant> links) => AdministrativeWriteGuard.Version(new
+        {
+            x.Id, x.Name, x.Code, x.Address, x.Ward, x.District, x.City, x.Latitude, x.Longitude, x.Status, x.LockerType,
+            x.Description, x.ServiceAreaId, Images = ReadImages(x.Images), x.IsDeleted,
+            Merchants = links.OrderBy(l => l.Priority).ThenBy(l => l.MerchantId).Select(l => new { l.MerchantId, l.Priority })
+        });
 
         private static List<string> ReadImages(string? json)
         {
@@ -448,82 +523,16 @@ namespace WashGo.Application.Features.LockerApplication.Services
             if (query.BoxId.HasValue && !await _boxRepo.AnyAsync(x => x.Id == query.BoxId.Value && x.LockerId == id))
                 return UsageError(System.Net.HttpStatusCode.BadRequest, "Ô tủ không thuộc locker này.");
 
-            var orderQuery = (await _orderRepo.GetQueryableAsync())
-                .Where(x => !x.IsDeleted && ((x.LockerId == id && x.DepositedAt != null) ||
-                                             (x.ReturnLockerId == id && x.ReturnBoxNumber != null)));
-            // Shared lockers: a Merchant only sees the uses of its own orders.
-            if (ScopeMerchantId.HasValue)
-                orderQuery = orderQuery.Where(x => x.MerchantId == ScopeMerchantId.Value);
-            if (query.BoxId.HasValue)
-                orderQuery = orderQuery.Where(x => x.BoxId == query.BoxId.Value || x.ReturnBoxId == query.BoxId.Value);
-            var orders = await AsyncExecuter.ToListAsync(orderQuery);
-            var orderIds = orders.Select(x => x.Id).ToList();
-            var timeline = (await AsyncExecuter.ToListAsync((await _timelineRepo.GetQueryableAsync())
-                    .Where(x => orderIds.Contains(x.WashOrderId) &&
-                                (x.Status == WashOrderStatus.Deposited || x.Status == WashOrderStatus.Collected ||
-                                 x.Status == WashOrderStatus.ReadyToReturn ||
-                                 x.Status == WashOrderStatus.Returned))))
-                .GroupBy(x => (x.WashOrderId, x.Status))
-                .ToDictionary(g => g.Key, g => DateTimeOffset.FromUnixTimeSeconds(g.Min(x => x.Timestamp)).UtcDateTime);
-            DateTime? At(Guid orderId, WashOrderStatus status) =>
-                timeline.TryGetValue((orderId, status), out var at) ? at : null;
-
-            var rows = new List<LockerUsageDto>();
-            foreach (var o in orders)
-            {
-                // Goods cancelled while still in the deposit box never left it until the customer took them back.
-                var cancelledInDepositBox = o.Status == WashOrderStatus.Cancelled &&
-                                            o.CancellationFromStatus == WashOrderStatus.Deposited;
-                if (o.LockerId == id && o.DepositedAt != null)
-                    rows.Add(new LockerUsageDto
-                    {
-                        UsageId = $"{o.Id}:1", BoxId = o.BoxId,
-                        OrderId = o.Id, OrderCode = o.OrderCode, BoxNumber = o.BoxNumber, UsageType = 1,
-                        // Timeline times share one precision, so put-in and taken-out compare correctly.
-                        PutInAt = At(o.Id, WashOrderStatus.Deposited) ?? o.DepositedAt,
-                        TakenOutAt = cancelledInDepositBox ? o.CancelledGoodsReturnedAt : At(o.Id, WashOrderStatus.Collected),
-                        OrderStatus = o.Status
-                    });
-                if (o.ReturnLockerId == id && o.ReturnBoxNumber != null && !cancelledInDepositBox)
-                {
-                    var putIn = At(o.Id, WashOrderStatus.ReadyToReturn);
-                    var cancelledReturn = o.Status == WashOrderStatus.Cancelled;
-                    if (putIn == null && !cancelledReturn)
-                        continue;
-                    rows.Add(new LockerUsageDto
-                    {
-                        UsageId = $"{o.Id}:2", BoxId = o.ReturnBoxId,
-                        OrderId = o.Id, OrderCode = o.OrderCode, BoxNumber = o.ReturnBoxNumber, UsageType = 2,
-                        PutInAt = putIn,
-                        TakenOutAt = cancelledReturn ? o.CancelledGoodsReturnedAt
-                            : At(o.Id, WashOrderStatus.Returned) ?? o.MovedToStorageAt,
-                        OrderStatus = o.Status
-                    });
-                }
-            }
-
-            IEnumerable<LockerUsageDto> filtered = rows;
-            if (query.BoxId.HasValue)
-                filtered = filtered.Where(x => x.BoxId == query.BoxId.Value);
-            if (query.FromDate is > 0)
-            {
-                var from = DateTimeOffset.FromUnixTimeSeconds(query.FromDate.Value).UtcDateTime;
-                filtered = filtered.Where(x => x.PutInAt >= from);
-            }
-            if (query.ToDate is > 0)
-            {
-                var to = DateTimeOffset.FromUnixTimeSeconds(query.ToDate.Value).UtcDateTime;
-                filtered = filtered.Where(x => x.PutInAt <= to);
-            }
-            // Stable order across pages: time, then order code, then usage type (ties and missing times included).
-            var list = filtered.OrderByDescending(x => x.PutInAt ?? DateTime.MinValue)
-                .ThenBy(x => x.OrderCode, StringComparer.Ordinal).ThenBy(x => x.UsageType).ToList();
-            var page = Math.Max(1, query.Page);
-            var take = Math.Clamp(query.Take, 1, 100);
-            return Success(list.Skip((page - 1) * take).Take(take).ToList(), list.Count, page, take,
-                list.Count == 0 ? "Locker này chưa được sử dụng." : null);
+            var page = Math.Max(1, query.Page); var take = Math.Clamp(query.Take, 1, 100);
+            DateTime? from = query.FromDate is > 0 ? DateTimeOffset.FromUnixTimeSeconds(query.FromDate.Value).UtcDateTime : null;
+            DateTime? to = query.ToDate is > 0 ? DateTimeOffset.FromUnixTimeSeconds(query.ToDate.Value).UtcDateTime : null;
+            using var snapshot = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true, isolationLevel: System.Data.IsolationLevel.RepeatableRead);
+            var (rows, total) = await LazyServiceProvider.LazyGetRequiredService<ILockerUsageReader>().ReadAsync(id, ScopeMerchantId, query.BoxId, from, to, page, take);
+            var dtos = rows.Select(x => new LockerUsageDto { UsageId = $"{x.OrderId}:{x.UsageType}", OrderId = x.OrderId, OrderCode = x.OrderCode,
+                BoxId = x.BoxId, BoxNumber = x.BoxNumber, UsageType = x.UsageType, PutInAt = x.PutInAt, TakenOutAt = x.TakenOutAt, OrderStatus = (WashOrderStatus)x.OrderStatus }).ToList();
+            await snapshot.CompleteAsync();
+            return Success(dtos, total, page, take, total == 0 ? "Locker này chưa được sử dụng." : null);
         }
-
         public async Task<BaseResponse<List<ColumnFilterDistinctValueDto>>> GetColumnDistinctValuesAsync(string fieldName, LockerFilterQuery query)
         {
             var merchantId = ScopeMerchantId;

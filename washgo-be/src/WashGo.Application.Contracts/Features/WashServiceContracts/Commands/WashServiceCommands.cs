@@ -9,6 +9,8 @@ namespace WashGo.Application.Contracts.Features.WashServiceContracts.Commands
 {
     public class CreateWashServiceCommand
     {
+        public Guid? OperationId { get; set; }
+        public List<string>? ImageUrls { get; set; }
         /// <summary>Tùy chọn: Merchant đề xuất dịch vụ. Dịch vụ thuộc bảng giá chung của nền tảng.</summary>
         public Guid? MerchantId { get; set; }
         public string Code { get; set; } = string.Empty;
@@ -24,12 +26,15 @@ namespace WashGo.Application.Contracts.Features.WashServiceContracts.Commands
 
     public class UpdateWashServiceCommand : CreateWashServiceCommand
     {
+        public string? ExpectedVersion { get; set; }
         public Guid Id { get; set; }
         public bool IsActive { get; set; } = true;
     }
 
     public class UpdateWashServiceStatusCommand
     {
+        public Guid? OperationId { get; set; }
+        public string? ExpectedVersion { get; set; }
         public Guid ServiceId { get; set; }
         public ServiceApprovalStatus ApprovalStatus { get; set; }
         public bool IsActive { get; set; } = true;

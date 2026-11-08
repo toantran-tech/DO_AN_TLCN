@@ -29,9 +29,16 @@ namespace WashGo.EntityFrameworkCore.Repositories
                 .Include(x => x.Boxes)
                 .FirstOrDefaultAsync(x => x.Id == id && !x.IsDeleted);
         }
+        public async Task LockAsync(Guid id)
+        {
+            var db = await GetDbContextAsync();
+            // Same lock precedes every slot write and administrative deletion; no slot-first inversion.
+            await db.Database.ExecuteSqlInterpolatedAsync($"SELECT id FROM washgo.lockers WHERE id={id} FOR UPDATE");
+        }
 
         public async Task<bool> TryReserveBoxAsync(Guid lockerId, Guid boxId)
         {
+            await LockAsync(lockerId);
             var db = await GetDbContextAsync();
             // A single conditional UPDATE wins the slot even when two requests read it as available.
             var changed = await db.LockerBoxes
@@ -61,6 +68,7 @@ namespace WashGo.EntityFrameworkCore.Repositories
 
         private async Task<bool> TryReleaseBoxAsync(Guid lockerId, Guid boxId, LockerBoxStatus expectedStatus)
         {
+            await LockAsync(lockerId);
             var db = await GetDbContextAsync();
             var changed = await db.LockerBoxes
                 .Where(x => x.Id == boxId && x.LockerId == lockerId && !x.IsDeleted
@@ -77,6 +85,7 @@ namespace WashGo.EntityFrameworkCore.Repositories
 
         public async Task<bool> TryOccupyReservedBoxAsync(Guid lockerId, Guid boxId)
         {
+            await LockAsync(lockerId);
             var db = await GetDbContextAsync();
             return await db.LockerBoxes
                 .Where(x => x.Id == boxId && x.LockerId == lockerId && !x.IsDeleted
@@ -87,6 +96,7 @@ namespace WashGo.EntityFrameworkCore.Repositories
         public async Task<bool> TrySetUnassignedBoxStatusAsync(Guid lockerId, Guid boxId,
             LockerBoxStatus expectedStatus, LockerBoxStatus newStatus)
         {
+            await LockAsync(lockerId);
             var db = await GetDbContextAsync();
             var changed = await db.LockerBoxes
                 .Where(x => x.Id == boxId && x.LockerId == lockerId && !x.IsDeleted
@@ -118,6 +128,7 @@ namespace WashGo.EntityFrameworkCore.Repositories
 
         public async Task<bool> TryUpdateDetailsAsync(Locker locker, LockerStatus expectedStatus)
         {
+            await LockAsync(locker.Id);
             var db = await GetDbContextAsync();
             var query = db.Lockers.Where(x => x.Id == locker.Id && !x.IsDeleted && x.Status == expectedStatus);
             if (locker.Status != expectedStatus && locker.Status != LockerStatus.Active)

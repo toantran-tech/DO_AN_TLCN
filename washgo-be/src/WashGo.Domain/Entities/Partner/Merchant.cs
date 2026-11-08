@@ -16,6 +16,9 @@ namespace WashGo.Domain.Entities.Partner
         public string BusinessName { get; set; } = string.Empty;
         public string? TaxCode { get; set; }
         public string? BusinessLicense { get; set; }
+        public Guid? BusinessLicenseDocumentId { get; set; }
+        public Guid? ContractDocumentId { get; set; }
+        public Guid? SlaDocumentId { get; set; }
         public string Address { get; set; } = string.Empty;
         public string District { get; set; } = string.Empty;
         public string City { get; set; } = string.Empty;

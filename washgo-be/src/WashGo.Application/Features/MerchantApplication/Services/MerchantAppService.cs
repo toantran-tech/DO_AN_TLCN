@@ -27,6 +27,7 @@ using WashGo.Domain.Entities.WashOrder.Interfaces;
 using WashGo.Domain.Shared.Enums;
 using WashGo.Core.Utils;
 using System.Data;
+using System.Text.Json;
 
 using WashGo.Application.Features.SystemSettingApplication.Services;
 
@@ -63,6 +64,7 @@ namespace WashGo.Application.Features.MerchantApplication.Services
         private readonly IConfiguration _configuration;
         private readonly ILogger<MerchantAppService> _logger;
         private readonly MerchantWriteGuard _writeGuard;
+        private readonly MerchantDocumentLinks _documents;
 
         public MerchantAppService(
             IRepository<Merchant, Guid> merchantRepo,
@@ -81,7 +83,7 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             NotificationPublisher notifications,
             IConfiguration configuration,
             ILogger<MerchantAppService> logger,
-            MerchantWriteGuard writeGuard)
+            MerchantWriteGuard writeGuard, MerchantDocumentLinks documents)
         {
             _merchantRepo = merchantRepo;
             _userRepo = userRepo;
@@ -100,6 +102,7 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             _configuration = configuration;
             _logger = logger;
             _writeGuard = writeGuard;
+            _documents = documents;
         }
 
         public async Task<BaseResponse<MerchantSummaryDto>> GetSummaryAsync()
@@ -126,11 +129,11 @@ namespace WashGo.Application.Features.MerchantApplication.Services
         {
             var row = await _writeGuard.FindAsync(operationId, CurrentUser.Id!.Value);
             if (row == null) return NotFound<MerchantOperationResultDto>("Không tìm thấy thao tác đã commit của bạn.");
-            object result = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(row.ResponseJson);
+            object result = JsonSerializer.Deserialize<JsonElement>(row.ResponseJson);
             if (row.Operation == "Create")
             {
-                var created = System.Text.Json.JsonSerializer.Deserialize<BaseResponse<MerchantResultDto>>(row.ResponseJson,
-                    new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+                var created = JsonSerializer.Deserialize<BaseResponse<MerchantResultDto>>(row.ResponseJson,
+                    new JsonSerializerOptions(JsonSerializerDefaults.Web));
                 if (created?.Data != null)
                 {
                     await FillCredentialDeliveryAsync(created.Data);
@@ -147,7 +150,14 @@ namespace WashGo.Application.Features.MerchantApplication.Services
         // UC 3.2.1
         public async Task<PaginatedResult<MerchantResultDto>> GetListAsync(MerchantFilterQuery query)
         {
+            var dateError = query.DateRangeError();
+            var sorts = query.SortBy ?? [];
+            var allowed = new[] { "businessname", "createdat", "joinedat", "rating", "status", "id" };
+            if (dateError != null || sorts.Any(x => !allowed.Contains(x.Field?.ToLowerInvariant())) || query.Status.HasValue && !Enum.IsDefined(query.Status.Value))
+                return new() { Succeeded = false, StatusCode = HttpStatusCode.BadRequest, Message = dateError ?? "Sort hỗ trợ BusinessName, CreatedAt, JoinedAt, Rating, Status, Id." };
             var queryable = await _merchantRepo.GetQueryableAsync();
+            if (query.FromDate > 0) { var from = DateTimeOffset.FromUnixTimeSeconds(query.FromDate).UtcDateTime; queryable = queryable.Where(x => x.CreatedAt >= from); }
+            if (query.ToDate > 0) { var to = DateTimeOffset.FromUnixTimeSeconds(query.ToDate).UtcDateTime; queryable = queryable.Where(x => x.CreatedAt <= to); }
 
             if (query.Status.HasValue)
                 queryable = queryable.Where(x => x.Status == query.Status.Value);
@@ -175,8 +185,21 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             var page = Math.Max(1, query.Page);
             var take = Math.Clamp(query.Take, 1, 100);
             var total = await AsyncExecuter.CountAsync(queryable);
+            IOrderedQueryable<Merchant>? ordered = null;
+            void Sort<TKey>(System.Linq.Expressions.Expression<Func<Merchant, TKey>> field, bool descending) =>
+                ordered = ordered == null ? descending ? queryable.OrderByDescending(field) : queryable.OrderBy(field) : descending ? ordered.ThenByDescending(field) : ordered.ThenBy(field);
+            foreach (var option in sorts)
+                switch (option.Field.ToLowerInvariant())
+                {
+                    case "businessname": Sort(x => x.BusinessName, option.IsDescending); break;
+                    case "createdat": Sort(x => x.CreatedAt, option.IsDescending); break;
+                    case "joinedat": Sort(x => x.ApprovedAt ?? x.CreatedAt, option.IsDescending); break;
+                    case "rating": Sort(x => x.Rating, option.IsDescending); break;
+                    case "status": Sort(x => x.Status, option.IsDescending); break;
+                    case "id": Sort(x => x.Id, option.IsDescending); break;
+                }
             var items = await AsyncExecuter.ToListAsync(
-                queryable.OrderBy(x => x.BusinessName).ThenBy(x => x.Id)
+                (ordered ?? queryable.OrderBy(x => x.BusinessName)).ThenBy(x => x.Id)
                          .Skip((page - 1) * take)
                          .Take(take)
             );
@@ -242,6 +265,8 @@ namespace WashGo.Application.Features.MerchantApplication.Services
                     ApprovedBy = CurrentUser.Id, ApprovedAt = DateTime.UtcNow
                 };
                 Apply(entity, command, phone!);
+                var documentError = await _documents.ApplyAsync(entity, command, CurrentUser.Id.Value);
+                if (documentError != null) return BadRequest<MerchantResultDto>(documentError);
                 await _userRepo.InsertAsync(user, autoSave: true);
                 await _merchantRepo.InsertAsync(entity, autoSave: true);
                 await ReplaceImagesAsync(entity.Id, images);
@@ -348,6 +373,8 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             }
 
             var previousVersion = entity.UpdatedAt.Ticks / 10;
+            var documentError = await _documents.ApplyAsync(entity, command, CurrentUser.Id!.Value);
+            if (documentError != null) return BadRequest<MerchantResultDto>(documentError);
             Apply(entity, command, phone!);
             entity.UpdatedAt = new DateTime(Math.Max(entity.UpdatedAt.Ticks / 10, previousVersion + 1) * 10, DateTimeKind.Utc);
             if (command.CommissionRate.HasValue)
@@ -608,8 +635,13 @@ namespace WashGo.Application.Features.MerchantApplication.Services
                 .ToDictionary(x => x.MerchantId);
 
             var dtos = ObjectMapper.Map<List<Merchant>, List<MerchantResultDto>>(merchants);
+            var documents = await LazyServiceProvider.LazyGetRequiredService<PrivateDocumentStore>().MetadataAsync(merchants.SelectMany(x => new[] { x.BusinessLicenseDocumentId, x.ContractDocumentId, x.SlaDocumentId }));
+            var ratings = await AsyncExecuter.ToListAsync((await LazyServiceProvider.LazyGetRequiredService<IRepository<WashGo.Domain.Entities.Feedback.OrderRating, Guid>>().GetQueryableAsync())
+                .Where(x => x.MerchantId.HasValue && ids.Contains(x.MerchantId.Value) && !x.IsHidden && !x.IsDeleted).GroupBy(x => x.MerchantId).Select(g => new { Id = g.Key, Count = g.Count() }));
             foreach (var dto in dtos)
             {
+                dto.Documents = new[] { dto.BusinessLicenseDocumentId, dto.ContractDocumentId, dto.SlaDocumentId }.Where(x => x.HasValue && documents.ContainsKey(x.Value)).Select(x => documents[x!.Value]).ToList();
+                dto.PublicRatingCount = ratings.FirstOrDefault(x => x.Id == dto.Id)?.Count ?? 0;
                 dto.Version = MerchantWriteGuard.Version(merchants.First(x => x.Id == dto.Id));
                 dto.Email = emails.GetValueOrDefault(dto.Id, string.Empty);
                 dto.ServiceAreaIds = areas.GetValueOrDefault(dto.Id) ?? [];
@@ -818,14 +850,14 @@ namespace WashGo.Application.Features.MerchantApplication.Services
                 isolationLevel: System.Data.IsolationLevel.RepeatableRead);
             var orders = (await _orderRepo.GetQueryableAsync()).Where(o => !o.IsDeleted && o.MerchantId == merchantId.Value);
             // Same rules as before, evaluated by the database for the whole scope; only the requested page is loaded.
-            var collection = orders.Where(o => o.Status == WashOrderStatus.Deposited && o.DepositedAt != null && o.DepositedAt < collectBefore)
-                .Select(o => new SlaRow { Id = o.Id, Type = MerchantSlaAlertType.CollectionOverdue, Deadline = o.DepositedAt!.Value.AddHours(collectSlaHours) });
+            var collection = orders.Where(o => o.Status == WashOrderStatus.Deposited && o.DepositedAt != null && o.DepositedAt.Value.AddHours(o.CollectSlaHoursSnapshot ?? collectSlaHours) < now)
+                .Select(o => new SlaRow { Id = o.Id, Type = MerchantSlaAlertType.CollectionOverdue, Deadline = o.DepositedAt!.Value.AddHours(o.CollectSlaHoursSnapshot ?? collectSlaHours) });
             var processing = orders.Where(o => (o.Status == WashOrderStatus.Washing || o.Status == WashOrderStatus.Drying ||
                                                 o.Status == WashOrderStatus.Ironing || o.Status == WashOrderStatus.Folding) &&
                                                o.EstimatedFinishAt != null && o.EstimatedFinishAt < now)
                 .Select(o => new SlaRow { Id = o.Id, Type = MerchantSlaAlertType.ProcessingOverdue, Deadline = o.EstimatedFinishAt!.Value });
-            var returns = orders.Where(o => o.Status == WashOrderStatus.Paid && o.PaidAt != null && o.PaidAt < returnBefore)
-                .Select(o => new SlaRow { Id = o.Id, Type = MerchantSlaAlertType.ReturnOverdue, Deadline = o.PaidAt!.Value.AddHours(returnSlaHours) });
+            var returns = orders.Where(o => o.Status == WashOrderStatus.Paid && o.PaidAt != null && o.PaidAt.Value.AddHours(o.ReturnSlaHoursSnapshot ?? returnSlaHours) < now)
+                .Select(o => new SlaRow { Id = o.Id, Type = MerchantSlaAlertType.ReturnOverdue, Deadline = o.PaidAt!.Value.AddHours(o.ReturnSlaHoursSnapshot ?? returnSlaHours) });
             var collectionCount = await AsyncExecuter.CountAsync(collection);
             var processingCount = await AsyncExecuter.CountAsync(processing);
             var returnCount = await AsyncExecuter.CountAsync(returns);

@@ -66,7 +66,7 @@ INSERT INTO washgo.merchants SELECT (jsonb_populate_record(NULL::washgo.merchant
     Assert-Status 403 Post "/service-proposal/$($p1.data.id)/approve" $null $merchant
 
     Write-Output '4. Approve creates the service (UC 3.5.5)'
-    $ok=Call-Api Post "/service-proposal/$($p1.data.id)/approve" $null $admin
+    $ok=Call-Api Post "/service-proposal/$($p1.data.id)/approve?expectedVersion=$($p1.data.version)" $null $admin
     if($ok.data.status -ne 2 -or !$ok.data.serviceId){throw 'Approve failed.'}
     $serviceId=$ok.data.serviceId
     Assert-Status 400 Post "/service-proposal/$($p1.data.id)/approve" $null $admin
@@ -86,7 +86,7 @@ INSERT INTO washgo.merchants SELECT (jsonb_populate_record(NULL::washgo.merchant
     # One pending proposal per shared service, whichever Merchant sent it.
     Assert-Status 400 Post "/merchant-service/$serviceId/proposals" $edit $seedMerchant
     Assert-Status 400 Post "/service-proposal/$($p2.id)/reject" @{reason=' '} $admin
-    $rej=(Call-Api Post "/service-proposal/$($p2.id)/reject" @{reason='Gia chua hop ly'} $admin).data
+    $rej=(Call-Api Post "/service-proposal/$($p2.id)/reject" @{reason='Gia chua hop ly';expectedVersion=$p2.version} $admin).data
     if($rej.status -ne 3 -or $rej.rejectionReason -ne 'Gia chua hop ly'){throw 'Reject failed.'}
     if((Mine $merchant).list[0].unitPrice -ne 100000){throw 'Rejected edit changed the service.'}
     $rejNote=@(Notes $merchant 26 | Where-Object { $_.content -match 'Gia chua hop ly' })
@@ -94,7 +94,7 @@ INSERT INTO washgo.merchants SELECT (jsonb_populate_record(NULL::washgo.merchant
 
     Write-Output '6. Approve an edit (UC 3.5.5 update)'
     $p3=(Call-Api Post "/merchant-service/$serviceId/proposals" $edit $merchant).data
-    Call-Api Post "/service-proposal/$($p3.id)/approve" $null $admin | Out-Null
+    Call-Api Post "/service-proposal/$($p3.id)/approve?expectedVersion=$($p3.version)" $null $admin | Out-Null
     $updated=(Call-Api Get "/wash-service/$serviceId" $null $admin).data
     if($updated.unitPrice -ne 120000 -or $updated.estimatedDurationHours -ne 20 -or $updated.description -ne 'Giat hap moi'){throw 'Approved edit not applied.'}
     if((Call-Api Get "/customer/services/$serviceId" $null $customer).data.unitPrice -ne 120000){throw 'Customers do not see the shared new price.'}
@@ -108,9 +108,9 @@ INSERT INTO washgo.merchants SELECT (jsonb_populate_record(NULL::washgo.merchant
     $lockerId=[Guid]$locker.id
     $l=(Call-Api Get "/customer/lockers/$lockerId" $null $customer).data
     $o=(Call-Api Post '/wash-order/' @{lockerId="$lockerId";boxId=$l.availableSlots[0].id;paymentMethod=2;items=@(@{serviceId="$serviceId";quantity=1})} $customer).data
-    Assert-Status 400 Delete "/wash-service/$serviceId" $null $admin
+    Assert-Status 400 Delete "/wash-service/${serviceId}?expectedVersion=$($updated.version)" $null $admin
     Call-Api Post "/wash-order/$($o.id)/cancel" @{reason='Service smoke'} $customer | Out-Null
-    Call-Api Delete "/wash-service/$serviceId" $null $admin | Out-Null
+    Call-Api Delete "/wash-service/${serviceId}?expectedVersion=$($updated.version)" $null $admin | Out-Null
     Assert-Status 404 Get "/wash-service/$serviceId" $null $admin
     if((Mine $merchant).total -ne 0){throw 'Deleted service still listed.'}
     Assert-Status 404 Get "/customer/services/$serviceId" $null $customer

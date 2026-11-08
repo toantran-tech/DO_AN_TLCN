@@ -6,6 +6,8 @@ namespace WashGo.Application.Contracts.Features.MerchantProfileContracts.Results
 {
     public class MerchantProfileDataDto
     {
+        public bool DocumentsSnapshotIncluded { get; set; }
+        public Guid? BusinessLicenseDocumentId { get; set; }
         /// <summary>Phiên bản hồ sơ lúc gửi yêu cầu; null cho yêu cầu legacy.</summary>
         public string? BaseMerchantVersion { get; set; }
         public string BusinessName { get; set; } = string.Empty;
@@ -38,6 +40,10 @@ namespace WashGo.Application.Contracts.Features.MerchantProfileContracts.Results
 
     public class MerchantProfileDto
     {
+        public List<WashGo.Application.Contracts.Features.FileContracts.Results.PrivateDocumentDto> Documents { get; set; } = [];
+        public Guid? BusinessLicenseDocumentId { get; set; }
+        public Guid? ContractDocumentId { get; set; }
+        public Guid? SlaDocumentId { get; set; }
         public Guid Id { get; set; }
         public string BusinessName { get; set; } = string.Empty;
         public string? TaxCode { get; set; }
