@@ -55,6 +55,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
         private readonly LockerMerchantResolver _lockerMerchants;
         private readonly OrderWriteGuard _writeGuard;
         private readonly DeliveryTaskRecorder _taskRecorder;
+        private readonly OrderMediaEnricher _media;
+        private readonly IRepository<WashOrderTimeline, Guid> _timelineRepo;
 
         public WashOrderAppService(
             IWashOrderRepository orderRepo,
@@ -75,7 +77,9 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             EtaPredictor eta,
             LockerMerchantResolver lockerMerchants,
             OrderWriteGuard writeGuard,
-            DeliveryTaskRecorder taskRecorder)
+            DeliveryTaskRecorder taskRecorder,
+            OrderMediaEnricher media,
+            IRepository<WashOrderTimeline, Guid> timelineRepo)
         {
             _orderRepo = orderRepo;
             _lockerRepo = lockerRepo;
@@ -96,6 +100,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             _lockerMerchants = lockerMerchants;
             _writeGuard = writeGuard;
             _taskRecorder = taskRecorder;
+            _media = media;
+            _timelineRepo = timelineRepo;
         }
 
         private readonly record struct OrderScope(string Role, Guid Id);
@@ -136,7 +142,16 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
 
         private static T RedactStaffData<T>(T dto, OrderScope scope) where T : WashOrderResultDto
         {
-            if (scope.Role == "Customer")
+            if (scope.Role == "Admin")
+            {
+                // Admin screens do not need locker/task codes; support reads them via GET /wash-order/{id}/access-codes.
+                dto.DepositPinCode = string.Empty;
+                dto.PickupPinCode = string.Empty;
+                dto.QrCodeString = string.Empty;
+                dto.ShipperTaskPinCode = null;
+                dto.ShipperTaskQrString = null;
+            }
+            else if (scope.Role == "Customer")
             {
                 // Customer cannot see Shipper task codes
                 dto.ShipperTaskPinCode = null;
@@ -255,6 +270,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
 
             var list = data.Select(x => RedactStaffData(x, scope)).ToList();
             await _enricher.FillAsync(list, scope.Role);
+            await _media.FillAsync(list, scope.Role);
             return Success(list, total, query.Page, query.Take, total > 0 ? null : scope.Role switch
             {
                 "Shipper" => "Bạn chưa có đơn hàng nào được phân công.",
@@ -330,7 +346,32 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             if (scope.Role is "Shipper" or "Merchant" or "Admin")
                 await _enricher.FillTaskAsync(dto);
             dto.AllowedActions = OrderActionRules.Build(order, scope.Role);
+            await _media.FillAsync([dto], scope.Role);
             return Success(RedactStaffData(dto, scope));
+        }
+
+        public async Task<BaseResponse<OrderAccessCodesDto>> GetAccessCodesAsync(Guid id)
+        {
+            var scope = await GetOrderScopeAsync();
+            var order = await _orderRepo.FindAsync(id);
+            if (order == null || order.IsDeleted || scope.Role != "Admin")
+                return NotFound<OrderAccessCodesDto>("Không tìm thấy đơn hàng!");
+            // Every reveal is recorded on the order history (who and when, never the codes themselves).
+            await _timelineRepo.InsertAsync(new WashOrderTimeline
+            {
+                WashOrderId = order.Id, FromStatus = order.Status, Status = order.Status,
+                ActorId = CurrentUser.Id, ActorName = CurrentUser.UserName ?? "Admin", ActorRole = "Admin",
+                Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                Note = "Admin xem mã mở tủ/mã nhiệm vụ để hỗ trợ."
+            }, autoSave: true);
+            return Success(new OrderAccessCodesDto
+            {
+                OrderId = order.Id, OrderCode = order.OrderCode,
+                DepositPinCode = order.DepositPinCode, QrCodeString = order.QrCodeString,
+                PickupPinCode = order.PickupPinCode,
+                PickupQrCodeString = string.IsNullOrEmpty(order.PickupPinCode) ? null : $"WASHGO:PICKUP:{order.OrderCode}:{order.PickupPinCode}",
+                ShipperTaskPinCode = order.ShipperTaskPinCode, ShipperTaskQrString = order.ShipperTaskQrString
+            });
         }
 
         private sealed record PricedOrder(List<WashOrderItem> Items, decimal Total, bool HasWeightService, int BaseProcessingHours);
@@ -1098,7 +1139,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                              orderby user.FullName, shipper.Id
                              select new AvailableShipperDto
                              {
-                                 Id = shipper.Id, FullName = user.FullName, AvatarUrl = user.Avatar, Phone = user.Phone,
+                                 Id = shipper.Id, FullName = user.FullName, AvatarUrl = user.Avatar, Phone = user.Phone, Email = user.Email,
                                  VehicleType = shipper.VehicleType, VehiclePlate = shipper.VehiclePlate,
                                  Rating = shipper.Rating, ActiveDeliveryCount = activeOrders.Count(x => x.ShipperId == shipper.Id),
                                  TaskType = task.Value
