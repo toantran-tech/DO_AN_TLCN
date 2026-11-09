@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$BaseUrl='http://localhost:5000',
     [string]$PostgresContainer='washgo_postgres',
     [string]$PostgresUser='postgres',
@@ -186,20 +186,22 @@ INSERT INTO washgo.services SELECT (jsonb_populate_record(NULL::washgo.services,
     Assert-MerchantRating
 
     Write-Output '6. Incident validation (UC 1.4.2)'
-    # Video-only evidence is enough (UC 1.4.2 with video).
-    $incBody=@{orderId=$o1.id;type=1;severity=2;description='Ao bi rach o tay';videoUrls=@($vidUrl)}
+    # Damage/loss require a photo; video can only supplement it.
+    $incBody=@{orderId=$o1.id;itemValue=100000;type=1;severity=2;description='Ao bi rach o tay';videoUrls=@($vidUrl)}
     Assert-Status 403 Post '/incident/' $incBody $admin
-    Assert-Status 400 Post '/incident/' @{orderId=$o3.id;type=1;severity=2;description='x';imageUrls=@($imgUrl)} $customer
-    Assert-Status 400 Post '/incident/' @{orderId=$o1.id;type=1;severity=2;description='x'} $customer
+    Assert-Status 400 Post '/incident/' @{orderId=$o3.id;itemValue=100000;type=1;severity=2;description='x';imageUrls=@($imgUrl)} $customer
+    Assert-Status 400 Post '/incident/' @{orderId=$o1.id;itemValue=100000;type=1;severity=2;description='x'} $customer
     Assert-Status 400 Post '/incident/' @{orderId=$o1.id;type=9;severity=2;description='x';imageUrls=@($imgUrl)} $customer
-    Assert-Status 400 Post '/incident/' @{orderId=$o1.id;type=1;severity=2;description='  ';imageUrls=@($imgUrl)} $customer
-    Assert-Status 404 Post '/incident/' @{orderId=$o1.id;type=1;severity=2;description='x';imageUrls=@($imgB)} $tokenB
+    Assert-Status 400 Post '/incident/' @{orderId=$o1.id;itemValue=100000;type=1;severity=2;description='  ';imageUrls=@($imgUrl)} $customer
+    Assert-Status 404 Post '/incident/' @{orderId=$o1.id;itemValue=100000;type=1;severity=2;description='x';imageUrls=@($imgB)} $tokenB
     Sql "UPDATE washgo.order_status_history SET created_at=created_at-4*86400 WHERE order_id='$($o2.id)' AND to_status=12;" | Out-Null
-    Assert-Status 400 Post '/incident/' @{orderId=$o2.id;type=2;severity=3;description='Mat 1 ao';imageUrls=@($imgUrl)} $customer
+    Assert-Status 400 Post '/incident/' @{orderId=$o2.id;itemValue=150000;type=2;severity=3;description='Mat 1 ao';imageUrls=@($imgUrl)} $customer
 
     Write-Output '7. Submit incident and customer views (UC 1.4.3)'
+    Assert-Status 400 Post '/incident/' $incBody $customer
+    $incBody.imageUrls=@($imgUrl)
     $inc=(Call-Api Post '/incident/' $incBody $customer).data
-    if(!$inc.merchantName -or $inc.status -ne 1 -or $inc.orderCode -ne $o1.orderCode -or $inc.imageUrls.Count -ne 0 -or $inc.videoUrls[0] -ne $vidUrl){throw 'Incident not stored as Pending.'}
+    if(!$inc.merchantName -or $inc.status -ne 1 -or $inc.orderCode -ne $o1.orderCode -or $inc.imageUrls.Count -ne 1 -or $inc.videoUrls[0] -ne $vidUrl){throw 'Incident not stored as Pending.'}
     Assert-Status 400 Post '/incident/' $incBody $customer
     $mineInc=Call-Api Get '/incident/mine?page=1&take=50' $null $customer
     if(!($mineInc.list|Where-Object{$_.id -eq $inc.id})){throw 'Customer list missing incident.'}
@@ -214,28 +216,27 @@ INSERT INTO washgo.services SELECT (jsonb_populate_record(NULL::washgo.services,
     Assert-Status 403 Post "/incident/$($inc.id)/resolve" @{resolutionNote='x';compensationLevel=2;itemValue=1} $customer
     Assert-Status 400 Post "/incident/$($inc.id)/resolve" @{resolutionNote='Loi tiem';compensationLevel=3} $admin
     Assert-Status 400 Post "/incident/$($inc.id)/resolve" @{compensationLevel=0} $admin
-    $resolved=(Call-Api Post "/incident/$($inc.id)/resolve" @{resolutionNote='Loi do tiem giat';responsibleParty=1;compensationLevel=2;itemValue=200000;compensationAmount=1} $admin).data
+    $resolved=(Call-Api Post "/incident/$($inc.id)/resolve" @{expectedVersion=$inc.version;expectedSettingsVersion=(Call-Api Get '/system-setting' $null $admin).data.version;resolutionNote='Loi do tiem giat';responsibleParty=1;compensationLevel=2;itemValue=200000;compensationAmount=1} $admin).data
     if($resolved.status -ne 2 -or $resolved.compensationAmount -ne 140000 -or $resolved.compensationStatus -ne 1){throw 'Compensation not computed by server.'}
     Assert-Status 400 Post "/incident/$($inc.id)/resolve" @{resolutionNote='Again';compensationLevel=4;itemValue=200000} $admin
     Assert-Status 400 Post "/incident/$($inc.id)/reject" @{reason='Late'} $admin
     Assert-Status 400 Post "/incident/$($inc.id)/confirm-compensation" @{reference=' '} $admin
-    $paid=(Call-Api Post "/incident/$($inc.id)/confirm-compensation" @{reference='BANK-123'} $admin).data
+    $paid=(Call-Api Post "/incident/$($inc.id)/confirm-compensation" @{reference='BANK-123';expectedVersion=$resolved.version} $admin).data
     if($paid.compensationStatus -ne 2 -or $paid.compensationReference -ne 'BANK-123'){throw 'Compensation payment not recorded.'}
-    $replay=(Call-Api Post "/incident/$($inc.id)/confirm-compensation" @{reference='BANK-999'} $admin).data
-    if($replay.compensationReference -ne 'BANK-123'){throw 'Compensation replay overwrote reference.'}
+    Assert-Status 409 Post "/incident/$($inc.id)/confirm-compensation" @{reference='BANK-999'} $admin
     if((Call-Api Get "/incident/$($inc.id)" $null $customer).data.compensationAmount -ne 140000){throw 'Customer cannot see result.'}
 
     Write-Output '9. Reject a second incident; lost-goods compensation is 200%'
-    $inc2=(Call-Api Post '/incident/' @{orderId=$o1.id;type=3;severity=1;description='Thieu moc ao';imageUrls=@($imgUrl)} $customer).data
+    $inc2=(Call-Api Post '/incident/' @{orderId=$o1.id;itemValue=0;type=3;severity=1;description='Thieu moc ao';imageUrls=@($imgUrl)} $customer).data
     Assert-Status 400 Post "/incident/$($inc2.id)/reject" @{reason=''} $admin
-    $rejected=(Call-Api Post "/incident/$($inc2.id)/reject" @{reason='Khong du bang chung'} $admin).data
+    $rejected=(Call-Api Post "/incident/$($inc2.id)/reject" @{reason='Khong du bang chung';expectedVersion=$inc2.version} $admin).data
     if($rejected.status -ne 3 -or $rejected.compensationAmount -ne 0){throw 'Reject wrong.'}
     Assert-Status 400 Post "/incident/$($inc2.id)/confirm-compensation" @{reference='X'} $admin
-    $inc3=(Call-Api Post '/incident/' @{orderId=$o1.id;type=2;severity=3;description='Mat ao khoac';imageUrls=@($imgUrl)} $customer).data
-    $lost=(Call-Api Post "/incident/$($inc3.id)/resolve" @{resolutionNote='Mat do tai tiem';responsibleParty=1;compensationLevel=4;itemValue=150000} $admin).data
+    $inc3=(Call-Api Post '/incident/' @{orderId=$o1.id;itemValue=150000;type=2;severity=3;description='Mat ao khoac';imageUrls=@($imgUrl)} $customer).data
+    $lost=(Call-Api Post "/incident/$($inc3.id)/resolve" @{expectedVersion=$inc3.version;expectedSettingsVersion=(Call-Api Get '/system-setting' $null $admin).data.version;resolutionNote='Mat do tai tiem';responsibleParty=1;compensationLevel=4;itemValue=150000} $admin).data
     if($lost.compensationAmount -ne 300000){throw 'Lost-goods compensation not 200%.'}
 
-    Write-Output 'PASS: image upload checks, video upload (35MB over the default body limit, signature, ownership) on ratings and video-only incident evidence, rating validation/ownership/once-per-order/race, merchant average, admin hide, merchant privacy, incident window/images/ownership, customer list, admin resolve/reject, server-side compensation and payment record.'
+    Write-Output 'PASS: image upload checks, video upload (35MB over the default body limit, signature, ownership) on ratings and mandatory photo evidence for damage/loss incidents, rating validation/ownership/once-per-order/race, merchant average, admin hide, merchant privacy, incident window/images/ownership, customer list, admin resolve/reject, server-side compensation and payment record.'
 }
 finally {
     foreach($session in $sessions.Values){try{Call-Api Post '/auth/logout' @{refreshToken=$session.refreshToken} $session.accessToken|Out-Null}catch{Write-Warning 'Smoke session logout failed.'}}

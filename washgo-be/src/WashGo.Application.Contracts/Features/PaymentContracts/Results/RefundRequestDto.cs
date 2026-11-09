@@ -7,6 +7,7 @@ public class RefundRequestDto
     public Guid Id { get; set; }
     public string Version { get; set; } = string.Empty;
     public Guid? OriginalPaymentTransactionId { get; set; }
+    public Guid? SettlementId { get; set; }
     public Guid OrderId { get; set; }
     public string? OrderCode { get; set; }
     public Guid CustomerId { get; set; }

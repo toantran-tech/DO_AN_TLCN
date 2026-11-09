@@ -60,6 +60,9 @@ namespace WashGo.Application.Contracts.Features.FeedbackContracts.Results
         public ResponsibleParty? ResponsibleParty { get; set; }
         public CompensationLevel CompensationLevel { get; set; }
         public decimal ItemValue { get; set; }
+        public decimal DeclaredItemValue { get; set; }
+        public Guid? CompensationPaidBy { get; set; }
+        public List<string> CompensationProofImageUrls { get; set; } = [];
         public decimal CompensationAmount { get; set; }
         public CompensationStatus CompensationStatus { get; set; }
         public string? CompensationReference { get; set; }

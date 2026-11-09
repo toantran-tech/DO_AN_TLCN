@@ -896,6 +896,7 @@ namespace WashGo.Application.Features.PaymentApplication.Services
         {
             Version = AdministrativeWriteGuard.Version(new { request.Id, request.Status, request.Amount, request.ReviewNote, ReviewedAt = request.ReviewedAt?.Ticks / 10, request.RefundReference, RefundedAt = request.RefundedAt?.Ticks / 10, request.OriginalPaymentTransactionId }),
             OriginalPaymentTransactionId = request.OriginalPaymentTransactionId,
+            SettlementId = request.SettlementId,
             Id = request.Id,
             OrderId = request.OrderId,
             CustomerId = request.CustomerId,

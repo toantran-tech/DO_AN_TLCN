@@ -22,6 +22,7 @@ namespace WashGo.EntityFrameworkCore.BuilderConfiguration
             builder.Property(x => x.Description).HasMaxLength(2000).IsRequired();
             builder.Property(x => x.ResolutionNote).HasMaxLength(2000);
             builder.Property(x => x.ItemValue).HasPrecision(18, 2);
+            builder.Property(x => x.DeclaredItemValue).HasPrecision(18, 2);
             builder.Property(x => x.CompensationAmount).HasPrecision(18, 2);
             builder.Property(x => x.CompensationReference).HasMaxLength(120);
             builder.Property(x => x.ClientRequestId).HasMaxLength(64);

@@ -37,6 +37,7 @@ namespace WashGo.HttpApi.Endpoints.OrderAssignment
                 return (await svc.AssignAsync(orderId, command)).CustomResult();
             })
                 .WithName("Gán đơn cho Merchant")
+                .WithDescription("Hợp đồng tính đến hết ngày kết thúc theo giờ Việt Nam; hết hạn từ 00:00 ngày kế tiếp trả meta.code=ContractExpired. Null là không thời hạn. Không khóa tài khoản hoặc chặn xử lý đơn đã nhận.")
                 .WithSummary("Ghi nhận Merchant cho đơn (phải phụ trách locker, còn sức chứa), ghi lịch sử và báo Merchant. Khóa sức chứa theo Merchant nên nhiều Admin cùng lúc không vượt tải. Tùy chọn: expectedRevision, expectedCommissionRate (lệch → 409 RevisionMismatch/CommissionChanged), operationId/Idempotency-Key (gửi lại trả kết quả cũ, cùng mã khác nội dung → 409). Lỗi có meta.code.")
                 .WithOpenApi();
 

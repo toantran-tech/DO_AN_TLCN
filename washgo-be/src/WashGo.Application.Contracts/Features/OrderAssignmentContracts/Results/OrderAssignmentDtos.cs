@@ -30,6 +30,12 @@ namespace WashGo.Application.Contracts.Features.OrderAssignmentContracts.Results
         public Guid MerchantId { get; set; }
         public string BusinessName { get; set; } = string.Empty;
         public decimal Rating { get; set; }
+        public decimal RatingForScore { get; set; }
+        public double PriorityScore { get; set; }
+        public double LoadScore { get; set; }
+        public double RatingScore { get; set; }
+        public double DistanceScore { get; set; }
+        public string Algorithm => "WeightedScore";
         /// <summary>Số đánh giá công khai (không ẩn); 0 = Rating là giá trị mặc định, chưa có khách đánh giá.</summary>
         public int PublicRatingCount { get; set; }
         public bool HasPublicRating => PublicRatingCount > 0;

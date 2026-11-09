@@ -69,6 +69,8 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
                 return Success(ToDto(existing), "Yêu cầu khiếu nại này đã được ghi nhận trước đó.");
             if (!Enum.IsDefined(command.Type) || !Enum.IsDefined(command.Severity))
                 return BadRequest<IncidentResultDto>("Vui lòng chọn loại sự cố và mức độ hợp lệ.");
+            if (command.ItemValue < 0 || command.ItemValue > MaxItemValue || decimal.Round(command.ItemValue, 2) != command.ItemValue)
+                return BadRequest<IncidentResultDto>("Giá trị món đồ từ 0 đến 100.000.000đ, tối đa hai chữ số thập phân.");
             var description = command.Description?.Trim();
             if (string.IsNullOrWhiteSpace(description) || description.Length > 2000)
                 return BadRequest<IncidentResultDto>("Mô tả sự cố phải có từ 1 đến 2000 ký tự.");
@@ -76,7 +78,7 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
             var videoError = UploadStorage.ValidateOwnedVideos(_configuration, command.VideoUrls, customerId, out var videos);
             if (videoError != null)
                 return BadRequest<IncidentResultDto>(videoError);
-            var imageError = UploadStorage.ValidateOwnedImages(_configuration, command.ImageUrls, customerId, videos.Count > 0 ? 0 : 1, out var images);
+            var imageError = UploadStorage.ValidateOwnedImages(_configuration, command.ImageUrls, customerId, command.Type is IncidentType.Damaged or IncidentType.Lost ? 1 : videos.Count > 0 ? 0 : 1, out var images);
             if (imageError != null)
                 return BadRequest<IncidentResultDto>(videos.Count == 0 && images.Count == 0
                     ? "Vui lòng upload ít nhất 1 ảnh hoặc video minh chứng." : imageError);
@@ -110,7 +112,7 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
                     ? order.MerchantName : (await _merchantRepo.FindAsync(order.MerchantId.Value))?.BusinessName,
                 Type = command.Type,
                 Severity = command.Severity,
-                Description = description,
+                Description = description, DeclaredItemValue = command.ItemValue, ItemValue = command.ItemValue,
                 ImageUrls = images,
                 VideoUrls = videos,
                 ClientRequestId = requestId,
@@ -292,6 +294,8 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
 
         public async Task<BaseResponse<IncidentResultDto>> ConfirmCompensationAsync(Guid id, ConfirmCompensationCommand command)
         {
+            var proofError = UploadStorage.ValidateOwnedImages(_configuration, command.ProofImageUrls, CurrentUser.Id!.Value, 0, out var proofs);
+            if (proofError != null || proofs.Count > 3) return BadRequest<IncidentResultDto>(proofError ?? "Chỉ được đính kèm tối đa 3 ảnh biên lai.");
             var reference = command.Reference?.Trim();
             if (string.IsNullOrWhiteSpace(reference) || reference.Length > 120)
                 return BadRequest<IncidentResultDto>("Vui lòng nhập mã tham chiếu chuyển khoản (tối đa 120 ký tự).");
@@ -303,7 +307,7 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
                 return NotFound<IncidentResultDto>("Không tìm thấy khiếu nại!");
             if (incident.CompensationStatus == CompensationStatus.Paid)
             {
-                if (incident.CompensationReference != reference) return AdministrativeWriteGuard.Error<IncidentResultDto>(HttpStatusCode.Conflict, "PaymentReferenceChanged", "Khoản bồi thường đã trả với mã tham chiếu khác.");
+                if (incident.CompensationReference != reference || !incident.CompensationProofImageUrls.SequenceEqual(proofs)) return AdministrativeWriteGuard.Error<IncidentResultDto>(HttpStatusCode.Conflict, "PaymentReferenceChanged", "Khoản bồi thường đã trả với mã tham chiếu khác.");
                 var old = Success(ToDto(incident), "Bồi thường đã được ghi nhận trước đó.");
                 await Writes.RecordAsync(command.OperationId, CurrentUser.Id.Value, "Incident", "ConfirmCompensation", id.ToString(), command, old);
                 await uow.CompleteAsync(); return old;
@@ -316,6 +320,7 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
             incident.CompensationStatus = CompensationStatus.Paid;
             incident.CompensationReference = reference;
             incident.CompensationPaidAt = DateTime.UtcNow;
+            incident.CompensationPaidBy = CurrentUser.Id; incident.CompensationProofImageUrls = proofs;
             incident.Revision++;
             await _incidentRepo.UpdateAsync(incident, autoSave: true);
             var response = Success(ToDto(incident), "Đã ghi nhận chi trả bồi thường.");
@@ -345,7 +350,8 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
             ResolutionNote = x.ResolutionNote,
             ResponsibleParty = x.ResponsibleParty,
             CompensationLevel = x.CompensationLevel,
-            ItemValue = x.ItemValue,
+            ItemValue = x.ItemValue, DeclaredItemValue = x.DeclaredItemValue, CompensationPaidBy = x.CompensationPaidBy,
+            CompensationProofImageUrls = new List<string>(x.CompensationProofImageUrls),
             CompensationAmount = x.CompensationAmount,
             CompensationStatus = x.CompensationStatus,
             CompensationReference = x.CompensationReference,

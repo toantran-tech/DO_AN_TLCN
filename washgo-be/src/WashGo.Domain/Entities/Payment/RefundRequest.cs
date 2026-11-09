@@ -11,6 +11,7 @@ namespace WashGo.Domain.Entities.Payment
     public class RefundRequest : BaseEntity
     {
         public Guid OrderId { get; set; }
+        public Guid? SettlementId { get; set; }
         public Guid CustomerId { get; set; }
         public Guid? OriginalPaymentTransactionId { get; set; }
         public Guid? MerchantIdSnapshot { get; set; }

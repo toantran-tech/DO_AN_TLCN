@@ -22,6 +22,9 @@ namespace WashGo.EntityFrameworkCore.BuilderConfiguration
             builder.Property(x => x.CommissionRate).HasPrecision(5, 2);
             builder.Property(x => x.CommissionAmount).HasPrecision(18, 2);
             builder.Property(x => x.PayoutAmount).HasPrecision(18, 2);
+            builder.Property(x => x.PeriodPayoutAmount).HasPrecision(18, 2);
+            builder.Property(x => x.CarryForwardAmount).HasPrecision(18, 2);
+            builder.HasIndex(x => x.CarriedToSettlementId);
             builder.Property(x => x.PaymentReference).HasMaxLength(120);
             builder.HasIndex(x => new { x.MerchantId, x.PeriodFrom, x.PeriodTo });
             builder.HasIndex(x => x.Status);

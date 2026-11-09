@@ -9,6 +9,9 @@ namespace WashGo.Domain.Shared.Enums
         PickupOverdue = 5,
         PaymentOverdue = 6,
         DepositExpired = 7,
-        LockerNearlyFull = 8
+        LockerNearlyFull = 8,
+        IncidentPendingOverdue = 9,
+        ContractExpiring = 10,
+        ContractExpired = 11
     }
 }

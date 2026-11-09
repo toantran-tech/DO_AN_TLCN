@@ -12,6 +12,7 @@ namespace WashGo.Domain.Entities.Payment
     public class PaymentTransaction : BaseEntity
     {
         public Guid OrderId { get; set; }
+        public Guid? SettlementId { get; set; }
         public Guid? MerchantIdSnapshot { get; set; }
         public decimal? CommissionRateSnapshot { get; set; }
         public string? FinancialSnapshotBasis { get; set; }

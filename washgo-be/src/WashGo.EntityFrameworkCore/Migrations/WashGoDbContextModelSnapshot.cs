@@ -194,9 +194,18 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("compensation_paid_at");
 
+                    b.Property<Guid?>("CompensationPaidBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("compensation_paid_by");
+
                     b.Property<int?>("CompensationPercentApplied")
                         .HasColumnType("integer")
                         .HasColumnName("compensation_percent_applied");
+
+                    b.Property<List<string>>("CompensationProofImageUrls")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("compensation_proof_image_urls");
 
                     b.Property<string>("CompensationReference")
                         .HasMaxLength(120)
@@ -236,6 +245,11 @@ namespace WashGo.EntityFrameworkCore.Migrations
                     b.Property<DateTime?>("CustomerUpdatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("customer_updated_at");
+
+                    b.Property<decimal>("DeclaredItemValue")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("declared_item_value");
 
                     b.Property<string>("DeletedBy")
                         .HasColumnType("text")
@@ -566,6 +580,15 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("jsonb")
                         .HasColumnName("breakdown_snapshot_json");
 
+                    b.Property<Guid?>("CarriedToSettlementId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("carried_to_settlement_id");
+
+                    b.Property<decimal>("CarryForwardAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("carry_forward_amount");
+
                     b.Property<decimal>("CommissionAmount")
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)")
@@ -658,6 +681,11 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("period_from");
 
+                    b.Property<decimal>("PeriodPayoutAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("period_payout_amount");
+
                     b.Property<DateTime>("PeriodTo")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("period_to");
@@ -676,6 +704,8 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnName("status");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("CarriedToSettlementId");
 
                     b.HasIndex("Status");
 
@@ -2214,6 +2244,10 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("tsvector")
                         .HasColumnName("search_vector");
 
+                    b.Property<Guid?>("SettlementId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("settlement_id");
+
                     b.Property<int>("Status")
                         .HasColumnType("integer")
                         .HasColumnName("status");
@@ -2227,6 +2261,8 @@ namespace WashGo.EntityFrameworkCore.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("OrderId");
+
+                    b.HasIndex("SettlementId");
 
                     b.HasIndex("TransactionReference")
                         .IsUnique();
@@ -2339,6 +2375,10 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("tsvector")
                         .HasColumnName("search_vector");
 
+                    b.Property<Guid?>("SettlementId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("settlement_id");
+
                     b.Property<int>("Status")
                         .HasColumnType("integer")
                         .HasColumnName("status");
@@ -2350,6 +2390,8 @@ namespace WashGo.EntityFrameworkCore.Migrations
                     b.HasIndex("OrderId");
 
                     b.HasIndex("OriginalPaymentTransactionId");
+
+                    b.HasIndex("SettlementId");
 
                     b.HasIndex("Status");
 
