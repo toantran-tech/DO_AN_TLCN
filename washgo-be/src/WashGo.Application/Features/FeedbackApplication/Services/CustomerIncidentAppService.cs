@@ -152,6 +152,10 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
             var customerId = CurrentUser.Id!.Value;
             if (!Enum.IsDefined(command.Type) || !Enum.IsDefined(command.Severity))
                 return BadRequest<IncidentResultDto>("Vui lòng chọn loại sự cố và mức độ hợp lệ.");
+            if (command.ItemValue < 0 || command.ItemValue > 100_000_000m || command.ItemValue.HasValue && decimal.Round(command.ItemValue.Value, 2) != command.ItemValue.Value)
+                return BadRequest<IncidentResultDto>("Giá trị món đồ từ 0 đến 100.000.000đ, tối đa hai chữ số thập phân.");
+            if (command.Type is IncidentType.Damaged or IncidentType.Lost && (command.ImageUrls == null || command.ImageUrls.Count == 0))
+                return BadRequest<IncidentResultDto>("Khiếu nại hư hỏng hoặc mất đồ bắt buộc có ít nhất một ảnh minh chứng.");
             var description = command.Description?.Trim();
             if (string.IsNullOrWhiteSpace(description) || description.Length > 2000)
                 return BadRequest<IncidentResultDto>("Mô tả sự cố phải có từ 1 đến 2000 ký tự.");
@@ -167,6 +171,7 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
                 return BadRequest<IncidentResultDto>(NotPendingMessage);
 
             var before = IncidentAppService.ToDto(incident);
+            if (command.ItemValue.HasValue) { incident.DeclaredItemValue = command.ItemValue.Value; incident.ItemValue = command.ItemValue.Value; }
             incident.Type = command.Type;
             incident.Severity = command.Severity;
             incident.Description = description;

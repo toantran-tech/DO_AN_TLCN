@@ -2,7 +2,7 @@
 
 Cập nhật: 09/11/2026. Nguồn: 13 tài liệu `BACKEND_*.md` tại `C:/Users/PC/Desktop/HK1_2027/cần làm`. Đây là checklist chính trong BE. Hướng dẫn hợp đồng API: [ADMIN_COMPLETION_REVIEW.md](docs/ADMIN_COMPLETION_REVIEW.md).
 
-Dấu [x] xác nhận phần cốt lõi đã triển khai và có kiểm thử dưới đây; không bao gồm những mở rộng ghi riêng ở cuối. Không coi có endpoint hoặc có script là đã kiểm thử thành công. Đợt hiện tại đã chia commit thành 4 nhánh nối tiếp, chưa push. Xem [GIT_PUSH_PLAN.md](docs/GIT_PUSH_PLAN.md).
+Dấu [x] xác nhận phần cốt lõi đã triển khai và có kiểm thử dưới đây; không bao gồm những mở rộng ghi riêng ở cuối. Không coi có endpoint hoặc có script là đã kiểm thử thành công. Đợt 4 nhánh trước đã được nhóm merge vào develop. Đợt nghiệp vụ mới ở feat/toantran/agreed-business-rules-20261109 chưa commit/push; xem mục 10.
 
 ## 1. Các phần đã có trước đợt này
 
@@ -23,7 +23,7 @@ Dấu [x] xác nhận phần cốt lõi đã triển khai và có kiểm thử d
 ## 3. Finance Admin
 
 - [x] Giao dịch/hoàn lưu Merchant và tỷ lệ snapshot. Hoàn khác kỳ đảo hoa hồng ở kỳ hoàn, không sửa kỳ đã trả; không cắt tiền hoàn bằng tổng thu trong kỳ B.
-- [x] Quote và quoteToken; khóa kỳ chồng lấn, biên UTC gồm hai đầu. Chặn kỳ thực nhận 0/âm hoặc thiếu tỷ lệ để đối chiếu.
+- [x] Quote và quoteToken; khóa kỳ chồng lấn, biên UTC gồm hai đầu. Kỳ thiếu tỷ lệ bị chặn để đối chiếu; theo quyết định mới, kỳ âm được CarryForward và kỳ 0 NoPayout (xem mục 10).
 - [x] Tạo/chi trả/review refund/confirm refund có version, operation replay và lookup. Chứng từ khác sau xác nhận trả 409; tổng hoàn không vượt số được hoàn, partial refund vẫn giữ Paid.
 - [x] Chi tiết/snapshot dòng đối soát, ID giao dịch và refund nguồn cho kỳ mới; refund filter/paging tại DB; thông tin liên hệ Admin theo batch; CSV chống công thức và metadata/basis rõ.
 - [x] Dòng đối soát legacy không có snapshot được đánh dấu; không gọi số tính lại là lịch sử đã chốt.
@@ -83,17 +83,28 @@ Dấu [x] xác nhận phần cốt lõi đã triển khai và có kiểm thử d
 - [x] EF kiểm tra không có thay đổi model chưa tạo migration.
 - [x] Cả 6 migration mới đã có trong migration history PostgreSQL; model sạch. Docker build/recreate thành công, volume giấy tờ riêng được gắn; Swagger HTTP 200. Đã khôi phục compose chính, `Payment__Provider=Live` (sandbox chính thức theo `.env`), không giữ Mock sau hồi quy.
 
-## 10. Giới hạn và mở rộng chưa triển khai
+## 10. Phạm vi đã chốt và hoàn thiện ngày 09/11/2026
 
-- [ ] 2FA, cấu hình hẹn hiệu lực, dự báo AI; assignee/reopen/SLA riêng cho khiếu nại và payout record/ảnh chứng từ riêng.
-- [ ] Ngày hiệu lực hợp đồng có cấu trúc và bộ lọc tương ứng. Bộ lọc Merchant hiện dùng ngày tạo, không suy ngày từ file hợp đồng.
-- [x] Dòng đối soát đã có snapshot được count/phân trang trong PostgreSQL; không tải toàn bộ JSON về app ở endpoint lines. Report/CSV đồng bộ giới hạn 25.000 bản ghi cho từng nguồn thu, hoàn và dòng dịch vụ; vượt giới hạn trả 413 `ReportTooLarge`, không cắt số liệu rồi trả báo cáo thiếu. Snapshot legacy thiếu ID giao dịch vẫn trả mảng rỗng.
-- [ ] Export job bất đồng bộ/ledger quy mô lớn chưa triển khai. Kỳ legacy chưa có snapshot vẫn dùng breakdown tính lại có giới hạn; không gọi đó là snapshot bất biến.
-- [ ] Tự động chuyển khoản ngân hàng/hoàn qua API ngân hàng và tự bù trừ kỳ âm; hiện ghi nhận chứng từ thủ công, kỳ âm/thiếu snapshot bị chặn để đối chiếu.
-- [ ] Thu nhập thực thu theo từng dịch vụ: ByService hiện là subtotal trước phân bổ giảm giá/phụ phí/hoàn, có basis mô tả. CSV là bản mới tại thời điểm export, không đảm bảo tái xuất màn hình cũ.
-- [x] Sort Promotion nhiều tiêu chí: Code/CreatedOn/StartAt/EndAt/UsageLimit/UsedCount/Id, có Id phụ; tối đa 8 tiêu chí, sai field trả 400.
-- [x] Bộ lọc đối soát: kỳ giao nhau, ngày chi trả, keyword Merchant/chứng từ, sort whitelist và phân trang; Merchant luôn bị ép scope của mình.
-- [x] `POST /promotion/{id}/usages/filter` Admin-only: lọc đơn/khách/trạng thái hoàn lượt/ngày dùng, sort và count/page tại DB; giữ cả usage reverted. Lý do hoàn lượt cũ chưa lưu trả null, không tự dựng lịch sử.
+Căn cứ quyết định thành viên: [AGREED_BUSINESS_RULES_20261109.md](docs/AGREED_BUSINESS_RULES_20261109.md). Phân biệt chức năng đã triển khai với tính năng nhóm loại khỏi phạm vi.
+
+- [x] Khiếu nại Pending quá 48 giờ chỉ cảnh báo Admin; không assignee/reopen. Admin được nhắn sau từ chối, khách gửi khiếu nại mới nếu còn hạn 3 ngày và không có Pending khác.
+- [x] Khách khai itemValue, hư hỏng/mất đồ bắt buộc ảnh; lưu declaredItemValue riêng với giá trị Admin xác minh. Bồi thường lưu mã tham chiếu, tùy chọn 0–3 ảnh, compensationPaidBy/compensationPaidAt và audit/replay.
+- [x] Hợp đồng bao gồm hết ngày kết thúc theo giờ VN; hết hạn chặn phân công mới, cảnh báo trước 30 ngày/đã hết hạn; không khóa tài khoản hoặc chặn xử lý đơn cũ. Null là không thời hạn.
+- [x] Gán tự động dùng chấm điểm 35/25/25/15, chưa có đánh giá công khai dùng 3/5 trong tính điểm; trả điểm từng thành phần, thứ tự ổn định, xác nhận vẫn khóa sức chứa.
+- [x] Dòng đối soát snapshot count/page tại PostgreSQL; report/CSV đồng bộ giới hạn 366 ngày và 25.000 bản ghi mỗi nguồn, quá mức trả ReportTooLarge.
+- [x] Giao dịch thu tiền giặt/refund gắn settlementId đúng một kỳ; hoàn phát sinh sau vào kỳ kế, giữ snapshot kỳ trước. Kỳ âm CarryForward, kỳ 0 NoPayout; không cho xác nhận chuyển tiền giả; số âm bù một lần vào kỳ sau qua liên kết kỳ nguồn/đích.
+- [x] byService giữ subtotal theo giá niêm yết trước giảm/phụ phí/hoàn, mô tả basis rõ; tổng thực thu ở totalRevenue, không phân bổ xuống từng dịch vụ.
+- [x] Sort Promotion, bộ lọc đối soát và lịch sử voucher có phân trang đã PASS từ đợt trước.
+- [x] Đặc tả Word đã đồng bộ tại các UC liên quan; sửa mâu thuẫn phí hủy UC 3.9.4 theo UC 1.2.7, giữ nguyên số mục và có bản sao lưu trước chỉnh.
+
+Ngoài phạm vi theo quyết định nhóm (không phải chức năng đã code): 2FA, hẹn hiệu lực cấu hình, dự báo/học máy, assignee/reopen khiếu nại, quy trình hai người duyệt bồi thường, export nền/ledger riêng, tự động chuyển khoản ngân hàng, phân bổ thực thu từng dịch vụ. Merchant dừng hợp tác còn âm được giữ công nợ để xử lý ngoài hệ thống.
+
+### Kiểm chứng đợt nghiệp vụ nhóm chốt
+
+- Smoke mới `agreed-business-rules.ps1` PASS: boundary hợp đồng VN; cảnh báo; gợi ý trung lập; bù trừ âm/0/dương không lặp; cạnh tranh chốt kỳ 201/409; SLA khiếu nại; ảnh/người chi trả và khiếu nại mới sau từ chối.
+- Hồi quy Finance, phân công và Customer khiếu nại đã PASS; chi tiết và giới hạn ở tài liệu nghiệp vụ mới. Không gọi chuyển tiền ngân hàng hoặc gửi SMTP ngoài trong smoke.
+- Có migration AddAgreedContractsClaimsAndCarryForward, áp dụng trên PostgreSQL local. Giấy tờ lịch sử không tự gán người chi hoặc giá trị khách khai khi không có căn cứ.
+- Đợt này đang ở nhánh feat/toantran/agreed-business-rules-20261109, chưa commit/push. Không sửa FE.
 
 ### Đợt bổ sung bốn mục có thể code ngay — 09/11/2026
 

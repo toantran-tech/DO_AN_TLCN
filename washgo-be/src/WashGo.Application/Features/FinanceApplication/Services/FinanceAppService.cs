@@ -79,14 +79,14 @@ namespace WashGo.Application.Features.FinanceApplication.Services
             return (from, to, null);
         }
 
-        private async Task<List<PaymentRow>> PaymentsAsync(DateTime periodFrom, DateTime periodTo, Guid? merchantId)
+        private async Task<List<PaymentRow>> PaymentsAsync(DateTime periodFrom, DateTime periodTo, Guid? merchantId, bool unsettledOnly = false)
         {
             var payments = await _paymentRepo.GetQueryableAsync();
             var orders = await _orderRepo.GetQueryableAsync();
             var query = from p in payments
                         join o in orders on p.OrderId equals o.Id
-                        where (p.Status == PaymentTransactionStatus.Succeeded || p.Status == PaymentTransactionStatus.Refunded)
-                              && p.CompletedAt != null && p.CompletedAt >= periodFrom && p.CompletedAt <= periodTo
+                        where !p.IsDeleted && (p.Status == PaymentTransactionStatus.Succeeded || p.Status == PaymentTransactionStatus.Refunded)
+                              && p.CompletedAt != null && (unsettledOnly ? p.SettlementId == null : p.CompletedAt >= periodFrom) && p.CompletedAt <= periodTo
                               && (merchantId == null || (p.FinancialSnapshotBasis != null ? p.MerchantIdSnapshot : o.MerchantId) == merchantId)
                         select new PaymentRow(p.Id, o.Id, p.FinancialSnapshotBasis != null ? p.MerchantIdSnapshot : o.MerchantId, p.Purpose, p.Amount, p.CompletedAt!.Value,
                             p.FinancialSnapshotBasis != null ? p.CommissionRateSnapshot : o.CommissionRateApplied);
@@ -95,14 +95,14 @@ namespace WashGo.Application.Features.FinanceApplication.Services
             return rows;
         }
 
-        private async Task<List<RefundRow>> RefundsAsync(DateTime periodFrom, DateTime periodTo, Guid? merchantId)
+        private async Task<List<RefundRow>> RefundsAsync(DateTime periodFrom, DateTime periodTo, Guid? merchantId, bool unsettledOnly = false)
         {
             var refunds = await _refundRepo.GetQueryableAsync();
             var orders = await _orderRepo.GetQueryableAsync();
             var query = from r in refunds
                         join o in orders on r.OrderId equals o.Id
-                        where r.Status == RefundRequestStatus.Refunded && r.RefundedAt != null
-                              && r.RefundedAt >= periodFrom && r.RefundedAt <= periodTo
+                        where !r.IsDeleted && r.Status == RefundRequestStatus.Refunded && r.RefundedAt != null
+                              && (unsettledOnly ? r.SettlementId == null : r.RefundedAt >= periodFrom) && r.RefundedAt <= periodTo
                               && (merchantId == null || (r.FinancialSnapshotBasis != null ? r.MerchantIdSnapshot : o.MerchantId) == merchantId)
                         select new RefundRow(r.Id, o.Id, r.FinancialSnapshotBasis != null ? r.MerchantIdSnapshot : o.MerchantId, r.Amount, r.RefundedAt!.Value,
                             r.FinancialSnapshotBasis != null ? r.CommissionRateSnapshot : o.CommissionRateApplied);
@@ -211,10 +211,10 @@ namespace WashGo.Application.Features.FinanceApplication.Services
             return Success(csv.ToString());
         }
 
-        private async Task<List<MerchantCommissionDto>> BuildCommissionsAsync(DateTime from, DateTime to, Guid? merchantId)
+        private async Task<List<MerchantCommissionDto>> BuildCommissionsAsync(DateTime from, DateTime to, Guid? merchantId, bool unsettledOnly = false)
         {
-            var payments = (await PaymentsAsync(from, to, merchantId)).Where(x => x.Purpose == PaymentPurpose.Order && x.MerchantId != null).ToList();
-            var refunds = (await RefundsAsync(from, to, merchantId)).Where(x => x.MerchantId != null).ToList();
+            var payments = (await PaymentsAsync(from, to, merchantId, unsettledOnly)).Where(x => x.Purpose == PaymentPurpose.Order && x.MerchantId != null).ToList();
+            var refunds = (await RefundsAsync(from, to, merchantId, unsettledOnly)).Where(x => x.MerchantId != null).ToList();
             var merchantIds = payments.Select(x => x.MerchantId).Concat(refunds.Select(x => x.MerchantId)).Distinct().ToList();
             if (merchantId.HasValue && !merchantIds.Contains(merchantId))
                 merchantIds.Add(merchantId);
@@ -288,27 +288,44 @@ namespace WashGo.Application.Features.FinanceApplication.Services
             using var snapshot = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true, isolationLevel: System.Data.IsolationLevel.RepeatableRead);
             var merchant = await _merchantRepo.FindAsync(command.MerchantId);
             if (merchant == null) return NotFound<SettlementQuoteDto>("Không tìm thấy Merchant.");
-            var row = (await BuildCommissionsAsync(from, to, merchant.Id)).FirstOrDefault();
-            var quote = await BuildQuoteAsync(merchant, from, to, row);
+            var quote = await BuildQuoteAsync(merchant, from, to, null);
             if (await _settlementRepo.AnyAsync(x => !x.IsDeleted && x.MerchantId == merchant.Id && x.PeriodFrom <= to && x.PeriodTo >= from))
             { quote.CanCreate = false; quote.BlockingCode = "SettlementOverlap"; }
+            if (await _settlementRepo.AnyAsync(x => !x.IsDeleted && x.MerchantId == merchant.Id && x.PeriodTo >= from) && quote.BlockingCode == null)
+            { quote.CanCreate = false; quote.BlockingCode = "SettlementChronology"; }
             await snapshot.CompleteAsync(); return Success(quote);
         }
 
         private async Task<SettlementQuoteDto> BuildQuoteAsync(Merchant merchant, DateTime from, DateTime to, MerchantCommissionDto? summary)
         {
             summary ??= new MerchantCommissionDto { MerchantId = merchant.Id, MerchantName = merchant.BusinessName, CommissionRate = merchant.CommissionRate };
+            var carrySources = await _settlementRepo.GetListAsync(x => !x.IsDeleted && x.MerchantId == merchant.Id && x.Status == SettlementStatus.CarryForward && x.CarriedToSettlementId == null && x.PeriodTo < from);
             var breakdown = await BuildBreakdownAsync(new MerchantSettlement
             {
                 MerchantId = merchant.Id, PeriodFrom = from, PeriodTo = to,
                 CommissionAmount = summary.CommissionAmount, PayoutAmount = summary.PayoutAmount
-            });
+            }, true);
+            // Derive the payable totals from the exact source IDs frozen in the breakdown, never a second live query.
+            summary.GrossRevenue = breakdown.Lines.Sum(x => x.Collected);
+            summary.RefundedAmount = breakdown.Lines.Sum(x => x.Refunded);
+            summary.NetRevenue = summary.GrossRevenue - summary.RefundedAmount;
+            summary.PaidOrderCount = breakdown.Lines.Count(x => x.PaymentTransactionIds.Count > 0);
+            summary.OrdersWithoutCommissionSnapshot = breakdown.Lines.Count(x => x.CommissionRate == null);
+            summary.UncoveredNetAmount = breakdown.Lines.Where(x => x.CommissionRate == null).Sum(x => x.Net);
+            summary.CommissionAmount = breakdown.Lines.Sum(x => x.Commission ?? 0);
+            summary.PeriodPayoutAmount = summary.NetRevenue - summary.CommissionAmount;
+            summary.CarryForwardAmount = carrySources.Sum(x => x.PayoutAmount);
+            summary.PayoutAmount = summary.PeriodPayoutAmount + summary.CarryForwardAmount;
+            breakdown.PeriodPayoutAmount = summary.PeriodPayoutAmount; breakdown.CarryForwardAmount = summary.CarryForwardAmount;
+            breakdown.CarryForwardSources = carrySources.OrderBy(x => x.PeriodTo).ThenBy(x => x.Id).Select(x => new SettlementCarryForwardDto { SourceSettlementId = x.Id, PeriodFrom = x.PeriodFrom, PeriodTo = x.PeriodTo, Amount = x.PayoutAmount }).ToList();
+            breakdown.SettledCommissionAmount = summary.CommissionAmount;
+            breakdown.SettledPayoutAmount = summary.PayoutAmount;
             return new SettlementQuoteDto
             {
                 Summary = summary, Breakdown = breakdown, GeneratedAt = DateTime.UtcNow,
-                QuoteToken = AdministrativeWriteGuard.Version(new { merchant.Id, from, to, summary, breakdown.Lines }),
-                CanCreate = summary.CommissionComplete && summary.PayoutAmount > 0,
-                BlockingCode = !summary.CommissionComplete ? "CommissionSnapshotMissing" : summary.PayoutAmount <= 0 ? "NonPositivePayout" : null
+                QuoteToken = AdministrativeWriteGuard.Version(new { merchant.Id, from, to, summary, breakdown.Lines, CarrySources = carrySources.Select(x => x.Id).OrderBy(x => x).ToArray() }),
+                CanCreate = summary.CommissionComplete,
+                BlockingCode = !summary.CommissionComplete ? "CommissionSnapshotMissing" : null
             };
         }
 
@@ -340,9 +357,10 @@ namespace WashGo.Application.Features.FinanceApplication.Services
                                                      x.PeriodFrom <= to && x.PeriodTo >= from))
                 return AdministrativeWriteGuard.Error<SettlementDto>(HttpStatusCode.Conflict, "SettlementOverlap", "Kỳ đối soát bị trùng với kỳ đã tạo cho Merchant này.");
 
-            var row = (await BuildCommissionsAsync(from, to, merchant.Id)).FirstOrDefault();
-            var preview = await BuildQuoteAsync(merchant, from, to, row);
-            if (!preview.CanCreate) return AdministrativeWriteGuard.Error<SettlementDto>(HttpStatusCode.BadRequest, preview.BlockingCode!, "Kỳ không đủ dữ liệu tỷ lệ hoặc số thực nhận không dương; cần đối chiếu trước.");
+            if (await _settlementRepo.AnyAsync(x => !x.IsDeleted && x.MerchantId == merchant.Id && x.PeriodTo >= from))
+                return AdministrativeWriteGuard.Error<SettlementDto>(HttpStatusCode.Conflict, "SettlementChronology", "Cần tạo kỳ đối soát theo thứ tự thời gian sau các kỳ đã chốt.");
+            var preview = await BuildQuoteAsync(merchant, from, to, null);
+            if (!preview.CanCreate) return AdministrativeWriteGuard.Error<SettlementDto>(HttpStatusCode.BadRequest, preview.BlockingCode!, "Kỳ thiếu dữ liệu tỷ lệ hoa hồng; cần đối chiếu trước khi chốt.");
             if (string.IsNullOrWhiteSpace(command.QuoteToken)) return AdministrativeWriteGuard.Error<SettlementDto>(HttpStatusCode.BadRequest, "QuoteRequired", "Cần lấy quoteToken từ POST /finance/settlements/quote.");
             if (command.QuoteToken != preview.QuoteToken) return AdministrativeWriteGuard.Error<SettlementDto>(HttpStatusCode.Conflict, "QuoteChanged", "Số liệu đối soát đã thay đổi; hãy xem lại quote.");
             var settlement = new MerchantSettlement
@@ -351,18 +369,28 @@ namespace WashGo.Application.Features.FinanceApplication.Services
                 MerchantName = merchant.BusinessName,
                 PeriodFrom = from,
                 PeriodTo = to,
-                OrderCount = row?.PaidOrderCount ?? 0,
-                GrossRevenue = row?.GrossRevenue ?? 0,
-                RefundedAmount = row?.RefundedAmount ?? 0,
-                NetRevenue = row?.NetRevenue ?? 0,
+                OrderCount = preview.Summary.PaidOrderCount,
+                GrossRevenue = preview.Summary.GrossRevenue,
+                RefundedAmount = preview.Summary.RefundedAmount,
+                NetRevenue = preview.Summary.NetRevenue,
                 CommissionRate = merchant.CommissionRate,
-                CommissionAmount = row?.CommissionAmount ?? 0,
-                PayoutAmount = row?.PayoutAmount ?? 0,
-                Status = SettlementStatus.Pending,
+                CommissionAmount = preview.Summary.CommissionAmount,
+                PayoutAmount = preview.Summary.PayoutAmount,
+                PeriodPayoutAmount = preview.Summary.PeriodPayoutAmount, CarryForwardAmount = preview.Summary.CarryForwardAmount,
+                Status = preview.Summary.PayoutAmount < 0 ? SettlementStatus.CarryForward : preview.Summary.PayoutAmount == 0 ? SettlementStatus.NoPayout : SettlementStatus.Pending,
                 CreatedByUserId = CurrentUser.Id
             };
             settlement.BreakdownSnapshotJson = JsonSerializer.Serialize(preview.Breakdown);
             await _settlementRepo.InsertAsync(settlement, autoSave: true);
+            var paymentIds = preview.Breakdown.Lines.SelectMany(x => x.PaymentTransactionIds).Distinct().ToList();
+            var refundIds = preview.Breakdown.Lines.SelectMany(x => x.RefundRequestIds).Distinct().ToList();
+            if (!await LazyServiceProvider.LazyGetRequiredService<ISettlementSourceWriter>().AttachAsync(settlement.Id, paymentIds, refundIds))
+            {
+                await uow.RollbackAsync();
+                return AdministrativeWriteGuard.Error<SettlementDto>(HttpStatusCode.Conflict, "SettlementSourcesChanged", "Giao dịch nguồn đã thuộc kỳ đối soát khác; vui lòng xem lại báo giá đối soát.");
+            }
+            var carrySources = await _settlementRepo.GetListAsync(x => !x.IsDeleted && x.MerchantId == merchant.Id && x.Status == SettlementStatus.CarryForward && x.CarriedToSettlementId == null && x.PeriodTo < from);
+            foreach (var source in carrySources) { source.CarriedToSettlementId = settlement.Id; await _settlementRepo.UpdateAsync(source); }
             await _notifications.SendAsync([merchant.Id], NotificationType.SettlementCreated, "Kỳ đối soát mới",
                 $"Kỳ đối soát {(from + VietnamOffset):dd/MM/yyyy} - {(to + VietnamOffset):dd/MM/yyyy}: doanh thu {settlement.NetRevenue:N0}đ, " +
                 $"hoa hồng {settlement.CommissionAmount:N0}đ, thực nhận {settlement.PayoutAmount:N0}đ.");
@@ -446,18 +474,18 @@ namespace WashGo.Application.Features.FinanceApplication.Services
             if (settlement.BreakdownSnapshotJson != null)
             {
                 var snapshot = JsonSerializer.Deserialize<SettlementBreakdownDto>(settlement.BreakdownSnapshotJson)!;
-                snapshot.SettlementId = settlement.Id; snapshot.Status = settlement.Status; snapshot.IsSnapshot = true;
+                snapshot.SettlementId = settlement.Id; snapshot.Status = settlement.Status; snapshot.IsSnapshot = true; snapshot.CarriedToSettlementId = settlement.CarriedToSettlementId;
                 return Success(snapshot);
             }
             // Legacy periods expose current source lines explicitly as non-snapshot; settled totals are unchanged.
             return Success(await BuildBreakdownAsync(settlement));
         }
 
-        private async Task<SettlementBreakdownDto> BuildBreakdownAsync(MerchantSettlement settlement)
+        private async Task<SettlementBreakdownDto> BuildBreakdownAsync(MerchantSettlement settlement, bool unsettledOnly = false)
         {
-            var payments = (await PaymentsAsync(settlement.PeriodFrom, settlement.PeriodTo, settlement.MerchantId))
+            var payments = (await PaymentsAsync(settlement.PeriodFrom, settlement.PeriodTo, settlement.MerchantId, unsettledOnly))
                 .Where(x => x.Purpose == PaymentPurpose.Order).ToList();
-            var refunds = await RefundsAsync(settlement.PeriodFrom, settlement.PeriodTo, settlement.MerchantId);
+            var refunds = await RefundsAsync(settlement.PeriodFrom, settlement.PeriodTo, settlement.MerchantId, unsettledOnly);
             var orderIds = payments.Select(x => x.OrderId).Concat(refunds.Select(x => x.OrderId)).Distinct().ToList();
             var codes = (await _orderRepo.GetListAsync(o => orderIds.Contains(o.Id))).ToDictionary(o => o.Id, o => o.OrderCode);
             var lines = orderIds.Select(oid =>
@@ -528,7 +556,7 @@ namespace WashGo.Application.Features.FinanceApplication.Services
 
         private static SettlementDto ToDto(MerchantSettlement x) => new()
         {
-            Version = AdministrativeWriteGuard.Version(new { x.Id, x.Status, x.PaymentReference, PaidAt = x.PaidAt?.Ticks / 10, x.PayoutAmount, x.PeriodFrom, x.PeriodTo, x.CommissionAmount, x.RefundedAmount }),
+            Version = AdministrativeWriteGuard.Version(new { x.Id, x.Status, x.PaymentReference, PaidAt = x.PaidAt?.Ticks / 10, x.PayoutAmount, x.PeriodFrom, x.PeriodTo, x.CommissionAmount, x.RefundedAmount, x.CarriedToSettlementId, x.CarryForwardAmount }),
             Id = x.Id,
             MerchantId = x.MerchantId,
             MerchantName = x.MerchantName,
@@ -540,7 +568,7 @@ namespace WashGo.Application.Features.FinanceApplication.Services
             NetRevenue = x.NetRevenue,
             CommissionRate = x.CommissionRate,
             CommissionAmount = x.CommissionAmount,
-            PayoutAmount = x.PayoutAmount,
+            PayoutAmount = x.PayoutAmount, PeriodPayoutAmount = x.PeriodPayoutAmount, CarryForwardAmount = x.CarryForwardAmount, CarriedToSettlementId = x.CarriedToSettlementId,
             Status = x.Status,
             PaymentReference = x.PaymentReference,
             PaidAt = x.PaidAt,

@@ -13,6 +13,7 @@ namespace WashGo.EntityFrameworkCore.BuilderConfiguration
         {
             builder.ToTable(WashGoDbProperties.RefundRequests, WashGoDbProperties.Schema);
             builder.HasKey(x => x.Id);
+            builder.HasIndex(x => x.SettlementId);
             builder.Property(x => x.Id).HasValueGenerator<SequentialGuidValueGenerator>();
             builder.Property<NpgsqlTsVector>("SearchVector");
             builder.Property(x => x.Amount).HasPrecision(18, 2);

@@ -528,7 +528,7 @@ namespace WashGo.Application.Features.MerchantApplication.Services
                 decimal.Round(command.DepositAmount, 2) != command.DepositAmount)
                 return ("Tiền ký quỹ không hợp lệ.", null);
             if (command.ContractStartDate.HasValue && command.ContractEndDate.HasValue &&
-                command.ContractEndDate.Value < command.ContractStartDate.Value)
+                MerchantContractRules.NormalizeDate(command.ContractEndDate) < MerchantContractRules.NormalizeDate(command.ContractStartDate))
                 return ("Ngày kết thúc hợp đồng phải sau ngày bắt đầu.", null);
             if (!string.IsNullOrWhiteSpace(command.SlaDocUrl) &&
                 (command.SlaDocUrl.Length > 500 || !Uri.TryCreate(command.SlaDocUrl.Trim(), UriKind.RelativeOrAbsolute, out _)))
@@ -562,8 +562,8 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             entity.DepositAmount = command.DepositAmount;
             entity.ServiceRadiusKm = command.ServiceRadiusKm;
             entity.MaxCapacity = command.MaxCapacity;
-            entity.ContractStartDate = command.ContractStartDate;
-            entity.ContractEndDate = command.ContractEndDate;
+            entity.ContractStartDate = MerchantContractRules.NormalizeDate(command.ContractStartDate);
+            entity.ContractEndDate = MerchantContractRules.NormalizeDate(command.ContractEndDate);
             entity.SlaDocUrl = string.IsNullOrWhiteSpace(command.SlaDocUrl) ? null : command.SlaDocUrl.Trim();
             entity.UpdatedAt = DateTime.UtcNow;
         }

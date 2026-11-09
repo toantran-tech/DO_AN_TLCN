@@ -125,7 +125,7 @@ namespace WashGo.Application.Features.OrderAssignmentApplication.Services
             return Success(new OrderCandidatesDto
             {
                 Order = (await ToWaitingDtosAsync([order], now.AddMinutes(-OrderAssignmentRules.AssignmentOverdueMinutes), now))[0],
-                Merchants = candidates.OrderByDescending(x => x.Score).ThenBy(x => x.Priority).ToList()
+                Merchants = candidates.OrderByDescending(x => x.Score).ThenBy(x => x.Priority).ThenBy(x => x.MerchantId).ToList()
             }, candidates.Count == 0 ? OrderAssignmentRules.NoMerchantInArea : null);
         }
 
@@ -260,7 +260,7 @@ namespace WashGo.Application.Features.OrderAssignmentApplication.Services
                     return BadRequest<List<AutoSuggestionDto>>($"Đơn {order.OrderCode} không ở trạng thái chờ phân công.");
                 var best = (await CandidatesAsync(order, extraLoad))
                     .Where(x => x.CurrentLoad < x.MaxCapacity)
-                    .OrderByDescending(x => x.Score).ThenBy(x => x.Priority).ThenBy(x => x.DistanceKm ?? double.MaxValue)
+                    .OrderByDescending(x => x.Score).ThenBy(x => x.Priority).ThenBy(x => x.DistanceKm ?? double.MaxValue).ThenBy(x => x.MerchantId)
                     .FirstOrDefault();
                 if (best != null)
                     extraLoad[best.MerchantId] = extraLoad.GetValueOrDefault(best.MerchantId) + 1;
@@ -330,6 +330,9 @@ namespace WashGo.Application.Features.OrderAssignmentApplication.Services
                     $"Đơn {order.OrderCode} đã thay đổi kể từ lúc bạn xem; vui lòng tải lại trước khi phân công."));
             if (!IsWaiting(order))
                 return (null, new Failure(HttpStatusCode.BadRequest, "NotWaiting", $"Đơn {order.OrderCode} không ở trạng thái chờ phân công."));
+            var merchant = await _merchantRepo.FindAsync(merchantId);
+            if (merchant != null && MerchantContractRules.IsExpired(merchant.ContractEndDate, DateTime.UtcNow))
+                return (null, new Failure(HttpStatusCode.BadRequest, "ContractExpired", "Hợp đồng Merchant đã hết hạn; không thể phân công đơn mới. Các đơn đã nhận vẫn được xử lý."));
             var candidates = await CandidatesAsync(order);
             if (candidates.Count == 0)
                 return (null, new Failure(HttpStatusCode.BadRequest, "NoMerchantInArea", OrderAssignmentRules.NoMerchantInArea));
@@ -408,7 +411,7 @@ namespace WashGo.Application.Features.OrderAssignmentApplication.Services
             var result = new List<MerchantCandidateDto>();
             foreach (var link in links)
             {
-                if (!merchants.TryGetValue(link.MerchantId, out var m))
+                if (!merchants.TryGetValue(link.MerchantId, out var m) || m.Status != MerchantStatus.Active || MerchantContractRules.IsExpired(m.ContractEndDate, DateTime.UtcNow))
                     continue;
                 double? distance = m.Latitude == 0 && m.Longitude == 0
                     ? null
@@ -417,13 +420,16 @@ namespace WashGo.Application.Features.OrderAssignmentApplication.Services
                 var capacity = Math.Max(1, m.MaxCapacity);
                 var priorityScore = 1.0 / Math.Max(1, link.Priority);
                 var loadScore = Math.Max(0, 1 - (double)load / capacity);
-                var ratingScore = Math.Clamp((double)m.Rating / 5, 0, 1);
+                var effectiveRating = ratingCounts.GetValueOrDefault(m.Id) == 0 ? 3m : m.Rating;
+                var ratingScore = Math.Clamp((double)effectiveRating / 5, 0, 1);
                 var distanceScore = distance.HasValue ? Math.Max(0, 1 - distance.Value / Math.Max(1, m.ServiceRadiusKm * 2)) : 0;
                 result.Add(new MerchantCandidateDto
                 {
                     MerchantId = m.Id,
                     BusinessName = m.BusinessName,
-                    Rating = m.Rating,
+                    Rating = m.Rating, RatingForScore = effectiveRating,
+                    PriorityScore = Math.Round(35 * priorityScore, 4), LoadScore = Math.Round(25 * loadScore, 4),
+                    RatingScore = Math.Round(25 * ratingScore, 4), DistanceScore = Math.Round(15 * distanceScore, 4),
                     PublicRatingCount = ratingCounts.GetValueOrDefault(m.Id),
                     CommissionRate = m.CommissionRate,
                     CurrentLoad = load,

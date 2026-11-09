@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$BaseUrl='http://localhost:5000',
     [string]$PostgresContainer='washgo_postgres',
     [string]$PostgresUser='postgres',
@@ -51,7 +51,7 @@ INSERT INTO washgo.users SELECT (jsonb_populate_record(NULL::washgo.users,to_jso
 INSERT INTO washgo.customers SELECT (jsonb_populate_record(NULL::washgo.customers,to_jsonb(c)||jsonb_build_object('user_id','$customerB'))).* FROM washgo.customers c WHERE user_id='$seedCustomer';
 "@ | Out-Null
     $sessions.B=(Call-Api Post '/auth/login' @{email="incident-b-$run@example.com";password='Customer@123'} $null).data; $tokenB=$sessions.B.accessToken
-    $locker=(Call-Api Post '/locker/' @{merchantId="$merchantId";name="Incident Locker $run";address='Private development fixture';district='Test';city='Test';latitude=10.77;longitude=106.69;boxCount=3} $admin).data
+    $locker=(Call-Api Post '/locker/' @{merchantId="$merchantId";code="INC_$run";name="Incident Locker $run";address='Private development fixture';district='Test';city='Test';latitude=10.77;longitude=106.69;boxCount=3} $admin).data
     $lockerId=[Guid]$locker.id
     $serviceId=(Call-Api Post '/customer/services/filter' @{page=1;take=1} $customer).list[0].id
     $o=New-Order; $pending=New-Order
@@ -68,7 +68,7 @@ INSERT INTO washgo.customers SELECT (jsonb_populate_record(NULL::washgo.customer
 
     Write-Output '2. Idempotent create by clientRequestId'
     $req="req-$run"
-    $body=@{orderId=$o.id;type=1;severity=2;description='Ao bi rach';imageUrls=@($img);clientRequestId=$req}
+    $body=@{itemValue=100000;orderId=$o.id;type=1;severity=2;description='Ao bi rach';imageUrls=@($img);clientRequestId=$req}
     $first=Call-Api Post '/incident/' $body $customer
     $again=Call-Api Post '/incident/' $body $customer
     if($again.data.id -ne $first.data.id -or !$again.message -or (Sql "SELECT count(*) FROM washgo.incidents WHERE order_id='$($o.id)';") -ne '1'){throw 'Replay created a second incident.'}
@@ -99,7 +99,7 @@ INSERT INTO washgo.customers SELECT (jsonb_populate_record(NULL::washgo.customer
     if(!$m1.data.isMine -or $m1.data.senderRole -ne 'Customer' -or $m1.data.imageUrls[0] -ne $img){throw 'Customer message wrong.'}
     Assert-Status 400 Post "/incident/$id/messages" @{content=''} $customer
     Assert-Status 404 Post "/incident/$id/messages" @{content='x'} $tokenB
-    Call-Api Post "/incident/$id/messages" @{content='Admin da tiep nhan'} $admin | Out-Null
+    Call-Api Post "/incident/$id/messages" @{content='Admin da tiep nhan';expectedVersion=(Call-Api Get "/incident/$id" $null $admin).data.version} $admin | Out-Null
     $notes=@((Call-Api Get '/notification?take=100' $null $customer).list | Where-Object { $_.type -eq 17 -and $_.linkId -eq "$id" })
     if($notes.Count -ne 1 -or $notes[0].messageKey -ne 'incidentMessage.customer'){throw 'Customer not told about the Admin reply.'}
     $thread=(Call-Api Get "/incident/$id/messages" $null $customer).data

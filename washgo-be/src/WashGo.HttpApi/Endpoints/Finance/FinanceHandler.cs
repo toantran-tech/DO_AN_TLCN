@@ -51,7 +51,7 @@ namespace WashGo.HttpApi.Endpoints.Finance
                 (await svc.CreateSettlementAsync(command)).CustomResult())
                 .RequireAuthorization("AdminOnly")
                 .WithName("Tạo kỳ đối soát")
-                .WithSummary("Admin chốt số liệu hoa hồng của một Merchant cho một kỳ đã kết thúc; không cho tạo kỳ trùng.")
+                .WithSummary("Chốt kỳ theo thứ tự thời gian với quoteToken; gắn settlementId vào nguồn chưa quyết toán, bao gồm khoản ghi nhận muộn. Payout âm → CarryForward (3), bằng 0 → NoPayout (4), dương → Pending (1). Bù số âm kỳ trước đúng một lần; không cho kỳ trùng.")
                 .WithOpenApi();
             group.MapPost("/settlements/quote", async (CreateSettlementCommand command, IFinanceAppService svc) => (await svc.QuoteSettlementAsync(command)).CustomResult())
                 .RequireAuthorization("AdminOnly").WithSummary("Xem trước thu/hoàn/hoa hồng/thực nhận và các đơn; lấy quoteToken trước khi tạo kỳ. Kỳ đóng, biên UTC gồm cả hai đầu.").WithOpenApi();

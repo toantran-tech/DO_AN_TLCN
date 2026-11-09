@@ -1,4 +1,6 @@
-﻿> Cập nhật 09/11/2026: xem kết quả tại [IMPLEMENTATION_CHECKLIST.md](IMPLEMENTATION_CHECKLIST.md) và hợp đồng API mới tại [docs/ADMIN_COMPLETION_REVIEW.md](docs/ADMIN_COMPLETION_REVIEW.md). Các mục cũ phía dưới là lịch sử. Đã chia commit thành 4 nhánh, chưa push; xem docs/GIT_PUSH_PLAN.md.
+﻿> Nghiệp vụ thành viên chốt ngày 09/11/2026 đã triển khai: cảnh báo khiếu nại 48h, chứng từ/người chi bồi thường, hợp đồng hết hạn theo giờ VN, gán đơn theo điểm trung lập, nguồn đối soát chỉ nhận một lần và bù trừ kỳ âm/đóng kỳ 0. Phạm vi và hợp đồng mới tại [AGREED_BUSINESS_RULES_20261109.md](docs/AGREED_BUSINESS_RULES_20261109.md); trạng thái hiện hành xem mục 10 [checklist](IMPLEMENTATION_CHECKLIST.md). Đặc tả DO_AN/Đặc tả usecase.docx đã đồng bộ; chưa commit/push đợt này.
+
+> Cập nhật 09/11/2026: xem kết quả tại [IMPLEMENTATION_CHECKLIST.md](IMPLEMENTATION_CHECKLIST.md) và hợp đồng API mới tại [docs/ADMIN_COMPLETION_REVIEW.md](docs/ADMIN_COMPLETION_REVIEW.md). Các mục cũ phía dưới là lịch sử. Đã chia commit thành 4 nhánh, chưa push; xem docs/GIT_PUSH_PLAN.md.
 
 # Tiến độ WashGo theo Đặc tả usecase (Backend trước)
 Cập nhật lần cuối: 09/11/2026
