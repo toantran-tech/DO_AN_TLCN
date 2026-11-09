@@ -1,3 +1,5 @@
+> Quyết định thành viên mới nhất và thay đổi hợp đồng tại [AGREED_BUSINESS_RULES_20261109.md](AGREED_BUSINESS_RULES_20261109.md). Phần này cập nhật nghiệp vụ hợp đồng/khiếu nại/bù trừ; không còn chặn tạo kỳ chỉ vì thực nhận âm hoặc bằng 0.
+
 # Hướng dẫn review đợt hoàn thiện Backend — 09/11/2026
 
 Phạm vi: checklist tại `washgo-be/IMPLEMENTATION_CHECKLIST.md`, đối chiếu 13 tài liệu trong `C:/Users/PC/Desktop/HK1_2027/cần làm`. Đây là thay đổi BE; FE cần cập nhật các hợp đồng ghi bên dưới. Đã chia commit thành 4 nhánh theo yêu cầu; chưa push. Thứ tự PR tại GIT_PUSH_PLAN.md. Các thao tác chi trả/hoàn/bồi thường chỉ ghi nhận chuyển khoản ngoài hệ thống, không gọi ngân hàng.
@@ -40,7 +42,7 @@ Phạm vi: checklist tại `washgo-be/IMPLEMENTATION_CHECKLIST.md`, đối chi�
 ## Finance, đối soát và hoàn tiền
 
 1. POST `/finance/settlements/quote` với Merchant và Unix giây `fromDate/toDate`; kỳ phải đã kết thúc. Kết quả có tổng thu/hoàn/hoa hồng/thực nhận, dòng theo đơn, `quoteToken`, `canCreate`, `blockingCode`.
-2. POST `/finance/settlements` gửi cùng kỳ và `quoteToken`, thêm `operationId`. Kiểm tra lại số liệu, khóa theo Merchant chống kỳ chồng lấn. Biên UTC **gồm cả hai đầu**: hai kỳ dùng chung một mốc bị coi là chồng lấn. Kỳ thiếu tỷ lệ snapshot hoặc thực nhận không dương bị chặn để đối chiếu, không tự suy ra tỷ lệ hiện tại.
+2. POST `/finance/settlements` gửi cùng kỳ và `quoteToken`, thêm `operationId`. Kiểm tra lại số liệu, khóa theo Merchant chống kỳ chồng lấn. Biên UTC **gồm cả hai đầu**: hai kỳ dùng chung một mốc bị coi là chồng lấn. Kỳ thiếu tỷ lệ snapshot bị chặn để đối chiếu, không tự suy ra tỷ lệ hiện tại. Quyết định nhóm ngày 09/11 bổ sung CarryForward cho kỳ âm và NoPayout cho kỳ 0; xem AGREED_BUSINESS_RULES_20261109.md.
 3. GET `/finance/settlements/{id}`, `/orders`, `/lines?page=1&take=20`: Admin hoặc đúng Merchant. Kỳ mới lưu snapshot các dòng; phát sinh hoàn sau đó không thay số đã chốt. Kỳ cũ không có snapshot được đánh dấu `isSnapshot=false`.
 4. POST `/{id}/confirm-paid` cần `reference`, `expectedVersion`, `operationId`. Replay cùng chứng từ không trả lần hai; chứng từ khác trả 409. Kỳ 0/âm không ghi chi trả giả.
 5. Refund create có `amount` tùy chọn (null = phần tiền gốc còn lại). Review/confirm nhận `expectedVersion`, `operationId`; từ chối cần lý do. Hoàn một phần giữ giao dịch/đơn Paid; chỉ khi hoàn hết phần có thể hoàn mới Refunded. Tổng đã hoàn không vượt tiền gốc trừ phí hủy giữ lại. Đơn hủy tiếp tục tạo yêu cầu hoàn tự động theo luồng riêng.

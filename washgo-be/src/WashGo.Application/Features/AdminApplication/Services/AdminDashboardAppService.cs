@@ -288,8 +288,8 @@ namespace WashGo.Application.Features.AdminApplication.Services
         private static AdminAlertSeverity SeverityOf(AdminAlertType type) => type switch
         {
             AdminAlertType.AssignmentOverdue or AdminAlertType.CollectionOverdue or AdminAlertType.ProcessingOverdue or
-                AdminAlertType.ReturnOverdue => AdminAlertSeverity.High,
-            AdminAlertType.PickupOverdue or AdminAlertType.PaymentOverdue or AdminAlertType.LockerNearlyFull => AdminAlertSeverity.Medium,
+                AdminAlertType.ReturnOverdue or AdminAlertType.IncidentPendingOverdue or AdminAlertType.ContractExpired => AdminAlertSeverity.High,
+            AdminAlertType.PickupOverdue or AdminAlertType.PaymentOverdue or AdminAlertType.LockerNearlyFull or AdminAlertType.ContractExpiring => AdminAlertSeverity.Medium,
             _ => AdminAlertSeverity.Low
         };
 
@@ -352,6 +352,15 @@ namespace WashGo.Application.Features.AdminApplication.Services
                     .Where(o => o.Status == WashOrderStatus.Pending && o.DepositDeadline != null && o.DepositDeadline < now)
                     .Select(o => new AlertRow { Id = o.Id, Type = AdminAlertType.DepositExpired, Deadline = o.DepositDeadline!.Value })
             };
+            var incidents = (await LazyServiceProvider.LazyGetRequiredService<IRepository<Incident, Guid>>().GetQueryableAsync()).Where(x => !x.IsDeleted);
+            var incidentCutoff = new DateTimeOffset(now.AddHours(-48)).ToUnixTimeSeconds();
+            sources[AdminAlertType.IncidentPendingOverdue] = incidents.Where(x => x.Status == IncidentStatus.Pending && x.CreatedOn < incidentCutoff)
+                .Select(x => new AlertRow { Id = x.Id, Type = AdminAlertType.IncidentPendingOverdue, Deadline = DateTime.UnixEpoch.AddSeconds(x.CreatedOn).AddHours(48) });
+            var merchants = await _merchantRepo.GetQueryableAsync();
+            sources[AdminAlertType.ContractExpiring] = merchants.Where(x => x.ContractEndDate != null && x.ContractEndDate.Value.AddHours(7).Date.AddDays(1).AddHours(-7) > now && x.ContractEndDate.Value.AddHours(7).Date.AddDays(1).AddHours(-7) <= now.AddDays(30))
+                .Select(x => new AlertRow { Id = x.Id, Type = AdminAlertType.ContractExpiring, Deadline = x.ContractEndDate!.Value.AddHours(7).Date.AddDays(1).AddHours(-7) });
+            sources[AdminAlertType.ContractExpired] = merchants.Where(x => x.ContractEndDate != null && x.ContractEndDate.Value.AddHours(7).Date.AddDays(1).AddHours(-7) <= now)
+                .Select(x => new AlertRow { Id = x.Id, Type = AdminAlertType.ContractExpired, Deadline = x.ContractEndDate!.Value.AddHours(7).Date.AddDays(1).AddHours(-7) });
             var counts = new Dictionary<AdminAlertType, int>();
             foreach (var (type, source) in sources)
                 counts[type] = await AsyncExecuter.CountAsync(source);
@@ -380,7 +389,7 @@ namespace WashGo.Application.Features.AdminApplication.Services
                 if (offset < orderCount && types.Count > 0)
                 {
                     var union = types.Select(t => sources[t]).Aggregate((x, y) => x.Concat(y));
-                    var got = await AsyncExecuter.ToListAsync(union.OrderBy(x => x.Deadline).ThenBy(x => x.Id).Skip(offset).Take(need));
+                    var got = await AsyncExecuter.ToListAsync(union.OrderBy(x => x.Deadline).ThenBy(x => x.Id).ThenBy(x => x.Type).Skip(offset).Take(need));
                     rows.AddRange(got);
                     need -= got.Count;
                     offset = 0;
@@ -399,6 +408,10 @@ namespace WashGo.Application.Features.AdminApplication.Services
             var details = (await AsyncExecuter.ToListAsync(orders.Where(o => ids.Contains(o.Id))
                     .Select(o => new { o.Id, o.OrderCode, o.MerchantId, o.MerchantName, o.LockerName })))
                 .ToDictionary(x => x.Id);
+            var incidentIds = rows.Where(x => x.Type == AdminAlertType.IncidentPendingOverdue).Select(x => x.Id).ToList();
+            var incidentDetails = (await AsyncExecuter.ToListAsync(incidents.Where(x => incidentIds.Contains(x.Id)))).ToDictionary(x => x.Id);
+            var merchantIds = rows.Where(x => x.Type == AdminAlertType.ContractExpiring || x.Type == AdminAlertType.ContractExpired).Select(x => x.Id).ToList();
+            var merchantDetails = (await AsyncExecuter.ToListAsync(merchants.Where(x => merchantIds.Contains(x.Id)))).ToDictionary(x => x.Id);
             await snapshot.CompleteAsync();
 
             var items = rows.Where(x => details.ContainsKey(x.Id)).Select(x =>
@@ -412,6 +425,18 @@ namespace WashGo.Application.Features.AdminApplication.Services
                     Deadline = deadline, OverdueMinutes = Math.Max(0, (int)(now - deadline).TotalMinutes)
                 };
             }).ToList();
+            items.AddRange(rows.Where(x => incidentDetails.ContainsKey(x.Id) && x.Type == AdminAlertType.IncidentPendingOverdue).Select(x => new AdminAlertDto
+            {
+                Type = x.Type, Severity = SeverityOf(x.Type), Title = "Khiếu nại chờ xử lý quá 48 giờ", ResourceType = "Incident", ResourceId = x.Id,
+                ResourceCode = incidentDetails[x.Id].OrderCode, MerchantId = incidentDetails[x.Id].MerchantId, MerchantName = incidentDetails[x.Id].MerchantName,
+                Deadline = DateTime.SpecifyKind(x.Deadline, DateTimeKind.Utc), OverdueMinutes = Math.Max(0, (int)(now - x.Deadline).TotalMinutes)
+            }));
+            items.AddRange(rows.Where(x => merchantDetails.ContainsKey(x.Id) && (x.Type == AdminAlertType.ContractExpiring || x.Type == AdminAlertType.ContractExpired)).Select(x => new AdminAlertDto
+            {
+                Type = x.Type, Severity = SeverityOf(x.Type), Title = x.Type == AdminAlertType.ContractExpired ? "Hợp đồng Merchant đã hết hạn" : "Hợp đồng Merchant sắp hết hạn trong 30 ngày",
+                ResourceType = "Merchant", ResourceId = x.Id, ResourceCode = merchantDetails[x.Id].BusinessName, MerchantId = x.Id, MerchantName = merchantDetails[x.Id].BusinessName,
+                Deadline = DateTime.SpecifyKind(x.Deadline, DateTimeKind.Utc), OverdueMinutes = Math.Max(0, (int)(now - x.Deadline).TotalMinutes)
+            }));
             var lockerById = fullLockers.ToDictionary(l => l.Id);
             items.AddRange(lockerPicks.Select(id =>
             {
@@ -425,7 +450,7 @@ namespace WashGo.Application.Features.AdminApplication.Services
                 };
             }));
             // Re-apply the global order (severity, then the order within each severity group as built above).
-            items = items.Select((x, i) => (x, i)).OrderByDescending(t => t.x.Severity).ThenBy(t => t.i).Select(t => t.x).ToList();
+            items = items.OrderByDescending(x => x.Severity).ThenBy(x => x.Deadline).ThenBy(x => x.ResourceId).ThenBy(x => x.Type).ToList();
 
             return Success(new AdminAlertsDto
             {

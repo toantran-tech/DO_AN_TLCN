@@ -14,6 +14,7 @@ namespace WashGo.EntityFrameworkCore.BuilderConfiguration
         {
             builder.ToTable(WashGoDbProperties.PaymentTransactions, WashGoDbProperties.Schema);
             builder.HasKey(x => x.Id);
+            builder.HasIndex(x => x.SettlementId);
             builder.Property(x => x.Id).HasValueGenerator<SequentialGuidValueGenerator>();
             builder.Property<NpgsqlTsVector>("SearchVector");
             builder.Property(x => x.TransactionReference).HasMaxLength(120).IsRequired();

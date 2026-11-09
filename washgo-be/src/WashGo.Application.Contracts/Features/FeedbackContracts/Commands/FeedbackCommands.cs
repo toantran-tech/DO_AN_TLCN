@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using WashGo.Domain.Shared.Enums;
+using System.Text.Json.Serialization;
 
 namespace WashGo.Application.Contracts.Features.FeedbackContracts.Commands
 {
@@ -26,6 +27,8 @@ namespace WashGo.Application.Contracts.Features.FeedbackContracts.Commands
 
     public class CreateIncidentCommand
     {
+        [JsonRequired]
+        public decimal ItemValue { get; set; }
         public Guid OrderId { get; set; }
         public IncidentType Type { get; set; }
         public IncidentSeverity Severity { get; set; }
@@ -40,6 +43,7 @@ namespace WashGo.Application.Contracts.Features.FeedbackContracts.Commands
     /// <summary>Khách sửa khiếu nại khi còn chờ xử lý; thay toàn bộ mô tả và minh chứng.</summary>
     public class UpdateIncidentCommand
     {
+        public decimal? ItemValue { get; set; }
         public IncidentType Type { get; set; }
         public IncidentSeverity Severity { get; set; }
         public string Description { get; set; } = string.Empty;
@@ -83,6 +87,7 @@ namespace WashGo.Application.Contracts.Features.FeedbackContracts.Commands
 
     public class ConfirmCompensationCommand
     {
+        public List<string> ProofImageUrls { get; set; } = [];
         public Guid? OperationId { get; set; }
         public string? ExpectedVersion { get; set; }
         public string Reference { get; set; } = string.Empty;

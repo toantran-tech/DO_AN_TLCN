@@ -25,6 +25,9 @@ namespace WashGo.Domain.Entities.Finance
         public decimal CommissionRate { get; set; }
         public decimal CommissionAmount { get; set; }
         public decimal PayoutAmount { get; set; }
+        public decimal PeriodPayoutAmount { get; set; }
+        public decimal CarryForwardAmount { get; set; }
+        public Guid? CarriedToSettlementId { get; set; }
         public SettlementStatus Status { get; set; } = SettlementStatus.Pending;
         public string? PaymentReference { get; set; }
         public DateTime? PaidAt { get; set; }
