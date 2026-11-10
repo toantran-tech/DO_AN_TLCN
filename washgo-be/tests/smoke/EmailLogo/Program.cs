@@ -7,7 +7,17 @@ var directory = Path.Combine(Path.GetTempPath(), "washgo-email-smoke-" + Guid.Ne
 Directory.CreateDirectory(directory);
 try
 {
-    var html = AuthEmailTemplates.RenderOtpEmail("OTP smoke", "Local MIME validation", "123456");
+    var templates = new[]
+    {
+        AuthEmailTemplates.RenderOtpEmail("OTP smoke", "Local MIME validation", "123456"),
+        AuthEmailTemplates.RenderCredentialsEmail("Shipper", "<script>name</script>", "shipper@example.test", "test<&>password"),
+        AuthEmailTemplates.RenderCredentialsEmail("Merchant", "<script>name</script>", "merchant@example.test", "test<&>password"),
+        AuthEmailTemplates.RenderGoogleLinkedEmail("<script>name</script>", "google@example.test")
+    };
+    foreach (var html in templates)
+    {
+    if (html.Contains("<script>") || html.Contains("test<&>password"))
+        throw new Exception("Dynamic email values must be HTML encoded.");
     if (html.Contains("<svg") || !html.Contains("src=\"cid:washgo-logo\""))
         throw new Exception("HTML must reference the embedded PNG via CID.");
     using var message = new MailMessage("sender@example.test", "recipient@example.test") { Subject = "Logo smoke" };
@@ -27,9 +37,14 @@ try
         PickupDirectoryLocation = directory
     };
     smtp.Send(message);
-    var mime = File.ReadAllText(Directory.GetFiles(directory, "*.eml").Single());
+    var eml = Directory.GetFiles(directory, "*.eml").Single();
+    var mime = File.ReadAllText(eml);
     if (!mime.Contains("multipart/related") || !mime.Contains("image/png") || !mime.Contains("Content-ID: <washgo-logo>"))
         throw new Exception("Serialized email is missing its related image.");
-    Console.WriteLine("PASS: OTP email contains a CID-linked PNG in multipart/related MIME.");
+    File.Delete(eml);
+    }
+    if (templates.Skip(1).Any(html => html.Contains("MÃ XÁC THỰC CỦA BẠN") || html.Contains("5 phút")))
+        throw new Exception("Non-OTP templates must not contain OTP instructions.");
+    Console.WriteLine("PASS: OTP, Shipper, Merchant and Google-link emails reuse the CID logo and encode dynamic values.");
 }
 finally { Directory.Delete(directory, recursive: true); }

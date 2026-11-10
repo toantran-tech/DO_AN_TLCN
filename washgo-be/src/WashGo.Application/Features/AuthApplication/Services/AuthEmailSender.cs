@@ -53,15 +53,15 @@ namespace WashGo.Application.Features.AuthApplication.Services
 
         public Task<bool> SendAccountCredentialsAsync(string email, string fullName, string temporaryPassword) =>
             SendAsync(email, "Tài khoản Shipper WashGo của bạn",
-                $"Xin chào {fullName},\n\nTài khoản Shipper WashGo của bạn đã được tạo.\n" +
-                $"Email đăng nhập: {email}\nMật khẩu tạm thời: {temporaryPassword}\n\n" +
-                "Vui lòng đăng nhập và đổi mật khẩu bằng chức năng Quên mật khẩu. Không chia sẻ thông tin này cho bất kỳ ai.");
+                AuthEmailTemplates.RenderCredentialsEmail("Shipper", fullName, email, temporaryPassword), isHtml: true);
 
         public Task<CredentialDeliveryStatus> SendMerchantCredentialsAsync(string email, string fullName, string temporaryPassword) =>
             SendWithStatusAsync(email, "Tài khoản Merchant WashGo của bạn",
-                $"Xin chào {fullName},\n\nTài khoản Merchant WashGo của bạn đã được tạo.\n" +
-                $"Email đăng nhập: {email}\nMật khẩu tạm thời: {temporaryPassword}\n\n" +
-                "Vui lòng đăng nhập và đổi mật khẩu. Nếu không nhận được thư, hãy dùng Quên mật khẩu. Không chia sẻ thông tin này cho bất kỳ ai.");
+                AuthEmailTemplates.RenderCredentialsEmail("Merchant", fullName, email, temporaryPassword), isHtml: true);
+
+        public Task<bool> SendGoogleLinkedAsync(string email, string fullName, string googleEmail) =>
+            SendAsync(email, "Liên kết Google với WashGo thành công",
+                AuthEmailTemplates.RenderGoogleLinkedEmail(fullName, googleEmail), isHtml: true);
 
         private async Task<bool> SendAsync(string email, string subject, string body, bool isHtml = false) =>
             await SendWithStatusAsync(email, subject, body, isHtml) == CredentialDeliveryStatus.Sent;
