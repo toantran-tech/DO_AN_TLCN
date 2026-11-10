@@ -9,6 +9,9 @@ public interface IAuthEmailSender
 {
     Task<bool> SendOtpAsync(string email, string code, OtpPurpose purpose);
 
+    /// <summary>Notify the account owner after a Google identity has been linked.</summary>
+    Task<bool> SendGoogleLinkedAsync(string email, string fullName, string googleEmail);
+
     /// <summary>Gửi thông tin đăng nhập cho tài khoản do Merchant/Admin tạo (UC 2.4.2).</summary>
     Task<bool> SendAccountCredentialsAsync(string email, string fullName, string temporaryPassword);
     /// <summary>Merchant credential message; Sent means SMTP accepted, Unknown is not safe to auto-retry.</summary>

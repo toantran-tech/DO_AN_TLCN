@@ -311,10 +311,23 @@ namespace WashGo.Application.Features.AuthApplication.Services
                 return BadRequest<bool>("Tài khoản Google này đã được liên kết với một tài khoản WashGo khác.");
             }
 
+            var identityChanged = user.AuthProvider != AuthProvider.Google || user.ProviderId != payload.Subject;
             user.AuthProvider = AuthProvider.Google;
             user.ProviderId = payload.Subject;
             user.UpdatedAt = DateTime.UtcNow;
             await _userRepo.UpdateAsync(user, autoSave: true);
+
+            // Notify only after a successful commit; SMTP failure must not undo the link.
+            if (identityChanged)
+            {
+                var email = user.Email;
+                var fullName = user.FullName;
+                var googleEmail = payload.Email;
+                if (UnitOfWorkManager.Current is { } uow)
+                    uow.OnCompleted(async () => { await _authEmailSender.SendGoogleLinkedAsync(email, fullName, googleEmail); });
+                else
+                    await _authEmailSender.SendGoogleLinkedAsync(email, fullName, googleEmail);
+            }
 
             return Success(true, "Đã liên kết Google. Lần sau bạn có thể đăng nhập bằng Google.");
         }

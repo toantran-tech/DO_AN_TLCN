@@ -4,6 +4,12 @@ Cập nhật: 09/11/2026. Nguồn: 13 tài liệu `BACKEND_*.md` tại `C:/Users
 
 Dấu [x] xác nhận phần cốt lõi đã triển khai và có kiểm thử dưới đây; không bao gồm những mở rộng ghi riêng ở cuối. Không coi có endpoint hoặc có script là đã kiểm thử thành công. Đợt 4 nhánh trước đã được nhóm merge vào develop. Đợt nghiệp vụ mới ở feat/toantran/agreed-business-rules-20261109 chưa commit/push; xem mục 10.
 
+## Bổ sung email 10/11/2026
+
+- [x] Email cấp tài khoản Shipper/Merchant dùng lại template HTML và logo CID hiện có.
+- [x] Thông báo liên kết Google gửi sau commit đến email tài khoản WashGo; không gửi lại khi danh tính không đổi.
+- [x] HTML encode các giá trị động; kiểm tra MIME/logo và loại bỏ nội dung OTP khỏi thư cấp tài khoản/liên kết Google bằng smoke EmailLogo.
+
 ## 1. Các phần đã có trước đợt này
 
 - [x] Báo cáo Merchant: tổng hợp DB, coverage hai kỳ, CSV tạm tính và lifetime.
