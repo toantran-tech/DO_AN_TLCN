@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Mail;
 using System.Net.Mime;
 using System.Text;
@@ -28,7 +29,28 @@ namespace WashGo.Application.Features.AuthApplication.Templates
     /// Tạo giao diện HTML cho email gửi mã OTP (Đăng ký, Quên mật khẩu, Bảo mật).
     /// </summary>
     public static string RenderOtpEmail(string title, string description, string code)
+      => RenderEmail(title, description, "MÃ XÁC THỰC CỦA BẠN", WebUtility.HtmlEncode(code),
+        "Mã này có hiệu lực trong vòng <strong>5 phút</strong>.<br><strong>Tuyệt đối không chia sẻ mã này</strong> cho bất kỳ ai, kể cả nhân viên WashGo.",
+        "Nếu bạn không thực hiện yêu cầu này, vui lòng bỏ qua email này để bảo vệ tài khoản.", true);
+
+    public static string RenderCredentialsEmail(string role, string fullName, string email, string temporaryPassword)
+      => RenderEmail($"Tài khoản {role} đã được tạo", $"Xin chào {fullName}, tài khoản {role} WashGo của bạn đã sẵn sàng.",
+        "THÔNG TIN ĐĂNG NHẬP",
+        $"Email: <strong>{WebUtility.HtmlEncode(email)}</strong><br>Mật khẩu tạm thời: <strong>{WebUtility.HtmlEncode(temporaryPassword)}</strong>",
+        "Vui lòng đăng nhập và đổi mật khẩu. Bạn có thể dùng chức năng Quên mật khẩu để đặt mật khẩu mới.<br><strong>Không chia sẻ thông tin đăng nhập cho bất kỳ ai.</strong>",
+        "Nếu bạn không nhận ra tài khoản này, vui lòng liên hệ quản trị viên WashGo.");
+
+    public static string RenderGoogleLinkedEmail(string fullName, string googleEmail)
+      => RenderEmail("Liên kết Google thành công", $"Xin chào {fullName}, tài khoản WashGo của bạn vừa được liên kết với Google.",
+        "TÀI KHOẢN GOOGLE", WebUtility.HtmlEncode(googleEmail),
+        "Lần sau bạn có thể chọn <strong>Đăng nhập bằng Google</strong> tại trang đăng nhập WashGo.",
+        "Nếu bạn không thực hiện thao tác này, hãy liên hệ quản trị viên WashGo ngay để được hỗ trợ bảo vệ tài khoản.");
+
+    private static string RenderEmail(string title, string description, string label, string content, string notice, string footer, bool isOtp = false)
     {
+      title = WebUtility.HtmlEncode(title);
+      description = WebUtility.HtmlEncode(description);
+      label = WebUtility.HtmlEncode(label);
       return $@"<!DOCTYPE html>
 <html lang=""vi"">
 <head>
@@ -71,9 +93,9 @@ namespace WashGo.Application.Features.AuthApplication.Templates
               <table role=""presentation"" width=""100%"" cellspacing=""0"" cellpadding=""0"" border=""0"" style=""margin: 0 0 24px 0;"">
                 <tr>
                   <td align=""center"">
-                    <div style=""background-color: #eff6ff; border: 2px dashed #2563eb; border-radius: 12px; padding: 18px 28px; display: inline-block; min-width: 240px; text-align: center;"">
-                      <span style=""font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: #2563eb; display: block; margin-bottom: 6px;"">MÃ XÁC THỰC CỦA BẠN</span>
-                      <span style=""font-family: 'Courier New', Courier, monospace, sans-serif; font-size: 34px; font-weight: 800; letter-spacing: 8px; color: #2563eb; line-height: 1.2;"">{code}</span>
+                    <div style=""background-color: #eff6ff; border: 2px dashed #2563eb; border-radius: 12px; padding: 18px 20px; display: inline-block; max-width: 100%; text-align: center; word-break: break-word;"">
+                      <span style=""font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: #2563eb; display: block; margin-bottom: 6px;"">{label}</span>
+                      <span style=""font-family: 'Courier New', Courier, monospace, sans-serif; font-size: {(isOtp ? "34px" : "14px")}; font-weight: {(isOtp ? "800" : "400")}; letter-spacing: {(isOtp ? "8px" : "normal")}; color: #2563eb; line-height: 1.6;"">{content}</span>
                     </div>
                   </td>
                 </tr>
@@ -84,15 +106,14 @@ namespace WashGo.Application.Features.AuthApplication.Templates
                 <table role=""presentation"" width=""100%"" cellspacing=""0"" cellpadding=""0"" border=""0"">
                   <tr>
                     <td style=""font-size: 13px; line-height: 1.5; color: #9a4c00;"">
-                      Mã này có hiệu lực trong vòng <strong>5 phút</strong>.<br>
-                      <strong>Tuyệt đối không chia sẻ mã này</strong> cho bất kỳ ai, kể cả nhân viên WashGo.
+                      {notice}
                     </td>
                   </tr>
                 </table>
               </div>
 
               <p style=""margin: 0; font-size: 12px; line-height: 1.6; color: #8e99a8; text-align: center;"">
-                Nếu bạn không thực hiện yêu cầu này, vui lòng bỏ qua email này để bảo vệ tài khoản.
+                {footer}
               </p>
             </td>
           </tr>

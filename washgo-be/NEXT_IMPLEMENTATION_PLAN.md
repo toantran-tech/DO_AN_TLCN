@@ -3,6 +3,13 @@
 > Cập nhật 09/11/2026: xem kết quả tại [IMPLEMENTATION_CHECKLIST.md](IMPLEMENTATION_CHECKLIST.md) và hợp đồng API mới tại [docs/ADMIN_COMPLETION_REVIEW.md](docs/ADMIN_COMPLETION_REVIEW.md). Các mục cũ phía dưới là lịch sử. Đã chia commit thành 4 nhánh, chưa push; xem docs/GIT_PUSH_PLAN.md.
 
 # Tiến độ WashGo theo Đặc tả usecase (Backend trước)
+
+## Email ngày 10/11/2026
+
+- Email cấp tài khoản Shipper/Merchant dùng chung khung HTML, màu thương hiệu và logo PNG nhúng CID của email OTP hiện có; không gửi kèm hướng dẫn OTP cho thư cấp tài khoản.
+- Liên kết Google thành công gửi thông báo đến email của tài khoản WashGo sau khi transaction commit. Liên kết lại cùng danh tính không gửi thư trùng; lỗi SMTP không hủy liên kết đã lưu.
+- Nội dung tên, email và mật khẩu tạm thời được HTML encode. Không thay đổi luồng cấp tài khoản, không thêm email chào mừng Customer/đặt lại mật khẩu thành công trong đợt này.
+- Kiểm tra cục bộ: `dotnet run --project tests/smoke/EmailLogo/EmailLogo.csproj`; tạo MIME trong thư mục tạm, không gửi email thật.
 Cập nhật lần cuối: 09/11/2026
 
 ## Merchant đợt 3 ngày 09/11/2026 — tạo tài khoản và email
