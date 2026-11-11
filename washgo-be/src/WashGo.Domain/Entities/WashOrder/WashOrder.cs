@@ -45,6 +45,7 @@ namespace WashGo.Domain.Entities.WashOrder
 
         public Guid? ShipperId { get; set; }
         public DeliveryTaskType? AssignedTaskType { get; set; }
+        [Filterable(ColumnVariant.DateRange)]
         public DateTime? ShipperAssignedAt { get; set; }
         /// <summary>Ghi chú của Merchant cho Shipper ở lần phân công gần nhất (UC 4.3.2).</summary>
         public string? ShipperNote { get; set; }
@@ -111,6 +112,7 @@ namespace WashGo.Domain.Entities.WashOrder
         public string? OperationalPolicyBasis { get; set; }
         public int? CollectSlaHoursSnapshot { get; set; }
         public int? ReturnSlaHoursSnapshot { get; set; }
+        [Filterable(ColumnVariant.DateRange)]
         public DateTime? ReturnDeadline { get; set; }
         public DateTime? PickupDeadline { get; set; }
         public DateTime? MovedToStorageAt { get; set; }

@@ -19,5 +19,14 @@ namespace WashGo.Application.Contracts.Features.ShipperContracts.Results
         public decimal Rating { get; set; }
         public Guid MerchantId { get; set; }
         public string MerchantName { get; set; } = string.Empty;
+        public string Revision { get; set; } = string.Empty;
+        public DateTime CreatedAt { get; set; }
+        public DateTime UpdatedAt { get; set; }
+        public List<string> MerchantImageUrls { get; set; } = [];
+        public string? MerchantPhone { get; set; }
+        public string? MerchantEmail { get; set; }
+        public string? MerchantAddress { get; set; }
+        public int? RatingCount { get; set; }
+        public string RatingSource { get; set; } = "NotAvailable";
     }
 }

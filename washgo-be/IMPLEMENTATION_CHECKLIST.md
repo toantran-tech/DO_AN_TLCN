@@ -1,4 +1,23 @@
-﻿# Checklist hoàn thiện Backend WashGo
+# Checklist hoàn thiện Backend WashGo
+
+## Shipper — triển khai ngày 11/11/2026
+
+Hợp đồng và breaking changes FE: [SHIPPER_API_REVIEW.md](docs/SHIPPER_API_REVIEW.md). Plan gốc: [SHIPPER_IMPLEMENTATION_PLAN.md](docs/SHIPPER_IMPLEMENTATION_PLAN.md). Đợt này được chia thành 3 nhánh nối tiếp; xem [hướng dẫn PR](docs/SHIPPER_GIT_PUSH_PLAN.md).
+
+- [x] Mở rộng DeliveryTask sẵn có: liên kết completion event/actor, snapshot địa điểm/ô, SLA; migration `20261111021910_AddShipperTaskSnapshots` đã áp dụng local. Dữ liệu cũ có nhãn LegacyCurrentResource, không bịa mốc thiếu.
+- [x] API nhiệm vụ Shipper: filter/summary/detail/credential/lookup operation; preview đúng trạm, scope JWT, batch enrich, PIN/QR tách khỏi list/detail mặc định.
+- [x] Collect/return có taskId/assignmentVersion/revision/operationId cho Shipper; dùng lại OrderOperation, fingerprint HMAC, replay kết quả cũ sau phân công lại; không cộng ô/lượt lần hai.
+- [x] Lịch sử theo actor, eventId và snapshot; summary/keyword/type/date/locker/detail/CSV scoped. Tách trạng thái hiện tại và sự kiện; không skip dòng sau count.
+- [x] Dashboard snapshot VN: pending hiện tại, hoàn tất trong kỳ, KPI/sample/coverage/kỳ trước, chart và preview; không có mẫu trả null.
+- [x] Hồ sơ có revision bao phủ User+Shipper, transaction/row lock, idempotency/lookup; liên hệ Merchant, ngày tham gia, lỗi có mã; không bịa ratingCount. Nhật ký self-service theo ActorId.
+- [x] Smoke `shipper-workspace.ps1` PASS: scope, profile replay/version, concurrent profile 200/409, concurrent delivery/replay, credential isolation, history/reassignment, dashboard/CSV, no-box rollback; fixture riêng, không SMTP/cổng thanh toán.
+- [x] Hồi quy `shipper-profile.ps1`, `shipper-tasks.ps1`, `shipper-assignment.ps1` PASS sau cập nhật hợp đồng guard/credentials.
+- [x] `qr-pin-flow.ps1` PASS trọn vòng giặt/QR/PIN/nhận đồ hai bước/chuyển kho, dùng Mock chỉ cho test local.
+- [x] `order-cancellation.ps1` PASS: phí hủy/hoàn tiền, đồ còn trong tủ/tiệm, Shipper trả đơn hủy, nhận đồ và chạy đua cancel/deposit.
+- [x] Migration `20261111024338_ReconcileLegacyShipperCompletions` đã áp dụng: ghép lại 21 cặp legacy lệch phần lẻ giây, giữ task gốc/event, không còn cặp trùng tương ứng. Chẩn đoán read-only: 0 tài khoản Shipper đang hoạt động thiếu hồ sơ.
+- [x] Model không còn thay đổi chưa có migration; Docker build PASS, Swagger/OpenAPI tải được với 14 đường dẫn Shipper. Đã khôi phục `Payment__Provider=Live` theo `.env`; Mock/SMTP tắt chỉ dùng trong hồi quy local, không kiểm thử giao dịch thật.
+
+Không tick đã làm: cửa tủ IoT, routing traffic, thu nhập Shipper, 2FA, tự Available/Offline, tự nhận/từ chối và task chuyển kho mới. SLA Return đơn hủy chưa chốt mốc riêng thì deadline=null. Không thay đổi nghiệp vụ Word cho các hợp đồng kỹ thuật này, không thêm Use Case trùng.
 
 Cập nhật: 09/11/2026. Nguồn: 13 tài liệu `BACKEND_*.md` tại `C:/Users/PC/Desktop/HK1_2027/cần làm`. Đây là checklist chính trong BE. Hướng dẫn hợp đồng API: [ADMIN_COMPLETION_REVIEW.md](docs/ADMIN_COMPLETION_REVIEW.md).
 

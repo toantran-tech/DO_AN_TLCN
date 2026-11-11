@@ -26,5 +26,25 @@ namespace WashGo.Domain.Entities.WashOrder
         public DateTime? CompletedAt { get; set; }
         /// <summary>Thời điểm kết thúc khi bị phân công lại hoặc đơn bị hủy.</summary>
         public DateTime? EndedAt { get; set; }
+        public Guid? CompletionEventId { get; set; }
+        public Guid? CompletedBy { get; set; }
+        public string? CompletedByRole { get; set; }
+        public DateTime? SlaStartedAt { get; set; }
+        public int? SlaHours { get; set; }
+        public DateTime? Deadline { get; set; }
+        /// <summary>CapturedAtCompletion or LegacyCurrentResource; null before completion.</summary>
+        public string? SnapshotSource { get; set; }
+        public string? OrderCodeSnapshot { get; set; }
+        public string? MerchantOrderCodeSnapshot { get; set; }
+        public string? MerchantNameSnapshot { get; set; }
+        public Guid? LockerIdSnapshot { get; set; }
+        public string? LockerNameSnapshot { get; set; }
+        public string? LockerAddressSnapshot { get; set; }
+        public double? LockerLatitudeSnapshot { get; set; }
+        public double? LockerLongitudeSnapshot { get; set; }
+        public Guid? BoxIdSnapshot { get; set; }
+        public string? BoxNumberSnapshot { get; set; }
+        public WashOrderStatus? OrderStatusSnapshot { get; set; }
+        public string? CompletionNote { get; set; }
     }
 }

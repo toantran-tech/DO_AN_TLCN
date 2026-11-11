@@ -5,6 +5,12 @@ namespace WashGo.Domain.Entities.WashOrder
 {
     public static class DeliveryTaskRules
     {
+        public static IQueryable<DeliveryTask> ActiveAssignments(IQueryable<DeliveryTask> tasks, IQueryable<WashOrder> orders)
+        {
+            var active = ActiveDeliveries(orders);
+            return tasks.Where(x => x.Status == DeliveryTaskStatus.Assigned &&
+                active.Any(o => o.Id == x.OrderId && o.ShipperId == x.ShipperId && o.AssignedTaskType == x.TaskType));
+        }
         /// <summary>Đơn đang có nhiệm vụ lấy/trả chưa hoàn tất của Shipper được gán.</summary>
         public static IQueryable<WashOrder> ActiveDeliveries(IQueryable<WashOrder> orders) =>
             orders.Where(x => !x.IsDeleted && x.ShipperId != null &&

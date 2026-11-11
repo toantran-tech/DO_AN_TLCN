@@ -32,6 +32,8 @@ namespace WashGo.Application.Features.ShipperApplication.Services
                 error = "Phương tiện không hợp lệ.";
             else if (vehicleType != VehicleType.Bicycle && (normalizedPlate == null || !PlatePattern.IsMatch(normalizedPlate)))
                 error = "Biển số xe không hợp lệ.";
+            else if (vehicleType == VehicleType.Bicycle && normalizedPlate != null && !PlatePattern.IsMatch(normalizedPlate))
+                error = "Biển số xe không hợp lệ.";
             return (error, name, digits, mail, normalizedPlate);
         }
 

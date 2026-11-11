@@ -1,4 +1,4 @@
-﻿param(
+param(
     [string]$BaseUrl = 'http://localhost:5000',
     [string]$PostgresContainer = 'washgo_postgres',
     [string]$PostgresUser = 'postgres',
@@ -135,8 +135,9 @@ FROM washgo.shippers s WHERE user_id = '$seedUser';
     }
     # Shipper duoc phan cong nhin thay ma nhiem vu
     $shipperView = (Call-Api Get "/wash-order/$orderId" $null $shipper).data
-    $taskPin = $shipperView.shipperTaskPinCode
-    $taskQr = $shipperView.shipperTaskQrString
+    $credential = (Call-Api Get "/shipper-tasks/$($shipperView.taskId)/credentials" $null $shipper).data
+    $taskPin = $credential.pinCode
+    $taskQr = $credential.qrCode
     if ([string]::IsNullOrWhiteSpace($taskPin)) {
         throw "Shipper khong nhan duoc ShipperTaskPinCode sau khi phan cong!"
     }
@@ -144,14 +145,17 @@ FROM washgo.shippers s WHERE user_id = '$seedUser';
 
     Write-Host "=== 9. Shipper lay do ve tiem (POST /shipper-collect) ===" -ForegroundColor Cyan
     # Thu nhap sai ma task
-    Assert-Status 400 Post "/wash-order/$orderId/shipper-collect" @{ pinCode = "000000" } $shipper
+    $badBody=New-TestDeliveryBody $orderId $shipper
+    $badBody.pinCode=if($taskPin -eq "000000"){"999999"}else{"000000"}
+    Assert-Status 400 Post "/wash-order/$orderId/shipper-collect" $badBody $shipper
     # Nhap dung ma task
-    $collectedOrder = (Call-Api Post "/wash-order/$orderId/shipper-collect" @{ pinCode = $taskPin } $shipper).data
+    $collectBody=New-TestDeliveryBody $orderId $shipper
+    $collectedOrder = (Call-Api Post "/wash-order/$orderId/shipper-collect" $collectBody $shipper).data
     if ($collectedOrder.status -ne 3) { throw "Don hang phai o trang thai Collected (3), nhan duoc: $($collectedOrder.status)" }
     Write-Host "  -> Shipper lay do thanh cong! Don sang Collected, o gui ban dau duoc giai phong." -ForegroundColor Green
 
     # Idempotent call
-    $repeatCollect = (Call-Api Post "/wash-order/$orderId/shipper-collect" @{ pinCode = $taskPin } $shipper).data
+    $repeatCollect = (Call-Api Post "/wash-order/$orderId/shipper-collect" $collectBody $shipper).data
     if ($repeatCollect.status -ne 3) { throw "Idempotent call collect that bai" }
 
     Write-Host "=== 10. Merchant can do, giat va chuyen trang thai ===" -ForegroundColor Cyan
@@ -174,16 +178,17 @@ FROM washgo.shippers s WHERE user_id = '$seedUser';
     Write-Host "=== 12. Merchant phan cong Shipper tra do ===" -ForegroundColor Cyan
     Call-Api Put '/wash-order/assign-shipper' @{ orderId = "$orderId"; shipperId = "$fixtureShipper" } $merchant | Out-Null
     $shipperReturnView = (Call-Api Get "/wash-order/$orderId" $null $shipper).data
-    $returnTaskPin = $shipperReturnView.shipperTaskPinCode
+    $returnBody=New-TestDeliveryBody $orderId $shipper
+    $returnTaskPin = $returnBody.pinCode
     if ([string]::IsNullOrWhiteSpace($returnTaskPin)) { throw "Shipper khong co task PIN tra do" }
 
     Write-Host "=== 13. Shipper tra do vao locker (POST /shipper-return) ===" -ForegroundColor Cyan
-    $returnedOrder = (Call-Api Post "/wash-order/$orderId/shipper-return" @{ pinCode = $returnTaskPin } $shipper).data
+    $returnedOrder = (Call-Api Post "/wash-order/$orderId/shipper-return" $returnBody $shipper).data
     if ($returnedOrder.status -ne 10) { throw "Don hang phai sang ReadyToReturn (10), nhan duoc: $($returnedOrder.status)" }
     Write-Host "  -> Shipper tra do thanh cong! Don sang ReadyToReturn (10), da chiem o tra $($returnedOrder.returnBoxNumber)." -ForegroundColor Green
 
     # Idempotent call
-    $repeatReturn = (Call-Api Post "/wash-order/$orderId/shipper-return" @{ pinCode = $returnTaskPin } $shipper).data
+    $repeatReturn = (Call-Api Post "/wash-order/$orderId/shipper-return" $returnBody $shipper).data
     if ($repeatReturn.status -ne 10) { throw "Idempotent call shipper-return that bai" }
 
     Write-Host "=== 14. Customer nhan do tai Locker (2 buoc mo phong) ===" -ForegroundColor Cyan
@@ -235,7 +240,10 @@ FROM washgo.shippers s WHERE user_id = '$seedUser';
     Assign-Order $storageId $merchantId $admin | Out-Null
     Call-Api Put '/wash-order/assign-shipper' @{orderId="$storageId";shipperId="$fixtureShipper"} $merchant | Out-Null
     $task=(Call-Api Get "/wash-order/$storageId" $null $shipper).data
-    Call-Api Post "/wash-order/$storageId/shipper-collect" @{qrCode=$task.shipperTaskQrString} $shipper | Out-Null
+    $qrBody=New-TestDeliveryBody $storageId $shipper
+    $qrBody.Remove('pinCode')
+    $qrBody.qrCode=(Call-Api Get "/shipper-tasks/$($task.taskId)/credentials" $null $shipper).data.qrCode
+    Call-Api Post "/wash-order/$storageId/shipper-collect" $qrBody $shipper | Out-Null
     if($stored.includedWeightKg -gt 0){Call-Api Put "/wash-order/$storageId/actual-weight" @{weightKg=3} $merchant | Out-Null}
     Call-Api Put '/wash-order/status' @{orderId="$storageId";newStatus=4} $merchant | Out-Null
     Call-Api Put '/wash-order/status' @{orderId="$storageId";newStatus=8} $merchant | Out-Null
@@ -244,7 +252,10 @@ FROM washgo.shippers s WHERE user_id = '$seedUser';
     Call-Api Post '/payment/callback' @{orderId="$storageId";transactionReference=$pay.transactionReference;success=$true} $admin | Out-Null
     Call-Api Put '/wash-order/assign-shipper' @{orderId="$storageId";shipperId="$fixtureShipper"} $merchant | Out-Null
     $task=(Call-Api Get "/wash-order/$storageId" $null $shipper).data
-    Call-Api Post "/wash-order/$storageId/shipper-return" @{qrCode=$task.shipperTaskQrString} $shipper | Out-Null
+    $qrBody=New-TestDeliveryBody $storageId $shipper
+    $qrBody.Remove('pinCode')
+    $qrBody.qrCode=(Call-Api Get "/shipper-tasks/$($task.taskId)/credentials" $null $shipper).data.qrCode
+    Call-Api Post "/wash-order/$storageId/shipper-return" $qrBody $shipper | Out-Null
     Sql "UPDATE washgo.orders SET pickup_deadline=NOW()-INTERVAL '73 hours' WHERE id='$storageId';" | Out-Null
     $moved=(Call-Api Post '/wash-order/move-to-storage' @{
         orderId="$storageId";storageLocation='Smoke warehouse';storageReference='SMOKE'

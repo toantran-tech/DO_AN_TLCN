@@ -7,6 +7,7 @@ using System.Text;
 using System.Threading.Tasks;
 using Volo.Abp.Domain.Repositories;
 using Volo.Abp.Uow;
+using Volo.Abp.Auditing;
 using WashGo.Application.Contracts.Features.MerchantContracts.Results;
 using WashGo.Application.Contracts.Features.WashOrderContracts.Commands;
 using WashGo.Application.Contracts.Features.WashOrderContracts.Queries;
@@ -26,6 +27,7 @@ using WashGo.Application.Features.LockerApplication.Services;
 using WashGo.Application.Features.NotificationApplication.Services;
 using WashGo.Application.Features.PaymentApplication.Services;
 using WashGo.Application.Features.SystemSettingApplication.Services;
+using WashGo.Application.Features.ShipperApplication.Services;
 using WashGo.Domain.Entities.Promotion;
 using WashGo.Domain.Entities.Promotion.Interfaces;
 using WashGo.Domain.Shared.Constants;
@@ -58,6 +60,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
         private readonly DeliveryTaskRecorder _taskRecorder;
         private readonly OrderMediaEnricher _media;
         private readonly IRepository<WashOrderTimeline, Guid> _timelineRepo;
+        private readonly ShipperDeliveryGuard _deliveryGuard;
 
         public WashOrderAppService(
             IWashOrderRepository orderRepo,
@@ -80,8 +83,10 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             OrderWriteGuard writeGuard,
             DeliveryTaskRecorder taskRecorder,
             OrderMediaEnricher media,
-            IRepository<WashOrderTimeline, Guid> timelineRepo)
+            IRepository<WashOrderTimeline, Guid> timelineRepo,
+            ShipperDeliveryGuard deliveryGuard)
         {
+            _deliveryGuard = deliveryGuard;
             _orderRepo = orderRepo;
             _lockerRepo = lockerRepo;
             _serviceRepo = serviceRepo;
@@ -190,12 +195,9 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 dto.DepositPinCode = string.Empty;
                 dto.PickupPinCode = string.Empty;
                 dto.QrCodeString = string.Empty;
-                // Only the assigned shipper can see their task PIN & QR
-                if (scope.Id != dto.ShipperId)
-                {
-                    dto.ShipperTaskPinCode = null;
-                    dto.ShipperTaskQrString = null;
-                }
+                // Credentials are released only by the scoped task credential endpoint.
+                dto.ShipperTaskPinCode = null;
+                dto.ShipperTaskQrString = null;
                 if (dto is WashOrderDetailDto detail)
                 {
                     detail.CustomerNote = null;
@@ -1388,6 +1390,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 "Gửi đồ vào tủ thành công! Đơn hàng đã chuyển sang trạng thái đã gửi đồ.");
         }
 
+        [DisableAuditing]
         public async Task<BaseResponse<WashOrderDetailDto>> ShipperCollectAsync(Guid orderId, ShipperCollectOrderCommand command)
         {
             var scope = await GetOrderScopeAsync();
@@ -1397,6 +1400,11 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
             await _orderRepo.GetForUpdateAsync(orderId);
             var order = await _orderRepo.GetWithDetailsAsync(orderId);
+            if (order != null)
+            {
+                var guard = await _deliveryGuard.CheckAsync(order, CurrentUser.Id ?? Guid.Empty, command, DeliveryTaskType.Collect, scope.Role == "Shipper", CanAccess(order, scope));
+                if (guard != null) return guard;
+            }
             if (order == null || !CanAccess(order, scope))
                 return NotFound<WashOrderDetailDto>("Không tìm thấy đơn hàng.");
 
@@ -1424,10 +1432,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
 
             // Check lockout
             var (isLocked, remainingMinutes) = CheckLockout(order.TaskPinAttemptCount, order.TaskPinLockoutUntil);
-            if (isLocked)
-            {
-                return BadRequest<WashOrderDetailDto>($"Mã nhiệm vụ đang bị tạm khóa do nhập sai nhiều lần. Vui lòng thử lại sau {remainingMinutes} phút.");
-            }
+            if (isLocked) return ShipperDeliveryGuard.CredentialError(order, true);
 
             var pinMatches = !string.IsNullOrWhiteSpace(command.PinCode) &&
                 string.Equals(command.PinCode.Trim(), order.ShipperTaskPinCode, StringComparison.OrdinalIgnoreCase);
@@ -1439,9 +1444,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 var currentAttempts = await RecordFailedAttemptAsync(order, PinKind.ShipperTask);
                 // Commit the failed attempt while holding the order lock; no locker action has run.
                 await uow.CompleteAsync();
-                return BadRequest<WashOrderDetailDto>(currentAttempts >= 5
-                    ? "Nhập sai mã nhiệm vụ 5 lần liên tiếp. Mã tạm khóa trong 5 phút."
-                    : $"Mã nhiệm vụ không chính xác (Lần thử {currentAttempts}/5).");
+                return ShipperDeliveryGuard.CredentialError(order, currentAttempts >= 5);
             }
 
             if (!await _lockerRepo.TryReleaseOccupiedBoxAsync(order.LockerId, order.BoxId))
@@ -1460,11 +1463,10 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             var previousStatus = order.Status;
             order.Status = WashOrderStatus.Collected;
             await CountDeliveryAsync(order.ShipperId);
-            await _taskRecorder.CompletedAsync(order, DeliveryTaskType.Collect, DateTime.UtcNow);
             order.TaskPinAttemptCount = 0;
             order.TaskPinLockoutUntil = null;
 
-            order.Timeline.Add(new WashOrderTimeline
+            var completion = new WashOrderTimeline(Guid.NewGuid())
             {
                 WashOrderId = order.Id,
                 FromStatus = previousStatus,
@@ -1474,15 +1476,20 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 ActorRole = scope.Role,
                 Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
                 Note = $"Shipper đã mở ô tủ và lấy đồ về tiệm thành công.{slaWarning}"
-            });
+            };
+            order.Timeline.Add(completion);
+            await _taskRecorder.CompletedAsync(order, DeliveryTaskType.Collect, completion);
 
             await _orderRepo.UpdateAsync(order, autoSave: true);
+            await _deliveryGuard.RecordAsync(order, CurrentUser.Id ?? Guid.Empty, command, DeliveryTaskType.Collect,
+                RedactStaffData(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), scope));
             await _notifications.CollectedAsync(order);
             await uow.CompleteAsync();
             return Success(RedactStaffData(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), scope),
                 "Shipper lấy đồ thành công! Đơn hàng đã chuyển sang trạng thái đã thu gom.");
         }
 
+        [DisableAuditing]
         public async Task<BaseResponse<WashOrderDetailDto>> ShipperReturnAsync(Guid orderId, ShipperReturnOrderCommand command)
         {
             var scope = await GetOrderScopeAsync();
@@ -1492,6 +1499,11 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
             await _orderRepo.GetForUpdateAsync(orderId);
             var order = await _orderRepo.GetWithDetailsAsync(orderId);
+            if (order != null)
+            {
+                var guard = await _deliveryGuard.CheckAsync(order, CurrentUser.Id ?? Guid.Empty, command, DeliveryTaskType.Return, scope.Role == "Shipper", CanAccess(order, scope));
+                if (guard != null) return guard;
+            }
             if (order == null || !CanAccess(order, scope))
                 return NotFound<WashOrderDetailDto>("Không tìm thấy đơn hàng.");
 
@@ -1526,10 +1538,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
 
             // Check lockout
             var (isLocked, remainingMinutes) = CheckLockout(order.TaskPinAttemptCount, order.TaskPinLockoutUntil);
-            if (isLocked)
-            {
-                return BadRequest<WashOrderDetailDto>($"Mã nhiệm vụ đang bị tạm khóa do nhập sai nhiều lần. Vui lòng thử lại sau {remainingMinutes} phút.");
-            }
+            if (isLocked) return ShipperDeliveryGuard.CredentialError(order, true);
 
             var pinMatches = !string.IsNullOrWhiteSpace(command.PinCode) &&
                 string.Equals(command.PinCode.Trim(), order.ShipperTaskPinCode, StringComparison.OrdinalIgnoreCase);
@@ -1541,9 +1550,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 var currentAttempts = await RecordFailedAttemptAsync(order, PinKind.ShipperTask);
                 // Commit the failed attempt while holding the order lock; no locker action has run.
                 await uow.CompleteAsync();
-                return BadRequest<WashOrderDetailDto>(currentAttempts >= 5
-                    ? "Nhập sai mã nhiệm vụ 5 lần liên tiếp. Mã tạm khóa trong 5 phút."
-                    : $"Mã nhiệm vụ không chính xác (Lần thử {currentAttempts}/5).");
+                return ShipperDeliveryGuard.CredentialError(order, currentAttempts >= 5);
             }
 
             var returnLockerId = order.ReturnLockerId ?? order.LockerId;
@@ -1552,7 +1559,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 !await _lockerMerchants.ServesAsync(returnLocker.Id, order.MerchantId))
             {
                 await uow.RollbackAsync();
-                return BadRequest<WashOrderDetailDto>("Tủ trả đồ không còn hoạt động hoặc không thuộc đối tác của đơn.");
+                return ShipperDeliveryGuard.Error("LockerUnavailable", "Tủ trả đồ không còn hoạt động hoặc không thuộc đối tác của đơn.");
             }
 
             var sendLocker = returnLockerId == order.LockerId
@@ -1583,7 +1590,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             if (returnBox == null)
             {
                 await uow.RollbackAsync();
-                return BadRequest<WashOrderDetailDto>("Tủ trả đồ hiện không có ô trống phù hợp kích thước; chưa thể trả đồ.");
+                return ShipperDeliveryGuard.Error("NoSuitableBox", "Tủ trả đồ hiện không có ô trống phù hợp kích thước; chưa thể trả đồ.");
             }
 
             // SLA Check: 24 hours from payment time
@@ -1600,12 +1607,11 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             order.Status = cancelledReturn ? WashOrderStatus.Cancelled : WashOrderStatus.ReadyToReturn;
             if (cancelledReturn) order.CancelledGoodsStatus = CancelledGoodsStatus.AtReturnLocker;
             await CountDeliveryAsync(order.ShipperId);
-            await _taskRecorder.CompletedAsync(order, DeliveryTaskType.Return, DateTime.UtcNow);
             order.PickupDeadline = cancelledReturn ? null : DateTime.UtcNow.AddHours(returnSettings.FreePickupHours);
             order.TaskPinAttemptCount = 0;
             order.TaskPinLockoutUntil = null;
 
-            order.Timeline.Add(new WashOrderTimeline
+            var completion = new WashOrderTimeline(Guid.NewGuid())
             {
                 WashOrderId = order.Id,
                 FromStatus = previousStatus,
@@ -1615,9 +1621,13 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 ActorRole = scope.Role,
                 Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
                 Note = $"Đã trả đồ vào ô số {returnBox.BoxNumber} tại tủ {returnLocker.Name}. {(cancelledReturn ? "Đơn hủy chờ khách nhận lại đồ." : $"Khách có {returnSettings.FreePickupHours}h để lấy đồ miễn phí.")}{slaReturnWarning}"
-            });
+            };
+            order.Timeline.Add(completion);
+            await _taskRecorder.CompletedAsync(order, DeliveryTaskType.Return, completion);
 
             await _orderRepo.UpdateAsync(order, autoSave: true);
+            await _deliveryGuard.RecordAsync(order, CurrentUser.Id ?? Guid.Empty, command, DeliveryTaskType.Return,
+                RedactStaffData(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), scope));
             await _notifications.ReturnedToLockerAsync(order);
             await uow.CompleteAsync();
             return Success(RedactStaffData(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), scope),
@@ -1993,7 +2003,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
         private static bool IsStaffField(string field) => new[]
         {
             "OrderCode", "LockerName", "MerchantName", "ShipperName", "Status",
-            "PaymentStatus", "PaymentMethod", "CreatedOn", "ExpectedDeliveryTime"
+            "PaymentStatus", "PaymentMethod", "CreatedOn", "ExpectedDeliveryTime", "ShipperAssignedAt", "ReturnDeadline"
         }.Contains(field, StringComparer.OrdinalIgnoreCase);
 
         #endregion
