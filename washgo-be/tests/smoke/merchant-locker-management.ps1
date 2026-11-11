@@ -14,7 +14,7 @@ $run=[Guid]::NewGuid().ToString('N').Substring(0,8)
 $standardWash='b1111111-bbbb-1111-bbbb-111111111111'
 $NoAutoAssign=$true
 function New-Locker($Name,$MerchantIds,$Boxes,$Images){
-    $l=(Call-Api Post '/locker/' @{merchantIds=$MerchantIds;name="$Name $run";address='Private development fixture';district='Test';city='Test';latitude=10.77;longitude=106.69;boxCount=$Boxes;imageUrls=$Images} $admin).data
+    $l=(Call-Api Post '/locker/' @{code="MLM_$([Guid]::NewGuid().ToString('N').Substring(0,12))";merchantIds=$MerchantIds;name="$Name $run";address='Private development fixture';district='Test';city='Test';latitude=10.77;longitude=106.69;boxCount=$Boxes;imageUrls=$Images} $admin).data
     $script:lockers+=[Guid]$l.id; $l
 }
 function UsageOf($Token,$Id,$Query){ Call-Api Get "/locker/$Id/usage-history?$Query" $null $Token }

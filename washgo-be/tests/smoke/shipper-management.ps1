@@ -24,7 +24,7 @@ function Read-TempPassword($Email) {
         $found=Invoke-RestMethod -Method Get -Uri "$MailpitUrl/api/v1/search?query=$([uri]::EscapeDataString("to:$Email"))"
         if($found.messages.Count){
             $msg=Invoke-RestMethod -Method Get -Uri "$MailpitUrl/api/v1/message/$($found.messages[0].ID)"
-            if($msg.Text -match '(?m):\s*([A-Za-z0-9]{12})\s*$'){return $Matches[1]}
+            if($msg.Text -match '(?m):\s*\*?([A-Za-z0-9]{12})\*?\s*$'){return $Matches[1]}
         }
         Start-Sleep -Milliseconds 300
     }
