@@ -78,7 +78,21 @@ try {
     # A period with an order lacking a locked rate cannot be settled until it is reconciled.
     $blocked=(Call-Api Post '/finance/settlements/quote' @{merchantId=$teamId;fromDate=$start;toDate=$end} $admin).data
     if($blocked.canCreate){throw 'Quote allowed a period with a missing rate.'}
-    Sql "UPDATE washgo.payment_transactions SET financial_snapshot_basis='payment-created', commission_rate_snapshot=15, merchant_id_snapshot='$teamId' WHERE order_id='$($missing.id)';" | Out-Null
+    # Review queue and evidence-based reconciliation instead of guessing the rate.
+    $rv=(Call-Api Get "/finance/commission-snapshots/review?merchantId=$teamId&take=100" $null $admin).data
+    $item=@($rv.items | Where-Object { $_.orderId -eq $missing.id })
+    if($item.Count -ne 1 -or $item[0].reason -ne 'Missing' -or $null -ne $item[0].appliedRate -or $item[0].merchantCurrentRate -ne 25 -or $item[0].inSettlement){throw "Review list wrong: $($rv | ConvertTo-Json -Depth 3 -Compress)"}
+    Assert-Status 403 Get '/finance/commission-snapshots/review' $null $team
+    Assert-Status 400 Post "/finance/commission-snapshots/$($missing.id)/reconcile" @{rate=15;evidence='short';expectedMissing=$true} $admin
+    Assert-Status 400 Post "/finance/commission-snapshots/$($missing.id)/reconcile" @{rate=101;evidence='Hop dong so 12/2026 ngay 01/11';expectedMissing=$true} $admin
+    Assert-Status 409 Post "/finance/commission-snapshots/$($missing.id)/reconcile" @{rate=15;evidence='Hop dong so 12/2026 ngay 01/11';expectedRate=10} $admin
+    $rop=[Guid]::NewGuid()
+    $rc=(Call-Api Post "/finance/commission-snapshots/$($missing.id)/reconcile" @{rate=15;evidence='Hop dong so 12/2026 ngay 01/11';expectedMissing=$true;operationId=$rop} $admin).data
+    $rc2=(Call-Api Post "/finance/commission-snapshots/$($missing.id)/reconcile" @{rate=15;evidence='Hop dong so 12/2026 ngay 01/11';expectedMissing=$true;operationId=$rop} $admin).data
+    if($rc.appliedRate -ne 15 -or $rc.source -ne 'AdminReconciled' -or $rc2.appliedRate -ne 15){throw 'Reconcile wrong.'}
+    if(@((Call-Api Get "/finance/commission-snapshots/review?merchantId=$teamId&take=100" $null $admin).data.items | Where-Object { $_.orderId -eq $missing.id }).Count){throw 'Reconciled order still listed.'}
+    $ra=(Call-Api Post '/admin/audit-logs/filter' @{module='Finance';action='ReconcileCommission';resourceId="$($missing.id)";take=5} $admin)
+    if($ra.total -ne 1 -or $ra.list[0].reason -notmatch 'Hop dong'){throw 'Reconcile not audited once.'}
     $sb=@{merchantId=$teamId;fromDate=$start;toDate=$end}
     $q=(Call-Api Post '/finance/settlements/quote' $sb $admin).data
     if(!$q.canCreate){throw "Quote blocked: $($q.blockingCode)"}

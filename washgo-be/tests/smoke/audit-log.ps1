@@ -55,6 +55,9 @@ try {
     if(@($denied.list | Where-Object { $_.result -ne 2 }).Count){throw 'Result filter wrong.'}
     Assert-Status 400 Post '/admin/audit-logs/filter' @{fromDate=200;toDate=100} $admin
     Assert-Status 403 Post '/admin/audit-logs/filter' @{take=1} $sessions.Team.accessToken
+    $teamUser="$($sessions.Team.user.id)"
+    $den=@((Call-Api Post '/admin/audit-logs/filter' @{actorId=$teamUser;result=3;fromDate=$start;take=20} $admin).list | Where-Object { $_.errorCode -eq 'Forbidden' -and $_.action -eq 'POST /admin/audit-logs/filter' })
+    if($den.Count -lt 1){throw 'Policy denial (403) not audited.'}
     Assert-Status 403 Get '/admin/me/activities' $null $sessions.Team.accessToken
     foreach($method in 'Put','Delete'){
         try { Call-Api $method "/admin/audit-logs/$($d.id)" @{} $admin | Out-Null; throw "$method allowed" }
