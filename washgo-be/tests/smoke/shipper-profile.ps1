@@ -28,7 +28,8 @@ function Upload-Image($Token) {
 }
 function Profile { (Call-Api Get '/shipper-profile/' $null $shipper).data }
 function Body([hashtable]$Extra=@{}) {
-    $b=@{fullName="Profile Shipper $run";phone="09$((Get-Random -Minimum 10000000 -Maximum 99999999))";vehicleType=1;vehiclePlate='59X1-123.45'}
+    $p=Profile
+    $b=@{expectedRevision=$p.revision;operationId=[Guid]::NewGuid().ToString();fullName="Profile Shipper $run";phone="09$((Get-Random -Minimum 10000000 -Maximum 99999999))";vehicleType=1;vehiclePlate='59X1-123.45'}
     foreach($k in $Extra.Keys){$b[$k]=$Extra[$k]}
     return $b
 }

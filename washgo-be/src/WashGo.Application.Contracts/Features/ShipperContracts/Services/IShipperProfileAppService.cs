@@ -10,5 +10,6 @@ namespace WashGo.Application.Contracts.Features.ShipperContracts.Services
     {
         Task<BaseResponse<ShipperProfileDto>> GetMyProfileAsync();
         Task<BaseResponse<ShipperProfileDto>> UpdateMyProfileAsync(UpdateShipperProfileCommand command);
+        Task<BaseResponse<ShipperProfileDto>> GetOperationAsync(Guid operationId);
     }
 }

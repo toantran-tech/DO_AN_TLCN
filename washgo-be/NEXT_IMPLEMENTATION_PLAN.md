@@ -1,8 +1,12 @@
-﻿> Nghiệp vụ thành viên chốt ngày 09/11/2026 đã triển khai: cảnh báo khiếu nại 48h, chứng từ/người chi bồi thường, hợp đồng hết hạn theo giờ VN, gán đơn theo điểm trung lập, nguồn đối soát chỉ nhận một lần và bù trừ kỳ âm/đóng kỳ 0. Phạm vi và hợp đồng mới tại [AGREED_BUSINESS_RULES_20261109.md](docs/AGREED_BUSINESS_RULES_20261109.md); trạng thái hiện hành xem mục 10 [checklist](IMPLEMENTATION_CHECKLIST.md). Đặc tả DO_AN/Đặc tả usecase.docx đã đồng bộ; chưa commit/push đợt này.
+> Nghiệp vụ thành viên chốt ngày 09/11/2026 đã triển khai: cảnh báo khiếu nại 48h, chứng từ/người chi bồi thường, hợp đồng hết hạn theo giờ VN, gán đơn theo điểm trung lập, nguồn đối soát chỉ nhận một lần và bù trừ kỳ âm/đóng kỳ 0. Phạm vi và hợp đồng mới tại [AGREED_BUSINESS_RULES_20261109.md](docs/AGREED_BUSINESS_RULES_20261109.md); trạng thái hiện hành xem mục 10 [checklist](IMPLEMENTATION_CHECKLIST.md). Đặc tả DO_AN/Đặc tả usecase.docx đã đồng bộ; chưa commit/push đợt này.
 
 > Cập nhật 09/11/2026: xem kết quả tại [IMPLEMENTATION_CHECKLIST.md](IMPLEMENTATION_CHECKLIST.md) và hợp đồng API mới tại [docs/ADMIN_COMPLETION_REVIEW.md](docs/ADMIN_COMPLETION_REVIEW.md). Các mục cũ phía dưới là lịch sử. Đã chia commit thành 4 nhánh, chưa push; xem docs/GIT_PUSH_PLAN.md.
 
 # Tiến độ WashGo theo Đặc tả usecase (Backend trước)
+
+## Shipper ngày 11/11/2026 — hoàn tất BE cốt lõi và nghiệm thu local
+
+Đã triển khai phần BE cốt lõi của sáu chặng theo [SHIPPER_IMPLEMENTATION_PLAN.md](docs/SHIPPER_IMPLEMENTATION_PLAN.md). Hợp đồng API/guard và phần ngoài phạm vi tại [SHIPPER_API_REVIEW.md](docs/SHIPPER_API_REVIEW.md); kết quả build/migration/smoke và việc còn kiểm tra tại [checklist](IMPLEMENTATION_CHECKLIST.md), mục Shipper 11/11. Không coi IoT/2FA/thu nhập/tự nhận việc là đã triển khai. Đợt này được chia thành 3 nhánh nối tiếp; xem [hướng dẫn PR](docs/SHIPPER_GIT_PUSH_PLAN.md).
 
 ## Email ngày 10/11/2026
 
