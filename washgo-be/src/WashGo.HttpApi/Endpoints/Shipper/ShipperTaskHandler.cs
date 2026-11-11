@@ -11,6 +11,9 @@ public class ShipperTaskHandler : IEndpointBase
 {
     public void MapEndpoint(IEndpointRouteBuilder app)
     {
+        app.MapGet("/shipper-dashboard", async (string? period, long? fromDate, long? toDate, IShipperDashboardAppService svc) =>
+            (await svc.GetAsync(new ShipperDashboardQuery { Period = period ?? "day", FromDate = fromDate ?? 0, ToDate = toDate ?? 0 })).CustomResult()).RequireAuthorization("ShipperOnly").WithTags("Shipper Dashboard")
+            .WithSummary("Dashboard snapshot theo giờ Việt Nam: pending hiện tại, hoàn tất trong kỳ, KPI có sample/coverage và kỳ trước; period=day/week/month/custom.").WithOpenApi();
         var group = app.MapGroup("/shipper-tasks").WithTags("Shipper Tasks - Nhiệm vụ của tôi").RequireAuthorization("ShipperOnly");
         group.MapPost("/filter", async (MyShipperTaskQuery query, IMyShipperTaskAppService svc) =>
             (await svc.GetListAsync(query)).CustomResult()).WithSummary("Nhiệm vụ của Shipper theo JWT; lọc ngày phân công, mã đơn, loại/trạng thái; sort AssignedAt/Deadline; không chứa PIN/QR.").WithOpenApi();
