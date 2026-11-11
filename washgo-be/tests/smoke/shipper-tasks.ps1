@@ -58,7 +58,7 @@ INSERT INTO washgo.shippers SELECT (jsonb_populate_record(NULL::washgo.shippers,
     if($row.id -ne $o.id -or !$row.isNew -or $row.assignedTaskType -ne 1 -or !$row.shipperAssignedAt -or $row.customerName -ne '***'){throw 'Task row wrong.'}
     if((Tasks @{taskType=2}).total -ne 0 -or (Tasks @{taskType=1}).total -ne 1 -or (Tasks @{pendingOnly=$true}).total -ne 1){throw 'Task filters wrong.'}
     $d=Detail $shipper
-    if($d.shipperNote -ne 'Tui do mau xanh, de nhe tay' -or $d.taskLockerName -ne "Tasks Smoke Locker $run" -or $d.taskLockerAddress -notmatch '12 Fixture Road' -or $d.taskBoxNumber -ne $o.boxNumber -or $d.nextAction -ne 1 -or $d.boxSize -ne 2 -or !$d.shipperTaskPinCode){throw 'Task detail wrong.'}
+    if($d.shipperNote -ne 'Tui do mau xanh, de nhe tay' -or $d.taskLockerName -ne "Tasks Smoke Locker $run" -or $d.taskLockerAddress -notmatch '12 Fixture Road' -or $d.taskBoxNumber -ne $o.boxNumber -or $d.nextAction -ne 1 -or $d.boxSize -ne 2 -or $d.shipperTaskPinCode -or $d.shipperTaskQrString){throw 'Task detail wrong.'}
     if((Detail $customer).shipperNote){throw 'Customer sees the Merchant note.'}
 
     Write-Output '3. After collecting: no pending task, history has the collect (4.3.6)'
@@ -83,7 +83,8 @@ INSERT INTO washgo.shippers SELECT (jsonb_populate_record(NULL::washgo.shippers,
     $h=Delivery-History
     if($h.total -ne 2 -or $h.list[0].taskType -ne 2 -or !$h.list[0].boxNumber){throw 'Return history wrong.'}
     if((Delivery-History @{taskType=1}).total -ne 1 -or (Delivery-History @{taskType=2}).total -ne 1){throw 'History task filter wrong.'}
-    if((Delivery-History @{fromDate=$before;toDate=[DateTimeOffset]::UtcNow.ToUnixTimeSeconds()+5}).total -ne 2 -or (Delivery-History @{fromDate=[DateTimeOffset]::UtcNow.ToUnixTimeSeconds()+3600}).total -ne 0){throw 'History time filter wrong.'}
+    if((Delivery-History @{fromDate=$before;toDate=[DateTimeOffset]::UtcNow.ToUnixTimeSeconds()+5}).total -ne 2){throw 'History time filter wrong.'}
+    Assert-Status 400 Post '/shipper-delivery/history' @{fromDate=[DateTimeOffset]::UtcNow.ToUnixTimeSeconds()+3600} $shipper
     Invoke-TestDelivery $o.id pickup $customer | Out-Null
     if((Delivery-History).list[0].orderStatus -ne 12){throw 'History does not show the current order status.'}
 

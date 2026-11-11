@@ -6,6 +6,17 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Results
 {
     public class WashOrderResultDto
     {
+        public Guid? TaskId { get; set; }
+        public string? MerchantEmail { get; set; }
+        public Guid? AssignmentVersion => TaskId;
+        public string? TaskLockerName { get; set; }
+        public string? TaskLockerAddress { get; set; }
+        public double? TaskLockerLatitude { get; set; }
+        public double? TaskLockerLongitude { get; set; }
+        public List<string> TaskLockerImageUrls { get; set; } = [];
+        public string? TaskBoxNumber { get; set; }
+        public DateTime? TaskDeadline { get; set; }
+        public DateTime TaskServerNow { get; set; }
         public Guid Id { get; set; }
         public DateTime? OperationalPolicyCapturedAt { get; set; }
         public string? OperationalPolicyBasis { get; set; }
@@ -190,9 +201,6 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Results
     {
         public string? CustomerNote { get; set; }
         /// <summary>UC 4.3.2: locker/ô của nhiệm vụ hiện tại (lấy đồ: tủ gửi; trả đồ: tủ trả) và nút hành động.</summary>
-        public string? TaskLockerName { get; set; }
-        public string? TaskLockerAddress { get; set; }
-        public string? TaskBoxNumber { get; set; }
         /// <summary>Collect / Return khi Shipper còn nhiệm vụ chưa làm; null khi không có.</summary>
         public DeliveryTaskType? NextAction { get; set; }
         /// <summary>Tủ khách nhận đồ (tủ trả; mặc định là tủ gửi) để chỉ đường trước khi mở phiên nhận đồ.</summary>

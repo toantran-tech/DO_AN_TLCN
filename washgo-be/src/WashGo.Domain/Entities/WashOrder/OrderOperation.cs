@@ -27,5 +27,8 @@ namespace WashGo.Domain.Entities.WashOrder
         public WashOrderStatus ResultStatus { get; set; }
         public long ResultRevision { get; set; }
         public DateTime CreatedAt { get; set; }
+        public Guid? DeliveryTaskId { get; set; }
+        /// <summary>Redacted immutable result for a Shipper action; never includes credentials.</summary>
+        public string? ResultJson { get; set; }
     }
 }

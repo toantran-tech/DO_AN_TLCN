@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text.Json;
+using WashGo.Application.Features.FileApplication.Services;
 using System.Threading.Tasks;
 using Volo.Abp.DependencyInjection;
 using Volo.Abp.Domain.Repositories;
@@ -56,14 +56,18 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             var serviceIds = items.Select(x => x.ServiceId).Concat(detailItems.Select(x => x.ServiceId)).Distinct().ToList();
             var serviceImages = (await _executer.ToListAsync((await _serviceRepo.GetQueryableAsync())
                     .Where(x => serviceIds.Contains(x.Id)).Select(x => new { x.Id, x.Images })))
-                .ToDictionary(x => x.Id, x => ReadImages(x.Images));
+                .ToDictionary(x => x.Id, x => StoredImageUrls.Read(x.Images));
 
             var lockerIds = orders.SelectMany(x => new[] { x.LockerId, x.ReturnLockerId ?? x.LockerId }).Distinct().ToList();
             var lockerImages = (await _executer.ToListAsync((await _lockerRepo.GetQueryableAsync())
                     .Where(x => lockerIds.Contains(x.Id)).Select(x => new { x.Id, x.Images })))
-                .ToDictionary(x => x.Id, x => ReadImages(x.Images));
+                .ToDictionary(x => x.Id, x => StoredImageUrls.Read(x.Images));
 
             var merchantIds = orders.Where(x => x.MerchantId.HasValue).Select(x => x.MerchantId!.Value).Distinct().ToList();
+            var merchantEmails = role == "Shipper"
+                ? (await _executer.ToListAsync((await _userRepo.GetQueryableAsync()).Where(x => merchantIds.Contains(x.Id))
+                    .Select(x => new { x.Id, x.Email }))).ToDictionary(x => x.Id, x => x.Email)
+                : new Dictionary<Guid, string>();
             var merchantPhones = (await _executer.ToListAsync((await _merchantRepo.GetQueryableAsync())
                     .Where(x => merchantIds.Contains(x.Id)).Select(x => new { x.Id, x.Phone })))
                 .ToDictionary(x => x.Id, x => x.Phone);
@@ -105,8 +109,11 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                     }).ToList();
                 order.LockerImageUrls = lockerImages.GetValueOrDefault(order.LockerId) ?? [];
                 order.ReturnLockerImageUrls = lockerImages.GetValueOrDefault(order.ReturnLockerId ?? order.LockerId) ?? [];
+                order.TaskLockerImageUrls = order.AssignedTaskType == Domain.Shared.Enums.DeliveryTaskType.Collect
+                    ? order.LockerImageUrls : order.ReturnLockerImageUrls;
                 if (order.MerchantId is { } merchantId)
                 {
+                    order.MerchantEmail = merchantEmails.GetValueOrDefault(merchantId);
                     order.MerchantPhoneNumber = merchantPhones.GetValueOrDefault(merchantId);
                     order.MerchantImageUrls = merchantImages.GetValueOrDefault(merchantId) ?? [];
                 }
@@ -126,11 +133,5 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             }
         }
 
-        private static List<string> ReadImages(string? json)
-        {
-            if (string.IsNullOrWhiteSpace(json)) return [];
-            try { return JsonSerializer.Deserialize<List<string>>(json) ?? []; }
-            catch (JsonException) { return []; }
-        }
     }
 }

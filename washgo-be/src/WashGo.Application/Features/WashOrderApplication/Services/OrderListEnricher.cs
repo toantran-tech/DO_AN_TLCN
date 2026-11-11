@@ -22,11 +22,14 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
         private readonly IRepository<WashOrderTimeline, Guid> _timelineRepo;
         private readonly ILockerRepository _lockerRepo;
         private readonly IAsyncQueryableExecuter _executer;
+        private readonly IRepository<DeliveryTask, Guid> _tasks;
 
         public OrderListEnricher(IRepository<WashOrderItem, Guid> itemRepo, IRepository<LockerBox, Guid> boxRepo,
             ILockerRepository lockerRepo, IAsyncQueryableExecuter executer,
-            IRepository<WashGo.Domain.Entities.WashService.WashService, Guid> serviceRepo, IRepository<WashOrderTimeline, Guid> timelineRepo)
+            IRepository<WashGo.Domain.Entities.WashService.WashService, Guid> serviceRepo, IRepository<WashOrderTimeline, Guid> timelineRepo,
+            IRepository<DeliveryTask, Guid> tasks)
         {
+            _tasks = tasks;
             _serviceRepo = serviceRepo;
             _timelineRepo = timelineRepo;
             _itemRepo = itemRepo;
@@ -68,6 +71,33 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 (order.ProgressPercent, order.WorkflowSteps) = OrderProgressCalculator.Build(order.Status, types,
                     history[order.Id].Select(x => (x.Status, x.Timestamp)));
             }
+            await FillTasksAsync(orders);
+        }
+
+        private async Task FillTasksAsync<T>(List<T> orders) where T : WashOrderResultDto
+        {
+            var ids = orders.Select(x => x.Id).ToList();
+            var tasks = (await _tasks.GetListAsync(x => ids.Contains(x.OrderId) && x.Status == DeliveryTaskStatus.Assigned))
+                .GroupBy(x => x.OrderId).ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.AssignedAt).ThenBy(x => x.Id).First());
+            var stationIds = orders.SelectMany(x => new[] { x.LockerId, x.ReturnLockerId ?? x.LockerId }).Distinct().ToList();
+            var stations = (await _lockerRepo.GetListAsync(x => stationIds.Contains(x.Id))).ToDictionary(x => x.Id);
+            foreach (var order in orders)
+            {
+                var collect = order.AssignedTaskType == DeliveryTaskType.Collect;
+                var stationId = collect ? order.LockerId : order.ReturnLockerId ?? order.LockerId;
+                var station = stations.GetValueOrDefault(stationId);
+                order.TaskLockerName = station?.Name;
+                order.TaskLockerAddress = station == null ? null : AddressOf(station);
+                order.TaskLockerLatitude = station?.Latitude;
+                order.TaskLockerLongitude = station?.Longitude;
+                order.TaskBoxNumber = collect ? order.BoxNumber : order.ReturnBoxNumber;
+                order.TaskServerNow = DateTime.UtcNow;
+                if (tasks.TryGetValue(order.Id, out var task) && task.ShipperId == order.ShipperId && task.TaskType == order.AssignedTaskType)
+                {
+                    order.TaskId = task.Id;
+                    order.TaskDeadline = task.Deadline;
+                }
+            }
         }
 
         /// <summary>Tên, địa chỉ, tọa độ của tủ gửi và tủ nhận đồ (tủ trả, mặc định là tủ gửi).</summary>
@@ -102,10 +132,11 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             var collect = order.AssignedTaskType == DeliveryTaskType.Collect;
             var lockerId = collect ? order.LockerId : order.ReturnLockerId ?? order.LockerId;
             var locker = await _lockerRepo.FindAsync(lockerId);
-            order.TaskLockerName = locker?.Name ?? order.LockerName;
+            order.TaskLockerName = locker?.Name;
             order.TaskLockerAddress = locker == null ? null : AddressOf(locker);
             // The return box is picked when the Shipper drops the goods off.
             order.TaskBoxNumber = collect ? order.BoxNumber : order.ReturnBoxNumber;
+            await FillTasksAsync(new List<WashOrderDetailDto> { order });
             order.NextAction = IsActiveTask(order) ? order.AssignedTaskType : null;
         }
 
