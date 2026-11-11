@@ -5,6 +5,8 @@ namespace WashGo.Application.Contracts.Features.ShipperContracts.Commands
     /// <summary>UC 4.1.4: các trường Shipper được tự sửa; Email và Merchant phụ trách không đổi.</summary>
     public class UpdateShipperProfileCommand
     {
+        public string ExpectedRevision { get; set; } = string.Empty;
+        public Guid? OperationId { get; set; }
         public string FullName { get; set; } = string.Empty;
         public string Phone { get; set; } = string.Empty;
         /// <summary>Ảnh đã upload qua /files/images; null = giữ nguyên, chuỗi rỗng = xóa avatar.</summary>

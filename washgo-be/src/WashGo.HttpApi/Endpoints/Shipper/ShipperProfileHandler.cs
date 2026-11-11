@@ -7,6 +7,8 @@ using WashGo.Application.Contracts.Features.ShipperContracts.Commands;
 using WashGo.Application.Contracts.Features.ShipperContracts.Queries;
 using WashGo.Application.Contracts.Features.ShipperContracts.Services;
 using WashGo.Core.Endpoint;
+using WashGo.Application.Contracts.Features.AuditContracts.Queries;
+using WashGo.Application.Contracts.Features.AuditContracts.Services;
 
 namespace WashGo.HttpApi.Endpoints.Shipper
 {
@@ -29,6 +31,13 @@ namespace WashGo.HttpApi.Endpoints.Shipper
                 .WithName("Shipper cập nhật hồ sơ")
                 .WithSummary("Sửa họ tên, SĐT, avatar, phương tiện, biển số; email và Merchant phụ trách không đổi.")
                 .WithOpenApi();
+
+            group.MapGet("/operations/{operationId:guid}", async (Guid operationId, IShipperProfileAppService svc) =>
+                (await svc.GetOperationAsync(operationId)).CustomResult())
+                .WithSummary("Tra kết quả cập nhật hồ sơ của chính tài khoản theo operationId; không thấy kết quả không khẳng định request trước thất bại.").WithOpenApi();
+            group.MapGet("/activities", async ([AsParameters] MyActivityQuery query, IAuditLogAppService svc) =>
+                (await svc.GetMyActivitiesAsync(query)).CustomResult())
+                .WithSummary("Nhật ký của chính Shipper, không mở quyền xem nhật ký Admin hoặc tài khoản khác.").WithOpenApi();
 
             var delivery = app.MapGroup("/shipper-delivery")
                 .WithTags("Shipper Delivery - Lịch sử giao nhận")

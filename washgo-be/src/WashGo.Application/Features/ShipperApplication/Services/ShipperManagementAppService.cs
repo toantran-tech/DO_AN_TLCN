@@ -204,6 +204,7 @@ namespace WashGo.Application.Features.ShipperApplication.Services
                 CurrentUser.Id!.Value, 0, out var images);
             if (imageError != null)
                 return BadRequest<ShipperDto>(imageError);
+            await _orderRepo.AcquireLockAsync($"shipper-phone:{phone}");
             var duplicate = await DuplicateErrorAsync(phone, email, null);
             if (duplicate != null)
                 return BadRequest<ShipperDto>(duplicate);
@@ -317,6 +318,7 @@ namespace WashGo.Application.Features.ShipperApplication.Services
                 command.VehicleType, command.VehiclePlate);
             if (error != null)
                 return BadRequest<ShipperDto>(error);
+            await _orderRepo.AcquireLockAsync($"shipper-phone:{phone}");
             var duplicate = await DuplicateErrorAsync(phone, email, user.Id);
             if (duplicate != null)
                 return BadRequest<ShipperDto>(duplicate);
