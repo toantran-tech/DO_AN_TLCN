@@ -13,7 +13,7 @@ namespace WashGo.Application.Contracts.Features.AuthContracts.Services
     {
         Task<BaseResponse<SecurityStatusDto>> GetStatusAsync(Guid userId, Guid sessionId);
         Task<BaseResponse<bool>> ChangePasswordAsync(Guid userId, Guid sessionId, ChangePasswordCommand command);
-        Task<BaseResponse<List<SessionDto>>> GetSessionsAsync(Guid userId, Guid sessionId);
+        Task<BaseResponse<SessionListDto>> GetSessionsAsync(Guid userId, Guid sessionId, WashGo.Application.Contracts.Features.AuthContracts.Queries.SessionListQuery query);
         Task<BaseResponse<RevokeSessionsResultDto>> RevokeOtherSessionsAsync(Guid userId, Guid sessionId);
         Task<BaseResponse<RevokeSessionsResultDto>> RevokeSessionAsync(Guid userId, Guid sessionId, Guid targetId);
     }

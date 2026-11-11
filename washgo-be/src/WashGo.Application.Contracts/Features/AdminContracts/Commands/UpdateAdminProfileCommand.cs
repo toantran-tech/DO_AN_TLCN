@@ -10,6 +10,7 @@ namespace WashGo.Application.Contracts.Features.AdminContracts.Commands
         public string? Phone { get; set; }
         public string? Avatar { get; set; }
         /// <summary>Bắt buộc: version lấy từ GET /admin/profile.</summary>
-        public long? ExpectedVersion { get; set; }
+        [System.Text.Json.Serialization.JsonConverter(typeof(WashGo.Core.Domain.Shared.Bases.OpaqueVersionConverter))]
+        public string? ExpectedVersion { get; set; }
     }
 }

@@ -359,7 +359,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
             var role = await _roleRepo.FindAsync(user.RoleId);
             var roleName = role?.Name ?? "Customer";
 
-            var (newRefreshToken, sessionId) = await GenerateAndSaveRefreshTokenAsync(user.Id, storedToken.StartedAt ?? storedToken.CreatedAt);
+            var (newRefreshToken, sessionId) = await GenerateAndSaveRefreshTokenAsync(user.Id, storedToken.StartedAt ?? storedToken.CreatedAt, storedToken.SessionKey ?? storedToken.Id);
             var (accessToken, expiresAt) = GenerateJwtToken(user, roleName, sessionId);
 
             var result = new AuthResponseDto
@@ -775,7 +775,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
             return (new JwtSecurityTokenHandler().WriteToken(token), expiresAt);
         }
 
-        private async Task<(string token, Guid sessionId)> GenerateAndSaveRefreshTokenAsync(Guid userId, DateTime? startedAt = null)
+        private async Task<(string token, Guid sessionId)> GenerateAndSaveRefreshTokenAsync(Guid userId, DateTime? startedAt = null, Guid? sessionKey = null)
         {
             var userAgent = LazyServiceProvider.LazyGetService<Microsoft.AspNetCore.Http.IHttpContextAccessor>()?
                 .HttpContext?.Request.Headers.UserAgent.ToString();
@@ -786,9 +786,11 @@ namespace WashGo.Application.Features.AuthApplication.Services
 
             var expDays = int.TryParse(_configuration["Jwt:RefreshTokenExpirationDays"], out var d) ? d : 30;
 
-            var entity = new RefreshToken(Guid.NewGuid())
+            var tokenId = Guid.NewGuid();
+            var entity = new RefreshToken(tokenId)
             {
                 UserId = userId,
+                SessionKey = sessionKey ?? tokenId,
                 Token = HashRefreshToken(refreshTokenString),
                 ExpiryDate = DateTime.UtcNow.AddDays(expDays),
                 IsRevoked = false,
