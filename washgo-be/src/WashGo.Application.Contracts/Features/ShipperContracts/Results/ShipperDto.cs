@@ -27,8 +27,9 @@ namespace WashGo.Application.Contracts.Features.ShipperContracts.Results
         public string? LockReason { get; set; }
         public int TotalDeliveries { get; set; }
         public int ActiveTaskCount { get; set; }
+        /// <summary>Không còn dùng (đã bỏ chấm sao Shipper): giữ tạm để tương thích, không dùng cho quyết định nghiệp vụ.</summary>
         public decimal Rating { get; set; }
-        /// <summary>false khi Rating = 0 (chưa có đánh giá); khi sắp xếp theo Rating các Shipper này luôn đứng cuối.</summary>
+        /// <summary>Không còn dùng (đã bỏ chấm sao Shipper).</summary>
         public bool HasRating => Rating > 0;
         public string? IdentityNumber { get; set; }
         /// <summary>Tương thích cũ: [mặt trước, mặt sau] khi đã rõ mặt, nếu không là mảng ảnh cũ.</summary>

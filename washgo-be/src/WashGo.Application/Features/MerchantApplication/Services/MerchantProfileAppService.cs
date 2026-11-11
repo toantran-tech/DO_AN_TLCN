@@ -94,7 +94,7 @@ namespace WashGo.Application.Features.MerchantApplication.Services
                 OpeningHours = merchant.OpeningHours,
                 ImageUrls = await StoreImagesAsync(merchant.Id),
                 Status = merchant.Status,
-                Rating = merchant.Rating,
+                Rating = publicRatingCount == 0 ? null : merchant.Rating,
                 TotalOrders = merchant.TotalOrders,
                 CommissionRate = merchant.CommissionRate,
                 ServiceRadiusKm = merchant.ServiceRadiusKm,

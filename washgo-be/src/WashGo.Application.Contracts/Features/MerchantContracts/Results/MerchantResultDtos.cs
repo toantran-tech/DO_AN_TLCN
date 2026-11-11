@@ -32,7 +32,9 @@ namespace WashGo.Application.Contracts.Features.MerchantContracts.Results
         public string? OpeningHours { get; set; }
         public MerchantStatus Status { get; set; }
         public string? RejectionReason { get; set; }
-        public decimal Rating { get; set; }
+        /// <summary>Điểm trung bình đánh giá công khai (1 chữ số thập phân); null khi chưa có đánh giá công khai (không phải 5 sao).</summary>
+        public decimal? Rating { get; set; }
+        public bool HasRating => PublicRatingCount > 0;
         public int PublicRatingCount { get; set; }
         public string TotalRevenueBasis => "Sum of FinalAmount of orders currently Paid; face value, not net receipts, profit or Merchant payout.";
         public string ContractDateBasis => "UTC timestamp; display calendar dates in Asia/Ho_Chi_Minh.";

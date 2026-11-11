@@ -650,6 +650,7 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             {
                 dto.Documents = new[] { dto.BusinessLicenseDocumentId, dto.ContractDocumentId, dto.SlaDocumentId }.Where(x => x.HasValue && documents.ContainsKey(x.Value)).Select(x => documents[x!.Value]).ToList();
                 dto.PublicRatingCount = ratings.FirstOrDefault(x => x.Id == dto.Id)?.Count ?? 0;
+                if (dto.PublicRatingCount == 0) dto.Rating = null;
                 dto.Version = MerchantWriteGuard.Version(merchants.First(x => x.Id == dto.Id));
                 dto.Email = emails.GetValueOrDefault(dto.Id, string.Empty);
                 dto.ServiceAreaIds = areas.GetValueOrDefault(dto.Id) ?? [];

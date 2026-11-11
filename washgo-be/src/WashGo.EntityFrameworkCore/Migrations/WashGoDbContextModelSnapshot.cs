@@ -511,6 +511,14 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("character varying(200)")
                         .HasColumnName("merchant_name");
 
+                    b.Property<DateTime?>("ModeratedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("moderated_at");
+
+                    b.Property<Guid?>("ModeratedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("moderated_by");
+
                     b.Property<string>("Modified")
                         .HasColumnType("jsonb")
                         .HasColumnName("modified");

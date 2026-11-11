@@ -37,7 +37,7 @@ try {
     $sessions.Team=New-FixtureMerchant $run; $team=$sessions.Team.accessToken; $teamId=$sessions.Team.user.id
     $x=New-FixtureShipper $team "Report $run" $run
     $sessions.X=(Call-Api Post '/auth/login' @{email=$x.email;password=(Read-TempPassword $x.email)} $null).data; $xToken=$sessions.X.accessToken
-    $locker=(Call-Api Post '/locker/' @{merchantId="$teamId";name="Report Locker $run";address='Private development fixture';district='Test';city='Test';latitude=10.77;longitude=106.69;boxCount=3} $admin).data
+    $locker=(Call-Api Post '/locker/' @{code="RPT_$([Guid]::NewGuid().ToString('N').Substring(0,12))";merchantId="$teamId";name="Report Locker $run";address='Private development fixture';district='Test';city='Test';latitude=10.77;longitude=106.69;boxCount=3} $admin).data
     $lockerId=[Guid]$locker.id
 
     # o1: paid and completed; o2: paid; o3: cancelled after deposit.

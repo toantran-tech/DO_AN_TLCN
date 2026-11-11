@@ -27,5 +27,8 @@ namespace WashGo.Domain.Entities.Feedback
         public string? HiddenReason { get; set; }
         public Guid? HiddenBy { get; set; }
         public DateTime? HiddenAt { get; set; }
+        /// <summary>Lần Admin kiểm duyệt gần nhất (ẩn hoặc hiển thị). Nhận xét/ảnh chỉ chuyển cho Merchant khi đã kiểm duyệt và đang hiển thị.</summary>
+        public DateTime? ModeratedAt { get; set; }
+        public Guid? ModeratedBy { get; set; }
     }
 }

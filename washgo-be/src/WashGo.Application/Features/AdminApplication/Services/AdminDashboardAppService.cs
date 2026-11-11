@@ -270,7 +270,7 @@ namespace WashGo.Application.Features.AdminApplication.Services
                 CancelledOrders = x.Cancelled,
                 FinishedOrders = x.Completed + x.Cancelled,
                 CompletionRate = x.Rate,
-                Rating = ratings.TryGetValue(x.Id, out var r) ? Math.Round(r.Avg, 2) : null,
+                Rating = ratings.TryGetValue(x.Id, out var r) ? Math.Round(r.Avg, 1, MidpointRounding.AwayFromZero) : null,
                 RatingCount = ratings.TryGetValue(x.Id, out var rc) ? rc.Count : 0,
                 LaundryRevenue = revenue.GetValueOrDefault(x.Id)
             }).ToList();
