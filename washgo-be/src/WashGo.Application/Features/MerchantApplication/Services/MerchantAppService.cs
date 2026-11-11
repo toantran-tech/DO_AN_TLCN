@@ -780,6 +780,9 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             // Same definitions as /merchant-reports: money by transaction/refund date, commission at each order's locked rate.
             var finance = LazyServiceProvider.LazyGetRequiredService<WashGo.Application.Features.MerchantReportApplication.Services.MerchantFinanceAggregator>();
             DateTime? Exclusive(DateTime? inclusiveEnd) => inclusiveEnd?.AddTicks(1);
+            // Current, previous and series totals are read from one repeatable-read snapshot.
+            using var snapshot = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true,
+                isolationLevel: System.Data.IsolationLevel.RepeatableRead);
             var current = await finance.TotalsAsync(merchantId.Value, fromUtc, Exclusive(toUtc));
             var series = await finance.SeriesAsync(merchantId.Value, fromUtc, Exclusive(toUtc), hourly: false);
             var orders = (await _orderRepo.GetQueryableAsync()).Where(o => !o.IsDeleted && o.MerchantId == merchantId.Value && o.CancelledAt != null);

@@ -15,6 +15,8 @@ namespace WashGo.Application.Features.MerchantReportApplication.Services
     /// Tổng hợp tài chính của một Merchant tại DB theo ngày giao dịch: tiền giặt đã thu, tiền hoàn, phí đã thu và hoa hồng
     /// theo tỷ lệ chốt trên từng đơn (hoàn tiền giảm hoa hồng cùng tỷ lệ). Đơn chưa có tỷ lệ chốt (null) không được tính
     /// hoa hồng và được báo riêng; 0% là tỷ lệ hợp lệ. Không bao giờ dùng tỷ lệ hiện tại của Merchant cho dữ liệu cũ.
+    /// Làm tròn theo CommissionMath (từng giao dịch, nửa đồng ra xa 0 = round(numeric) của PostgreSQL).
+    /// Gọi trong transaction repeatable-read của bên gọi để các tổng cùng một snapshot.
     /// </summary>
     public class MerchantFinanceAggregator : ITransientDependency
     {
@@ -94,9 +96,9 @@ namespace WashGo.Application.Features.MerchantReportApplication.Services
             var commission = (await _executer.SumAsync(laundry.Where(x => x.Rate != null), x => (decimal?)Math.Round(x.Amount * x.Rate!.Value / 100m)) ?? 0m)
                              - (await _executer.SumAsync(refunds.Where(x => x.Rate != null), x => (decimal?)Math.Round(x.Amount * x.Rate!.Value / 100m)) ?? 0m);
             var paidOrders = await _executer.CountAsync(laundry.Select(x => x.OrderId).Distinct());
-            var uncoveredIds = (await _executer.ToListAsync(laundry.Where(x => x.Rate == null).Select(x => x.OrderId)
-                    .Union(refunds.Where(x => x.Rate == null).Select(x => x.OrderId))))
-                .Distinct().Count();
+            // UNION is distinct in SQL: an order missing a rate on both a receipt and a refund counts once.
+            var uncoveredIds = await _executer.CountAsync(laundry.Where(x => x.Rate == null).Select(x => x.OrderId)
+                .Union(refunds.Where(x => x.Rate == null).Select(x => x.OrderId)));
             var uncoveredAmount = (await _executer.SumAsync(laundry.Where(x => x.Rate == null), x => (decimal?)x.Amount) ?? 0m)
                                   - (await _executer.SumAsync(refunds.Where(x => x.Rate == null), x => (decimal?)x.Amount) ?? 0m);
             return new Totals(gross, refunded, commission, fees, paidOrders, uncoveredIds, uncoveredAmount);
