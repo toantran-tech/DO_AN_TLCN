@@ -9,5 +9,9 @@ namespace WashGo.Application.Contracts.Features.ShipperContracts.Services
     public interface IShipperDeliveryAppService : IApplicationService
     {
         Task<PaginatedResult<DeliveryHistoryDto>> GetHistoryAsync(DeliveryHistoryQuery query);
+        Task<BaseResponse<DeliverySummaryDto>> GetSummaryAsync(DeliveryHistoryQuery query);
+        Task<BaseResponse<DeliveryHistoryDto>> GetEventAsync(Guid eventId);
+        Task<BaseResponse<List<DeliveryLockerDto>>> GetLockersAsync(DeliveryHistoryQuery query);
+        Task<BaseResponse<string>> ExportAsync(DeliveryHistoryQuery query);
     }
 }

@@ -56,7 +56,28 @@ function Assign-Order($Id, $MerchantId, $AdminToken) {
     }
     Call-Api Post "/order-assignment/$Id/assign" @{merchantId="$MerchantId"} $AdminToken
 }
+function New-TestDeliveryBody($Id, $Token) {
+    if ($admin -and $Token -eq $admin) {
+        $codes=(Call-Api Get "/wash-order/$Id/access-codes" $null $Token).data
+        return @{pinCode=$codes.shipperTaskPinCode}
+    }
+    $detail=(Call-Api Get "/wash-order/$Id" $null $Token).data
+    $codes=(Call-Api Get "/shipper-tasks/$($detail.taskId)/credentials" $null $Token).data
+    return @{pinCode=$codes.pinCode;taskId=$detail.taskId;expectedAssignmentVersion=$detail.assignmentVersion;
+        expectedTaskType=$detail.assignedTaskType;expectedRevision=$codes.orderRevision;operationId=[Guid]::NewGuid().ToString()}
+}
+
+$script:SmokeDeliveryBodies=@{}
 function Invoke-TestDelivery($Id, $Action, $Token) {
+    if ($Action -in @('collect','return')) {
+        $key="$Id|$Action|$Token"
+        $body=$script:SmokeDeliveryBodies[$key]
+        if(!$body){$body=New-TestDeliveryBody $Id $Token}
+        $route=if($Action -eq 'collect'){'shipper-collect'}else{'shipper-return'}
+        $result=Call-Api Post "/wash-order/$Id/$route" $body $Token
+        $script:SmokeDeliveryBodies[$key]=$body.Clone()
+        return $result
+    }
     $view=(Call-Api Get "/wash-order/$Id" $null $Token).data
     # Admin list/detail no longer carry locker/task codes; support reads them from the audited access-codes endpoint.
     if ($admin -and $Token -eq $admin) { $view=(Call-Api Get "/wash-order/$Id/access-codes" $null $Token).data }
@@ -67,8 +88,6 @@ function Invoke-TestDelivery($Id, $Action, $Token) {
             # priority-1 Merchant of the locker assigned right after the deposit; set $NoAutoAssign to skip.
             if ($admin -and -not $NoAutoAssign) { Assign-Order $Id $null $admin | Out-Null }
         }
-        'collect' { Call-Api Post "/wash-order/$Id/shipper-collect" @{pinCode=$view.shipperTaskPinCode} $Token }
-        'return' { Call-Api Post "/wash-order/$Id/shipper-return" @{pinCode=$view.shipperTaskPinCode} $Token }
         'pickup' {
             $opened=(Call-Api Post "/wash-order/$Id/open-pickup-box" @{pinCode=$view.pickupPinCode} $Token).data
             Call-Api Post "/wash-order/$Id/confirm-pickup" @{pickupSessionToken=$opened.pickupSessionToken} $Token
@@ -154,9 +173,9 @@ try {
     Sql "UPDATE washgo.orders SET shipper_id = '$shipperId' WHERE id = '$orderId';" | Out-Null
 
     $task=(Call-Api Get "/wash-order/$orderId" $null $shipper).data
-    $collected = (Call-Api Post "/wash-order/$orderId/shipper-collect" @{
-        pinCode=$task.shipperTaskPinCode; actorId = "$merchantId"; actorName = 'Spoofed'; actorRole = 'Admin'
-    } $shipper).data
+    $collectBody=New-TestDeliveryBody $orderId $shipper
+    $collectBody.actorId="$merchantId"; $collectBody.actorName='Spoofed'; $collectBody.actorRole='Admin'
+    $collected = (Call-Api Post "/wash-order/$orderId/shipper-collect" $collectBody $shipper).data
     Assert-Private $collected
     $event = $collected.timeline | Where-Object { $_.status -eq 3 } | Select-Object -Last 1
     if ($event.actorId -ne "$shipperUserId" -or $event.actorRole -ne 'Shipper' -or $event.actorName -eq 'Spoofed') {

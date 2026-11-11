@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using System.Text;
 using Microsoft.AspNetCore.OpenApi;
 using Microsoft.AspNetCore.Routing;
 using WashGo.Application.Contracts.Features.ShipperContracts.Commands;
@@ -38,6 +39,22 @@ namespace WashGo.HttpApi.Endpoints.Shipper
                 .WithName("Lịch sử giao nhận của Shipper")
                 .WithSummary("Các lượt lấy/trả đồ Shipper đã hoàn thành: mã đơn, locker, ô, loại nhiệm vụ, thời gian, trạng thái đơn; lọc thời gian và loại nhiệm vụ.")
                 .WithOpenApi();
+
+            delivery.MapPost("/summary", async (DeliveryHistoryQuery query, IShipperDeliveryAppService svc) =>
+                (await svc.GetSummaryAsync(query)).CustomResult())
+                .WithSummary("Tổng lượt lấy/trả theo người thực hiện và ngày hoàn tất; độc lập taskType bảng; tối đa 366 ngày.").WithOpenApi();
+            delivery.MapGet("/history/{eventId:guid}", async (Guid eventId, IShipperDeliveryAppService svc) =>
+                (await svc.GetEventAsync(eventId)).CustomResult())
+                .WithSummary("Chi tiết một lượt do chính Shipper thực hiện, vẫn xem được sau khi phân công lại.").WithOpenApi();
+            delivery.MapPost("/lockers/filter", async (DeliveryHistoryQuery query, IShipperDeliveryAppService svc) =>
+                (await svc.GetLockersAsync(query)).CustomResult())
+                .WithSummary("Lookup tối đa 1.000 trạm trong lịch sử của Shipper, giữ bộ lọc ngày/từ khóa.").WithOpenApi();
+            delivery.MapPost("/export", async (DeliveryHistoryQuery query, IShipperDeliveryAppService svc) =>
+            {
+                var result = await svc.ExportAsync(query);
+                return result.Succeeded ? Results.File(Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(result.Data!)).ToArray(),
+                    "text/csv; charset=utf-8", "shipper-delivery.csv") : result.CustomResult();
+            }).WithSummary("Xuất toàn bộ lịch sử theo bộ lọc, tối đa 366 ngày/25.000 lượt, không xuất mã bí mật.").WithOpenApi();
         }
     }
 }

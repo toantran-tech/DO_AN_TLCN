@@ -10,6 +10,8 @@ namespace WashGo.Domain.Entities.WashOrder
     [SevagoTable(WashGoDbProperties.OrderStatusHistory, Schema = WashGoDbProperties.Schema)]
     public class WashOrderTimeline : Entity<Guid>
     {
+        public WashOrderTimeline() { }
+        public WashOrderTimeline(Guid id) : base(id) { }
         public Guid WashOrderId { get; set; }
         public WashOrderStatus? FromStatus { get; set; }
         public WashOrderStatus Status { get; set; }

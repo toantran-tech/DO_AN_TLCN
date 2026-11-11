@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using WashGo.Domain.Shared.Enums;
+using Volo.Abp.Auditing;
 
 namespace WashGo.Application.Contracts.Features.WashOrderContracts.Commands
 {
@@ -70,17 +71,18 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Commands
         public string? QrCode { get; set; }
     }
 
-    public class ShipperCollectOrderCommand
+    [DisableAuditing]
+    public abstract class ShipperDeliveryCommand : GuardedOrderCommand
     {
+        public Guid? TaskId { get; set; }
+        public Guid? ExpectedAssignmentVersion { get; set; }
+        public DeliveryTaskType? ExpectedTaskType { get; set; }
         public string? PinCode { get; set; }
         public string? QrCode { get; set; }
     }
 
-    public class ShipperReturnOrderCommand
-    {
-        public string? PinCode { get; set; }
-        public string? QrCode { get; set; }
-    }
+    public class ShipperCollectOrderCommand : ShipperDeliveryCommand { }
+    public class ShipperReturnOrderCommand : ShipperDeliveryCommand { }
 
     public class OpenPickupBoxCommand
     {

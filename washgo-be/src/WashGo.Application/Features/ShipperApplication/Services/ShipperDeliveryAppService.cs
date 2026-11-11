@@ -1,88 +1,95 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
-using Volo.Abp.Domain.Repositories;
+﻿using System.Globalization;
+using System.Net;
+using System.Data;
+using System.Text;
+using Volo.Abp.Uow;
 using WashGo.Application.Contracts.Features.ShipperContracts.Queries;
 using WashGo.Application.Contracts.Features.ShipperContracts.Results;
 using WashGo.Application.Contracts.Features.ShipperContracts.Services;
 using WashGo.Core.Domain.Shared.Bases;
-using WashGo.Domain.Entities.Locker.Interfaces;
-using WashGo.Domain.Entities.WashOrder;
-using WashGo.Domain.Entities.WashOrder.Interfaces;
 using WashGo.Domain.Shared.Enums;
 
-namespace WashGo.Application.Features.ShipperApplication.Services
+namespace WashGo.Application.Features.ShipperApplication.Services;
+
+public class ShipperDeliveryAppService(ShipperHistoryReader reader) : WashGoAppService, IShipperDeliveryAppService
 {
-    /// <summary>
-    /// UC 4.3.6: lịch sử giao nhận lấy từ timeline do chính Shipper ghi khi lấy đồ (Collected) và trả đồ
-    /// (ReadyToReturn, hoặc trả đồ của đơn hủy) — giữ đúng cả khi đơn sau đó được phân công cho người khác.
-    /// </summary>
-    public class ShipperDeliveryAppService : WashGoAppService, IShipperDeliveryAppService
+    private string? Prepare(DeliveryHistoryQuery query)
     {
-        private readonly IRepository<WashOrderTimeline, Guid> _timelineRepo;
-        private readonly IWashOrderRepository _orderRepo;
-        private readonly ILockerRepository _lockerRepo;
+        if (ShipperReadRules.Validate(query) is { } error) return error;
+        var range = ShipperReadRules.Range(query.FromDate, query.ToDate, DateTime.UtcNow);
+        if (range.Error != null) return range.Error;
+        query.FromDate = range.From; query.ToDate = range.To;
+        return null;
+    }
 
-        public ShipperDeliveryAppService(
-            IRepository<WashOrderTimeline, Guid> timelineRepo,
-            IWashOrderRepository orderRepo,
-            ILockerRepository lockerRepo)
+    public async Task<PaginatedResult<DeliveryHistoryDto>> GetHistoryAsync(DeliveryHistoryQuery query)
+    {
+        if (Prepare(query) is { } error)
+            return new() { Succeeded = false, StatusCode = HttpStatusCode.BadRequest, Message = error };
+        using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true, isolationLevel: IsolationLevel.RepeatableRead);
+        var rows = await reader.QueryAsync(CurrentUser.Id ?? Guid.Empty, query);
+        var total = await AsyncExecuter.CountAsync(rows);
+        var tasks = await AsyncExecuter.ToListAsync(ShipperHistoryReader.Sort(rows, query).Skip((query.Page - 1) * query.Take).Take(query.Take));
+        var list = await reader.MapAsync(tasks);
+        await uow.CompleteAsync();
+        return Success(list, total, query.Page, query.Take);
+    }
+
+    public async Task<BaseResponse<DeliverySummaryDto>> GetSummaryAsync(DeliveryHistoryQuery query)
+    {
+        if (Prepare(query) is { } error) return BadRequest<DeliverySummaryDto>(error);
+        var rows = await reader.QueryAsync(CurrentUser.Id ?? Guid.Empty, query, ignoreType: true);
+        var counts = await AsyncExecuter.FirstOrDefaultAsync(rows.GroupBy(x => 1).Select(g => new
         {
-            _timelineRepo = timelineRepo;
-            _orderRepo = orderRepo;
-            _lockerRepo = lockerRepo;
-        }
-
-        public async Task<PaginatedResult<DeliveryHistoryDto>> GetHistoryAsync(DeliveryHistoryQuery query)
+            Total = g.Count(), Collect = g.Count(x => x.TaskType == DeliveryTaskType.Collect),
+            Captured = g.Count(x => x.SnapshotSource == "CapturedAtCompletion")
+        }));
+        return Success(new DeliverySummaryDto
         {
-            var userId = CurrentUser.Id ?? Guid.Empty;
-            var entries = (await _timelineRepo.GetQueryableAsync())
-                .Where(x => x.ActorId == userId && x.ActorRole == "Shipper" &&
-                            (x.Status == WashOrderStatus.Collected || x.Status == WashOrderStatus.ReadyToReturn ||
-                             x.Status == WashOrderStatus.Cancelled && x.FromStatus == WashOrderStatus.Cancelled));
-            if (query.TaskType == DeliveryTaskType.Collect)
-                entries = entries.Where(x => x.Status == WashOrderStatus.Collected);
-            else if (query.TaskType == DeliveryTaskType.Return)
-                entries = entries.Where(x => x.Status != WashOrderStatus.Collected);
-            if (query.FromDate is > 0)
-                entries = entries.Where(x => x.Timestamp >= query.FromDate.Value);
-            if (query.ToDate is > 0)
-                entries = entries.Where(x => x.Timestamp <= query.ToDate.Value);
+            Total = counts?.Total ?? 0, CollectCount = counts?.Collect ?? 0,
+            ReturnCount = (counts?.Total ?? 0) - (counts?.Collect ?? 0), CapturedSnapshotCount = counts?.Captured ?? 0,
+            FromDate = query.FromDate, ToDate = query.ToDate, GeneratedAt = DateTime.UtcNow,
+            Keyword = query.Keyword, LockerId = query.LockerId, CancelledReturn = query.CancelledReturn
+        });
+    }
 
-            var page = Math.Max(1, query.Page);
-            var take = Math.Clamp(query.Take, 1, 100);
-            var total = await AsyncExecuter.CountAsync(entries);
-            // Timestamps are whole seconds: a collect and a return in the same second keep the flow order (return first).
-            var rows = await AsyncExecuter.ToListAsync(entries.OrderByDescending(x => x.Timestamp)
-                .ThenByDescending(x => x.Status == WashOrderStatus.Collected ? 0 : 1).ThenByDescending(x => x.Id)
-                .Skip((page - 1) * take).Take(take));
+    public async Task<BaseResponse<DeliveryHistoryDto>> GetEventAsync(Guid eventId)
+    {
+        var row = await AsyncExecuter.FirstOrDefaultAsync((await reader.QueryAsync(CurrentUser.Id ?? Guid.Empty, new()))
+            .Where(x => x.CompletionEventId == eventId));
+        return row == null ? NotFound<DeliveryHistoryDto>("Không tìm thấy lượt giao nhận.") : Success((await reader.MapAsync([row])).Single());
+    }
 
-            var orderIds = rows.Select(x => x.WashOrderId).Distinct().ToList();
-            var orders = (await _orderRepo.GetListAsync(x => orderIds.Contains(x.Id))).ToDictionary(x => x.Id);
-            var lockerIds = orders.Values.Where(x => x.ReturnLockerId.HasValue).Select(x => x.ReturnLockerId!.Value).Distinct().ToList();
-            var lockerNames = (await _lockerRepo.GetListAsync(x => lockerIds.Contains(x.Id))).ToDictionary(x => x.Id, x => x.Name);
+    public async Task<BaseResponse<List<DeliveryLockerDto>>> GetLockersAsync(DeliveryHistoryQuery query)
+    {
+        if (Prepare(query) is { } error) return BadRequest<List<DeliveryLockerDto>>(error);
+        query.LockerId = null;
+        var rows = await reader.QueryAsync(CurrentUser.Id ?? Guid.Empty, query);
+        var list = await AsyncExecuter.ToListAsync(rows.Where(x => x.LockerIdSnapshot != null)
+            .GroupBy(x => x.LockerIdSnapshot).Select(g => new DeliveryLockerDto
+            { Id = g.Key!.Value, Name = g.Max(x => x.LockerNameSnapshot) ?? string.Empty }).OrderBy(x => x.Name).ThenBy(x => x.Id).Take(1000));
+        return Success(list);
+    }
 
-            var list = new List<DeliveryHistoryDto>();
-            foreach (var row in rows)
-            {
-                if (!orders.TryGetValue(row.WashOrderId, out var order))
-                    continue;
-                var collect = row.Status == WashOrderStatus.Collected;
-                list.Add(new DeliveryHistoryDto
-                {
-                    OrderId = order.Id,
-                    OrderCode = order.OrderCode,
-                    TaskType = collect ? DeliveryTaskType.Collect : DeliveryTaskType.Return,
-                    LockerName = collect || !order.ReturnLockerId.HasValue
-                        ? order.LockerName
-                        : lockerNames.GetValueOrDefault(order.ReturnLockerId.Value, order.LockerName),
-                    BoxNumber = collect ? order.BoxNumber : order.ReturnBoxNumber,
-                    CompletedAt = DateTimeOffset.FromUnixTimeSeconds(row.Timestamp).UtcDateTime,
-                    OrderStatus = order.Status
-                });
-            }
-            return Success(list, total, page, take, total == 0 ? "Bạn chưa có lịch sử giao nhận." : null);
-        }
+    public async Task<BaseResponse<string>> ExportAsync(DeliveryHistoryQuery query)
+    {
+        if (Prepare(query) is { } error) return BadRequest<string>(error);
+        var rows = await reader.QueryAsync(CurrentUser.Id ?? Guid.Empty, query);
+        var data = await AsyncExecuter.ToListAsync(ShipperHistoryReader.Sort(rows, query).Take(ShipperReadRules.ExportLimit + 1));
+        if (data.Count > ShipperReadRules.ExportLimit)
+            return new() { Succeeded = false, StatusCode = HttpStatusCode.RequestEntityTooLarge, Message = "Vượt 25.000 lượt; vui lòng thu hẹp bộ lọc.", Meta = new { code = "ReportTooLarge" } };
+        var csv = new StringBuilder("EventId,OrderCode,MerchantOrderCode,TaskType,Locker,Address,Box,CompletedAt,EventStatus\r\n");
+        foreach (var x in data)
+            csv.AppendLine(string.Join(",", new[] { x.CompletionEventId.ToString(), x.OrderCodeSnapshot, x.MerchantOrderCodeSnapshot,
+                x.TaskType.ToString(), x.LockerNameSnapshot, x.LockerAddressSnapshot, x.BoxNumberSnapshot,
+                x.CompletedAt?.ToString("O", CultureInfo.InvariantCulture), x.OrderStatusSnapshot?.ToString() }.Select(Csv)));
+        return Success(csv.ToString());
+    }
+
+    private static string Csv(string? value)
+    {
+        value ??= string.Empty;
+        if (value.TrimStart().StartsWith('=') || value.TrimStart().StartsWith('+') || value.TrimStart().StartsWith('-') || value.TrimStart().StartsWith('@') || value.StartsWith('\t') || value.StartsWith('\r')) value = "'" + value;
+        return "\"" + value.Replace("\"", "\"\"") + "\"";
     }
 }

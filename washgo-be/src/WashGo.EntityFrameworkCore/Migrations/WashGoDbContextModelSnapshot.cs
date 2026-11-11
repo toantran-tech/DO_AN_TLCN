@@ -2814,25 +2814,101 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("assigned_by");
 
+                    b.Property<Guid?>("BoxIdSnapshot")
+                        .HasColumnType("uuid")
+                        .HasColumnName("box_id_snapshot");
+
+                    b.Property<string>("BoxNumberSnapshot")
+                        .HasColumnType("text")
+                        .HasColumnName("box_number_snapshot");
+
                     b.Property<DateTime?>("CompletedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("completed_at");
+
+                    b.Property<Guid?>("CompletedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("completed_by");
+
+                    b.Property<string>("CompletedByRole")
+                        .HasColumnType("text")
+                        .HasColumnName("completed_by_role");
+
+                    b.Property<Guid?>("CompletionEventId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("completion_event_id");
+
+                    b.Property<string>("CompletionNote")
+                        .HasColumnType("text")
+                        .HasColumnName("completion_note");
+
+                    b.Property<DateTime?>("Deadline")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deadline");
 
                     b.Property<DateTime?>("EndedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("ended_at");
 
+                    b.Property<string>("LockerAddressSnapshot")
+                        .HasColumnType("text")
+                        .HasColumnName("locker_address_snapshot");
+
+                    b.Property<Guid?>("LockerIdSnapshot")
+                        .HasColumnType("uuid")
+                        .HasColumnName("locker_id_snapshot");
+
+                    b.Property<double?>("LockerLatitudeSnapshot")
+                        .HasColumnType("double precision")
+                        .HasColumnName("locker_latitude_snapshot");
+
+                    b.Property<double?>("LockerLongitudeSnapshot")
+                        .HasColumnType("double precision")
+                        .HasColumnName("locker_longitude_snapshot");
+
+                    b.Property<string>("LockerNameSnapshot")
+                        .HasColumnType("text")
+                        .HasColumnName("locker_name_snapshot");
+
                     b.Property<Guid?>("MerchantId")
                         .HasColumnType("uuid")
                         .HasColumnName("merchant_id");
+
+                    b.Property<string>("MerchantNameSnapshot")
+                        .HasColumnType("text")
+                        .HasColumnName("merchant_name_snapshot");
+
+                    b.Property<string>("MerchantOrderCodeSnapshot")
+                        .HasColumnType("text")
+                        .HasColumnName("merchant_order_code_snapshot");
+
+                    b.Property<string>("OrderCodeSnapshot")
+                        .HasColumnType("text")
+                        .HasColumnName("order_code_snapshot");
 
                     b.Property<Guid>("OrderId")
                         .HasColumnType("uuid")
                         .HasColumnName("order_id");
 
+                    b.Property<int?>("OrderStatusSnapshot")
+                        .HasColumnType("integer")
+                        .HasColumnName("order_status_snapshot");
+
                     b.Property<Guid>("ShipperId")
                         .HasColumnType("uuid")
                         .HasColumnName("shipper_id");
+
+                    b.Property<int?>("SlaHours")
+                        .HasColumnType("integer")
+                        .HasColumnName("sla_hours");
+
+                    b.Property<DateTime?>("SlaStartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("sla_started_at");
+
+                    b.Property<string>("SnapshotSource")
+                        .HasColumnType("text")
+                        .HasColumnName("snapshot_source");
 
                     b.Property<int>("Status")
                         .HasColumnType("integer")
@@ -2844,9 +2920,16 @@ namespace WashGo.EntityFrameworkCore.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CompletionEventId")
+                        .IsUnique();
+
                     b.HasIndex("OrderId");
 
                     b.HasIndex("ShipperId", "Status");
+
+                    b.HasIndex("CompletedBy", "CompletedAt", "Id");
+
+                    b.HasIndex("ShipperId", "Status", "AssignedAt");
 
                     b.ToTable("delivery_tasks", "washgo");
                 });
@@ -2864,6 +2947,10 @@ namespace WashGo.EntityFrameworkCore.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
+
+                    b.Property<Guid?>("DeliveryTaskId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("delivery_task_id");
 
                     b.Property<Guid?>("GroupId")
                         .HasColumnType("uuid")
@@ -2884,6 +2971,10 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)")
                         .HasColumnName("request");
+
+                    b.Property<string>("ResultJson")
+                        .HasColumnType("text")
+                        .HasColumnName("result_json");
 
                     b.Property<long>("ResultRevision")
                         .HasColumnType("bigint")
@@ -3947,7 +4038,7 @@ namespace WashGo.EntityFrameworkCore.Migrations
                     b.HasOne("WashGo.Domain.Entities.WashOrder.WashOrder", null)
                         .WithMany()
                         .HasForeignKey("OrderId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
 
