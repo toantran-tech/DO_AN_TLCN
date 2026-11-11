@@ -28,6 +28,12 @@ namespace WashGo.Application.Contracts.Features.WashServiceContracts.Results
         public string? ThumbnailUrl => ImageUrls.Count > 0 ? ImageUrls[0] : null;
         /// <summary>Phiên bản nội dung (tên, mô tả, giá, thời gian, loại, đơn vị, ảnh); gửi lại làm expectedVersion khi đề xuất sửa.</summary>
         public string? Version { get; set; }
+        /// <summary>Quyền thao tác theo cùng quy tắc với API ghi (server vẫn kiểm tra lại khi lưu).</summary>
+        public bool CanEdit { get; set; } = true;
+        public bool CanChangeAvailability { get; set; } = true;
+        public bool CanDelete { get; set; } = true;
+        /// <summary>InUseByOrders khi còn đơn chưa hoàn tất/hủy dùng dịch vụ.</summary>
+        public string? DeleteReasonCode { get; set; }
         /// <summary>Đang có đề xuất sửa chờ duyệt (của bất kỳ Merchant nào; không lộ nội dung/người gửi).</summary>
         public bool HasPendingProposal { get; set; }
         /// <summary>Đề xuất chờ duyệt của chính Merchant đang xem (nếu có).</summary>

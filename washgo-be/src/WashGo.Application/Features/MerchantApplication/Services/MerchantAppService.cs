@@ -502,6 +502,14 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             return Success(result);
         }
 
+        private async Task<string?> LegacySlaUrlAsync(Guid merchantId) =>
+            (await _merchantRepo.FindAsync(merchantId))?.SlaDocUrl;
+
+        /// <summary>Distinct cities of Merchants (for the Admin filter), computed in the database.</summary>
+        public async Task<BaseResponse<List<string>>> GetCitiesAsync() =>
+            Success(await AsyncExecuter.ToListAsync((await _merchantRepo.GetQueryableAsync())
+                .Where(x => x.City != null && x.City != "").Select(x => x.City!.Trim()).Distinct().OrderBy(x => x)));
+
         private async Task<(string? Error, string? Phone)> ValidateAsync(CreateMerchantCommand command, string email, Guid? currentId)
         {
             var name = command.BusinessName?.Trim() ?? string.Empty;
@@ -530,9 +538,9 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             if (command.ContractStartDate.HasValue && command.ContractEndDate.HasValue &&
                 MerchantContractRules.NormalizeDate(command.ContractEndDate) < MerchantContractRules.NormalizeDate(command.ContractStartDate))
                 return ("Ngày kết thúc hợp đồng phải sau ngày bắt đầu.", null);
-            if (!string.IsNullOrWhiteSpace(command.SlaDocUrl) &&
-                (command.SlaDocUrl.Length > 500 || !Uri.TryCreate(command.SlaDocUrl.Trim(), UriKind.RelativeOrAbsolute, out _)))
-                return ("Không thể upload file. Vui lòng thử lại.", null);
+            // SlaDocUrl is legacy and read-only: new SLA documents go through slaDocumentId (private, permission-checked).
+            if (!string.IsNullOrWhiteSpace(command.SlaDocUrl) && command.SlaDocUrl.Trim() != (currentId.HasValue ? await LegacySlaUrlAsync(currentId.Value) : null))
+                return ("SlaDocUrl đã ngừng ghi; hãy upload tài liệu SLA qua /files/documents và gửi slaDocumentId.", null);
             if (command.ServiceAreaIds is { Count: > 0 } areaIds)
             {
                 var distinct = areaIds.Distinct().ToList();
@@ -564,7 +572,7 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             entity.MaxCapacity = command.MaxCapacity;
             entity.ContractStartDate = MerchantContractRules.NormalizeDate(command.ContractStartDate);
             entity.ContractEndDate = MerchantContractRules.NormalizeDate(command.ContractEndDate);
-            entity.SlaDocUrl = string.IsNullOrWhiteSpace(command.SlaDocUrl) ? null : command.SlaDocUrl.Trim();
+            // Legacy value is kept as is (never written from requests any more).
             entity.UpdatedAt = DateTime.UtcNow;
         }
 

@@ -40,6 +40,13 @@ namespace WashGo.HttpApi.Endpoints.Finance
                 .WithSummary("Xuất báo cáo doanh thu ra file CSV.")
                 .WithOpenApi();
 
+            group.MapPost("/commissions/paged", async (FinancePeriodQuery query, IFinanceAppService svc) =>
+                (await svc.GetCommissionsPageAsync(query)).CustomResult())
+                .RequireAuthorization("AdminOnly")
+                .WithName("Phí hoa hồng theo Merchant (phân trang)")
+                .WithSummary("Như /commissions nhưng phân trang (page, take ≤ 100, sắp doanh thu thuần giảm dần rồi MerchantId); tổng tiền/hoa hồng/coverage là của toàn kỳ, không phụ thuộc trang. Không dùng tỷ lệ hiện tại cho đơn thiếu snapshot.")
+                .WithOpenApi();
+
             group.MapPost("/commissions", async (FinancePeriodQuery query, IFinanceAppService svc) =>
                 (await svc.GetCommissionsAsync(query)).CustomResult())
                 .RequireAuthorization("AdminOnly")
@@ -73,8 +80,8 @@ namespace WashGo.HttpApi.Endpoints.Finance
                 .WithOpenApi();
             group.MapGet("/settlements/{id:guid}", async (Guid id, IFinanceAppService svc) => (await svc.GetSettlementAsync(id)).CustomResult())
                 .RequireAuthorization("MerchantOrAdmin").WithSummary("Chi tiết kỳ đối soát gồm version, số tiền đã chốt và chứng từ; Merchant chỉ xem của mình.").WithOpenApi();
-            group.MapGet("/settlements/{id:guid}/lines", async (Guid id, int? page, int? take, IFinanceAppService svc) => (await svc.GetSettlementLinesAsync(id, page ?? 1, take ?? 20)).CustomResult())
-                .RequireAuthorization("MerchantOrAdmin").WithSummary("Phân trang dòng đối soát từ snapshot; kỳ legacy chưa có snapshot được đánh dấu tại /orders.").WithOpenApi();
+            group.MapGet("/settlements/{id:guid}/lines", async (Guid id, int? page, int? take, IFinanceAppService svc) => { var r = await svc.GetSettlementLinesAsync(id, page ?? 1, take ?? 20); return r.StatusCode == System.Net.HttpStatusCode.OK ? Results.Ok(r) : r.StatusCode == System.Net.HttpStatusCode.NotFound ? Results.NotFound(r) : r.StatusCode == System.Net.HttpStatusCode.Forbidden ? Results.Json(r, statusCode: 403) : Results.BadRequest(r); })
+                .RequireAuthorization("MerchantOrAdmin").WithSummary("Phân trang dòng đối soát; mỗi trang kèm isSnapshot/basis/generatedAt: snapshot lúc chốt kỳ (bất biến) hoặc kỳ cũ tính lại từ nguồn hiện tại (chỉ tham khảo, tổng kỳ giữ nguyên).").WithOpenApi();
 
             group.MapPost("/settlements/{id:guid}/confirm-paid", async (Guid id, ConfirmSettlementPaidCommand command, IFinanceAppService svc) =>
                 (await svc.ConfirmSettlementPaidAsync(id, command)).CustomResult())

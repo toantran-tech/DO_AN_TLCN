@@ -20,6 +20,11 @@ namespace WashGo.HttpApi.Endpoints.Merchant
             .WithTags("Merchant - Quản lý đối tác giặt sấy")
             .RequireAuthorization("AdminOnly");
 
+            group.MapGet("/cities", async (IMerchantAppService svc) => (await svc.GetCitiesAsync()).CustomResult())
+                .WithName("Danh sách tỉnh/thành của Merchant")
+                .WithSummary("Các tỉnh/thành phố khác nhau đang có Merchant (distinct tại DB, sắp theo tên) cho bộ lọc Admin; không trả hồ sơ.")
+                .WithOpenApi();
+
             group.MapGet("/summary", async (IMerchantAppService svc) =>
                 (await svc.GetSummaryAsync()).CustomResult())
                 .WithName("Admin thống kê Merchant")

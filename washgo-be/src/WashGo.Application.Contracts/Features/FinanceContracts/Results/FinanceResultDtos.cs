@@ -35,6 +35,10 @@ namespace WashGo.Application.Contracts.Features.FinanceContracts.Results
         public List<MerchantRevenueDto> ByMerchant { get; set; } = [];
         public List<ServiceRevenueDto> ByService { get; set; } = [];
         public List<DailyRevenueDto> Daily { get; set; } = [];
+        /// <summary>Có khi granularity = hour: thu − hoàn theo từng giờ Việt Nam (start là giờ địa phương kèm +07:00).</summary>
+        public List<HourlyRevenueDto>? Hourly { get; set; }
+        /// <summary>Giới hạn trên thực tế của dữ liệu (min(toDate, asOf)), UTC.</summary>
+        public DateTime AsOf { get; set; }
     }
 
     public class MerchantRevenueDto
@@ -63,7 +67,7 @@ namespace WashGo.Application.Contracts.Features.FinanceContracts.Results
 
     public class MerchantCommissionDto
     {
-        public string CommissionBasis => "Per-order locked rate; refunds reverse that rate in their own period.";
+        public string CommissionBasis => "Per transaction at its own locked rate, rounded to whole VND half away from zero (CommissionMath); refunds reverse commission in their own period.";
         public string DisplayRateBasis => "commissionRate is the current Merchant rate; line snapshots determine money.";
         public Guid MerchantId { get; set; }
         public string MerchantName { get; set; } = string.Empty;
@@ -148,5 +152,37 @@ namespace WashGo.Application.Contracts.Features.FinanceContracts.Results
         public string? PaymentReference { get; set; }
         public DateTime? PaidAt { get; set; }
         public long CreatedOn { get; set; }
+    }
+
+    public class HourlyRevenueDto
+    {
+        public string HourStart { get; set; } = string.Empty;
+        public decimal Revenue { get; set; }
+    }
+
+    /// <summary>Hoa hồng phân trang: totals luôn là tổng toàn phạm vi kỳ, không phụ thuộc trang.</summary>
+    public class CommissionPageDto
+    {
+        public int Page { get; set; }
+        public int Take { get; set; }
+        public int Total { get; set; }
+        public List<MerchantCommissionDto> Items { get; set; } = [];
+        public decimal GrossRevenue { get; set; }
+        public decimal RefundedAmount { get; set; }
+        public decimal NetRevenue { get; set; }
+        public decimal CommissionAmount { get; set; }
+        public decimal PayoutAmount { get; set; }
+        public int OrdersWithoutCommissionSnapshot { get; set; }
+        public bool CommissionComplete { get; set; }
+        public DateTime GeneratedAt { get; set; }
+    }
+
+    /// <summary>Trang dòng đối soát kèm căn cứ của chính trang này.</summary>
+    public class SettlementLinesPageDto : WashGo.Core.Domain.Shared.Bases.PaginatedResult<SettlementOrderLineDto>
+    {
+        /// <summary>true: dòng chụp lúc chốt kỳ (bất biến). false: kỳ cũ chưa có snapshot, dòng tính lại từ nguồn hiện tại để tham khảo; số tiền của kỳ không đổi.</summary>
+        public bool IsSnapshot { get; set; }
+        public string Basis { get; set; } = string.Empty;
+        public DateTime GeneratedAt { get; set; }
     }
 }

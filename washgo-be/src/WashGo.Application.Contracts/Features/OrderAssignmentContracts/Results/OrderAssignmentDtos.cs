@@ -14,6 +14,11 @@ namespace WashGo.Application.Contracts.Features.OrderAssignmentContracts.Results
         public string BoxNumber { get; set; } = string.Empty;
         public LockerBoxSize? BoxSize { get; set; }
         public List<string> Services { get; set; } = [];
+        /// <summary>Dịch vụ của đơn kèm ảnh đại diện hiện tại của dịch vụ.</summary>
+        public List<WashGo.Application.Contracts.Features.WashOrderContracts.Results.OrderServiceRefDto> ServiceItems { get; set; } = [];
+        /// <summary>Ảnh hiện tại của trạm (không phải ảnh chụp lúc đặt đơn); thiếu ảnh = [] / null.</summary>
+        public List<string> LockerImageUrls { get; set; } = [];
+        public string? LockerThumbnailUrl { get; set; }
         public DateTime? DepositedAt { get; set; }
         public string District { get; set; } = string.Empty;
         public string City { get; set; } = string.Empty;

@@ -63,7 +63,7 @@ namespace WashGo.Application.Features.WashServiceApplication.Services
                       order.Status != WashOrderStatus.Completed && order.Status != WashOrderStatus.Cancelled
                 select item.Id);
             if (inUse)
-                return BadRequest<bool>("Không thể xóa dịch vụ đang có đơn hàng.");
+                return AdministrativeWriteGuard.Error<bool>(HttpStatusCode.BadRequest, "InUseByOrders", "Không thể xóa dịch vụ đang có đơn hàng.");
 
             entity.IsDeleted = true;
             entity.IsActive = false;
@@ -104,6 +104,7 @@ namespace WashGo.Application.Features.WashServiceApplication.Services
             var ids = data.Select(x => x.Id).ToList();
             var entities = await _serviceRepo.GetListAsync(x => ids.Contains(x.Id));
             foreach (var dto in data) Fill(dto, entities.First(x => x.Id == dto.Id));
+            await FillActionsAsync(data.ToList());
             return Success(data, total, query.Page, query.Take, total == 0 ? "Chưa có dịch vụ nào." : null);
         }
 
@@ -117,13 +118,44 @@ namespace WashGo.Application.Features.WashServiceApplication.Services
 
             var dto = ObjectMapper.Map<WashService, WashServiceResultDto>(entity);
             Fill(dto, entity);
+            await FillActionsAsync([dto]);
             return Success(dto);
         }
         public async Task<BaseResponse<WashGo.Application.Contracts.Features.AuditContracts.Results.AdministrativeSummaryDto>> GetSummaryAsync()
         {
+            // Service counts and pending proposals come from one repeatable-read snapshot.
+            using var snapshot = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true, isolationLevel: System.Data.IsolationLevel.RepeatableRead);
             var groups = await AsyncExecuter.ToListAsync((await _serviceRepo.GetQueryableAsync()).Where(x => !x.IsDeleted)
                 .GroupBy(x => new { x.ApprovalStatus, x.IsActive }).Select(g => new { g.Key.ApprovalStatus, g.Key.IsActive, Count = g.Count() }));
-            return Success(new WashGo.Application.Contracts.Features.AuditContracts.Results.AdministrativeSummaryDto { Total = groups.Sum(x => x.Count), Counts = groups.ToDictionary(x => $"{x.ApprovalStatus}:{(x.IsActive ? "Active" : "Inactive")}", x => x.Count), GeneratedAt = DateTime.UtcNow });
+            var pending = await AsyncExecuter.CountAsync((await LazyServiceProvider.LazyGetRequiredService<IRepository<WashGo.Domain.Entities.WashService.ServiceChangeRequest, Guid>>()
+                .GetQueryableAsync()).Where(x => x.Status == ServiceApprovalStatus.Pending));
+            await snapshot.CompleteAsync();
+            var counts = groups.ToDictionary(x => $"{x.ApprovalStatus}:{(x.IsActive ? "Active" : "Inactive")}", x => x.Count);
+            counts["PendingProposals"] = pending;
+            return Success(new WashGo.Application.Contracts.Features.AuditContracts.Results.AdministrativeSummaryDto { Total = groups.Sum(x => x.Count), Counts = counts, GeneratedAt = DateTime.UtcNow, PendingProposals = pending });
+        }
+
+        /// <summary>Action metadata from the same rule DeleteAsync applies (active orders block deletion); re-checked at commit.</summary>
+        private async Task FillActionsAsync(List<WashServiceResultDto> dtos)
+        {
+            if (dtos.Count == 0) return;
+            var ids = dtos.Select(x => x.Id).ToList();
+            var inUse = (await AsyncExecuter.ToListAsync(
+                from item in await _itemRepo.GetQueryableAsync()
+                join order in await _orderRepo.GetQueryableAsync() on item.WashOrderId equals order.Id
+                where ids.Contains(item.ServiceId) && !order.IsDeleted && order.Status != WashOrderStatus.Completed && order.Status != WashOrderStatus.Cancelled
+                select item.ServiceId)).ToHashSet();
+            var pendingIds = (await AsyncExecuter.ToListAsync((await LazyServiceProvider.LazyGetRequiredService<IRepository<WashGo.Domain.Entities.WashService.ServiceChangeRequest, Guid>>()
+                .GetQueryableAsync()).Where(x => x.Status == ServiceApprovalStatus.Pending && x.ServiceId != null && ids.Contains(x.ServiceId.Value))
+                .Select(x => x.ServiceId!.Value))).ToHashSet();
+            foreach (var dto in dtos)
+            {
+                dto.CanEdit = true;
+                dto.CanChangeAvailability = true;
+                dto.CanDelete = !inUse.Contains(dto.Id);
+                dto.DeleteReasonCode = dto.CanDelete ? null : "InUseByOrders";
+                dto.HasPendingProposal = pendingIds.Contains(dto.Id);
+            }
         }
 
         private async Task<string?> ValidateAsync(CreateWashServiceCommand command, Guid? currentId)
@@ -210,6 +242,7 @@ namespace WashGo.Application.Features.WashServiceApplication.Services
             if (command.ExpectedVersion != Version(entity)) return AdministrativeWriteGuard.Error<WashServiceResultDto>(HttpStatusCode.Conflict, "VersionMismatch", "Dịch vụ đã thay đổi.");
             if (!Enum.IsDefined(command.ApprovalStatus) || command.RejectionReason?.Length > 1000 || command.ApprovalStatus == ServiceApprovalStatus.Rejected && string.IsNullOrWhiteSpace(command.RejectionReason)) return BadRequest<WashServiceResultDto>("Trạng thái/lý do từ chối không hợp lệ.");
 
+            var unchanged = entity.ApprovalStatus == command.ApprovalStatus && entity.IsActive == command.IsActive && entity.RejectionReason == command.RejectionReason;
             entity.ApprovalStatus = command.ApprovalStatus;
             entity.IsActive = command.IsActive;
             entity.RejectionReason = command.RejectionReason;
@@ -218,6 +251,7 @@ namespace WashGo.Application.Features.WashServiceApplication.Services
             var dto = ObjectMapper.Map<WashService, WashServiceResultDto>(entity);
             Fill(dto, entity);
             var response = Success(dto, "Cập nhật trạng thái dịch vụ thành công!");
+            if (unchanged) AdministrativeBatchExecutor.Unchanged(response);
             await Audit.LogAsync(new AuditEntry("Service", "Status", "WashService", entity.Id.ToString(), entity.Code));
             await Writes.RecordAsync(command.OperationId, CurrentUser.Id!.Value, "Service", "Status", command.ServiceId.ToString(), command, response);
             await uow.CompleteAsync(); return response;
