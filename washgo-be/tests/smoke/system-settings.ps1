@@ -5,6 +5,8 @@ param(
     [string]$Database='washgo_db'
 )
 . "$PSScriptRoot/order-security.ps1" -BaseUrl $BaseUrl -PostgresContainer $PostgresContainer -PostgresUser $PostgresUser -Database $Database -HelpersOnly
+# Older checks below predate settings versions: let the helper send the current version (opt-in, this script only).
+$global:AutoSettingsVersion=$true
 
 # LOCAL DEV ONLY: changes the global settings row and restores the original values in
 # finally; uses a private locker/service and one fixture Merchant account.
