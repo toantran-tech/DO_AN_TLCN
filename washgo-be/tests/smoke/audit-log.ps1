@@ -28,20 +28,25 @@ try {
     Write-Output '2. Settings change records field names with before/after values'
     $oldRate=(Call-Api Get '/system-setting/' $null $admin).data.defaultCommissionRate
     $newRate=if($oldRate -eq 13){14}else{13}
-    Call-Api Put '/system-setting/commission' @{defaultCommissionRate=$newRate} $admin | Out-Null
+    Call-Api Put '/system-setting/commission' @{defaultCommissionRate=$newRate;expectedVersion=(Call-Api Get '/system-setting/' $null $admin).data.version} $admin | Out-Null
     $s=(Call-Api Post '/admin/audit-logs/filter' @{module='SystemSetting';fromDate=$start;take=5} $admin).list[0]
     if((@($s.changedFields) -join ',') -ne 'defaultCommissionRate' -or $s.details.before.defaultCommissionRate -ne $oldRate -or $s.details.after.defaultCommissionRate -ne $newRate -or $s.actorRole -ne 'Admin'){throw "Settings audit wrong: $($s | ConvertTo-Json -Depth 5 -Compress)"}
 
     Write-Output '3. Merchant lock/unlock with reason; detail by id'
     $sessions.Team=New-FixtureMerchant $run; $teamId="$($sessions.Team.user.id)"
-    Call-Api Put '/merchant/status' @{merchantId=$teamId;status=3;rejectionReason="Smoke lock $run";confirm=$true;expectedVersion=(Call-Api Get "/merchant/$teamId" $null $admin).data.version} $admin | Out-Null
+    Call-Api Put '/merchant/status' @{merchantId=$teamId;status=3;rejectionReason="Smoke lock $run CCCD 012345678901";confirm=$true;expectedVersion=(Call-Api Get "/merchant/$teamId" $null $admin).data.version} $admin | Out-Null
     Call-Api Put '/merchant/status' @{merchantId=$teamId;status=1;confirm=$true;expectedVersion=(Call-Api Get "/merchant/$teamId" $null $admin).data.version} $admin | Out-Null
     # Locking revoked the Merchant's sessions: sign in again for the access-control checks.
     $sessions.Team=(Call-Api Post '/auth/login' @{email="team-$run@example.com";password='Merchant@123'} $null).data
     $m=(Call-Api Post '/admin/audit-logs/filter' @{resourceType='Merchant';resourceId=$teamId;take=10} $admin)
-    if($m.total -ne 2 -or $m.list[0].action -ne 'Unlock' -or $m.list[1].action -ne 'Lock' -or $m.list[1].reason -ne "Smoke lock $run"){throw "Merchant audit wrong: $($m.list | ConvertTo-Json -Depth 3 -Compress)"}
+    if($m.total -ne 2 -or $m.list[0].action -ne 'Unlock' -or $m.list[1].action -ne 'Lock' -or $m.list[1].reason -ne "Smoke lock $run CCCD [number]"){throw "Merchant audit wrong: $($m.list | ConvertTo-Json -Depth 3 -Compress)"}
     $d=(Call-Api Get "/admin/audit-logs/$($m.list[1].id)" $null $admin).data
     if($d.resourceCode -notmatch $run -or -not $d.occurredAt.ToString().Length){throw 'Detail wrong.'}
+
+    Write-Output '3b. Rejected writes are recorded as Failed/Denied with an error code'
+    try { Call-Api Put '/merchant/status' @{merchantId=$teamId;status=3;rejectionReason="Rejected $run";confirm=$true;expectedVersion='stale'} $admin | Out-Null; throw 'Stale write accepted.' } catch { if($_.Exception.Message -eq 'Stale write accepted.'){throw} }
+    $rej=@((Call-Api Post '/admin/audit-logs/filter' @{module='merchant';fromDate=$start;take=50} $admin).list | Where-Object { $_.action -eq 'PUT /merchant/status' -and $_.result -ne 1 })
+    if($rej.Count -lt 1 -or $rej[0].result -notin 2,3 -or -not $rej[0].errorCode -or $rej[0].actorId -ne $adminId){throw "Rejected write not audited: $($rej | ConvertTo-Json -Compress)"}
 
     Write-Output '4. My activities, filters, paging, access control, read-only'
     $mine=(Call-Api Get '/admin/me/activities?take=2' $null $admin)
@@ -59,7 +64,7 @@ try {
     Write-Output 'PASS: failed/successful sign-in and logout logged (no password); settings change logs changed field names with before/after; Merchant lock/unlock logged with reason and found by resource; detail by id; /admin/me/activities shows only own actions; filters by module/action/result/time/keyword with paging; Admin only; no update/delete API.'
 }
 finally {
-    if($null -ne $oldRate){ try{Call-Api Put '/system-setting/commission' @{defaultCommissionRate=$oldRate} $admin | Out-Null}catch{Write-Warning 'Could not restore commission rate.'} }
+    if($null -ne $oldRate){ try{Call-Api Put '/system-setting/commission' @{defaultCommissionRate=$oldRate;expectedVersion=(Call-Api Get '/system-setting/' $null $admin).data.version} $admin | Out-Null}catch{Write-Warning 'Could not restore commission rate.'} }
     foreach($session in $sessions.Values){try{Call-Api Post '/auth/logout' @{refreshToken=$session.refreshToken} $session.accessToken|Out-Null}catch{Write-Warning 'Smoke session logout failed.'}}
     Remove-FixtureMerchant $teamId
 }

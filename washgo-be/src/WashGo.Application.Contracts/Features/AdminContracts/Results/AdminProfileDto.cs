@@ -15,8 +15,8 @@ namespace WashGo.Application.Contracts.Features.AdminContracts.Results
         /// <summary>Active hoặc Locked.</summary>
         public string AccountStatus { get; set; } = "Active";
         public DateTime? LastLoginAt { get; set; }
-        /// <summary>Phiên bản hồ sơ: gửi lại trong expectedVersion khi lưu; lệch → 409.</summary>
-        public long Version { get; set; }
+        /// <summary>Phiên bản hồ sơ dạng chuỗi opaque (không parse thành số): gửi lại nguyên văn trong expectedVersion; lệch → 409.</summary>
+        public string Version { get; set; } = string.Empty;
         /// <summary>Các trường được phép tự sửa. Email không sửa tại đây (cần quy trình xác minh riêng).</summary>
         public string[] EditableFields { get; set; } = ["fullName", "phone", "avatar"];
     }

@@ -58,11 +58,11 @@ namespace WashGo.Application.Features.AuditApplication.Services
                 Action = e.Action,
                 ResourceType = e.ResourceType,
                 ResourceId = e.ResourceId,
-                ResourceCode = Cut(e.ResourceCode, 200),
+                ResourceCode = Cut(Scrub(e.ResourceCode), 200),
                 Result = e.Result,
-                Reason = Cut(e.Reason, 1000),
+                Reason = Cut(Scrub(e.Reason), 1000),
                 ErrorCode = Cut(e.ErrorCode, 60),
-                ChangedFields = e.ChangedFields == null ? null : Cut(string.Join(",", e.ChangedFields), 1000),
+                ChangedFields = e.ChangedFields == null ? null : Cut(Scrub(string.Join(",", e.ChangedFields)), 1000),
                 Details = Sanitize(e.Details),
                 CorrelationId = Cut(_correlation.Get(), 100)
             }, autoSave: true);
@@ -90,6 +90,23 @@ namespace WashGo.Application.Features.AuditApplication.Services
 
         private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
 
+        private static readonly System.Text.RegularExpressions.Regex Jwt = new(@"eyJ[\w-]+\.[\w-]+\.[\w-]+", System.Text.RegularExpressions.RegexOptions.Compiled);
+        private static readonly System.Text.RegularExpressions.Regex SignedQuery = new(@"\?[^\s""']*(sig|signature|token|expires|x-amz-[a-z-]+|access_token)=[^\s""']*",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
+        private static readonly System.Text.RegularExpressions.Regex LongDigits = new(@"(?<!\d)\d{9,12}(?!\d)", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+        /// <summary>
+        /// Free text never carries secrets: JWT-like tokens, signed download URL queries and 9-12 digit numbers (identity card, account
+        /// numbers) are masked. Applied to reason, resource code, changed fields and every string value of details.
+        /// </summary>
+        public static string? Scrub(string? value)
+        {
+            if (string.IsNullOrEmpty(value)) return value;
+            value = Jwt.Replace(value, "[token]");
+            value = SignedQuery.Replace(value, "?[signed]");
+            return LongDigits.Replace(value, "[number]");
+        }
+
         private static string? Cut(string? value, int max) => value == null ? null : value.Length <= max ? value : value[..max];
 
         /// <summary>Serialises details and drops every key that could carry a secret, a locker code or identity data.</summary>
@@ -111,6 +128,8 @@ namespace WashGo.Application.Features.AuditApplication.Services
                     if (key.Equals("pin", StringComparison.OrdinalIgnoreCase) || key.Equals("qr", StringComparison.OrdinalIgnoreCase) ||
                         SensitiveKeys.Any(k => key.Contains(k, StringComparison.OrdinalIgnoreCase)))
                         obj.Remove(key);
+                    else if (obj[key] is JsonValue v && v.TryGetValue<string>(out var text))
+                        obj[key] = Scrub(text);
                     else
                         Strip(obj[key]);
                 }

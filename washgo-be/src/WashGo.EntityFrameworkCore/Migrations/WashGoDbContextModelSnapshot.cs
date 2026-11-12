@@ -802,6 +802,10 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("is_revoked");
 
+                    b.Property<Guid?>("SessionKey")
+                        .HasColumnType("uuid")
+                        .HasColumnName("session_key");
+
                     b.Property<DateTime?>("StartedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("started_at");

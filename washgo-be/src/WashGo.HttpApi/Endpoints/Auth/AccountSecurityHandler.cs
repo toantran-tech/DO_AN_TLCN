@@ -38,10 +38,10 @@ namespace WashGo.HttpApi.Endpoints.Auth
                 .WithSummary("Đổi mật khẩu khi đang đăng nhập: cần mật khẩu hiện tại; mật khẩu mới 8-128 ký tự có hoa/thường/số, khác mật khẩu cũ. Sai mật khẩu hiện tại 5 lần trong 15 phút → 429. revokeOtherSessions (mặc định true) đăng xuất mọi phiên khác, giữ phiên hiện tại.")
                 .WithOpenApi();
 
-            group.MapGet("/sessions", async (HttpContext http, IAccountSecurityAppService svc) =>
-                    TryIds(http, out var u, out var s) ? (await svc.GetSessionsAsync(u, s)).CustomResult() : Results.Unauthorized())
+            group.MapGet("/sessions", async ([AsParameters] WashGo.Application.Contracts.Features.AuthContracts.Queries.SessionListQuery query, HttpContext http, IAccountSecurityAppService svc) =>
+                    TryIds(http, out var u, out var s) ? (await svc.GetSessionsAsync(u, s, query)).CustomResult() : Results.Unauthorized())
                 .WithName("Danh sách phiên đăng nhập")
-                .WithSummary("Các phiên còn hiệu lực của chính tài khoản: lúc đăng nhập, lần hoạt động/làm mới gần nhất, hạn, User-Agent, isCurrent. Phiên hiện tại đứng đầu.")
+                .WithSummary("Các phiên còn hiệu lực của chính tài khoản, phân trang (page, take ≤ 100, total, hasMore), mới hoạt động nhất trước; `current` luôn trả phiên đang dùng. Id là phiên logic ổn định qua các lần làm mới token.")
                 .WithOpenApi();
 
             group.MapPost("/sessions/revoke-others", async (HttpContext http, IAccountSecurityAppService svc) =>
@@ -53,7 +53,7 @@ namespace WashGo.HttpApi.Endpoints.Auth
             group.MapDelete("/sessions/{id:guid}", async (Guid id, HttpContext http, IAccountSecurityAppService svc) =>
                     TryIds(http, out var u, out var s) ? (await svc.RevokeSessionAsync(u, s, id)).CustomResult() : Results.Unauthorized())
                 .WithName("Đăng xuất một phiên")
-                .WithSummary("Thu hồi một phiên của chính tài khoản (chọn phiên hiện tại = đăng xuất). Phiên của tài khoản khác → 404.")
+                .WithSummary("Thu hồi một phiên logic của chính tài khoản (mọi token của phiên, kể cả token mới sau làm mới); chọn phiên hiện tại = đăng xuất. Phiên đã kết thúc → revoked = 0, stale = true. Phiên của tài khoản khác → 404.")
                 .WithOpenApi();
         }
     }
