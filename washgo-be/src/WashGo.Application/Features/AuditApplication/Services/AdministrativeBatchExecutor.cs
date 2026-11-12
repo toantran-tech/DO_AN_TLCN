@@ -66,8 +66,14 @@ public class AdministrativeBatchExecutor(IUnitOfWorkManager units, Administrativ
         var code = MetaValue(response.Meta, "code");
         var outcome = response.Succeeded ? (MetaValue(response.Meta, "outcome") == "Unchanged" ? "Unchanged" : "Changed")
             : response.StatusCode == HttpStatusCode.NotFound ? "Skipped" : "Failed";
+        object? data = response.Succeeded ? response.Data : null;
+        if (data is JsonElement { ValueKind: JsonValueKind.Object } json)
+            data = new JsonDataView(json);
+        string? Prop(string name) => data is JsonDataView v ? v.Get(name) : data?.GetType().GetProperty(name)?.GetValue(data)?.ToString();
+        bool? Flag(string name) => bool.TryParse(Prop(name), out var b) ? b : null;
         return new()
         {
+            Version = Prop("Version"), IsHidden = Flag("IsHidden"), IsActive = Flag("IsActive"),
             Id = id, Succeeded = response.Succeeded, StatusCode = (int)response.StatusCode, Message = response.Message, Outcome = outcome,
             ReasonCode = outcome switch
             {
@@ -77,6 +83,15 @@ public class AdministrativeBatchExecutor(IUnitOfWorkManager units, Administrativ
                 _ => code ?? (response.StatusCode == HttpStatusCode.BadRequest ? "Rejected" : response.StatusCode.ToString())
             }
         };
+    }
+
+    private sealed class JsonDataView(JsonElement json)
+    {
+        public string? Get(string name)
+        {
+            var p = json.EnumerateObject().FirstOrDefault(x => string.Equals(x.Name, name, StringComparison.OrdinalIgnoreCase));
+            return p.Value.ValueKind switch { JsonValueKind.String => p.Value.GetString(), JsonValueKind.True => "True", JsonValueKind.False => "False", _ => null };
+        }
     }
 
     /// <summary>Reads Meta.{name} whether Meta is an in-process anonymous object or a replayed JSON element.</summary>

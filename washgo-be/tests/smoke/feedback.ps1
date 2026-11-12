@@ -74,6 +74,21 @@ function Assert-MerchantRating {
     $actual=Sql "SELECT rating FROM washgo.merchants WHERE user_id='$merchantId';"
     if([decimal]$expected -ne [decimal]$actual){throw "Merchant rating $actual != visible average $expected."}
 }
+function Parallel-Send($Requests) {
+    $jobs=@()
+    try {
+        foreach($request in $Requests){
+            $jobs+=Start-Job -ScriptBlock {
+                param($Method,$Url,$Token,$Body)
+                try {
+                    $r=Invoke-WebRequest $Url -UseBasicParsing -Method $Method -ContentType 'application/json' -Headers @{Authorization="Bearer $Token"} -Body $Body
+                    [int]$r.StatusCode
+                } catch {if(!$_.Exception.Response){throw};[int]$_.Exception.Response.StatusCode}
+            } -ArgumentList $request.method,$request.url,$request.token,$request.body
+        }
+        @($jobs|Wait-Job|Receive-Job)
+    } finally {$jobs|Stop-Job -ErrorAction SilentlyContinue;$jobs|Remove-Job -Force -ErrorAction SilentlyContinue}
+}
 function Parallel-Post($Requests) {
     $jobs=@()
     try {
@@ -209,11 +224,26 @@ INSERT INTO washgo.services SELECT (jsonb_populate_record(NULL::washgo.services,
     $bi=$b.items | Where-Object { $_.id -eq $rating.id }; $bo=$b.items | Where-Object { $_.id -ne $rating.id }
     if($bi.outcome -ne 'Changed' -or $bo.outcome -ne 'Skipped' -or $b.totals.changed -ne 1 -or $b.totals.skipped -ne 1){throw "Rating batch wrong: $($b | ConvertTo-Json -Depth 4 -Compress)"}
     $v2=(Call-Api Get "/rating/$($rating.id)" $null $admin).data.version
+    if($bi.version -ne $v2 -or $bi.isHidden -ne $false -or $null -ne $bo.version){throw 'Batch item lacks the new version/isHidden.'}
     $b2=(Call-Api Post '/rating/batch' @{operationId=[Guid]::NewGuid();action='Show';items=@(@{id=$rating.id;expectedVersion=$v2})} $admin).data
     if($b2.items[0].outcome -ne 'Unchanged' -or $b2.totals.unchanged -ne 1){throw 'Already visible not Unchanged.'}
     if((Call-Api Get "/admin-operations/Rating/$bop" $null $admin).data.state -ne 'Completed'){throw 'Rating batch lookup failed.'}
     $audit=(Call-Api Post '/admin/audit-logs/filter' @{module='Rating';resourceId="$($rating.id)";take=20} $admin).list
     if(@($audit | Where-Object { $_.action -eq 'Hide' }).Count -lt 1 -or @($audit | Where-Object { $_.action -eq 'Show' }).Count -lt 1){throw 'Rating moderation not audited.'}
+    Assert-MerchantRating
+    Write-Output '5c. Concurrency: two Admins with the same version; a new rating while another is being hidden'
+    $vc=(Call-Api Get "/rating/$($rating.id)" $null $admin).data.version
+    $hideBody=(@{isHidden=$true;reason='Song song';expectedVersion=$vc}|ConvertTo-Json -Compress)
+    $two=Parallel-Send @(
+        @{method='Patch';url="$BaseUrl/rating/$($rating.id)/visibility";token=$admin;body=$hideBody},
+        @{method='Patch';url="$BaseUrl/rating/$($rating.id)/visibility";token=$admin;body=$hideBody})
+    if(@($two|Where-Object{$_ -eq 200}).Count -ne 1 -or @($two|Where-Object{$_ -eq 409}).Count -ne 1){throw "Concurrent moderation wrong: $two"}
+    $o5=New-CompletedOrder
+    $vh=(Call-Api Get "/rating/$($rating.id)" $null $admin).data.version
+    $mixed=Parallel-Send @(
+        @{method='Post';url="$BaseUrl/rating/";token=$customer;body=(@{orderId=$o5.id;overallStars=1}|ConvertTo-Json -Compress)},
+        @{method='Patch';url="$BaseUrl/rating/$($rating.id)/visibility";token=$admin;body=(@{isHidden=$false;expectedVersion=$vh}|ConvertTo-Json -Compress)})
+    if(@($mixed|Where-Object{$_ -in 200,201}).Count -ne 2){throw "Create + moderation race failed: $mixed"}
     Assert-MerchantRating
     $o4=New-CompletedOrder
     $cop=[Guid]::NewGuid()

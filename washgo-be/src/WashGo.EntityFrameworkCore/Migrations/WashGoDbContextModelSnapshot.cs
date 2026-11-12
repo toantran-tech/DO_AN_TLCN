@@ -3094,6 +3094,10 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("numeric(5,2)")
                         .HasColumnName("commission_rate_applied");
 
+                    b.Property<string>("CommissionSnapshotSource")
+                        .HasColumnType("text")
+                        .HasColumnName("commission_snapshot_source");
+
                     b.Property<string>("Created")
                         .HasColumnType("jsonb")
                         .HasColumnName("created");

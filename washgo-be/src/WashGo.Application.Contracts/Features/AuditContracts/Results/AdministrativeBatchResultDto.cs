@@ -26,4 +26,10 @@ public class AdministrativeBatchItemResultDto
     public string Outcome { get; set; } = "Failed";
     /// <summary>Mã lý do ổn định khi Unchanged/Skipped/Failed (ví dụ AlreadyInTargetState, NotFound, VersionMismatch, InUse).</summary>
     public string? ReasonCode { get; set; }
+    /// <summary>Version mới của tài nguyên sau thao tác (Changed/Unchanged); dùng làm expectedVersion cho lần sau.</summary>
+    public string? Version { get; set; }
+    /// <summary>Đánh giá: trạng thái ẩn sau thao tác.</summary>
+    public bool? IsHidden { get; set; }
+    /// <summary>Khuyến mãi/dịch vụ: trạng thái hoạt động sau thao tác.</summary>
+    public bool? IsActive { get; set; }
 }

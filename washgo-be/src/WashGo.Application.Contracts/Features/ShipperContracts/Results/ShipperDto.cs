@@ -29,7 +29,7 @@ namespace WashGo.Application.Contracts.Features.ShipperContracts.Results
         public int ActiveTaskCount { get; set; }
         /// <summary>Không còn dùng (đã bỏ chấm sao Shipper): giữ tạm để tương thích, không dùng cho quyết định nghiệp vụ.</summary>
         public decimal Rating { get; set; }
-        /// <summary>Không còn dùng (đã bỏ chấm sao Shipper).</summary>
+        /// <summary>Không còn dùng (đã bỏ chấm sao Shipper): luôn chỉ để tương thích.</summary>
         public bool HasRating => Rating > 0;
         public string? IdentityNumber { get; set; }
         /// <summary>Tương thích cũ: [mặt trước, mặt sau] khi đã rõ mặt, nếu không là mảng ảnh cũ.</summary>

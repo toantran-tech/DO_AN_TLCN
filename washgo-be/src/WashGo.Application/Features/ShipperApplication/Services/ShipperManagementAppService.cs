@@ -111,12 +111,14 @@ namespace WashGo.Application.Features.ShipperApplication.Services
             }
 
             var sorts = query.SortBy ?? [];
+            // Shipper star ratings were dropped: sortBy is no longer supported; a legacy Rating sort is ignored (default order).
             if (sorts.Any(x => !string.Equals(x.Field, "Rating", StringComparison.OrdinalIgnoreCase)))
                 return new PaginatedResult<ShipperDto>
                 {
                     Succeeded = false, StatusCode = System.Net.HttpStatusCode.BadRequest,
-                    Message = "Chỉ hỗ trợ sắp xếp theo Rating.", CurrentPage = query.Page, PageSize = query.Take
+                    Message = "Danh sách Shipper không hỗ trợ sắp xếp tùy chọn.", CurrentPage = query.Page, PageSize = query.Take
                 };
+            sorts = [];
 
             var page = Math.Max(1, query.Page);
             var take = Math.Clamp(query.Take, 1, 100);
@@ -204,7 +206,12 @@ namespace WashGo.Application.Features.ShipperApplication.Services
                 CurrentUser.Id!.Value, 0, out var images);
             if (imageError != null)
                 return BadRequest<ShipperDto>(imageError);
+            // The advisory lock only lives inside a transaction: hold one (gate) until the account is committed, so a concurrent
+            // send with the same key waits and is then answered by the replay below instead of a duplicate-phone error.
+            using var gate = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
             await _orderRepo.AcquireLockAsync($"shipper-phone:{phone}");
+            if (command.ClientRequestId.HasValue && await ReplayCreateAsync(merchantId.Value, command) is { } lockedReplay)
+                return lockedReplay;
             var duplicate = await DuplicateErrorAsync(phone, email, null);
             if (duplicate != null)
                 return BadRequest<ShipperDto>(duplicate);
@@ -252,6 +259,7 @@ namespace WashGo.Application.Features.ShipperApplication.Services
                     return winner;
                 throw;
             }
+            await gate.CompleteAsync();
 
             // Spec 6a: a failed delivery is logged but the account stays created; the outcome is stored as data.
             var sent = await _emailSender.SendAccountCredentialsAsync(email, fullName, temporaryPassword);
