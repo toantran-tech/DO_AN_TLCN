@@ -10,6 +10,13 @@ namespace WashGo.Application.Contracts.Features.FinanceContracts.Queries
         public long? FromDate { get; set; }
         public long? ToDate { get; set; }
         public Guid? MerchantId { get; set; }
+        /// <summary>Unix giây: chỉ tính giao dịch đến thời điểm này (truyền generatedAt của báo cáo đang xem khi xuất CSV để khớp dữ liệu).</summary>
+        public long? AsOf { get; set; }
+        /// <summary>"day" (mặc định) hoặc "hour" (chỉ khi kỳ ≤ 48 giờ): bucket theo giờ Việt Nam từ giao dịch thật.</summary>
+        public string? Granularity { get; set; }
+        /// <summary>Chỉ dùng cho /finance/commissions/paged: page từ 1, take 1-100 (mặc định 20).</summary>
+        public int? Page { get; set; }
+        public int? Take { get; set; }
     }
 
     public class SettlementFilterQuery : BaseFilterQuery

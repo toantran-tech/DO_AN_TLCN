@@ -7,6 +7,9 @@ namespace WashGo.Application.Contracts.Features.PromotionContracts.Results
     {
     public string Version { get; set; } = string.Empty;
     public bool CanDelete { get; set; }
+    /// <summary>false khi mã đã từng được dùng (kể cả lượt đã hoàn tác): server chặn đổi mã.</summary>
+    public bool CanChangeCode { get; set; } = true;
+    public string? ChangeCodeReasonCode { get; set; }
         public Guid Id { get; set; }
         public string Code { get; set; } = string.Empty;
         public string? Description { get; set; }

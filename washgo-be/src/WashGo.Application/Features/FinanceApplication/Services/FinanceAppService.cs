@@ -123,6 +123,14 @@ namespace WashGo.Application.Features.FinanceApplication.Services
             var (from, to, error) = Period(query.FromDate, query.ToDate);
             if (error != null)
                 return BadRequest<RevenueReportDto>(error);
+            var hourly = string.Equals(query.Granularity?.Trim(), "hour", StringComparison.OrdinalIgnoreCase);
+            if (query.Granularity != null && !hourly && !string.Equals(query.Granularity.Trim(), "day", StringComparison.OrdinalIgnoreCase))
+                return BadRequest<RevenueReportDto>("granularity chỉ nhận day hoặc hour.");
+            if (hourly && (to - from).TotalHours > 48)
+                return BadRequest<RevenueReportDto>("Biểu đồ theo giờ chỉ áp dụng cho kỳ tối đa 48 giờ.");
+            if (query.AsOf is < 0 or > 253402300799) return BadRequest<RevenueReportDto>("asOf không hợp lệ.");
+            if (query.AsOf is > 0 && DateTimeOffset.FromUnixTimeSeconds(query.AsOf.Value).UtcDateTime < to)
+                to = DateTimeOffset.FromUnixTimeSeconds(query.AsOf.Value).UtcDateTime;
             var payments = await PaymentsAsync(from, to, query.MerchantId);
             var refunds = await RefundsAsync(from, to, query.MerchantId);
             var merchants = await MerchantsAsync(payments.Select(x => x.MerchantId).Concat(refunds.Select(x => x.MerchantId)));
@@ -171,6 +179,13 @@ namespace WashGo.Application.Features.FinanceApplication.Services
                     }).ToList()
             };
             report.TotalRevenue = report.LaundryRevenue + report.StorageFeeRevenue + report.CancellationFeeRevenue - report.RefundedAmount;
+            report.AsOf = DateTime.SpecifyKind(to, DateTimeKind.Utc);
+            if (hourly)
+                report.Hourly = payments.Select(x => (Hour: Hour(x.CompletedAt + VietnamOffset), x.Amount))
+                    .Concat(refunds.Select(x => (Hour: Hour(x.RefundedAt + VietnamOffset), Amount: -x.Amount)))
+                    .GroupBy(x => x.Hour).OrderBy(g => g.Key)
+                    .Select(g => new HourlyRevenueDto { HourStart = g.Key.ToString("yyyy-MM-ddTHH:00:00", CultureInfo.InvariantCulture) + "+07:00", Revenue = g.Sum(x => x.Amount) })
+                    .ToList();
             var empty = payments.Count == 0 && refunds.Count == 0;
             await snapshot.CompleteAsync();
             return Success(report, empty ? "Không có dữ liệu trong khoảng thời gian này." : null);
@@ -189,8 +204,12 @@ namespace WashGo.Application.Features.FinanceApplication.Services
             csv.AppendLine($"GeneratedAtUtc,{r.GeneratedAt:O}");
             csv.AppendLine("Timezone,Asia/Ho_Chi_Minh");
             csv.AppendLine("Currency,VND");
-            csv.AppendLine($"Tu ngay,{r.FromDate:yyyy-MM-dd HH:mm}");
-            csv.AppendLine($"Den ngay,{r.ToDate:yyyy-MM-dd HH:mm}");
+            // Bounds are printed in Vietnam time with an explicit offset (never a UTC wall clock under a VN label).
+            static string Vn(DateTime utc) => new DateTimeOffset(DateTime.SpecifyKind(utc, DateTimeKind.Utc)).ToOffset(VietnamOffset).ToString("yyyy-MM-ddTHH:mm:sszzz", CultureInfo.InvariantCulture);
+            csv.AppendLine($"Tu ngay,{Vn(r.FromDate)}");
+            csv.AppendLine($"Den ngay,{Vn(r.ToDate)}");
+            csv.AppendLine($"Du lieu den (asOf),{Vn(r.AsOf)}");
+            csv.AppendLine("Ghi chu,Ban tinh tai thoi diem xuat; truyen asOf = generatedAt cua bao cao dang xem de khop du lieu");
             csv.AppendLine($"Tong doanh thu,{N(r.TotalRevenue)}");
             csv.AppendLine($"Tien giat,{N(r.LaundryRevenue)}");
             csv.AppendLine($"Phi qua han/luu kho,{N(r.StorageFeeRevenue)}");
@@ -265,6 +284,27 @@ namespace WashGo.Application.Features.FinanceApplication.Services
                     UncoveredNetAmount = uncoveredNet
                 };
             }).OrderByDescending(x => x.NetRevenue).ToList();
+        }
+
+        private static DateTime Hour(DateTime local) => new(local.Year, local.Month, local.Day, local.Hour, 0, 0);
+
+        public async Task<BaseResponse<CommissionPageDto>> GetCommissionsPageAsync(FinancePeriodQuery query)
+        {
+            var all = await GetCommissionsAsync(query);
+            if (!all.Succeeded || all.Data == null)
+                return new BaseResponse<CommissionPageDto> { Succeeded = false, StatusCode = all.StatusCode, Message = all.Message, Meta = all.Meta };
+            var page = Math.Max(1, query.Page ?? 1);
+            var take = Math.Clamp(query.Take ?? 20, 1, 100);
+            var rows = all.Data.OrderByDescending(x => x.NetRevenue).ThenBy(x => x.MerchantId).ToList();
+            return Success(new CommissionPageDto
+            {
+                Page = page, Take = take, Total = rows.Count, GeneratedAt = DateTime.UtcNow,
+                Items = rows.Skip((page - 1) * take).Take(take).ToList(),
+                GrossRevenue = rows.Sum(x => x.GrossRevenue), RefundedAmount = rows.Sum(x => x.RefundedAmount), NetRevenue = rows.Sum(x => x.NetRevenue),
+                CommissionAmount = rows.Sum(x => x.CommissionAmount), PayoutAmount = rows.Sum(x => x.PayoutAmount),
+                OrdersWithoutCommissionSnapshot = rows.Sum(x => x.OrdersWithoutCommissionSnapshot),
+                CommissionComplete = rows.All(x => x.CommissionComplete)
+            });
         }
 
         public async Task<BaseResponse<List<MerchantCommissionDto>>> GetCommissionsAsync(FinancePeriodQuery query)
@@ -444,8 +484,15 @@ namespace WashGo.Application.Features.FinanceApplication.Services
                 ? NotFound<SettlementDto>("Không tìm thấy kỳ đối soát.") : Success(ToDto(settlement));
         }
 
-        public async Task<PaginatedResult<SettlementOrderLineDto>> GetSettlementLinesAsync(Guid id, int page, int take)
+        public async Task<SettlementLinesPageDto> GetSettlementLinesAsync(Guid id, int page, int take)
         {
+            static SettlementLinesPageDto Page(PaginatedResult<SettlementOrderLineDto> r, bool snapshot) => new()
+            {
+                List = r.List, StatusCode = r.StatusCode, CurrentPage = r.CurrentPage, TotalPages = r.TotalPages, Total = r.Total,
+                PageSize = r.PageSize, Message = r.Message, Succeeded = r.Succeeded, IsSnapshot = snapshot, GeneratedAt = DateTime.UtcNow,
+                Basis = snapshot ? "SettlementSnapshot: dòng chụp lúc chốt kỳ, bất biến."
+                                 : "LegacyRecomputed: kỳ cũ chưa có snapshot, dòng tính lại từ giao dịch hiện tại để tham khảo; tổng tiền của kỳ giữ nguyên."
+            };
             page = Math.Max(1, page); take = Math.Clamp(take, 1, 100);
             if (!CurrentUser.Id.HasValue) return new() { Succeeded = false, StatusCode = HttpStatusCode.Forbidden };
             using var snapshot = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true, isolationLevel: System.Data.IsolationLevel.RepeatableRead);
@@ -453,14 +500,14 @@ namespace WashGo.Application.Features.FinanceApplication.Services
             if (stored.HasValue)
             {
                 var lines = stored.Value.Lines.Select(x => JsonSerializer.Deserialize<SettlementOrderLineDto>(x)!).ToList();
-                await snapshot.CompleteAsync(); return Success(lines, stored.Value.Total, page, take);
+                await snapshot.CompleteAsync(); return Page(Success(lines, stored.Value.Total, page, take), true);
             }
             // Legacy periods have no frozen rows: the bounded live breakdown is explicitly a fallback.
             var result = await GetSettlementBreakdownAsync(id);
             if (!result.Succeeded || result.Data == null) return new() { Succeeded = false, StatusCode = result.StatusCode, Message = result.Message };
             page = Math.Max(1, page); take = Math.Clamp(take, 1, 100);
             await snapshot.CompleteAsync();
-            return Success(result.Data.Lines.Skip((int)Math.Min(int.MaxValue, ((long)page - 1) * take)).Take(take).ToList(), result.Data.Lines.Count, page, take);
+            return Page(Success(result.Data.Lines.Skip((int)Math.Min(int.MaxValue, ((long)page - 1) * take)).Take(take).ToList(), result.Data.Lines.Count, page, take), result.Data.IsSnapshot);
         }
 
         public async Task<BaseResponse<SettlementBreakdownDto>> GetSettlementBreakdownAsync(Guid id)

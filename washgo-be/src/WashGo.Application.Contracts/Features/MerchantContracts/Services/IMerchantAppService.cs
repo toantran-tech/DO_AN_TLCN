@@ -15,6 +15,7 @@ namespace WashGo.Application.Contracts.Features.MerchantContracts.Services
     {
         Task<PaginatedResult<MerchantResultDto>> GetListAsync(MerchantFilterQuery query);
         Task<BaseResponse<MerchantSummaryDto>> GetSummaryAsync();
+        Task<BaseResponse<List<string>>> GetCitiesAsync();
         Task<BaseResponse<MerchantOperationResultDto>> GetOperationAsync(Guid operationId);
         Task<BaseResponse<MerchantResultDto>> GetByIdAsync(Guid id);
         Task<BaseResponse<MerchantResultDto>> CreateAsync(CreateMerchantCommand command);

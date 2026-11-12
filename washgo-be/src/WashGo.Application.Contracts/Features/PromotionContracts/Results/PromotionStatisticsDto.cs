@@ -5,6 +5,13 @@ namespace WashGo.Application.Contracts.Features.PromotionContracts.Results
 {
     public class PromotionStatisticsDto
     {
+        /// <summary>Thời điểm tính (UTC); mỗi lần gọi/xuất CSV là một lần tính mới.</summary>
+        public DateTime GeneratedAt { get; set; }
+        /// <summary>Kỳ thống kê thực tế (UTC); không gửi ngày = 30 ngày gần nhất; tối đa 366 ngày.</summary>
+        public DateTime FromDate { get; set; }
+        public DateTime ToDate { get; set; }
+        public string TimeZone => "Asia/Ho_Chi_Minh";
+        public string Basis => "Lượt dùng chưa hoàn tác theo thời điểm dùng; Revenue = FinalAmount hiện tại của đơn; PaidRevenue = FinalAmount của đơn đang Paid. Không phải tiền thu sau hoàn.";
         public Guid PromotionId { get; set; }
         public string Code { get; set; } = string.Empty;
         public int UsedCount { get; set; }
@@ -24,6 +31,8 @@ namespace WashGo.Application.Contracts.Features.PromotionContracts.Results
         public string Date { get; set; } = string.Empty;
         public int UsedCount { get; set; }
         public decimal DiscountAmount { get; set; }
+        public decimal TotalOrderAmount { get; set; }
+        public decimal PaidRevenue { get; set; }
         public decimal Revenue { get; set; }
     }
 }

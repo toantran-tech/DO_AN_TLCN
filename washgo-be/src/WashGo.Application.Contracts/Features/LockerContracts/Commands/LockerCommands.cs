@@ -52,6 +52,8 @@ namespace WashGo.Application.Contracts.Features.LockerContracts.Commands
         public Guid LockerId { get; set; }
         public Guid BoxId { get; set; }
         public LockerBoxStatus NewStatus { get; set; }
+        /// <summary>Bắt buộc: trạng thái ô lúc người dùng xem; khác hiện tại → 409 BoxStatusChanged.</summary>
+        public LockerBoxStatus? ExpectedBoxStatus { get; set; }
     }
     public class SetLockerStatusCommand
     {

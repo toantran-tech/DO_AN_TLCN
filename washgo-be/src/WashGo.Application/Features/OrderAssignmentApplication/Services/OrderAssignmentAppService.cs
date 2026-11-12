@@ -451,8 +451,13 @@ namespace WashGo.Application.Features.OrderAssignmentApplication.Services
             var areaIds = lockers.Values.Where(l => l.ServiceAreaId.HasValue).Select(l => l.ServiceAreaId!.Value).Distinct().ToList();
             var areas = (await _areaRepo.GetListAsync(a => areaIds.Contains(a.Id))).ToDictionary(a => a.Id, a => a.Name);
             var boxes = (await _boxRepo.GetListAsync(b => boxIds.Contains(b.Id))).ToDictionary(b => b.Id, b => b.Size);
-            var services = (await _itemRepo.GetListAsync(i => orderIds.Contains(i.WashOrderId)))
-                .GroupBy(i => i.WashOrderId).ToDictionary(g => g.Key, g => g.Select(i => i.ServiceName).Distinct().ToList());
+            var itemRows = await _itemRepo.GetListAsync(i => orderIds.Contains(i.WashOrderId));
+            var services = itemRows.GroupBy(i => i.WashOrderId).ToDictionary(g => g.Key, g => g.Select(i => i.ServiceName).Distinct().ToList());
+            // Batched: one query for the service images of the whole page (deleted services included).
+            var serviceIds = itemRows.Select(i => i.ServiceId).Distinct().ToList();
+            var serviceImages = (await AsyncExecuter.ToListAsync((await LazyServiceProvider.LazyGetRequiredService<IRepository<WashGo.Domain.Entities.WashService.WashService, Guid>>()
+                    .GetQueryableAsync()).Where(s => serviceIds.Contains(s.Id)).Select(s => new { s.Id, s.Images })))
+                .ToDictionary(x => x.Id, x => WashGo.Application.Features.FileApplication.Services.StoredImageUrls.Read(x.Images));
 
             return orders.Select(o =>
             {
@@ -466,6 +471,14 @@ namespace WashGo.Application.Features.OrderAssignmentApplication.Services
                     BoxNumber = o.BoxNumber,
                     BoxSize = boxes.TryGetValue(o.BoxId, out var size) ? size : null,
                     Services = services.GetValueOrDefault(o.Id) ?? [],
+                    ServiceItems = itemRows.Where(i => i.WashOrderId == o.Id).GroupBy(i => i.ServiceId)
+                        .Select(g => new WashGo.Application.Contracts.Features.WashOrderContracts.Results.OrderServiceRefDto
+                        {
+                            ServiceId = g.Key, ServiceName = g.First().ServiceName,
+                            ServiceThumbnailUrl = serviceImages.GetValueOrDefault(g.Key)?.FirstOrDefault()
+                        }).ToList(),
+                    LockerImageUrls = locker == null ? [] : WashGo.Application.Features.FileApplication.Services.StoredImageUrls.Read(locker.Images),
+                    LockerThumbnailUrl = locker == null ? null : WashGo.Application.Features.FileApplication.Services.StoredImageUrls.Read(locker.Images).FirstOrDefault(),
                     DepositedAt = o.DepositedAt,
                     District = locker?.District ?? string.Empty,
                     City = locker?.City ?? string.Empty,

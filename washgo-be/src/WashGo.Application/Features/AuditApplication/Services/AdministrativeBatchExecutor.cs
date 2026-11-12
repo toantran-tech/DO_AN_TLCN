@@ -50,9 +50,46 @@ public class AdministrativeBatchExecutor(IUnitOfWorkManager units, Administrativ
             // Each child commits separately and has a deterministic operation key, so retry after a crash resumes safely.
             result.Items.Add(await apply(item, new Guid(bytes.AsSpan(0, 16))));
         }
+        result.Totals = new()
+        {
+            Changed = result.Items.Count(x => x.Outcome == "Changed"), Unchanged = result.Items.Count(x => x.Outcome == "Unchanged"),
+            Skipped = result.Items.Count(x => x.Outcome == "Skipped"), Failed = result.Items.Count(x => x.Outcome == "Failed")
+        };
+        result.Totals.Succeeded = result.Totals.Changed + result.Totals.Unchanged;
         var response = new BaseResponse<AdministrativeBatchResultDto> { Succeeded = true, StatusCode = HttpStatusCode.OK, Data = result, Message = "Đã xử lý; xem kết quả từng ID." };
         operation.ResponseJson = JsonSerializer.Serialize(response, Json); operation.CompletedAt = DateTime.UtcNow;
         await operations.UpdateAsync(operation, autoSave: true); await finish.CompleteAsync(); return response;
     }
-    public static AdministrativeBatchItemResultDto Item<T>(Guid id, BaseResponse<T> response) => new() { Id = id, Succeeded = response.Succeeded, StatusCode = (int)response.StatusCode, Message = response.Message };
+    public static AdministrativeBatchItemResultDto Item<T>(Guid id, BaseResponse<T> response)
+    {
+        var code = MetaValue(response.Meta, "code");
+        var outcome = response.Succeeded ? (MetaValue(response.Meta, "outcome") == "Unchanged" ? "Unchanged" : "Changed")
+            : response.StatusCode == HttpStatusCode.NotFound ? "Skipped" : "Failed";
+        return new()
+        {
+            Id = id, Succeeded = response.Succeeded, StatusCode = (int)response.StatusCode, Message = response.Message, Outcome = outcome,
+            ReasonCode = outcome switch
+            {
+                "Changed" => null,
+                "Unchanged" => "AlreadyInTargetState",
+                "Skipped" => code ?? "NotFound",
+                _ => code ?? (response.StatusCode == HttpStatusCode.BadRequest ? "Rejected" : response.StatusCode.ToString())
+            }
+        };
+    }
+
+    /// <summary>Reads Meta.{name} whether Meta is an in-process anonymous object or a replayed JSON element.</summary>
+    public static string? MetaValue(object? meta, string name) => meta switch
+    {
+        null => null,
+        JsonElement { ValueKind: JsonValueKind.Object } json => json.EnumerateObject().FirstOrDefault(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase)).Value is { ValueKind: JsonValueKind.String } v ? v.GetString() : null,
+        _ => meta.GetType().GetProperty(name)?.GetValue(meta)?.ToString()
+    };
+
+    /// <summary>Marks a successful response whose resource already had the requested state.</summary>
+    public static BaseResponse<T> Unchanged<T>(BaseResponse<T> response) { response.Meta = new { outcome = "Unchanged" }; return response; }
+
+    /// <summary>Item result for a validation that failed before the single-item command ran.</summary>
+    public static AdministrativeBatchItemResultDto Invalid(Guid id, string code, string message) =>
+        new() { Id = id, StatusCode = 400, Message = message, Outcome = "Failed", ReasonCode = code };
 }
