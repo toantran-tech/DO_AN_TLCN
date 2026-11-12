@@ -63,7 +63,7 @@ namespace WashGo.Application.Features.AuditApplication.Services
                 Reason = Cut(Scrub(e.Reason), 1000),
                 ErrorCode = Cut(e.ErrorCode, 60),
                 ChangedFields = e.ChangedFields == null ? null : Cut(Scrub(string.Join(",", e.ChangedFields)), 1000),
-                Details = Sanitize(e.Details),
+                Details = Sanitize(e.Details, e.Module),
                 CorrelationId = Cut(_correlation.Get(), 100)
             }, autoSave: true);
         }
@@ -110,10 +110,39 @@ namespace WashGo.Application.Features.AuditApplication.Services
         private static string? Cut(string? value, int max) => value == null ? null : value.Length <= max ? value : value[..max];
 
         /// <summary>Serialises details and drops every key that could carry a secret, a locker code or identity data.</summary>
-        public static string? Sanitize(object? details)
+        /// <summary>
+        /// Top-level detail keys each module may record. Anything else (and any module not listed) is dropped before the
+        /// secret filter runs, so a new field never reaches the trail by accident.
+        /// </summary>
+        public static readonly IReadOnlyDictionary<string, string[]> AllowedDetailKeys = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Auth"] = ["sessionId", "portal", "revoked", "revokedOtherSessions", "current"],
+            ["Merchant"] = ["email", "commissionRate", "status", "credentialEmailSent", "operationId"],
+            ["MerchantProfile"] = ["merchantId"],
+            ["Shipper"] = ["merchantId", "email", "credentialEmailSent"],
+            ["ServiceProposal"] = ["merchantId", "serviceId", "requestType"],
+            ["Order"] = ["status", "revision", "operationId", "merchantId", "merchantName", "commissionRateApplied", "resultRevision"],
+            ["Refund"] = ["orderId", "amount", "refundReference"],
+            ["Finance"] = ["merchantId", "periodFrom", "periodTo", "orderCount", "netRevenue", "commissionAmount", "payoutAmount", "before", "after"],
+            ["SystemSetting"] = ["before", "after"],
+            ["Rating"] = ["before", "after", "operationId"],
+            ["Incident"] = ["messageId", "percent", "settingsVersion", "compensationAmount", "reference"],
+            ["Locker"] = ["newStatus"],
+            ["Documents"] = ["kind"],
+        };
+
+        public static string? Sanitize(object? details, string? module = null)
         {
             if (details == null) return null;
             var node = JsonSerializer.SerializeToNode(details, Web);
+            if (module != null && node is JsonObject root)
+            {
+                var allowed = AllowedDetailKeys.TryGetValue(module, out var keys) ? keys : [];
+                foreach (var key in root.Select(x => x.Key).ToList())
+                    if (!allowed.Contains(key, StringComparer.OrdinalIgnoreCase))
+                        root.Remove(key);
+                if (root.Count == 0) return null;
+            }
             Strip(node);
             var json = node?.ToJsonString();
             return json == null || json.Length <= 4000 ? json : null;

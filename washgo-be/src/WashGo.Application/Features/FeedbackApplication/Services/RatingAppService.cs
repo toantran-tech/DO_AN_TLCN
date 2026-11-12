@@ -100,7 +100,7 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
                 VideoUrls = videos
             };
             await _ratingRepo.InsertAsync(rating, autoSave: true);
-            await RefreshMerchantRatingAsync(order.MerchantId);
+            await AdjustMerchantRatingAsync(order.MerchantId, rating.OverallStars, 1);
             await _notifications.RatingCreatedAsync(rating);
             var response = Created(ToCustomerDto(rating), "Cảm ơn bạn đã đánh giá!");
             await Writes.RecordAsync(command.OperationId, customerId, CreateModule, "Create", command.OrderId.ToString(), command, response);
@@ -165,6 +165,19 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
             return (queryable, null);
         }
 
+        public async Task<PaginatedResult<PartnerRatingDto>> GetPartnerListAsync(RatingFilterQuery query)
+        {
+            var (queryable, error) = await FilterAsync(query);
+            if (queryable == null)
+                return new PaginatedResult<PartnerRatingDto> { Succeeded = false, StatusCode = HttpStatusCode.BadRequest, Message = error };
+            var page = Math.Max(1, query.Page);
+            var take = Math.Clamp(query.Take, 1, 100);
+            var total = await AsyncExecuter.CountAsync(queryable);
+            var items = await AsyncExecuter.ToListAsync(queryable.OrderByDescending(x => x.CreatedOn).ThenByDescending(x => x.Id)
+                .Skip((page - 1) * take).Take(take));
+            return Success(items.Select(ToPartnerDto).ToList(), total, page, take, total == 0 ? "Chưa có đánh giá nào." : null);
+        }
+
         public async Task<PaginatedResult<RatingResultDto>> GetListAsync(RatingFilterQuery query)
         {
             var (queryable, error) = await FilterAsync(query);
@@ -175,7 +188,7 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
             var total = await AsyncExecuter.CountAsync(queryable);
             var items = await AsyncExecuter.ToListAsync(queryable.OrderByDescending(x => x.CreatedOn).ThenByDescending(x => x.Id)
                 .Skip((page - 1) * take).Take(take));
-            var dtos = items.Select(x => IsAdmin ? ToAdminDto(x) : ToPartnerDto(x)).ToList();
+            var dtos = items.Select(ToAdminDto).ToList();
             return Success(dtos, total, page, take, total == 0 ? "Chưa có đánh giá nào." : null);
         }
 
@@ -247,7 +260,7 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
                 rating.ModeratedAt = now;
                 rating.ModeratedBy = CurrentUser.Id;
                 await _ratingRepo.UpdateAsync(rating, autoSave: true);
-                await RefreshMerchantRatingAsync(rating.MerchantId, locked: true);
+                await AdjustMerchantRatingAsync(rating.MerchantId, command.IsHidden ? -rating.OverallStars : rating.OverallStars, command.IsHidden ? -1 : 1, locked: true);
                 // The audit keeps the previous hide reason even though the row clears it when shown again.
                 await Audit.LogAsync(new AuditEntry("Rating", command.IsHidden ? "Hide" : "Show", "OrderRating", rating.Id.ToString(), rating.OrderCode)
                 {
@@ -282,19 +295,20 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
                 : (await _merchantRepo.FindAsync(merchantId.Value))?.BusinessName;
 
         /// <summary>
-        /// Public Merchant score = AVG(OverallStars) of visible ratings, 1 decimal, half away from zero; computed with AVG/COUNT in
-        /// the database under the Merchant rating lock. The stored 5.0 for "no rating yet" is legacy: DTOs expose rating = null.
+        /// Public Merchant score kept as a running sum/count of visible ratings (no full recomputation per change, also inside a
+        /// batch), updated under the Merchant rating lock in the same transaction as the rating change: always exact at commit.
+        /// Score = Sum/Count rounded to 1 decimal half away from zero; 0 ratings keeps the legacy stored 5.0 (DTOs expose null).
         /// </summary>
-        private async Task RefreshMerchantRatingAsync(Guid? merchantId, bool locked = false)
+        private async Task AdjustMerchantRatingAsync(Guid? merchantId, int deltaSum, int deltaCount, bool locked = false)
         {
             if (!merchantId.HasValue) return;
             if (!locked) await Writes.LockAsync($"merchant-rating:{merchantId}");
             var merchant = await _merchantRepo.FindAsync(merchantId.Value);
             if (merchant == null) return;
-            var visible = (await _ratingRepo.GetQueryableAsync()).Where(x => x.MerchantId == merchantId && !x.IsHidden && !x.IsDeleted);
-            var count = await AsyncExecuter.CountAsync(visible);
-            merchant.Rating = count == 0 ? 5.0m
-                : decimal.Round(await AsyncExecuter.AverageAsync(visible, x => (decimal)x.OverallStars), 1, MidpointRounding.AwayFromZero);
+            merchant.PublicRatingSum += deltaSum;
+            merchant.PublicRatingCount += deltaCount;
+            merchant.Rating = merchant.PublicRatingCount <= 0 ? 5.0m
+                : decimal.Round((decimal)merchant.PublicRatingSum / merchant.PublicRatingCount, 1, MidpointRounding.AwayFromZero);
             await _merchantRepo.UpdateAsync(merchant, autoSave: true);
         }
 
@@ -339,12 +353,12 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
         };
 
         /// <summary>Partner view: no customer/order identity; free text and media only after an Admin reviewed and kept it visible.</summary>
-        private static RatingResultDto ToPartnerDto(OrderRating x)
+        private static PartnerRatingDto ToPartnerDto(OrderRating x)
         {
             var released = !x.IsHidden && x.ModeratedAt != null;
-            return new RatingResultDto
+            return new PartnerRatingDto
             {
-                Id = x.Id, MerchantId = x.MerchantId, MerchantName = x.MerchantName, OverallStars = x.OverallStars,
+                Id = x.Id, OverallStars = x.OverallStars,
                 QualityStars = x.QualityStars, SpeedStars = x.SpeedStars, AttitudeStars = x.AttitudeStars, PackagingStars = x.PackagingStars,
                 Comment = released ? x.Comment : null,
                 ImageUrls = released ? new List<string>(x.ImageUrls) : [],

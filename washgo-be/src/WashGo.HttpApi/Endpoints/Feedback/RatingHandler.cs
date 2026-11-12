@@ -34,9 +34,16 @@ namespace WashGo.HttpApi.Endpoints.Feedback
 
             group.MapPost("/filter", async (RatingFilterQuery query, IRatingAppService svc) =>
                 (await svc.GetListAsync(query)).CustomResult())
-                .RequireAuthorization("MerchantOrAdmin")
+                .RequireAuthorization("AdminOnly")
                 .WithName("Lọc danh sách đánh giá")
-                .WithSummary("Admin: lọc theo sao 1-5, Merchant, trạng thái ẩn, orderId, customerId, ngày tạo, keyword (mã đơn/nhận xét/tên khách); kèm version/canHide/canShow. Merchant: chỉ đánh giá đang hiển thị của tiệm, không có định danh khách/đơn; nhận xét/media chỉ có sau khi Admin kiểm duyệt (contentReleased). Mới nhất trước rồi Id; take ≤ 100.")
+                .WithSummary("Admin lọc đánh giá: sao 1-5, Merchant, trạng thái ẩn, orderId, customerId, ngày tạo, keyword (mã đơn/nhận xét/tên khách); kèm version/canHide/canShow và thông tin kiểm duyệt. Mới nhất trước rồi Id; take ≤ 100. Merchant dùng POST /rating/partner/filter.")
+                .WithOpenApi();
+
+            group.MapPost("/partner/filter", async (RatingFilterQuery query, IRatingAppService svc) =>
+                (await svc.GetPartnerListAsync(query)).CustomResult())
+                .RequireAuthorization("MerchantOnly")
+                .WithName("Merchant xem đánh giá dịch vụ")
+                .WithSummary("Merchant xem đánh giá đang hiển thị của chính tiệm (DTO riêng, không có mã/id đơn, định danh khách hay dữ liệu kiểm duyệt). Lọc sao 1-5, ngày tạo, keyword trong nhận xét; nhận xét/ảnh/video chỉ có sau khi Admin kiểm duyệt (contentReleased). Mới nhất trước rồi Id; take ≤ 100.")
                 .WithOpenApi();
 
             group.MapGet("/operations/{operationId:guid}", async (Guid operationId, IRatingAppService svc) =>
