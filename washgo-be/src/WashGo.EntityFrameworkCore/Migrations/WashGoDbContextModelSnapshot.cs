@@ -1519,6 +1519,14 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("character varying(20)")
                         .HasColumnName("phone");
 
+                    b.Property<int>("PublicRatingCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("public_rating_count");
+
+                    b.Property<int>("PublicRatingSum")
+                        .HasColumnType("integer")
+                        .HasColumnName("public_rating_sum");
+
                     b.Property<decimal>("Rating")
                         .HasPrecision(2, 1)
                         .HasColumnType("numeric(2,1)")

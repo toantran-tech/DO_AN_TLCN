@@ -4,11 +4,7 @@ using WashGo.Domain.Shared.Enums;
 
 namespace WashGo.Application.Contracts.Features.FeedbackContracts.Results
 {
-    /// <summary>
-    /// Đánh giá cho Admin (đầy đủ, có định danh nội bộ) hoặc Merchant (tối thiểu): với Merchant các trường định danh khách/đơn
-    /// (orderId, orderCode, customerId, customerName) và thông tin kiểm duyệt luôn null; nhận xét/ảnh/video chỉ có khi đánh giá
-    /// đã được Admin kiểm duyệt và đang hiển thị (contentReleased = true).
-    /// </summary>
+    /// <summary>Đánh giá cho Admin: đầy đủ, có định danh nội bộ (đơn, khách, Merchant) và thông tin kiểm duyệt. Chỉ dùng cho Admin.</summary>
     public class RatingResultDto
     {
         public Guid Id { get; set; }
@@ -117,6 +113,25 @@ namespace WashGo.Application.Contracts.Features.FeedbackContracts.Results
         public List<string> ImageUrls { get; set; } = [];
         public List<string> VideoUrls { get; set; } = [];
         public DateTime CreatedAt { get; set; }
+    }
+
+    /// <summary>
+    /// Đánh giá cho Merchant (DTO riêng, tối thiểu): không có mã/id đơn, định danh khách, tên Merchant hay dữ liệu kiểm duyệt.
+    /// Nhận xét/ảnh/video chỉ có khi Admin đã kiểm duyệt và đánh giá đang hiển thị (contentReleased = true).
+    /// </summary>
+    public class PartnerRatingDto
+    {
+        public Guid Id { get; set; }
+        public int OverallStars { get; set; }
+        public int? QualityStars { get; set; }
+        public int? SpeedStars { get; set; }
+        public int? AttitudeStars { get; set; }
+        public int? PackagingStars { get; set; }
+        public string? Comment { get; set; }
+        public List<string> ImageUrls { get; set; } = [];
+        public List<string> VideoUrls { get; set; } = [];
+        public bool ContentReleased { get; set; }
+        public long CreatedOn { get; set; }
     }
 
     /// <summary>Đánh giá dịch vụ WashGo của chính Customer: không có thông tin Merchant/Shipper hay dữ liệu kiểm duyệt nội bộ.</summary>

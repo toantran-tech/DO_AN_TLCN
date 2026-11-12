@@ -70,9 +70,9 @@ function New-CompletedOrder {
     return $done
 }
 function Assert-MerchantRating {
-    $expected=Sql "SELECT coalesce(round(avg(overall_stars)::numeric,1),5.0) FROM washgo.order_ratings WHERE merchant_id='$merchantId' AND is_hidden=false AND is_deleted=false;"
-    $actual=Sql "SELECT rating FROM washgo.merchants WHERE user_id='$merchantId';"
-    if([decimal]$expected -ne [decimal]$actual){throw "Merchant rating $actual != visible average $expected."}
+    $expected=Sql "SELECT coalesce(round(avg(overall_stars)::numeric,1),5.0)||'|'||coalesce(sum(overall_stars),0)||'|'||count(*) FROM washgo.order_ratings WHERE merchant_id='$merchantId' AND is_hidden=false AND is_deleted=false;"
+    $actual=Sql "SELECT round(rating,1)||'|'||public_rating_sum||'|'||public_rating_count FROM washgo.merchants WHERE user_id='$merchantId';"
+    if($expected -ne $actual){throw "Merchant rating/sum/count $actual != visible ratings $expected."}
 }
 function Parallel-Send($Requests) {
     $jobs=@()
@@ -189,18 +189,20 @@ INSERT INTO washgo.services SELECT (jsonb_populate_record(NULL::washgo.services,
     Assert-Status 403 Post '/rating/filter' @{} $customer
     $list=Call-Api Post '/rating/filter' @{keyword=$o1.orderCode;stars=4} $admin
     if($list.total -ne 1 -or $list.list[0].customerName -eq '***'){throw 'Admin rating filter wrong.'}
-    $mine=@((Call-Api Post '/rating/filter' @{stars=4;merchantId="$([Guid]::NewGuid())";take=100} $merchant).list | Where-Object { $_.id -eq $rating.id })
-    if($mine.Count -ne 1 -or $mine[0].customerName -or $mine[0].orderCode -or $mine[0].orderId -or $mine[0].comment -or $mine[0].contentReleased){throw 'Merchant scope/privacy wrong.'}
+    $mine=@((Call-Api Post '/rating/partner/filter' @{stars=4;merchantId="$([Guid]::NewGuid())";take=100} $merchant).list | Where-Object { $_.id -eq $rating.id })
+    if($mine.Count -ne 1 -or $mine[0].PSObject.Properties['customerName'] -or $mine[0].PSObject.Properties['orderCode'] -or $mine[0].PSObject.Properties['orderId'] -or $mine[0].PSObject.Properties['merchantName'] -or $mine[0].comment -or $mine[0].contentReleased){throw 'Merchant scope/privacy wrong.'}
+    Assert-Status 403 Post '/rating/filter' @{take=1} $merchant
+    Assert-Status 403 Post '/rating/partner/filter' @{take=1} $admin
     Assert-Status 403 Patch "/rating/$($rating.id)/visibility" @{isHidden=$true;reason='x'} $merchant
     Assert-Status 400 Patch "/rating/$($rating.id)/visibility" @{isHidden=$true} $admin
     Assert-Status 400 Patch "/rating/$($rating.id)/visibility" @{isHidden=$true;reason='Noi dung khong phu hop'} $admin
     $hidden=(Call-Api Patch "/rating/$($rating.id)/visibility" @{isHidden=$true;reason='Noi dung khong phu hop';expectedVersion=$list.list[0].version} $admin).data
     if(!$hidden.isHidden){throw 'Hide failed.'}
-    if(@((Call-Api Post '/rating/filter' @{stars=4;take=100} $merchant).list | Where-Object { $_.id -eq $rating.id }).Count -ne 0){throw 'Merchant sees hidden rating.'}
+    if(@((Call-Api Post '/rating/partner/filter' @{stars=4;take=100} $merchant).list | Where-Object { $_.id -eq $rating.id }).Count -ne 0){throw 'Merchant sees hidden rating.'}
     Assert-MerchantRating
     Call-Api Patch "/rating/$($rating.id)/visibility" @{isHidden=$false;expectedVersion=$hidden.version} $admin | Out-Null
-    $released=@((Call-Api Post '/rating/filter' @{stars=4;take=100} $merchant).list | Where-Object { $_.id -eq $rating.id })
-    if($released.Count -ne 1 -or -not $released[0].contentReleased -or $released[0].comment -ne 'Giat sach, giao hoi cham' -or $released[0].customerName){throw 'Reviewed content not released correctly.'}
+    $released=@((Call-Api Post '/rating/partner/filter' @{stars=4;take=100} $merchant).list | Where-Object { $_.id -eq $rating.id })
+    if($released.Count -ne 1 -or -not $released[0].contentReleased -or $released[0].comment -ne 'Giat sach, giao hoi cham' -or $released[0].PSObject.Properties['customerName']){throw 'Reviewed content not released correctly.'}
     Assert-MerchantRating
 
     Write-Output '5b. Admin detail/summary, versioned visibility with replay, batch outcomes, idempotent submit'
@@ -228,6 +230,14 @@ INSERT INTO washgo.services SELECT (jsonb_populate_record(NULL::washgo.services,
     $b2=(Call-Api Post '/rating/batch' @{operationId=[Guid]::NewGuid();action='Show';items=@(@{id=$rating.id;expectedVersion=$v2})} $admin).data
     if($b2.items[0].outcome -ne 'Unchanged' -or $b2.totals.unchanged -ne 1){throw 'Already visible not Unchanged.'}
     if((Call-Api Get "/admin-operations/Rating/$bop" $null $admin).data.state -ne 'Completed'){throw 'Rating batch lookup failed.'}
+    # Interrupted after its items committed: the batch row is still Processing. Resending resumes it without redoing anything.
+    $auditBefore=[int](Sql "SELECT count(*) FROM washgo.audit_logs WHERE module='Rating' AND resource_id='$($rating.id)';")
+    $scoreBefore=Sql "SELECT rating||'|'||public_rating_sum||'|'||public_rating_count FROM washgo.merchants WHERE user_id='$merchantId';"
+    Sql "UPDATE washgo.administrative_operations SET response_json=jsonb_build_object('succeeded',true,'statusCode',202,'data',jsonb_build_object('operationId','$bop','state','Processing','items','[]'::jsonb)) WHERE id='$bop';" | Out-Null
+    if((Call-Api Get "/admin-operations/Rating/$bop" $null $admin).data.state -ne 'Processing'){throw 'Interrupted batch not reported as Processing.'}
+    $resumed=(Call-Api Post '/rating/batch' @{operationId=$bop;action='Show';items=@(@{id=$rating.id;expectedVersion=$h1.version},@{id=$bo.id;expectedVersion='x'})} $admin).data
+    if($resumed.state -ne 'Completed' -or ($resumed.items | Where-Object { $_.id -eq $rating.id }).outcome -ne 'Changed' -or $resumed.totals.changed -ne 1){throw "Resumed batch wrong: $($resumed | ConvertTo-Json -Depth 4 -Compress)"}
+    if([int](Sql "SELECT count(*) FROM washgo.audit_logs WHERE module='Rating' AND resource_id='$($rating.id)';") -ne $auditBefore -or (Sql "SELECT rating||'|'||public_rating_sum||'|'||public_rating_count FROM washgo.merchants WHERE user_id='$merchantId';") -ne $scoreBefore){throw 'Resuming the batch redid work.'}
     $audit=(Call-Api Post '/admin/audit-logs/filter' @{module='Rating';resourceId="$($rating.id)";take=20} $admin).list
     if(@($audit | Where-Object { $_.action -eq 'Hide' }).Count -lt 1 -or @($audit | Where-Object { $_.action -eq 'Show' }).Count -lt 1){throw 'Rating moderation not audited.'}
     Assert-MerchantRating

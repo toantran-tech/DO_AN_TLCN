@@ -37,6 +37,13 @@ try {
     if($box){
         if((StatusOf Put '/locker/box-status' @{lockerId=$lid;boxId=$box.id;newStatus=4;expectedVersion=$ld.version} $admin) -ne 400){throw 'Missing expectedBoxStatus accepted.'}
         if((StatusOf Put '/locker/box-status' @{lockerId=$lid;boxId=$box.id;newStatus=4;expectedVersion=$ld.version;expectedBoxStatus=4} $admin) -ne 409){throw 'Stale box status not 409.'}
+        # Replay with the same operationId returns the first result and does not change the box again.
+        $bop=[Guid]::NewGuid()
+        $r1=Call-Api Put '/locker/box-status' @{lockerId=$lid;boxId=$box.id;newStatus=4;expectedVersion=$ld.version;expectedBoxStatus=1;operationId=$bop} $admin
+        $r2=Call-Api Put '/locker/box-status' @{lockerId=$lid;boxId=$box.id;newStatus=4;expectedVersion=$ld.version;expectedBoxStatus=1;operationId=$bop} $admin
+        if(-not $r1.succeeded -or -not $r2.succeeded){throw 'Box status replay failed.'}
+        $ld2=(Call-Api Get "/locker/$lid" $null $admin).data
+        Call-Api Put '/locker/box-status' @{lockerId=$lid;boxId=$box.id;newStatus=1;expectedVersion=$ld2.version;expectedBoxStatus=4} $admin | Out-Null
     }
 
     Write-Output '3. Merchant cities, waiting-order media, service metadata'
@@ -59,12 +66,19 @@ try {
     $csv=(Call-Api Post '/finance/revenue-report/export' @{fromDate=$now-86400;toDate=$now} $admin)
     $csvText=if($csv.data){$csv.data}else{"$csv"}
     if($csvText -notmatch '\+07:00'){throw 'CSV period not in Vietnam time.'}
+    # Year boundaries in Vietnam time: 2026-01-01 00:00:00+07:00 .. 2026-12-31 23:59:59+07:00.
+    $yFrom=[DateTimeOffset]::Parse('2026-01-01T00:00:00+07:00').ToUnixTimeSeconds(); $yTo=[DateTimeOffset]::Parse('2026-12-31T23:59:59+07:00').ToUnixTimeSeconds()
+    $yc=(Call-Api Post '/finance/revenue-report/export' @{fromDate=$yFrom;toDate=$yTo} $admin); $yt=if($yc.data){$yc.data}else{"$yc"}
+    if($yt -notmatch 'Tu ngay,2026-01-01T00:00:00\+07:00' -or $yt -notmatch 'Den ngay,2026-12-31T23:59:59\+07:00'){throw 'CSV year boundaries wrong.'}
     $cp=(Call-Api Post '/finance/commissions/paged' @{fromDate=$now-30*86400;toDate=$now;page=1;take=2} $admin).data
     if($null -eq $cp.total -or @($cp.items).Count -gt 2 -or $null -eq $cp.commissionComplete){throw 'Paged commissions wrong.'}
     $st=(Call-Api Post '/finance/settlements/filter' @{page=1;take=1} $admin).list
     if(@($st).Count){
         $lines=Call-Api Get "/finance/settlements/$($st[0].id)/lines?take=5" $null $admin
         if($null -eq $lines.isSnapshot -or -not $lines.basis -or -not $lines.generatedAt){throw 'Settlement lines lack basis metadata.'}
+        $sessions.Merchant=(Call-Api Post '/auth/login' @{email='merchant@washgo.vn';password='Merchant@123'} $null).data
+        $other=(Call-Api Post '/finance/settlements/filter' @{page=1;take=50} $admin).list | Where-Object { $_.merchantId -ne $sessions.Merchant.user.id } | Select-Object -First 1
+        if($other -and (StatusOf Get "/finance/settlements/$($other.id)/lines" $null $sessions.Merchant.accessToken) -notin 403,404){throw 'Another Merchant read settlement lines.'}
     }
 
     Write-Output 'PASS: batch items report Changed/Unchanged/Skipped/Failed with reason codes and totals; promotion canChangeCode, bounded statistics with metadata; box status requires the observed box state (stale 409); Merchant cities distinct; waiting orders carry locker images and service thumbnails; service summary has pendingProposals in the same snapshot and list rows have action metadata; finance hourly buckets (<=48h), asOf, paged commissions with whole-period totals, CSV bounds with +07:00, settlement lines with isSnapshot/basis.'

@@ -30,6 +30,7 @@ try {
     $newRate=if($oldRate -eq 13){14}else{13}
     Call-Api Put '/system-setting/commission' @{defaultCommissionRate=$newRate;expectedVersion=(Call-Api Get '/system-setting/' $null $admin).data.version} $admin | Out-Null
     $s=(Call-Api Post '/admin/audit-logs/filter' @{module='SystemSetting';fromDate=$start;take=5} $admin).list[0]
+    if((@($s.details.PSObject.Properties.Name) | Sort-Object) -join ',' -ne 'after,before'){throw "Details not limited to the module whitelist: $($s.details | ConvertTo-Json -Compress)"}
     if((@($s.changedFields) -join ',') -ne 'defaultCommissionRate' -or $s.details.before.defaultCommissionRate -ne $oldRate -or $s.details.after.defaultCommissionRate -ne $newRate -or $s.actorRole -ne 'Admin'){throw "Settings audit wrong: $($s | ConvertTo-Json -Depth 5 -Compress)"}
 
     Write-Output '3. Merchant lock/unlock with reason; detail by id'
