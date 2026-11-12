@@ -64,6 +64,11 @@ namespace WashGo.Domain.Entities.WashOrder
         public decimal? CommissionRateApplied { get; set; }
         /// <summary>Thời điểm chốt tỷ lệ hoa hồng (lúc Admin phân công Merchant); null với đơn cũ chưa có snapshot.</summary>
         public DateTime? CommissionLockedAt { get; set; }
+        /// <summary>
+        /// Nguồn của tỷ lệ hoa hồng đã chốt: Assignment (chốt khi Admin phân công), Legacy (đơn trước khi có trường này),
+        /// LegacyUnverified (0% cũ không chứng minh được là 0% thật), AdminReconciled (Admin đối chiếu có bằng chứng); null = chưa có tỷ lệ.
+        /// </summary>
+        public string? CommissionSnapshotSource { get; set; }
         public decimal? ActualWeightKg { get; set; }
         public decimal? IncludedWeightKg { get; set; }
         public decimal WeightSurchargeAmount { get; set; }

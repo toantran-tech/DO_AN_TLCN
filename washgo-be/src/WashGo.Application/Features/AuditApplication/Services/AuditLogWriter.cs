@@ -58,12 +58,12 @@ namespace WashGo.Application.Features.AuditApplication.Services
                 Action = e.Action,
                 ResourceType = e.ResourceType,
                 ResourceId = e.ResourceId,
-                ResourceCode = Cut(e.ResourceCode, 200),
+                ResourceCode = Cut(Scrub(e.ResourceCode), 200),
                 Result = e.Result,
-                Reason = Cut(e.Reason, 1000),
+                Reason = Cut(Scrub(e.Reason), 1000),
                 ErrorCode = Cut(e.ErrorCode, 60),
-                ChangedFields = e.ChangedFields == null ? null : Cut(string.Join(",", e.ChangedFields), 1000),
-                Details = Sanitize(e.Details),
+                ChangedFields = e.ChangedFields == null ? null : Cut(Scrub(string.Join(",", e.ChangedFields)), 1000),
+                Details = Sanitize(e.Details, e.Module),
                 CorrelationId = Cut(_correlation.Get(), 100)
             }, autoSave: true);
         }
@@ -90,13 +90,59 @@ namespace WashGo.Application.Features.AuditApplication.Services
 
         private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
 
+        private static readonly System.Text.RegularExpressions.Regex Jwt = new(@"eyJ[\w-]+\.[\w-]+\.[\w-]+", System.Text.RegularExpressions.RegexOptions.Compiled);
+        private static readonly System.Text.RegularExpressions.Regex SignedQuery = new(@"\?[^\s""']*(sig|signature|token|expires|x-amz-[a-z-]+|access_token)=[^\s""']*",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
+        private static readonly System.Text.RegularExpressions.Regex LongDigits = new(@"(?<!\d)\d{9,12}(?!\d)", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+        /// <summary>
+        /// Free text never carries secrets: JWT-like tokens, signed download URL queries and 9-12 digit numbers (identity card, account
+        /// numbers) are masked. Applied to reason, resource code, changed fields and every string value of details.
+        /// </summary>
+        public static string? Scrub(string? value)
+        {
+            if (string.IsNullOrEmpty(value)) return value;
+            value = Jwt.Replace(value, "[token]");
+            value = SignedQuery.Replace(value, "?[signed]");
+            return LongDigits.Replace(value, "[number]");
+        }
+
         private static string? Cut(string? value, int max) => value == null ? null : value.Length <= max ? value : value[..max];
 
         /// <summary>Serialises details and drops every key that could carry a secret, a locker code or identity data.</summary>
-        public static string? Sanitize(object? details)
+        /// <summary>
+        /// Top-level detail keys each module may record. Anything else (and any module not listed) is dropped before the
+        /// secret filter runs, so a new field never reaches the trail by accident.
+        /// </summary>
+        public static readonly IReadOnlyDictionary<string, string[]> AllowedDetailKeys = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Auth"] = ["sessionId", "portal", "revoked", "revokedOtherSessions", "current"],
+            ["Merchant"] = ["email", "commissionRate", "status", "credentialEmailSent", "operationId"],
+            ["MerchantProfile"] = ["merchantId"],
+            ["Shipper"] = ["merchantId", "email", "credentialEmailSent"],
+            ["ServiceProposal"] = ["merchantId", "serviceId", "requestType"],
+            ["Order"] = ["status", "revision", "operationId", "merchantId", "merchantName", "commissionRateApplied", "resultRevision"],
+            ["Refund"] = ["orderId", "amount", "refundReference"],
+            ["Finance"] = ["merchantId", "periodFrom", "periodTo", "orderCount", "netRevenue", "commissionAmount", "payoutAmount", "before", "after"],
+            ["SystemSetting"] = ["before", "after"],
+            ["Rating"] = ["before", "after", "operationId"],
+            ["Incident"] = ["messageId", "percent", "settingsVersion", "compensationAmount", "reference"],
+            ["Locker"] = ["newStatus"],
+            ["Documents"] = ["kind"],
+        };
+
+        public static string? Sanitize(object? details, string? module = null)
         {
             if (details == null) return null;
             var node = JsonSerializer.SerializeToNode(details, Web);
+            if (module != null && node is JsonObject root)
+            {
+                var allowed = AllowedDetailKeys.TryGetValue(module, out var keys) ? keys : [];
+                foreach (var key in root.Select(x => x.Key).ToList())
+                    if (!allowed.Contains(key, StringComparer.OrdinalIgnoreCase))
+                        root.Remove(key);
+                if (root.Count == 0) return null;
+            }
             Strip(node);
             var json = node?.ToJsonString();
             return json == null || json.Length <= 4000 ? json : null;
@@ -111,6 +157,8 @@ namespace WashGo.Application.Features.AuditApplication.Services
                     if (key.Equals("pin", StringComparison.OrdinalIgnoreCase) || key.Equals("qr", StringComparison.OrdinalIgnoreCase) ||
                         SensitiveKeys.Any(k => key.Contains(k, StringComparison.OrdinalIgnoreCase)))
                         obj.Remove(key);
+                    else if (obj[key] is JsonValue v && v.TryGetValue<string>(out var text))
+                        obj[key] = Scrub(text);
                     else
                         Strip(obj[key]);
                 }

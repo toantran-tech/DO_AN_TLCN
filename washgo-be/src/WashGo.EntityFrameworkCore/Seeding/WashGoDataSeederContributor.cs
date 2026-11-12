@@ -244,7 +244,7 @@ namespace WashGo.EntityFrameworkCore.Seeding
                     VehiclePlate = vehiclePlate,
                     Status = ShipperStatus.Available,
                     IsActive = true,
-                    Rating = 5.0m,
+                    Rating = 0m, // Shipper star ratings were dropped; 0 = none.
                     CreatedAt = DateTime.UtcNow,
                     UpdatedAt = DateTime.UtcNow
                 };

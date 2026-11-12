@@ -32,7 +32,7 @@ function Locker-Body([hashtable]$Extra=@{}) {
     return $b
 }
 function Detail { (Call-Api Get "/locker/$lockerId" $null $admin).data }
-function Box-Status($BoxId,$Status) { Call-Api Put '/locker/box-status' @{lockerId="$lockerId";boxId="$BoxId";newStatus=$Status;expectedVersion=(Detail).version} $admin }
+function Box-Status($BoxId,$Status) { $d=Detail; Call-Api Put '/locker/box-status' @{lockerId="$lockerId";boxId="$BoxId";newStatus=$Status;expectedVersion=$d.version;expectedBoxStatus=($d.boxes | Where-Object { $_.id -eq "$BoxId" }).status} $admin }
 
 try {
     foreach($role in @('Admin','Merchant','Customer')){
@@ -94,17 +94,17 @@ try {
 
     Write-Output '4. Box maintenance (UC 3.4.5)'
     $b1=$d.boxes[0].id;$b2=$d.boxes[1].id
-    Assert-Status 400 Put '/locker/box-status' @{lockerId="$lockerId";boxId="$b1";newStatus=2;expectedVersion=(Detail).version} $admin
+    Assert-Status 400 Put '/locker/box-status' @{lockerId="$lockerId";boxId="$b1";newStatus=2;expectedVersion=(Detail).version;expectedBoxStatus=((Detail).boxes | Where-Object { $_.id -eq "$b1" }).status} $admin
     if(!(Box-Status $b1 4).message){throw 'Maintenance failed.'}
     if((Call-Api Get "/customer/lockers/$lockerId" $null $customer).data.availableSlots.Count -ne 2){throw 'Maintenance box still offered.'}
     Box-Status $b1 1 | Out-Null
     Box-Status $b1 4 | Out-Null
     $o=(Call-Api Post '/wash-order/' @{lockerId="$lockerId";boxId="$b2";paymentMethod=2;items=@(@{serviceId="$serviceId";quantity=1})} $customer).data
     $orderId=$o.id
-    Assert-Status 400 Put '/locker/box-status' @{lockerId="$lockerId";boxId="$b2";newStatus=4;expectedVersion=(Detail).version} $admin
+    Assert-Status 400 Put '/locker/box-status' @{lockerId="$lockerId";boxId="$b2";newStatus=4;expectedVersion=(Detail).version;expectedBoxStatus=((Detail).boxes | Where-Object { $_.id -eq "$b2" }).status} $admin
     Assert-Status 400 Delete "/locker/${lockerId}?expectedVersion=$((Detail).version)" $null $admin
     Invoke-TestDelivery $orderId deposit $customer | Out-Null
-    Assert-Status 400 Put '/locker/box-status' @{lockerId="$lockerId";boxId="$b2";newStatus=4;expectedVersion=(Detail).version} $admin
+    Assert-Status 400 Put '/locker/box-status' @{lockerId="$lockerId";boxId="$b2";newStatus=4;expectedVersion=(Detail).version;expectedBoxStatus=((Detail).boxes | Where-Object { $_.id -eq "$b2" }).status} $admin
     $h=Call-Api Get "/locker/$lockerId/usage-history?boxId=$b2" $null $admin
     if($h.total -ne 1 -or $h.list[0].orderCode -ne $o.orderCode){throw 'Box usage history wrong.'}
     if((Call-Api Get "/locker/$lockerId/usage-history?boxId=$b1" $null $admin).total -ne 0){throw 'Unused box has history.'}

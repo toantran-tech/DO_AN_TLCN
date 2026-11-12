@@ -94,7 +94,8 @@ namespace WashGo.Application.Features.AuthApplication.Services
             user.PasswordChangedAt = now;
             user.UpdatedAt = now;
             await _userRepo.UpdateAsync(user, autoSave: true);
-            var revoked = command.RevokeOtherSessions ? await RevokeAsync(userId, x => x.Id != sessionId) : 0;
+            var key = await KeyOfAsync(sessionId);
+            var revoked = command.RevokeOtherSessions ? await RevokeAsync(userId, x => x.Id != sessionId && (x.SessionKey ?? x.Id) != key) : 0;
             await Audit.LogAsync(new AuditEntry("Auth", "ChangePassword", "User", user.Id.ToString(), user.Email)
             {
                 ChangedFields = ["password"], Details = new { revokedOtherSessions = revoked }
@@ -105,27 +106,40 @@ namespace WashGo.Application.Features.AuthApplication.Services
                 : "Đổi mật khẩu thành công.");
         }
 
-        public async Task<BaseResponse<List<SessionDto>>> GetSessionsAsync(Guid userId, Guid sessionId)
+        public async Task<BaseResponse<SessionListDto>> GetSessionsAsync(Guid userId, Guid sessionId,
+            WashGo.Application.Contracts.Features.AuthContracts.Queries.SessionListQuery query)
         {
+            var page = Math.Max(1, query.Page ?? 1);
+            var take = Math.Clamp(query.Take ?? 20, 1, 100);
             var now = DateTime.UtcNow;
-            var rows = await AsyncExecuter.ToListAsync((await _tokenRepo.GetQueryableAsync())
-                .Where(x => x.UserId == userId && !x.IsRevoked && x.ExpiryDate > now)
-                .OrderByDescending(x => x.CreatedAt).ThenBy(x => x.Id).Take(100));
-            return Success(rows.Select(x => new SessionDto
+            // One active refresh token per logical session; rotation keeps SessionKey.
+            var active = (await _tokenRepo.GetQueryableAsync()).Where(x => x.UserId == userId && !x.IsRevoked && x.ExpiryDate > now);
+            var total = await AsyncExecuter.CountAsync(active);
+            var rows = await AsyncExecuter.ToListAsync(active.OrderByDescending(x => x.CreatedAt).ThenBy(x => x.Id).Skip((page - 1) * take).Take(take));
+            var current = await _tokenRepo.FindAsync(sessionId);
+            var currentKey = current == null ? (Guid?)null : current.SessionKey ?? current.Id;
+            SessionDto Map(RefreshToken x) => new()
             {
-                Id = x.Id,
+                Id = x.SessionKey ?? x.Id,
                 StartedAt = Utc(x.StartedAt ?? x.CreatedAt)!.Value,
                 LastActiveAt = Utc(x.CreatedAt)!.Value,
                 ExpiresAt = Utc(x.ExpiryDate)!.Value,
                 UserAgent = x.UserAgent,
-                IsCurrent = x.Id == sessionId
-            }).OrderByDescending(x => x.IsCurrent).ThenByDescending(x => x.LastActiveAt).ToList());
+                IsCurrent = (x.SessionKey ?? x.Id) == currentKey
+            };
+            return Success(new SessionListDto
+            {
+                Total = total, Page = page, Take = take, HasMore = page * take < total,
+                Current = current != null && !current.IsRevoked && current.ExpiryDate > now ? Map(current) : null,
+                Items = rows.Select(Map).ToList()
+            });
         }
 
-        // Keeps the current session; the access tokens of revoked sessions stop working on the next request.
+        // Keeps the current logical session; access tokens of revoked sessions stop working on the next request.
         public async Task<BaseResponse<RevokeSessionsResultDto>> RevokeOtherSessionsAsync(Guid userId, Guid sessionId)
         {
-            var revoked = await RevokeAsync(userId, x => x.Id != sessionId);
+            var key = await KeyOfAsync(sessionId);
+            var revoked = await RevokeAsync(userId, x => x.Id != sessionId && (x.SessionKey ?? x.Id) != key);
             await Audit.LogAsync(new AuditEntry("Auth", "RevokeOtherSessions", "User", userId.ToString(), null)
             {
                 Details = new { revoked }
@@ -134,19 +148,29 @@ namespace WashGo.Application.Features.AuthApplication.Services
                 revoked == 0 ? "Không có phiên nào khác đang đăng nhập." : $"Đã đăng xuất {revoked} phiên khác.");
         }
 
+        /// <summary>targetId is the logical session id from the list (an old token id is also accepted).</summary>
         public async Task<BaseResponse<RevokeSessionsResultDto>> RevokeSessionAsync(Guid userId, Guid sessionId, Guid targetId)
         {
-            var target = await _tokenRepo.FindAsync(targetId);
-            if (target == null || target.UserId != userId)
+            var tokens = await _tokenRepo.GetListAsync(x => x.UserId == userId && (x.Id == targetId || x.SessionKey == targetId));
+            if (tokens.Count == 0)
                 return NotFound<RevokeSessionsResultDto>("Không tìm thấy phiên đăng nhập.");
-            var revoked = target.IsRevoked ? 0 : await RevokeAsync(userId, x => x.Id == targetId);
+            // An old token id resolves to its whole chain, so a refresh in between cannot keep the device signed in.
+            var keys = tokens.Select(x => x.SessionKey ?? x.Id).Distinct().ToList();
+            var currentKey = await KeyOfAsync(sessionId);
+            var revoked = await RevokeAsync(userId, x => keys.Contains(x.SessionKey ?? x.Id) || x.Id == targetId);
             if (revoked > 0)
-                await Audit.LogAsync(new AuditEntry("Auth", "RevokeSession", "Session", targetId.ToString(), null)
+                await Audit.LogAsync(new AuditEntry("Auth", "RevokeSession", "Session", keys[0].ToString(), null)
                 {
-                    Details = new { current = targetId == sessionId }
+                    Details = new { current = keys.Contains(currentKey) }
                 });
-            return Success(new RevokeSessionsResultDto { Revoked = revoked },
-                revoked == 0 ? "Phiên này đã kết thúc trước đó." : targetId == sessionId ? "Đã đăng xuất phiên hiện tại." : "Đã đăng xuất phiên đã chọn.");
+            return Success(new RevokeSessionsResultDto { Revoked = revoked, Stale = revoked == 0 },
+                revoked == 0 ? "Phiên này đã kết thúc trước đó." : keys.Contains(currentKey) ? "Đã đăng xuất phiên hiện tại." : "Đã đăng xuất phiên đã chọn.");
+        }
+
+        private async Task<Guid> KeyOfAsync(Guid tokenId)
+        {
+            var token = await _tokenRepo.FindAsync(tokenId);
+            return token?.SessionKey ?? tokenId;
         }
 
         private async Task<int> RevokeAsync(Guid userId, System.Linq.Expressions.Expression<Func<RefreshToken, bool>> which)
@@ -157,7 +181,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
                 token.IsRevoked = true;
             if (tokens.Count > 0)
                 await _tokenRepo.UpdateManyAsync(tokens, autoSave: true);
-            return tokens.Count;
+            return tokens.Select(x => x.SessionKey ?? x.Id).Distinct().Count();
         }
 
         private static DateTime? Utc(DateTime? value) => value.HasValue ? DateTime.SpecifyKind(value.Value, DateTimeKind.Utc) : null;

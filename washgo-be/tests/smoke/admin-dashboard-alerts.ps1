@@ -22,7 +22,7 @@ try {
     $a0=(Call-Api Get '/admin/alerts?take=1' $null $admin).data
 
     $sessions.Team=New-FixtureMerchant $run; $teamId="$($sessions.Team.user.id)"
-    $locker=(Call-Api Post '/locker/' @{merchantId=$teamId;name="Dash Locker $run";address='Private development fixture';district='Test';city='Test';latitude=10.77;longitude=106.69;boxCount=6} $admin).data
+    $locker=(Call-Api Post '/locker/' @{merchantId=$teamId;code="DASH_$run";name="Dash Locker $run";address='Private development fixture';district='Test';city='Test';latitude=10.77;longitude=106.69;boxCount=6} $admin).data
     $lockerId=[Guid]$locker.id
     $o=@()
     foreach($i in 0..4){

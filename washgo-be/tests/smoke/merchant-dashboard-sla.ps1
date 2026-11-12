@@ -19,7 +19,7 @@ try {
     }
     $admin=$sessions.Admin.accessToken;$customer=$sessions.Customer.accessToken
     $sessions.Team=New-FixtureMerchant $run; $team=$sessions.Team.accessToken; $teamId="$($sessions.Team.user.id)"
-    $locker=(Call-Api Post '/locker/' @{merchantId=$teamId;name="Sla Locker $run";address='Private development fixture';district='Test';city='Test';latitude=10.77;longitude=106.69;boxCount=4} $admin).data
+    $locker=(Call-Api Post '/locker/' @{merchantId=$teamId;code="SLA_$run";name="Sla Locker $run";address='Private development fixture';district='Test';city='Test';latitude=10.77;longitude=106.69;boxCount=4} $admin).data
     $lockerId=[Guid]$locker.id
     $o=@()
     foreach($i in 0..3){

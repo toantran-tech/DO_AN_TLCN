@@ -17,12 +17,27 @@ namespace WashGo.Application.Contracts.Features.FeedbackContracts.Commands
         public List<string> ImageUrls { get; set; } = [];
         /// <summary>Video MP4/WEBM/MOV đã upload qua /files/videos (tối đa 2).</summary>
         public List<string> VideoUrls { get; set; } = [];
+        /// <summary>Mã thao tác do client sinh: gửi lại cùng mã trả kết quả cũ, cùng mã khác nội dung → 409.</summary>
+        public Guid? OperationId { get; set; }
     }
 
+    /// <summary>isHidden là trạng thái đích (không phải đảo). Ẩn cần lý do 1-500 ký tự.</summary>
     public class SetRatingVisibilityCommand
     {
         public bool IsHidden { get; set; }
         public string? Reason { get; set; }
+        /// <summary>Bắt buộc: version lấy từ GET /rating/{id} hoặc danh sách Admin.</summary>
+        public string? ExpectedVersion { get; set; }
+        public Guid? OperationId { get; set; }
+    }
+
+    /// <summary>Ẩn/hiện hàng loạt 1-50 đánh giá được chọn; action Hide|Show; Hide cần một lý do chung.</summary>
+    public class RatingBatchCommand
+    {
+        public Guid OperationId { get; set; }
+        public string Action { get; set; } = string.Empty;
+        public string? Reason { get; set; }
+        public List<WashGo.Application.Contracts.Features.AuditContracts.Commands.AdministrativeBatchItem> Items { get; set; } = [];
     }
 
     public class CreateIncidentCommand

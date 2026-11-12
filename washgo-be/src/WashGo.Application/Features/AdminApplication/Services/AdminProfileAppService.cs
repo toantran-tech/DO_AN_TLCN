@@ -38,7 +38,7 @@ namespace WashGo.Application.Features.AdminApplication.Services
         {
             if (!CurrentUser.Id.HasValue)
                 return NotFound<AdminProfileDto>("Không tìm thấy tài khoản.");
-            if (command.ExpectedVersion == null)
+            if (string.IsNullOrWhiteSpace(command.ExpectedVersion))
                 return BadRequest<AdminProfileDto>("Thiếu expectedVersion (lấy từ GET /admin/profile).");
             var fullName = command.FullName?.Trim();
             if (fullName != null && (fullName.Length < 2 || fullName.Length > 100))
@@ -57,7 +57,7 @@ namespace WashGo.Application.Features.AdminApplication.Services
             var user = await _userRepo.FindAsync(CurrentUser.Id.Value);
             if (user == null)
                 return NotFound<AdminProfileDto>("Không tìm thấy tài khoản.");
-            if (Version(user) != command.ExpectedVersion)
+            if (Version(user) != command.ExpectedVersion.Trim())
                 return new BaseResponse<AdminProfileDto>
                 {
                     Succeeded = false, StatusCode = HttpStatusCode.Conflict, Data = ToDto(user),
@@ -90,7 +90,7 @@ namespace WashGo.Application.Features.AdminApplication.Services
         }
 
         // UpdatedAt has microsecond precision in PostgreSQL: its ticks / 10 make a stable version.
-        private static long Version(User user) => user.UpdatedAt.Ticks / 10;
+        private static string Version(User user) => (user.UpdatedAt.Ticks / 10).ToString(System.Globalization.CultureInfo.InvariantCulture);
 
         private static AdminProfileDto ToDto(User user) => new()
         {

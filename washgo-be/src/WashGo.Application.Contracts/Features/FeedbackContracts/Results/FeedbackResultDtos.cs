@@ -4,13 +4,24 @@ using WashGo.Domain.Shared.Enums;
 
 namespace WashGo.Application.Contracts.Features.FeedbackContracts.Results
 {
+    /// <summary>Đánh giá cho Admin: đầy đủ, có định danh nội bộ (đơn, khách, Merchant) và thông tin kiểm duyệt. Chỉ dùng cho Admin.</summary>
     public class RatingResultDto
     {
         public Guid Id { get; set; }
-        public Guid OrderId { get; set; }
-        public string OrderCode { get; set; } = string.Empty;
-        public Guid CustomerId { get; set; }
-        public string CustomerName { get; set; } = string.Empty;
+        public Guid? OrderId { get; set; }
+        public string? OrderCode { get; set; }
+        public Guid? CustomerId { get; set; }
+        public string? CustomerName { get; set; }
+        /// <summary>Admin: phiên bản (chuỗi opaque) gửi lại khi ẩn/hiện.</summary>
+        public string? Version { get; set; }
+        public bool CanHide { get; set; }
+        public bool CanShow { get; set; }
+        /// <summary>AlreadyHidden / AlreadyVisible khi thao tác tương ứng không áp dụng.</summary>
+        public string? ActionReasonCode { get; set; }
+        public DateTime? ModeratedAt { get; set; }
+        public Guid? ModeratedBy { get; set; }
+        /// <summary>Merchant: nội dung tự do/media đã được chuyển (đã kiểm duyệt, đang hiển thị).</summary>
+        public bool ContentReleased { get; set; }
         public Guid? MerchantId { get; set; }
         public string? MerchantName { get; set; }
         public int OverallStars { get; set; }
@@ -102,5 +113,57 @@ namespace WashGo.Application.Contracts.Features.FeedbackContracts.Results
         public List<string> ImageUrls { get; set; } = [];
         public List<string> VideoUrls { get; set; } = [];
         public DateTime CreatedAt { get; set; }
+    }
+
+    /// <summary>
+    /// Đánh giá cho Merchant (DTO riêng, tối thiểu): không có mã/id đơn, định danh khách, tên Merchant hay dữ liệu kiểm duyệt.
+    /// Nhận xét/ảnh/video chỉ có khi Admin đã kiểm duyệt và đánh giá đang hiển thị (contentReleased = true).
+    /// </summary>
+    public class PartnerRatingDto
+    {
+        public Guid Id { get; set; }
+        public int OverallStars { get; set; }
+        public int? QualityStars { get; set; }
+        public int? SpeedStars { get; set; }
+        public int? AttitudeStars { get; set; }
+        public int? PackagingStars { get; set; }
+        public string? Comment { get; set; }
+        public List<string> ImageUrls { get; set; } = [];
+        public List<string> VideoUrls { get; set; } = [];
+        public bool ContentReleased { get; set; }
+        public long CreatedOn { get; set; }
+    }
+
+    /// <summary>Đánh giá dịch vụ WashGo của chính Customer: không có thông tin Merchant/Shipper hay dữ liệu kiểm duyệt nội bộ.</summary>
+    public class CustomerRatingDto
+    {
+        public Guid Id { get; set; }
+        public Guid OrderId { get; set; }
+        public string OrderCode { get; set; } = string.Empty;
+        public int OverallStars { get; set; }
+        public int? QualityStars { get; set; }
+        public int? SpeedStars { get; set; }
+        public int? AttitudeStars { get; set; }
+        public int? PackagingStars { get; set; }
+        public string? Comment { get; set; }
+        public List<string> ImageUrls { get; set; } = [];
+        public List<string> VideoUrls { get; set; } = [];
+        /// <summary>false khi đánh giá đã bị ẩn khỏi hiển thị công khai.</summary>
+        public bool IsVisible { get; set; }
+        public long CreatedOn { get; set; }
+    }
+
+    /// <summary>Thống kê đánh giá theo cùng bộ lọc với danh sách, một snapshot. Histogram theo sao tổng thể dịch vụ.</summary>
+    public class RatingSummaryDto
+    {
+        public int Total { get; set; }
+        public int Visible { get; set; }
+        public int Hidden { get; set; }
+        /// <summary>Số đánh giá theo 1..5 sao (khóa "1".."5"), trên toàn tập đã lọc.</summary>
+        public Dictionary<string, int> Histogram { get; set; } = [];
+        /// <summary>Điểm trung bình đánh giá đang hiển thị (1 chữ số thập phân, nửa ra xa 0); null khi chưa có.</summary>
+        public decimal? VisibleAverage { get; set; }
+        public int VisibleCount { get; set; }
+        public DateTime GeneratedAt { get; set; }
     }
 }

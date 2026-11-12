@@ -31,6 +31,9 @@ namespace WashGo.Domain.Entities.Partner
         public Guid? ApprovedBy { get; set; }
         public DateTime? ApprovedAt { get; set; }
         public decimal Rating { get; set; }
+        /// <summary>Tổng sao và số đánh giá công khai (không ẩn, không xóa); Rating = Sum/Count làm tròn 1 chữ số.</summary>
+        public int PublicRatingSum { get; set; }
+        public int PublicRatingCount { get; set; }
         public int TotalOrders { get; set; }
         public decimal TotalRevenue { get; set; }
         public decimal DepositAmount { get; set; }

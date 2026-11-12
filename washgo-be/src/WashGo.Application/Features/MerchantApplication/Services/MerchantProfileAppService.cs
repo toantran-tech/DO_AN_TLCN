@@ -79,6 +79,8 @@ namespace WashGo.Application.Features.MerchantApplication.Services
                 BusinessName = merchant.BusinessName,
                 TaxCode = merchant.TaxCode,
                 BusinessLicense = LicenseText(merchant.BusinessLicense),
+                LegacyBusinessLicense = ClassifyLicense(LicenseText(merchant.BusinessLicense), merchant.BusinessLicenseDocumentId.HasValue),
+                Version = MerchantWriteGuard.Version(merchant),
                 BusinessLicenseDocumentId = merchant.BusinessLicenseDocumentId,
                 ContractDocumentId = merchant.ContractDocumentId,
                 SlaDocumentId = merchant.SlaDocumentId,
@@ -92,7 +94,7 @@ namespace WashGo.Application.Features.MerchantApplication.Services
                 OpeningHours = merchant.OpeningHours,
                 ImageUrls = await StoreImagesAsync(merchant.Id),
                 Status = merchant.Status,
-                Rating = merchant.Rating,
+                Rating = publicRatingCount == 0 ? null : merchant.Rating,
                 TotalOrders = merchant.TotalOrders,
                 CommissionRate = merchant.CommissionRate,
                 ServiceRadiusKm = merchant.ServiceRadiusKm,
@@ -116,6 +118,11 @@ namespace WashGo.Application.Features.MerchantApplication.Services
                 return NotFound<MerchantProfileRequestDto>("Không tìm thấy hồ sơ cửa hàng!");
             if (merchant.Status != MerchantStatus.Active)
                 return BadRequest<MerchantProfileRequestDto>("Tài khoản Merchant không hoạt động.");
+            // Checked under the Merchant lock: a proposal built on an outdated profile is never attached to the newer one.
+            if (string.IsNullOrWhiteSpace(command.ExpectedMerchantVersion))
+                return MerchantWriteGuard.Error<MerchantProfileRequestDto>(System.Net.HttpStatusCode.BadRequest, "ExpectedVersionRequired", "Thiếu expectedMerchantVersion (version lấy từ GET /merchant-profile).");
+            if (command.ExpectedMerchantVersion.Trim() != MerchantWriteGuard.Version(merchant))
+                return MerchantWriteGuard.Error<MerchantProfileRequestDto>(System.Net.HttpStatusCode.Conflict, "VersionMismatch", "Hồ sơ cửa hàng đã thay đổi kể từ lúc bạn mở; hãy tải lại trước khi gửi.");
 
             var name = command.BusinessName?.Trim() ?? string.Empty;
             var address = command.Address?.Trim() ?? string.Empty;
@@ -402,6 +409,16 @@ namespace WashGo.Application.Features.MerchantApplication.Services
         }
 
         /// <summary>BusinessLicense is stored as JSON (Admin form): a JSON string becomes plain text.</summary>
+        private static LegacyBusinessLicenseDto? ClassifyLicense(string? text, bool hasDocument)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return null;
+            var value = text.Trim();
+            var kind = value.StartsWith("/", StringComparison.Ordinal) || Uri.TryCreate(value, UriKind.Absolute, out _) ? "Url"
+                : System.Text.RegularExpressions.Regex.IsMatch(value, @"^[\p{L}\d][\p{L}\d./\- ]{0,99}$") && value.Any(char.IsDigit) ? "Number"
+                : "Text";
+            return new LegacyBusinessLicenseDto { Kind = kind, Value = value, SupersededByDocument = hasDocument };
+        }
+
         private static string? LicenseText(string? stored)
         {
             if (string.IsNullOrWhiteSpace(stored)) return null;

@@ -39,23 +39,48 @@ try {
     if((StatusOf Put '/admin/profile' @{fullName='Stale write';expectedVersion=$p.version} $t1) -ne 409){throw 'Stale version not rejected.'}
     $same=(Call-Api Put '/admin/profile' @{fullName="Smoke Admin Renamed $run";expectedVersion=$u.version} $t1)
     if($same.data.version -ne $u.version){throw 'No-op save changed the version.'}
+    # Two sessions save with the same version at the same time: exactly one wins, the other gets 409.
+    $cv=(Call-Api Get '/admin/profile' $null $t1).data.version
+    $jobs=@(foreach($name in 'Phien Mot','Phien Hai'){ Start-Job -ScriptBlock { param($Url,$Token,$Body)
+        try { [int](Invoke-WebRequest $Url -UseBasicParsing -Method Put -ContentType 'application/json; charset=utf-8' -Headers @{Authorization="Bearer $Token"} -Body ([Text.Encoding]::UTF8.GetBytes($Body))).StatusCode }
+        catch { [int]$_.Exception.Response.StatusCode } } -ArgumentList "$BaseUrl/admin/profile",$t1,(@{fullName="$name $run";expectedVersion=$cv}|ConvertTo-Json -Compress) })
+    $codes=@($jobs | Wait-Job | Receive-Job); $jobs | Remove-Job -Force
+    if(@($codes | Where-Object { $_ -eq 200 }).Count -ne 1 -or @($codes | Where-Object { $_ -eq 409 }).Count -ne 1){throw "Concurrent profile saves wrong: $codes"}
+    $u=(Call-Api Get '/admin/profile' $null $t1).data
     $clr=(Call-Api Put '/admin/profile' @{avatar='';expectedVersion=$u.version} $t1).data
     if($clr.avatar){throw 'Avatar not cleared.'}
     Assert-Status 403 Get '/admin/profile' $null ((Call-Api Post '/auth/login' @{email='customer@washgo.vn';password='Customer@123'} $null).data.accessToken)
 
     Write-Output '2. Sessions: list (current first), revoke one, revoke others keeps current'
-    $list=(Call-Api Get '/auth/sessions' $null $t1).data
-    if(@($list).Count -ne 3 -or -not $list[0].isCurrent -or @($list | Where-Object isCurrent).Count -ne 1){throw "Sessions wrong: $($list | ConvertTo-Json -Compress)"}
+    # More sessions than one page: the list is paged and the current session is always returned.
+    Sql "INSERT INTO washgo.refresh_tokens(id,user_id,token,expiry_date,is_revoked,created_at,started_at,session_key) SELECT g, '$adminId', md5(g::text), now()+interval '1 day', false, now()-interval '2 days', now()-interval '2 days', g FROM (SELECT gen_random_uuid() g FROM generate_series(1,105)) x;" | Out-Null
+    $big=(Call-Api Get '/auth/sessions?take=100' $null $t1).data
+    if($big.total -lt 108 -or -not $big.hasMore -or @($big.items).Count -ne 100 -or -not $big.current.isCurrent){throw "Large session list wrong: total=$($big.total)"}
+    if((Call-Api Get '/auth/security' $null $t1).data.activeSessions -ne $big.total){throw 'activeSessions differs from the list total.'}
+    Sql "DELETE FROM washgo.refresh_tokens WHERE user_id='$adminId' AND token=md5(id::text);" | Out-Null
+    $sl=(Call-Api Get '/auth/sessions?take=2' $null $t1).data
+    $sp=(Call-Api Get '/auth/sessions?page=2&take=2' $null $t1).data
+    $all=@($sl.items)+@($sp.items)
+    if($sl.total -ne 3 -or @($sl.items).Count -ne 2 -or -not $sl.hasMore -or @($sp.items).Count -ne 1 -or -not $sl.current.isCurrent -or @($all | Where-Object isCurrent).Count -ne 1 -or $sl.current.id -ne ($all | Where-Object isCurrent).id){throw "Sessions wrong: $($sl | ConvertTo-Json -Depth 4 -Compress)"}
     $sec=(Call-Api Get '/auth/security' $null $t1).data
     if(-not $sec.hasPassword -or $sec.twoFactorSupported -or $sec.activeSessions -ne 3){throw 'Security status wrong.'}
-    $s2=($list | Where-Object { -not $_.isCurrent })[0].id
+    $rawProfile=(Invoke-WebRequest -UseBasicParsing -Uri "$BaseUrl/admin/profile" -Headers @{Authorization="Bearer $t1"}).Content
+    if($rawProfile -notmatch '"version":"\d+"'){throw 'Profile version is not an opaque string.'}
+    # Newest first: a3, a2, a1(current). Refresh a2, then revoke it by the id read before the refresh.
+    $s2=$sl.items[1].id
+    $a2r=(Call-Api Post '/auth/refresh-token' @{refreshToken=$a2.refreshToken} $null).data
+    $again=(Call-Api Get '/auth/sessions?take=10' $null $t1).data
+    if(-not ($again.items | Where-Object { $_.id -eq $s2 })){throw 'Logical session id changed after refresh.'}
     $r=(Call-Api Delete "/auth/sessions/$s2" $null $t1).data
-    if($r.revoked -ne 1){throw 'Single revoke failed.'}
+    if($r.revoked -ne 1 -or $r.stale){throw 'Single revoke failed.'}
+    if((StatusOf Get '/auth/me' $null $a2r.accessToken) -ne 401){throw 'Refreshed token of a revoked session still works.'}
+    $r=(Call-Api Delete "/auth/sessions/$s2" $null $t1).data
+    if($r.revoked -ne 0 -or -not $r.stale){throw 'Second revoke not reported as stale.'}
     $r=(Call-Api Post '/auth/sessions/revoke-others' $null $t1).data
     if($r.revoked -ne 1){throw "Revoke others count wrong: $($r.revoked)"}
     if((StatusOf Get '/auth/me' $null $a2.accessToken) -ne 401 -or (StatusOf Get '/auth/me' $null $a3.accessToken) -ne 401){throw 'Revoked sessions still work.'}
     if((StatusOf Get '/auth/me' $null $t1) -ne 200){throw 'Current session was revoked.'}
-    $cust=(Call-Api Get '/auth/sessions' $null ((Call-Api Post '/auth/login' @{email='customer@washgo.vn';password='Customer@123'} $null).data.accessToken)).data[0].id
+    $cust=(Call-Api Get '/auth/sessions' $null ((Call-Api Post '/auth/login' @{email='customer@washgo.vn';password='Customer@123'} $null).data.accessToken)).data.items[0].id
     Assert-Status 404 Delete "/auth/sessions/$cust" $null $t1
 
     Write-Output '3. Change password: current required, policy, others signed out, wrong attempts limited'

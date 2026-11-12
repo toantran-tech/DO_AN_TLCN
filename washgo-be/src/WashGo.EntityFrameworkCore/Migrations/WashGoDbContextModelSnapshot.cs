@@ -511,6 +511,14 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("character varying(200)")
                         .HasColumnName("merchant_name");
 
+                    b.Property<DateTime?>("ModeratedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("moderated_at");
+
+                    b.Property<Guid?>("ModeratedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("moderated_by");
+
                     b.Property<string>("Modified")
                         .HasColumnType("jsonb")
                         .HasColumnName("modified");
@@ -801,6 +809,10 @@ namespace WashGo.EntityFrameworkCore.Migrations
                     b.Property<bool>("IsRevoked")
                         .HasColumnType("boolean")
                         .HasColumnName("is_revoked");
+
+                    b.Property<Guid?>("SessionKey")
+                        .HasColumnType("uuid")
+                        .HasColumnName("session_key");
 
                     b.Property<DateTime?>("StartedAt")
                         .HasColumnType("timestamp with time zone")
@@ -1506,6 +1518,14 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)")
                         .HasColumnName("phone");
+
+                    b.Property<int>("PublicRatingCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("public_rating_count");
+
+                    b.Property<int>("PublicRatingSum")
+                        .HasColumnType("integer")
+                        .HasColumnName("public_rating_sum");
 
                     b.Property<decimal>("Rating")
                         .HasPrecision(2, 1)
@@ -3081,6 +3101,10 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasPrecision(5, 2)
                         .HasColumnType("numeric(5,2)")
                         .HasColumnName("commission_rate_applied");
+
+                    b.Property<string>("CommissionSnapshotSource")
+                        .HasColumnType("text")
+                        .HasColumnName("commission_snapshot_source");
 
                     b.Property<string>("Created")
                         .HasColumnType("jsonb")

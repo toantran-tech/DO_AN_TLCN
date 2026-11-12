@@ -10,6 +10,10 @@ namespace WashGo.Application.Contracts.Features.FeedbackContracts.Queries
         public int? Stars { get; set; }
         public Guid? MerchantId { get; set; }
         public bool? IsHidden { get; set; }
+        /// <summary>Admin: các đánh giá của một đơn.</summary>
+        public Guid? OrderId { get; set; }
+        /// <summary>Chỉ Admin.</summary>
+        public Guid? CustomerId { get; set; }
     }
 
     public class IncidentFilterQuery : BaseFilterQuery

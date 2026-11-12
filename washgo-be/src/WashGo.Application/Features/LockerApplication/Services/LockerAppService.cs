@@ -306,10 +306,16 @@ namespace WashGo.Application.Features.LockerApplication.Services
             }
             if (string.IsNullOrWhiteSpace(command.ExpectedVersion)) return AdministrativeWriteGuard.Error<bool>(System.Net.HttpStatusCode.BadRequest, "ExpectedVersionRequired", "Thiếu expectedVersion của locker.");
             if (command.ExpectedVersion != await VersionAsync(locker)) return AdministrativeWriteGuard.Error<bool>(System.Net.HttpStatusCode.Conflict, "VersionMismatch", "Locker đã thay đổi.");
+            // The locker version does not cover box states: the box state the Admin saw is checked under the same locker lock
+            // that reservations use, so a change in between (other Admin, reservation) is a conflict, never applied blindly.
+            if (!command.ExpectedBoxStatus.HasValue)
+                return AdministrativeWriteGuard.Error<bool>(System.Net.HttpStatusCode.BadRequest, "ExpectedBoxStatusRequired", "Thiếu expectedBoxStatus (trạng thái ô lúc bạn xem).");
+            if (box.Status != command.ExpectedBoxStatus.Value)
+                return AdministrativeWriteGuard.Error<bool>(System.Net.HttpStatusCode.Conflict, "BoxStatusChanged", $"Ô tủ đã chuyển sang {box.Status}; hãy tải lại.");
 
             if (box.Status == command.NewStatus)
             {
-                var unchanged = Success(true, "Ô tủ đã ở trạng thái yêu cầu.");
+                var unchanged = AdministrativeBatchExecutor.Unchanged(Success(true, "Ô tủ đã ở trạng thái yêu cầu."));
                 await Writes.RecordAsync(command.OperationId, CurrentUser.Id!.Value, "Locker", "BoxStatus", command.BoxId.ToString(), command, unchanged);
                 await uow.CompleteAsync(); return unchanged;
             }
@@ -373,6 +379,7 @@ namespace WashGo.Application.Features.LockerApplication.Services
             if (old != command.Status) await Audit.LogAsync(new AuditEntry("Locker", "Status", "Locker", id.ToString(), locker.Code) { ChangedFields = ["status"] });
             var dto = ObjectMapper.Map<Locker, LockerResultDto>(locker); await FillNamesAsync([dto]);
             var response = Success(dto);
+            if (old == command.Status) AdministrativeBatchExecutor.Unchanged(response);
             await Writes.RecordAsync(command.OperationId, CurrentUser.Id!.Value, "Locker", "Status", id.ToString(), command, response);
             await uow.CompleteAsync(); return response;
         }
@@ -381,7 +388,7 @@ namespace WashGo.Application.Features.LockerApplication.Services
             LazyServiceProvider.LazyGetRequiredService<AdministrativeBatchExecutor>().RunAsync("Locker", command, 50, async (item, key) =>
             {
                 if (command.Action == "Delete") return AdministrativeBatchExecutor.Item(item.Id, await DeleteAsync(item.Id, item.ExpectedVersion, key));
-                if (!command.Status.HasValue || !Enum.IsDefined((LockerStatus)command.Status.Value)) return new() { Id = item.Id, StatusCode = 400, Message = "Status đích không hợp lệ." };
+                if (!command.Status.HasValue || !Enum.IsDefined((LockerStatus)command.Status.Value)) return AdministrativeBatchExecutor.Invalid(item.Id, "InvalidTargetStatus", "Status đích không hợp lệ.");
                 return AdministrativeBatchExecutor.Item(item.Id, await SetStatusAsync(item.Id, new() { ExpectedVersion = item.ExpectedVersion, OperationId = key, Status = (LockerStatus)command.Status.Value }));
             });
 

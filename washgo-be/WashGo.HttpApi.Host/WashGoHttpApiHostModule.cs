@@ -120,6 +120,7 @@ namespace WashGo.HttpApi.Host
                 };
             });
 
+            context.Services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationMiddlewareResultHandler, AuditingAuthorizationResultHandler>();
             context.Services.AddAuthorization(options =>
             {
                 options.AddPolicy("AdminOnly", policy => policy.RequireRole("Admin"));
@@ -271,9 +272,11 @@ namespace WashGo.HttpApi.Host
             app.UseEndpoints(endpoints =>
             {
                 var handlers = context.ServiceProvider.GetServices<IEndpointBase>();
+                // Every API endpoint goes through the rejection audit filter.
+                var api = endpoints.MapGroup(string.Empty).AddEndpointFilter<WashGo.HttpApi.Host.AuditRejectionFilter>();
                 foreach (var handler in handlers)
                 {
-                    handler.MapEndpoint(endpoints);
+                    handler.MapEndpoint(api);
                 }
                 endpoints.MapHub<NotificationHub>(NotificationHub.Path);
             });

@@ -146,7 +146,13 @@ namespace WashGo.Application.Features.PromotionApplication.Services
             var dtos = items.Select(x => ToDto(x, now)).ToList();
             var ids = items.Select(x => x.Id).ToList();
             var historical = await AsyncExecuter.ToListAsync((await _usageRepo.GetQueryableAsync()).Where(x => ids.Contains(x.PromotionId)).Select(x => x.PromotionId).Distinct());
-            foreach (var dto in dtos) dto.CanDelete = dto.CanDelete && !historical.Contains(dto.Id);
+            foreach (var dto in dtos)
+            {
+                dto.CanDelete = dto.CanDelete && !historical.Contains(dto.Id);
+                // Same check as UpdateAsync: any usage, even reverted, freezes the code.
+                dto.CanChangeCode = !historical.Contains(dto.Id);
+                dto.ChangeCodeReasonCode = dto.CanChangeCode ? null : "HasUsageHistory";
+            }
             return Success(dtos, total, page, take,
                 total == 0 ? "Chưa có mã giảm giá nào." : null);
         }
@@ -156,7 +162,11 @@ namespace WashGo.Application.Features.PromotionApplication.Services
             var entity = await FindActiveAsync(id);
             if (entity == null)
                 return NotFound<PromotionResultDto>("Không tìm thấy mã giảm giá!");
-            var dto = ToDto(entity, DateTime.UtcNow); dto.CanDelete &= !await _usageRepo.AnyAsync(x => x.PromotionId == id);
+            var dto = ToDto(entity, DateTime.UtcNow);
+            var used = await _usageRepo.AnyAsync(x => x.PromotionId == id);
+            dto.CanDelete &= !used;
+            dto.CanChangeCode = !used;
+            dto.ChangeCodeReasonCode = used ? "HasUsageHistory" : null;
             return Success(dto);
         }
         public async Task<BaseResponse<WashGo.Application.Contracts.Features.AuditContracts.Results.AdministrativeSummaryDto>> GetSummaryAsync()
@@ -263,12 +273,14 @@ namespace WashGo.Application.Features.PromotionApplication.Services
             if (entity == null || entity.IsDeleted) return NotFound<PromotionResultDto>("Không tìm thấy mã giảm giá.");
             if (string.IsNullOrWhiteSpace(command.ExpectedVersion)) return AdministrativeWriteGuard.Error<PromotionResultDto>(HttpStatusCode.BadRequest, "ExpectedVersionRequired", "Thiếu expectedVersion.");
             if (command.ExpectedVersion != Version(entity)) return AdministrativeWriteGuard.Error<PromotionResultDto>(HttpStatusCode.Conflict, "VersionMismatch", "Khuyến mãi đã thay đổi.");
-            if (entity.IsActive != command.IsActive)
+            var changed = entity.IsActive != command.IsActive;
+            if (changed)
             {
                 entity.IsActive = command.IsActive; await _promotionRepo.UpdateAsync(entity, autoSave: true);
                 await Audit.LogAsync(new AuditEntry("Promotion", "Status", "Promotion", id.ToString(), entity.Code) { ChangedFields = ["isActive"] });
             }
             var response = Success(ToDto(entity, DateTime.UtcNow));
+            if (!changed) AdministrativeBatchExecutor.Unchanged(response);
             await Writes.RecordAsync(command.OperationId, CurrentUser.Id!.Value, "Promotion", "Status", id.ToString(), command, response);
             await uow.CompleteAsync(); return response;
         }
@@ -293,12 +305,21 @@ namespace WashGo.Application.Features.PromotionApplication.Services
 
             var stats = await BuildStatisticsAsync(entity, fromDate, toDate);
             var csv = new StringBuilder();
-            csv.AppendLine("Ngay,SoLuotDung,TongTienGiam,DoanhThu");
+            string N(decimal v) => v.ToString(CultureInfo.InvariantCulture);
+            csv.AppendLine($"MaKhuyenMai,{stats.Code}");
+            csv.AppendLine($"TuNgay,{new DateTimeOffset(stats.FromDate, TimeSpan.Zero).ToOffset(VietnamOffset):yyyy-MM-ddTHH:mm:sszzz}");
+            csv.AppendLine($"DenNgay,{new DateTimeOffset(stats.ToDate, TimeSpan.Zero).ToOffset(VietnamOffset):yyyy-MM-ddTHH:mm:sszzz}");
+            csv.AppendLine($"TaoLuc,{new DateTimeOffset(stats.GeneratedAt, TimeSpan.Zero).ToOffset(VietnamOffset):yyyy-MM-ddTHH:mm:sszzz}");
+            csv.AppendLine("MuiGio,Asia/Ho_Chi_Minh");
+            csv.AppendLine($"CanCu,\"{stats.Basis}\"");
+            csv.AppendLine("GhiChu,Ban tinh moi tai thoi diem tai file; khong phai ban chup cua bang dang xem");
+            csv.AppendLine();
+            csv.AppendLine("Ngay,SoLuotDung,TongTienGiam,TongGiaTriDon,DoanhThu,DoanhThuDaThanhToan");
             foreach (var day in stats.Daily)
                 csv.AppendLine(string.Join(',', day.Date, day.UsedCount.ToString(CultureInfo.InvariantCulture),
-                    day.DiscountAmount.ToString(CultureInfo.InvariantCulture), day.Revenue.ToString(CultureInfo.InvariantCulture)));
+                    N(day.DiscountAmount), N(day.TotalOrderAmount), N(day.Revenue), N(day.PaidRevenue)));
             csv.AppendLine(string.Join(',', "TONG", stats.UsedCount.ToString(CultureInfo.InvariantCulture),
-                stats.TotalDiscountAmount.ToString(CultureInfo.InvariantCulture), stats.Revenue.ToString(CultureInfo.InvariantCulture)));
+                N(stats.TotalDiscountAmount), N(stats.TotalOrderAmount), N(stats.Revenue), N(stats.PaidRevenue)));
             return Success(csv.ToString());
         }
 
@@ -312,7 +333,7 @@ namespace WashGo.Application.Features.PromotionApplication.Services
             LazyServiceProvider.LazyGetRequiredService<AdministrativeBatchExecutor>().RunAsync("Promotion", command, 100, async (item, key) =>
             {
                 if (command.Action == "Delete") return AdministrativeBatchExecutor.Item(item.Id, await DeleteAsync(item.Id, item.ExpectedVersion, key));
-                if (!command.IsActive.HasValue) return new() { Id = item.Id, StatusCode = 400, Message = "Status cần isActive đích." };
+                if (!command.IsActive.HasValue) return AdministrativeBatchExecutor.Invalid(item.Id, "InvalidTargetStatus", "Status cần isActive đích.");
                 return AdministrativeBatchExecutor.Item(item.Id, await SetStatusAsync(item.Id, new() { ExpectedVersion = item.ExpectedVersion, OperationId = key, IsActive = command.IsActive.Value }));
             });
 
@@ -332,27 +353,22 @@ namespace WashGo.Application.Features.PromotionApplication.Services
                             order.FinalAmount,
                             order.PaymentStatus
                         };
-            if (fromDate is > 0)
-            {
-                var from = DateTimeOffset.FromUnixTimeSeconds(fromDate.Value).UtcDateTime;
-                query = query.Where(x => x.UsedAt >= from);
-            }
-            if (toDate is > 0)
-            {
-                var to = DateTimeOffset.FromUnixTimeSeconds(toDate.Value).UtcDateTime;
-                query = query.Where(x => x.UsedAt <= to);
-            }
+            var to = toDate is > 0 ? DateTimeOffset.FromUnixTimeSeconds(toDate.Value).UtcDateTime : DateTime.UtcNow;
+            var from = fromDate is > 0 ? DateTimeOffset.FromUnixTimeSeconds(fromDate.Value).UtcDateTime : to.AddDays(-30);
+            query = query.Where(x => x.UsedAt >= from && x.UsedAt <= to);
             var totals = await AsyncExecuter.FirstOrDefaultAsync(query.GroupBy(x => 1).Select(g => new
             {
                 Count = g.Count(), Discount = g.Sum(x => x.DiscountAmount), OrderAmount = g.Sum(x => x.OrderAmount),
                 Revenue = g.Sum(x => x.FinalAmount), Paid = g.Sum(x => x.PaymentStatus == PaymentStatus.Paid ? x.FinalAmount : 0)
             }));
             var days = await AsyncExecuter.ToListAsync(query.GroupBy(x => (x.UsedAt + VietnamOffset).Date).OrderBy(g => g.Key)
-                .Select(g => new { Date = g.Key, Count = g.Count(), Discount = g.Sum(x => x.DiscountAmount), Revenue = g.Sum(x => x.FinalAmount) }));
+                .Select(g => new { Date = g.Key, Count = g.Count(), Discount = g.Sum(x => x.DiscountAmount), Revenue = g.Sum(x => x.FinalAmount),
+                    OrderAmount = g.Sum(x => x.OrderAmount), Paid = g.Sum(x => x.PaymentStatus == PaymentStatus.Paid ? x.FinalAmount : 0) }));
             await snapshot.CompleteAsync();
 
             return new PromotionStatisticsDto
             {
+                GeneratedAt = DateTime.UtcNow, FromDate = from, ToDate = to,
                 PromotionId = promotion.Id,
                 Code = promotion.Code,
                 UsedCount = totals?.Count ?? 0,
@@ -365,12 +381,17 @@ namespace WashGo.Application.Features.PromotionApplication.Services
                         Date = g.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
                         UsedCount = g.Count,
                         DiscountAmount = g.Discount,
-                        Revenue = g.Revenue
+                        Revenue = g.Revenue,
+                        TotalOrderAmount = g.OrderAmount,
+                        PaidRevenue = g.Paid
                     })
                     .ToList()
             };
         }
-        private static bool InvalidDates(long? from, long? to) => from is < 0 or > BaseFilterQuery.MaxUnixSeconds || to is < 0 or > BaseFilterQuery.MaxUnixSeconds || from.HasValue && to.HasValue && from > to;
+        /// <summary>Statistics periods: at most 366 days; without dates the last 30 days up to now.</summary>
+        public const int MaxStatisticsDays = 366;
+        private static bool InvalidDates(long? from, long? to) => from is < 0 or > BaseFilterQuery.MaxUnixSeconds || to is < 0 or > BaseFilterQuery.MaxUnixSeconds || from.HasValue && to.HasValue && from > to ||
+            (from is > 0 ? from.Value : (to is > 0 ? to.Value : DateTimeOffset.UtcNow.ToUnixTimeSeconds()) - 30L * 86400) < (to is > 0 ? to.Value : DateTimeOffset.UtcNow.ToUnixTimeSeconds()) - MaxStatisticsDays * 86400L;
 
         private static string? Validate(CreatePromotionCommand command, string code)
         {

@@ -22,7 +22,8 @@ function New-Request($Method,$Path,$Body,$Token){
 function Read-Response($R){ $t=$R.Content.ReadAsStringAsync().Result; @{ Status=[int]$R.StatusCode; Json=$(if($t){$t|ConvertFrom-Json}else{$null}) } }
 function Send($Method,$Path,$Body,$Token){ Read-Response ($http.SendAsync((New-Request $Method $Path $Body $Token)).Result) }
 function Proposal($Name,$Extra){ $b=@{name=$Name;description='Dich vu thu';unitPrice=100000;estimatedDurationHours=24;serviceType=1;unit='kg';reason='Thu'}; foreach($k in $Extra.Keys){$b[$k]=$Extra[$k]}; $b }
-function Approve($Id){ $sid=(Call-Api Post "/service-proposal/$Id/approve" $null $admin).data.serviceId; $script:serviceIds+=$sid; $sid }
+function PV($Id){ [uri]::EscapeDataString((Call-Api Get "/service-proposal/$Id" $null $admin).data.version) }
+function Approve($Id){ $sid=(Call-Api Post "/service-proposal/$Id/approve?expectedVersion=$(PV $Id)" $null $admin).data.serviceId; $script:serviceIds+=$sid; $sid }
 
 try {
     foreach($role in @('Admin','Merchant')){
@@ -52,11 +53,13 @@ try {
     $bId=@($r1,$r2 | Where-Object { $_.Status -eq 201 })[0].Json.data.id
 
     Write-Output '3. Concurrent approvals: one result'
-    $t1=$http.SendAsync((New-Request Post "/service-proposal/$($a.Json.data.id)/approve" $null $admin))
-    $t2=$http.SendAsync((New-Request Post "/service-proposal/$($a.Json.data.id)/approve" $null $admin))
+    $pv=[uri]::EscapeDataString((Call-Api Get "/service-proposal/$($a.Json.data.id)" $null $admin).data.version)
+    $t1=$http.SendAsync((New-Request Post "/service-proposal/$($a.Json.data.id)/approve?expectedVersion=$pv" $null $admin))
+    $t2=$http.SendAsync((New-Request Post "/service-proposal/$($a.Json.data.id)/approve?expectedVersion=$pv" $null $admin))
     [void][System.Threading.Tasks.Task]::WaitAll(@($t1,$t2))
     $x1=Read-Response $t1.Result; $x2=Read-Response $t2.Result
-    if((@($x1.Status,$x2.Status) | Sort-Object) -join ',' -ne '200,400'){throw "Concurrent approve: $($x1.Status)/$($x2.Status)"}
+    # The loser sees either the processed request (400) or a changed version (409); never a second approval.
+    if(-not ((@($x1.Status,$x2.Status) | Sort-Object) -join ',' -in '200,400','200,409')){throw "Concurrent approve: $($x1.Status)/$($x2.Status)"}
     $sA=@($x1,$x2 | Where-Object { $_.Status -eq 200 })[0].Json.data.serviceId; $serviceIds+=$sA
     $sB=Approve $bId
 
@@ -81,19 +84,19 @@ try {
     if(!$teamView.hasPendingProposal -or $teamView.canProposeUpdate -or $teamView.proposeBlockedCode -ne 'PendingProposal' -or $teamView.myPendingProposalId -or $seedView.myPendingProposalId -ne $keep.id){throw 'Pending flags wrong.'}
     $pend=Send Post "/merchant-service/$sA/proposals" (Proposal "Svc $run A" @{}) $team
     if($pend.Status -ne 400 -or $pend.Json.meta.code -ne 'PendingProposal'){throw 'Pending code missing.'}
-    Call-Api Post "/service-proposal/$($keep.id)/reject" @{reason='Thu'} $admin | Out-Null
+    Call-Api Post "/service-proposal/$($keep.id)/reject" @{reason='Thu';expectedVersion=(Call-Api Get "/service-proposal/$($keep.id)" $null $admin).data.version} $admin | Out-Null
     $mix=(Call-Api Post "/merchant-service/$sA/proposals" (Proposal "Svc $run A" @{imageUrls=@($img2,$seedImg)}) $seed).data
     if((@($mix.proposed.imageUrls) -join ',') -ne "$img2,$seedImg"){throw 'Existing + own new image not accepted.'}
-    Call-Api Post "/service-proposal/$($mix.id)/reject" @{reason='Thu'} $admin | Out-Null
+    Call-Api Post "/service-proposal/$($mix.id)/reject" @{reason='Thu';expectedVersion=(Call-Api Get "/service-proposal/$($mix.id)" $null $admin).data.version} $admin | Out-Null
     Assert-Status 400 Post "/merchant-service/$sA/proposals" (Proposal "Svc $run A" @{imageUrls=@($seedImg)}) $team
     $clear=(Call-Api Post "/merchant-service/$sA/proposals" (Proposal "Svc $run A" @{imageUrls=@()}) $seed).data
     if(@($clear.proposed.imageUrls).Count -ne 0){throw '[] did not clear images.'}
 
     Write-Output '6. Stale version on submit and on approval'
     Sql "UPDATE washgo.services SET description='Admin vua sua $run' WHERE id='$sA';" | Out-Null
-    $st=Send Post "/service-proposal/$($clear.id)/approve" $null $admin
+    $st=Send Post "/service-proposal/$($clear.id)/approve?expectedVersion=$(PV $clear.id)" $null $admin
     if($st.Status -ne 409 -or $st.Json.meta.code -ne 'StaleVersion'){throw "Stale approve not blocked: $($st.Status)"}
-    Call-Api Post "/service-proposal/$($clear.id)/reject" @{reason='Ban cu'} $admin | Out-Null
+    Call-Api Post "/service-proposal/$($clear.id)/reject" @{reason='Ban cu';expectedVersion=(Call-Api Get "/service-proposal/$($clear.id)" $null $admin).data.version} $admin | Out-Null
     $old=Send Post "/merchant-service/$sA/proposals" (Proposal "Svc $run A" @{expectedVersion=$d.version}) $seed
     if($old.Status -ne 409 -or $old.Json.meta.code -ne 'StaleVersion'){throw "Stale submit not blocked: $($old.Status)"}
     if((Call-Api Get "/merchant-service/$sA" $null $seed).data.version -eq $d.version){throw 'Version did not change.'}

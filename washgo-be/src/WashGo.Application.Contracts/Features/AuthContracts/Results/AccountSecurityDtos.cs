@@ -5,7 +5,7 @@ namespace WashGo.Application.Contracts.Features.AuthContracts.Results
     /// <summary>Một phiên đăng nhập còn hiệu lực (mỗi lần đăng nhập là một phiên; làm mới token giữ nguyên phiên về mặt người dùng).</summary>
     public class SessionDto
     {
-        /// <summary>Id phiên hiện hành (đổi sau mỗi lần làm mới token).</summary>
+        /// <summary>Id phiên logic, ổn định qua các lần làm mới token; dùng cho DELETE /auth/sessions/{id}.</summary>
         public Guid Id { get; set; }
         /// <summary>Lúc đăng nhập mở phiên (UTC).</summary>
         public DateTime StartedAt { get; set; }
@@ -29,8 +29,21 @@ namespace WashGo.Application.Contracts.Features.AuthContracts.Results
         public int ActiveSessions { get; set; }
     }
 
+    /// <summary>Trang phiên đăng nhập; current luôn có (kể cả khi không nằm trong trang).</summary>
+    public class SessionListDto
+    {
+        public int Total { get; set; }
+        public int Page { get; set; }
+        public int Take { get; set; }
+        public bool HasMore { get; set; }
+        public SessionDto? Current { get; set; }
+        public System.Collections.Generic.List<SessionDto> Items { get; set; } = [];
+    }
+
     public class RevokeSessionsResultDto
     {
         public int Revoked { get; set; }
+        /// <summary>true khi phiên chọn đã kết thúc hoặc không còn token hiệu lực (danh sách đang xem đã cũ).</summary>
+        public bool Stale { get; set; }
     }
 }

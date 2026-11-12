@@ -29,7 +29,9 @@ namespace WashGo.Application.Features.WashOrderApplication.Mappings
                 .ForMember(dest => dest.RefundedAmount, opt => opt.Ignore())
                 .ForMember(dest => dest.CommissionOnCollected, opt => opt.Ignore())
                 .ForMember(dest => dest.MerchantPayoutOnCollected, opt => opt.Ignore())
-                .ForMember(dest => dest.FinancialStatus, opt => opt.Ignore());
+                .ForMember(dest => dest.FinancialStatus, opt => opt.Ignore())
+                .ForMember(dest => dest.SettledNetAmount, opt => opt.Ignore())
+                .ForMember(dest => dest.UnsettledNetAmount, opt => opt.Ignore());
             CreateMap<WashOrder, WashOrderDetailDto>()
                 .ForMember(dest => dest.ProgressPercent, opt => opt.Ignore())
                 .ForMember(dest => dest.WorkflowSteps, opt => opt.Ignore())
@@ -69,7 +71,9 @@ namespace WashGo.Application.Features.WashOrderApplication.Mappings
                 .ForMember(dest => dest.RefundedAmount, opt => opt.Ignore())
                 .ForMember(dest => dest.CommissionOnCollected, opt => opt.Ignore())
                 .ForMember(dest => dest.MerchantPayoutOnCollected, opt => opt.Ignore())
-                .ForMember(dest => dest.FinancialStatus, opt => opt.Ignore());
+                .ForMember(dest => dest.FinancialStatus, opt => opt.Ignore())
+                .ForMember(dest => dest.SettledNetAmount, opt => opt.Ignore())
+                .ForMember(dest => dest.UnsettledNetAmount, opt => opt.Ignore());
             CreateMap<WashOrderItem, WashOrderItemDto>()
                 .ForMember(dest => dest.ServiceImageUrls, opt => opt.Ignore());
             CreateMap<WashOrderTimeline, WashOrderTimelineDto>();

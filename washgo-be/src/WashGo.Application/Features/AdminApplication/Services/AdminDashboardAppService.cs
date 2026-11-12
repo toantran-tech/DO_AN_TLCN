@@ -270,7 +270,7 @@ namespace WashGo.Application.Features.AdminApplication.Services
                 CancelledOrders = x.Cancelled,
                 FinishedOrders = x.Completed + x.Cancelled,
                 CompletionRate = x.Rate,
-                Rating = ratings.TryGetValue(x.Id, out var r) ? Math.Round(r.Avg, 2) : null,
+                Rating = ratings.TryGetValue(x.Id, out var r) ? Math.Round(r.Avg, 1, MidpointRounding.AwayFromZero) : null,
                 RatingCount = ratings.TryGetValue(x.Id, out var rc) ? rc.Count : 0,
                 LaundryRevenue = revenue.GetValueOrDefault(x.Id)
             }).ToList();
@@ -305,6 +305,15 @@ namespace WashGo.Application.Features.AdminApplication.Services
             AdminAlertType.LockerNearlyFull => "Locker sắp hết ô trống",
             _ => type.ToString()
         };
+
+        private sealed class LockerPick
+        {
+            public Guid Id { get; init; }
+            public string Code { get; init; } = string.Empty;
+            public string Name { get; init; } = string.Empty;
+            public int AvailableBoxes { get; init; }
+            public int TotalBoxes { get; init; }
+        }
 
         private static IQueryable<Locker> NearlyFull(IQueryable<Locker> lockers) =>
             lockers.Where(l => l.Status == LockerStatus.Active && l.TotalBoxes > 0 && l.AvailableBoxes * 10 <= l.TotalBoxes);
@@ -365,27 +374,25 @@ namespace WashGo.Application.Features.AdminApplication.Services
             foreach (var (type, source) in sources)
                 counts[type] = await AsyncExecuter.CountAsync(source);
             var lockers = (await _lockerRepo.GetQueryableAsync()).Where(l => !l.IsDeleted);
-            // Few lockers exist; the nearly-full ones are loaded whole, fullest first.
-            var fullLockers = (await AsyncExecuter.ToListAsync(NearlyFull(lockers)
-                    .Select(l => new { l.Id, l.Code, l.Name, l.AvailableBoxes, l.TotalBoxes })))
-                .OrderBy(l => l.AvailableBoxes * 1.0 / l.TotalBoxes).ThenBy(l => l.Id).ToList();
-            counts[AdminAlertType.LockerNearlyFull] = fullLockers.Count;
+            // Counted and paged in the database; locker alerts share deadline "now", so they are ordered by Id like the final sort.
+            var fullLockers = NearlyFull(lockers).OrderBy(l => l.Id);
+            counts[AdminAlertType.LockerNearlyFull] = await AsyncExecuter.CountAsync(fullLockers);
 
             bool Wanted(AdminAlertType t) => (query.Type == null || query.Type == t) && (query.Severity == null || query.Severity == SeverityOf(t));
             var total = counts.Where(x => Wanted(x.Key)).Sum(x => x.Value);
 
             // Ordered by severity, then (inside a severity) order alerts by deadline before locker alerts (checked "now").
             var rows = new List<AlertRow>();
-            var lockerPicks = new List<Guid>();
+            var lockerPicks = new List<LockerPick>();
             int offset = (page - 1) * take, need = take;
             foreach (var severity in new[] { AdminAlertSeverity.High, AdminAlertSeverity.Medium, AdminAlertSeverity.Low })
             {
                 if (need == 0) break;
                 var types = sources.Keys.Where(t => SeverityOf(t) == severity && Wanted(t)).ToList();
                 var orderCount = types.Sum(t => counts[t]);
-                var lockerList = SeverityOf(AdminAlertType.LockerNearlyFull) == severity && Wanted(AdminAlertType.LockerNearlyFull)
-                    ? fullLockers.Select(l => l.Id).ToList() : [];
-                if (offset >= orderCount + lockerList.Count) { offset -= orderCount + lockerList.Count; continue; }
+                var lockerCount = SeverityOf(AdminAlertType.LockerNearlyFull) == severity && Wanted(AdminAlertType.LockerNearlyFull)
+                    ? counts[AdminAlertType.LockerNearlyFull] : 0;
+                if (offset >= orderCount + lockerCount) { offset -= orderCount + lockerCount; continue; }
                 if (offset < orderCount && types.Count > 0)
                 {
                     var union = types.Select(t => sources[t]).Aggregate((x, y) => x.Concat(y));
@@ -396,9 +403,10 @@ namespace WashGo.Application.Features.AdminApplication.Services
                 }
                 else
                     offset -= orderCount;
-                if (need > 0 && lockerList.Count > 0)
+                if (need > 0 && lockerCount > 0)
                 {
-                    var got = lockerList.Skip(offset).Take(need).ToList();
+                    var got = await AsyncExecuter.ToListAsync(fullLockers.Skip(offset).Take(need)
+                        .Select(l => new LockerPick { Id = l.Id, Code = l.Code, Name = l.Name, AvailableBoxes = l.AvailableBoxes, TotalBoxes = l.TotalBoxes }));
                     lockerPicks.AddRange(got);
                     need -= got.Count;
                     offset = 0;
@@ -437,10 +445,8 @@ namespace WashGo.Application.Features.AdminApplication.Services
                 ResourceType = "Merchant", ResourceId = x.Id, ResourceCode = merchantDetails[x.Id].BusinessName, MerchantId = x.Id, MerchantName = merchantDetails[x.Id].BusinessName,
                 Deadline = DateTime.SpecifyKind(x.Deadline, DateTimeKind.Utc), OverdueMinutes = Math.Max(0, (int)(now - x.Deadline).TotalMinutes)
             }));
-            var lockerById = fullLockers.ToDictionary(l => l.Id);
-            items.AddRange(lockerPicks.Select(id =>
+            items.AddRange(lockerPicks.Select(l =>
             {
-                var l = lockerById[id];
                 return new AdminAlertDto
                 {
                     Type = AdminAlertType.LockerNearlyFull, Severity = SeverityOf(AdminAlertType.LockerNearlyFull),

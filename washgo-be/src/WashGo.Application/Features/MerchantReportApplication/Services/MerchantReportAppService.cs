@@ -213,11 +213,14 @@ namespace WashGo.Application.Features.MerchantReportApplication.Services
             var onTimePrev = await OnTimeAsync(previous);
 
             // Top services: distinct orders with a laundry payment in the period, ranked in SQL; only the top rows come back.
+            var allOrders = (await _orderRepo.GetQueryableAsync()).Where(o => !o.IsDeleted);
             async Task<IQueryable<Guid>> PaidOrderIdsAsync(Range r) =>
+                // Same Merchant attribution as the money totals: the Merchant snapshotted on the transaction (legacy: current).
                 (from p in await _paymentRepo.GetQueryableAsync()
-                 join o in orders on p.OrderId equals o.Id
+                 join o in allOrders on p.OrderId equals o.Id
                  where p.Purpose == PaymentPurpose.Order && p.CompletedAt != null && p.CompletedAt >= r.From && p.CompletedAt < r.To &&
-                       (p.Status == PaymentTransactionStatus.Succeeded || p.Status == PaymentTransactionStatus.Refunded)
+                       (p.Status == PaymentTransactionStatus.Succeeded || p.Status == PaymentTransactionStatus.Refunded) &&
+                       (p.FinancialSnapshotBasis != null ? p.MerchantIdSnapshot : o.MerchantId) == merchantId
                  select o.Id).Distinct();
             var items = await _itemRepo.GetQueryableAsync();
             var curPaid = await PaidOrderIdsAsync(current);
@@ -246,6 +249,8 @@ namespace WashGo.Application.Features.MerchantReportApplication.Services
                 if (complete) return k;
                 k.IsEstimated = true;
                 k.ChangePercent = null;
+                // Without full coverage a zero baseline proves nothing: never report "new".
+                k.IsNew = false;
                 return k;
             }
             RateKpiDto OnTime()
@@ -334,8 +339,12 @@ namespace WashGo.Application.Features.MerchantReportApplication.Services
 
         public async Task<BaseResponse<MerchantLifetimeFinanceDto>> GetLifetimeAsync()
         {
+            // All parts of the totals come from one repeatable-read snapshot.
+            using var snapshot = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true,
+                isolationLevel: System.Data.IsolationLevel.RepeatableRead);
             var totals = await LazyServiceProvider.LazyGetRequiredService<MerchantFinanceAggregator>()
                 .TotalsAsync(CurrentUser.Id!.Value, null, null);
+            await snapshot.CompleteAsync();
             return Success(new MerchantLifetimeFinanceDto
             {
                 GrossLaundryRevenue = totals.Gross, Refunds = totals.Refunds, NetRevenue = totals.Net,

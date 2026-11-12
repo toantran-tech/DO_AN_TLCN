@@ -25,6 +25,11 @@ try {
     Assert-Status 400 Post '/merchant-profile/update-requests' (Req @{longitude=106.5}) $team
     Assert-Status 400 Post '/merchant-profile/update-requests' (Req @{address="12 New Road $run"}) $team
 
+    Assert-Status 400 Post '/merchant-profile/update-requests' (Req @{expectedMerchantVersion=''}) $team
+    Assert-Status 409 Post '/merchant-profile/update-requests' (Req @{expectedMerchantVersion='1'}) $team
+    $lp=(Call-Api Get '/merchant-profile/' $null $team).data
+    if(-not $lp.version){throw 'Profile version missing.'}
+
     Write-Output '2. Tax code and licence validation'
     Assert-Status 400 Post '/merchant-profile/update-requests' (Req @{taxCode='12345'}) $team
     $used=Sql "SELECT tax_code FROM washgo.merchants WHERE tax_code IS NOT NULL AND user_id<>'$teamId' LIMIT 1;"
@@ -46,6 +51,7 @@ try {
     Call-Api Post "/merchant-profile-request/$($r2.id)/approve?expectedVersion=$($r2.version)" $null $admin | Out-Null
     $after=(Call-Api Get '/merchant-profile/' $null $team).data
     if($after.taxCode -or $after.businessLicense -ne "GPKD-$run"){throw 'Clear/licence number not applied.'}
+    if($after.legacyBusinessLicense.kind -ne 'Number' -or $after.legacyBusinessLicense.value -ne "GPKD-$run"){throw "Legacy licence not classified: $($after.legacyBusinessLicense | ConvertTo-Json -Compress)"}
     $r3=(Call-Api Post '/merchant-profile/update-requests' (Req @{openingHours='07:00-22:00'}) $team).data
     Sql "UPDATE washgo.merchant_profile_requests SET proposed_data = proposed_data - 'taxCode' - 'businessLicense' WHERE id='$($r3.id)';" | Out-Null
     Call-Api Post "/merchant-profile-request/$($r3.id)/approve?expectedVersion=$($r3.version)" $null $admin | Out-Null

@@ -94,6 +94,10 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Results
         public decimal? MerchantPayoutOnCollected { get; set; }
         /// <summary>Unpaid (chưa thu), Collected (đã thu, tạm tính), Adjusted (có hoàn tiền), Settled (đã nằm trong kỳ đối soát đã chi trả).</summary>
         public string? FinancialStatus { get; set; }
+        /// <summary>Phần thu − hoàn đã thuộc kỳ đối soát đã chi trả.</summary>
+        public decimal SettledNetAmount { get; set; }
+        /// <summary>Phần thu − hoàn chưa thuộc kỳ đã chi trả (chờ đối soát hoặc điều chỉnh kỳ sau).</summary>
+        public decimal UnsettledNetAmount { get; set; }
         public decimal? ActualWeightKg { get; set; }
         public decimal? IncludedWeightKg { get; set; }
         public decimal? ExcessWeightKg => ActualWeightKg.HasValue && IncludedWeightKg.HasValue
