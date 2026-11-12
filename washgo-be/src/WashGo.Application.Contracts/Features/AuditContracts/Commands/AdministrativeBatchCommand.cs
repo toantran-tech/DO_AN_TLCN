@@ -8,6 +8,8 @@ public class AdministrativeBatchCommand
     public string Action { get; set; } = string.Empty;
     public int? Status { get; set; }
     public bool? IsActive { get; set; }
+    /// <summary>Lý do chung (ví dụ ẩn đánh giá hàng loạt).</summary>
+    public string? Reason { get; set; }
 }
 public class AdministrativeBatchItem
 {

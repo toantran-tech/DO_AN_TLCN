@@ -73,7 +73,9 @@ namespace WashGo.Application.Contracts.Features.MerchantProfileContracts.Results
         public string? OpeningHours { get; set; }
         public List<string> ImageUrls { get; set; } = [];
         public MerchantStatus Status { get; set; }
-        public decimal Rating { get; set; }
+        /// <summary>Điểm trung bình đánh giá công khai (1 chữ số thập phân); null khi chưa có đánh giá công khai (không phải 5 sao).</summary>
+        public decimal? Rating { get; set; }
+        public bool HasRating => PublicRatingCount > 0;
         public int TotalOrders { get; set; }
         public decimal CommissionRate { get; set; }
         public int ServiceRadiusKm { get; set; }

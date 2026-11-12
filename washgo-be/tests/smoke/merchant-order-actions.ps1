@@ -21,7 +21,7 @@ try {
     }
     $admin=$sessions.Admin.accessToken;$customer=$sessions.Customer.accessToken;$merchant=$sessions.Merchant.accessToken;$shipper=$sessions.Shipper.accessToken
     $shipperId=Sql "SELECT id FROM washgo.shippers WHERE user_id='$($sessions.Shipper.user.id)';"
-    $locker=(Call-Api Post '/locker/' @{merchantId="$($sessions.Merchant.user.id)";name="Actions Locker $run";address='Private development fixture';district='Test';city='Test';latitude=10.77;longitude=106.69;boxCount=2} $admin).data
+    $locker=(Call-Api Post '/locker/' @{code="MOA_$([Guid]::NewGuid().ToString('N').Substring(0,12))";merchantId="$($sessions.Merchant.user.id)";name="Actions Locker $run";address='Private development fixture';district='Test';city='Test';latitude=10.77;longitude=106.69;boxCount=2} $admin).data
     $lockerId=[Guid]$locker.id
     $l=(Call-Api Get "/customer/lockers/$lockerId" $null $customer).data
     $o=(Call-Api Post '/wash-order/' @{lockerId="$lockerId";boxId=$l.availableSlots[0].id;paymentMethod=2;items=@(@{serviceId=$standardWash;quantity=1})} $customer).data

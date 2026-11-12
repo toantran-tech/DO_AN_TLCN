@@ -18,13 +18,14 @@ public class AdministrativeBatchExecutor(IUnitOfWorkManager units, Administrativ
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     public async Task<BaseResponse<AdministrativeBatchResultDto>> RunAsync(string module, AdministrativeBatchCommand command, int maximum,
-        Func<AdministrativeBatchItem, Guid, Task<AdministrativeBatchItemResultDto>> apply)
+        Func<AdministrativeBatchItem, Guid, Task<AdministrativeBatchItemResultDto>> apply, string[]? actions = null)
     {
+        actions ??= ["Delete", "Status"];
         if (!user.IsInRole("Admin") || !user.Id.HasValue) return AdministrativeWriteGuard.Error<AdministrativeBatchResultDto>(HttpStatusCode.Forbidden, "AdminOnly", "Chỉ Admin được thao tác hàng loạt.");
         if (command.OperationId == Guid.Empty || command.Items == null || command.Items.Count < 1 || command.Items.Count > maximum ||
             command.Items.Any(x => x.Id == Guid.Empty || string.IsNullOrWhiteSpace(x.ExpectedVersion)) || command.Items.Select(x => x.Id).Distinct().Count() != command.Items.Count ||
-            command.Action is not ("Delete" or "Status"))
-            return AdministrativeWriteGuard.Error<AdministrativeBatchResultDto>(HttpStatusCode.BadRequest, "InvalidBatch", $"Cần operationId, 1–{maximum} ID khác nhau kèm expectedVersion và action=Delete|Status.");
+            !actions.Contains(command.Action))
+            return AdministrativeWriteGuard.Error<AdministrativeBatchResultDto>(HttpStatusCode.BadRequest, "InvalidBatch", $"Cần operationId, 1–{maximum} ID khác nhau kèm expectedVersion và action={string.Join('|', actions)}.");
         var hash = AdministrativeWriteGuard.Version(command);
         // Persist the intent first: crash recovery cannot reuse a key for a different batch.
         using (var reserve = units.Begin(requiresNew: true, isTransactional: true))

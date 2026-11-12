@@ -12,6 +12,10 @@ $ErrorActionPreference = 'Stop'
 function Call-Api($Method, $Path, $Body, $Token) {
     $request = @{ Method = $Method; Uri = "$BaseUrl$Path"; TimeoutSec = 30 }
     if ($Token) { $request.Headers = @{ Authorization = "Bearer $Token" } }
+    # System settings writes need the version the Admin saw; fill it in when a test does not set it.
+    if ($Method -eq 'Put' -and $Path -like '/system-setting/*' -and $Token -and $Body -is [hashtable] -and -not $Body.ContainsKey('expectedVersion')) {
+        try { $Body = $Body.Clone(); $Body.expectedVersion = (Invoke-RestMethod -Method Get -Uri "$BaseUrl/system-setting/" -Headers @{ Authorization = "Bearer $Token" } -TimeoutSec 30).data.version } catch { }
+    }
     # Profile update requests need the profile version the Merchant saw; fill it in when a test does not set it.
     if ($Method -eq 'Post' -and $Path -eq '/merchant-profile/update-requests' -and $Token -and $null -ne $Body) {
         $hasKey = if ($Body -is [hashtable]) { $Body.ContainsKey('expectedMerchantVersion') } else { $null -ne $Body.PSObject.Properties['expectedMerchantVersion'] }

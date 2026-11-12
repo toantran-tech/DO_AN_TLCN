@@ -29,7 +29,7 @@ function Upload-Image($Token) {
 function Body([hashtable]$Extra=@{}) {
     $b=@{email=$email;businessName="Admin Merchant $run";taxCode="TX$run";businessLicense="GP-$run";address='1 Fixture Street';district='Merchant District'
          city='Test';latitude=10.75;longitude=106.65;phone='0912 345 678';openingHours='07:00-21:00';serviceRadiusKm=4;maxCapacity=30
-         contractStartDate='2026-01-01T00:00:00Z';contractEndDate='2027-01-01T00:00:00Z';slaDocUrl='/uploads/sla.pdf';serviceAreaIds=@("$area")}
+         contractStartDate='2026-01-01T00:00:00Z';contractEndDate='2027-01-01T00:00:00Z';serviceAreaIds=@("$area")}
     foreach($k in $Extra.Keys){$b[$k]=$Extra[$k]}
     return $b
 }
@@ -66,7 +66,7 @@ try {
     $merchantId=[Guid]$c.data.id
     $m=Get-Merchant
     if(!$c.message -or $m.email -ne $email -or $m.status -ne 1 -or $m.phone -ne '0912345678' -or $m.taxCode -ne "TX$run" -or $m.businessLicense -ne ('"GP-'+$run+'"')){throw 'Create fields wrong.'}
-    if((@($m.imageUrls) -join ',') -ne $img -or (@($m.serviceAreaIds) -join ',') -ne "$area" -or $m.maxCapacity -ne 30 -or !$m.contractEndDate -or $m.slaDocUrl -ne '/uploads/sla.pdf'){throw 'Create details wrong.'}
+    if((@($m.imageUrls) -join ',') -ne $img -or (@($m.serviceAreaIds) -join ',') -ne "$area" -or $m.maxCapacity -ne 30 -or !$m.contractEndDate){throw 'Create details wrong.'}
     if((Sql "SELECT r.name FROM washgo.users u JOIN washgo.roles r ON r.id=u.role_id WHERE u.id='$merchantId';") -ne 'Merchant'){throw 'Account role wrong.'}
     Assert-Status 409 Post '/merchant/' (Body @{businessName="Dup $run"}) $admin
     Assert-Status 409 Post '/merchant/' (Body @{email="other-$run@example.com"}) $admin

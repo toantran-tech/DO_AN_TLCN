@@ -35,7 +35,7 @@ try {
     $sessions.Team=New-FixtureMerchant $run; $team=$sessions.Team.accessToken; $teamId="$($sessions.Team.user.id)"
     $x=New-FixtureShipper $team "Comm $run" $run
     $sessions.X=(Call-Api Post '/auth/login' @{email=$x.email;password=(Read-TempPassword $x.email)} $null).data; $xToken=$sessions.X.accessToken
-    $locker=(Call-Api Post '/locker/' @{merchantId=$teamId;name="Comm Locker $run";address='Private development fixture';district='Test';city='Test';latitude=10.77;longitude=106.69;boxCount=4} $admin).data
+    $locker=(Call-Api Post '/locker/' @{code="RPT_$([Guid]::NewGuid().ToString('N').Substring(0,12))";merchantId=$teamId;name="Comm Locker $run";address='Private development fixture';district='Test';city='Test';latitude=10.77;longitude=106.69;boxCount=4} $admin).data
     $lockerId=[Guid]$locker.id
     $start=[DateTimeOffset]::UtcNow.ToUnixTimeSeconds()-5
 
@@ -49,7 +49,8 @@ try {
     Sql "UPDATE washgo.merchants SET commission_rate=25 WHERE user_id='$teamId';" | Out-Null
     if((Call-Api Get "/wash-order/$($fifteen.id)" $null $team).data.commissionRateApplied -ne 15){throw 'Rate change rewrote an old order.'}
     $missing=New-PaidOrder
-    Sql "UPDATE washgo.orders SET commission_rate_applied=NULL, commission_locked_at=NULL WHERE id='$($missing.id)';" | Out-Null
+    # Legacy order: neither the order nor its payment carries a locked rate.
+    Sql "UPDATE washgo.orders SET commission_rate_applied=NULL, commission_locked_at=NULL WHERE id='$($missing.id)'; UPDATE washgo.payment_transactions SET financial_snapshot_basis=NULL, commission_rate_snapshot=NULL WHERE order_id='$($missing.id)';" | Out-Null
     $m=(Call-Api Get "/wash-order/$($missing.id)" $null $team).data
     if($m.commissionStatus -ne 'Missing' -or $null -ne $m.commissionAmount -or $null -ne $m.commissionOnCollected -or $null -ne $m.merchantNetAmount){throw 'Missing snapshot not flagged.'}
 
@@ -74,11 +75,19 @@ try {
     Write-Output '4. Settlement breakdown per order'
     Start-Sleep -Seconds 2
     $end=[DateTimeOffset]::UtcNow.ToUnixTimeSeconds()-1
-    $s=(Call-Api Post '/finance/settlements' @{merchantId=$teamId;fromDate=$start;toDate=$end} $admin).data
+    # A period with an order lacking a locked rate cannot be settled until it is reconciled.
+    $blocked=(Call-Api Post '/finance/settlements/quote' @{merchantId=$teamId;fromDate=$start;toDate=$end} $admin).data
+    if($blocked.canCreate){throw 'Quote allowed a period with a missing rate.'}
+    Sql "UPDATE washgo.payment_transactions SET financial_snapshot_basis='payment-created', commission_rate_snapshot=15, merchant_id_snapshot='$teamId' WHERE order_id='$($missing.id)';" | Out-Null
+    $sb=@{merchantId=$teamId;fromDate=$start;toDate=$end}
+    $q=(Call-Api Post '/finance/settlements/quote' $sb $admin).data
+    if(!$q.canCreate){throw "Quote blocked: $($q.blockingCode)"}
+    $sb.quoteToken=$q.quoteToken; $sb.operationId=[Guid]::NewGuid().ToString()
+    $s=(Call-Api Post '/finance/settlements' $sb $admin).data
     $b=(Call-Api Get "/finance/settlements/$($s.id)/orders" $null $team).data
-    if(@($b.lines).Count -ne 3 -or $b.ordersWithoutCommissionSnapshot -ne 1 -or $b.settledCommissionAmount -ne $c15){throw "Breakdown wrong: $($b | ConvertTo-Json -Depth 3 -Compress)"}
+    if(@($b.lines).Count -ne 3 -or $b.ordersWithoutCommissionSnapshot -ne 0){throw "Breakdown wrong: $($b | ConvertTo-Json -Depth 3 -Compress)"}
     $line=@($b.lines | Where-Object { $_.orderId -eq $missing.id })[0]
-    if($null -ne $line.commissionRate -or $null -ne $line.commission -or $line.collected -ne $m.finalAmount){throw 'Missing line wrong.'}
+    if($line.commissionRate -ne 15 -or $line.collected -ne $m.finalAmount){throw 'Reconciled line wrong.'}
     if(@($b.lines | Where-Object { $_.orderId -eq $zero.id })[0].commission -ne 0){throw '0% line wrong.'}
     Assert-Status 403 Get "/finance/settlements/$($s.id)/orders" $null $customer
 
