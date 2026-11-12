@@ -12,6 +12,15 @@ $ErrorActionPreference = 'Stop'
 function Call-Api($Method, $Path, $Body, $Token) {
     $request = @{ Method = $Method; Uri = "$BaseUrl$Path"; TimeoutSec = 30 }
     if ($Token) { $request.Headers = @{ Authorization = "Bearer $Token" } }
+    # Profile update requests need the profile version the Merchant saw; fill it in when a test does not set it.
+    if ($Method -eq 'Post' -and $Path -eq '/merchant-profile/update-requests' -and $Token -and $null -ne $Body) {
+        $hasKey = if ($Body -is [hashtable]) { $Body.ContainsKey('expectedMerchantVersion') } else { $null -ne $Body.PSObject.Properties['expectedMerchantVersion'] }
+        if (-not $hasKey) {
+            $version = (Invoke-RestMethod -Method Get -Uri "$BaseUrl/merchant-profile/" -Headers @{ Authorization = "Bearer $Token" } -TimeoutSec 30).data.version
+            if ($Body -is [hashtable]) { $Body = $Body.Clone(); $Body.expectedMerchantVersion = $version }
+            else { $Body = $Body.PSObject.Copy(); $Body | Add-Member -NotePropertyName expectedMerchantVersion -NotePropertyValue $version }
+        }
+    }
     if ($null -ne $Body) {
         $request.ContentType = 'application/json; charset=utf-8'
         $request.Body = [Text.Encoding]::UTF8.GetBytes(($Body | ConvertTo-Json -Depth 15))

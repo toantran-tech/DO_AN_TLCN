@@ -24,6 +24,8 @@ namespace WashGo.Application.Contracts.Features.MerchantProfileContracts.Command
         public Guid? BusinessLicenseDocumentId { get; set; }
         public bool RemoveBusinessLicenseDocument { get; set; }
         public Guid? OperationId { get; set; }
+        /// <summary>Bắt buộc: `version` của hồ sơ lấy từ GET /merchant-profile; hồ sơ đã đổi sau đó → 409 VersionMismatch.</summary>
+        public string? ExpectedMerchantVersion { get; set; }
     }
 
     public class RejectMerchantProfileRequestCommand

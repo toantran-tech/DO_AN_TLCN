@@ -38,8 +38,22 @@ namespace WashGo.Application.Contracts.Features.MerchantProfileContracts.Results
         public DateTime? ReviewedAt { get; set; }
     }
 
+    /// <summary>Giá trị giấy phép cũ (trường chuỗi trước khi có tài liệu riêng tư), đã phân loại để FE không phải đoán.</summary>
+    public class LegacyBusinessLicenseDto
+    {
+        /// <summary>Number (số giấy phép), Url (đường dẫn/ảnh cũ, chỉ hiển thị dạng văn bản, không tải được), Text (văn bản khác).</summary>
+        public string Kind { get; set; } = "Text";
+        public string Value { get; set; } = string.Empty;
+        /// <summary>true khi hồ sơ đã có tài liệu giấy phép mới (businessLicenseDocumentId); giá trị cũ chỉ để tham khảo.</summary>
+        public bool SupersededByDocument { get; set; }
+    }
+
     public class MerchantProfileDto
     {
+        /// <summary>Phiên bản hồ sơ (chuỗi opaque); gửi lại trong expectedMerchantVersion khi tạo yêu cầu cập nhật.</summary>
+        public string Version { get; set; } = string.Empty;
+        /// <summary>null khi không có giá trị cũ.</summary>
+        public LegacyBusinessLicenseDto? LegacyBusinessLicense { get; set; }
         public List<WashGo.Application.Contracts.Features.FileContracts.Results.PrivateDocumentDto> Documents { get; set; } = [];
         public Guid? BusinessLicenseDocumentId { get; set; }
         public Guid? ContractDocumentId { get; set; }

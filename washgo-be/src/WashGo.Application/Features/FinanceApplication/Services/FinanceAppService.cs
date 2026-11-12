@@ -237,19 +237,17 @@ namespace WashGo.Application.Features.FinanceApplication.Services
                 decimal uncoveredNet = 0m;
                 foreach (var oId in orderIds)
                 {
-                    var oGross = mPayments.Where(x => x.OrderId == oId).Sum(x => x.Amount);
-                    var oRefund = mRefunds.Where(x => x.OrderId == oId).Sum(x => x.Amount);
-                    var rate = mPayments.FirstOrDefault(x => x.OrderId == oId)?.CommissionRateApplied
-                               ?? mRefunds.FirstOrDefault(x => x.OrderId == oId)?.CommissionRateApplied;
-                    if (!rate.HasValue)
+                    var oPays = mPayments.Where(x => x.OrderId == oId).ToList();
+                    var oRefs = mRefunds.Where(x => x.OrderId == oId).ToList();
+                    // Same rule as the Merchant report: per transaction at its own locked rate (CommissionMath).
+                    if (oPays.Any(x => x.CommissionRateApplied == null) || oRefs.Any(x => x.CommissionRateApplied == null))
                     {
                         uncovered++;
-                        uncoveredNet += oGross - oRefund;
-                        continue;
+                        uncoveredNet += oPays.Where(x => x.CommissionRateApplied == null).Sum(x => x.Amount)
+                                        - oRefs.Where(x => x.CommissionRateApplied == null).Sum(x => x.Amount);
                     }
-                    // A refund reverses commission at the same locked rate, also when it falls in a later period.
-                    totalCommission += decimal.Round(oGross * rate.Value / 100m, 0, MidpointRounding.AwayFromZero)
-                                       - decimal.Round(oRefund * rate.Value / 100m, 0, MidpointRounding.AwayFromZero);
+                    totalCommission += oPays.Where(x => x.CommissionRateApplied != null).Sum(x => CommissionMath.Of(x.Amount, x.CommissionRateApplied!.Value))
+                                       - oRefs.Where(x => x.CommissionRateApplied != null).Sum(x => CommissionMath.Of(x.Amount, x.CommissionRateApplied!.Value));
                 }
 
                 return new MerchantCommissionDto
@@ -492,11 +490,12 @@ namespace WashGo.Application.Features.FinanceApplication.Services
             {
                 var collected = payments.Where(x => x.OrderId == oid).Sum(x => x.Amount);
                 var refunded = refunds.Where(x => x.OrderId == oid).Sum(x => x.Amount);
-                var rate = payments.FirstOrDefault(x => x.OrderId == oid)?.CommissionRateApplied
-                           ?? refunds.FirstOrDefault(x => x.OrderId == oid)?.CommissionRateApplied;
-                decimal? commission = rate.HasValue
-                    ? decimal.Round(collected * rate.Value / 100m, 0, MidpointRounding.AwayFromZero)
-                      - decimal.Round(refunded * rate.Value / 100m, 0, MidpointRounding.AwayFromZero)
+                var oPays = payments.Where(x => x.OrderId == oid).ToList();
+                var oRefs = refunds.Where(x => x.OrderId == oid).ToList();
+                var rate = oPays.FirstOrDefault()?.CommissionRateApplied ?? oRefs.FirstOrDefault()?.CommissionRateApplied;
+                var complete = oPays.All(x => x.CommissionRateApplied != null) && oRefs.All(x => x.CommissionRateApplied != null);
+                decimal? commission = complete
+                    ? oPays.Sum(x => CommissionMath.Of(x.Amount, x.CommissionRateApplied!.Value)) - oRefs.Sum(x => CommissionMath.Of(x.Amount, x.CommissionRateApplied!.Value))
                     : null;
                 return new SettlementOrderLineDto
                 {

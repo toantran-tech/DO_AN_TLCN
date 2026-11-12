@@ -1,11 +1,14 @@
 using System;
+using System.Collections.Generic;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.OpenApi;
 using Microsoft.AspNetCore.Routing;
 using WashGo.Application.Contracts.Features.WashOrderContracts.Commands;
 using WashGo.Application.Contracts.Features.WashOrderContracts.Queries;
+using WashGo.Application.Contracts.Features.WashOrderContracts.Results;
 using WashGo.Application.Contracts.Features.WashOrderContracts.Services;
+using WashGo.Core.Domain.Shared.Bases;
 using WashGo.Core.Endpoint;
 
 namespace WashGo.HttpApi.Endpoints.WashOrder
@@ -23,6 +26,7 @@ namespace WashGo.HttpApi.Endpoints.WashOrder
                 .RequireAuthorization("OrderStatusUpdater")
                 .WithName("Lọc danh sách đơn WashGo")
                 .WithSummary("Lọc và phân trang đơn hàng trong phạm vi quyền của Admin, Merchant hoặc Shipper. keyword tìm mã đơn WashGo hoặc mã nội bộ Merchant; fromDate/toDate là Unix giây (ngày tạo đơn, tính cả hai đầu), khoảng ngược trả 400.")
+                .Produces<PaginatedResult<WashOrderResultDto>>(StatusCodes.Status200OK).Produces<PaginatedResult<WashOrderResultDto>>(StatusCodes.Status400BadRequest).Produces<PaginatedResult<WashOrderResultDto>>(StatusCodes.Status404NotFound)
                 .WithOpenApi();
 
             group.MapPost("/summary", async (WashOrderFilterQuery request, IWashOrderAppService svc) =>
@@ -30,6 +34,7 @@ namespace WashGo.HttpApi.Endpoints.WashOrder
                 .RequireAuthorization("OrderStatusUpdater")
                 .WithName("Thống kê đơn theo bộ lọc")
                 .WithSummary("Tổng và số đơn từng trạng thái trong một lần đếm, theo cùng keyword/paymentStatus/fromDate/toDate của danh sách (không áp dụng status, trang, sắp xếp). Merchant chỉ thấy đơn của tiệm mình.")
+                .Produces<BaseResponse<WashOrderSummaryDto>>(StatusCodes.Status200OK).Produces<BaseResponse<WashOrderSummaryDto>>(StatusCodes.Status400BadRequest).Produces<BaseResponse<WashOrderSummaryDto>>(StatusCodes.Status404NotFound)
                 .WithOpenApi();
 
             group.MapPost("/mine", async (WashOrderFilterQuery request, IWashOrderAppService svc) =>
@@ -37,6 +42,7 @@ namespace WashGo.HttpApi.Endpoints.WashOrder
                 .RequireAuthorization("CustomerOnly")
                 .WithName("Xem danh sách đơn hàng của tôi")
                 .WithSummary("Customer lọc và phân trang các đơn hàng của mình.")
+                .Produces<PaginatedResult<WashOrderResultDto>>(StatusCodes.Status200OK).Produces<PaginatedResult<WashOrderResultDto>>(StatusCodes.Status400BadRequest).Produces<PaginatedResult<WashOrderResultDto>>(StatusCodes.Status404NotFound)
                 .WithOpenApi();
 
             group.MapGet("/{id:guid}", async (Guid id, IWashOrderAppService svc) =>
@@ -44,6 +50,7 @@ namespace WashGo.HttpApi.Endpoints.WashOrder
                 .RequireAuthorization()
                 .WithName("Xem chi tiết đơn WashGo")
                 .WithSummary("Xem chi tiết đơn hàng được phép truy cập theo tài khoản đang đăng nhập.")
+                .Produces<BaseResponse<WashOrderDetailDto>>(StatusCodes.Status200OK).Produces<BaseResponse<WashOrderDetailDto>>(StatusCodes.Status400BadRequest).Produces<BaseResponse<WashOrderDetailDto>>(StatusCodes.Status404NotFound)
                 .WithOpenApi();
 
             group.MapGet("/{id:guid}/access-codes", async (Guid id, IWashOrderAppService svc) =>
@@ -119,6 +126,7 @@ namespace WashGo.HttpApi.Endpoints.WashOrder
                 .RequireAuthorization("OrderStatusUpdater")
                 .WithName("Cập nhật trạng thái đơn")
                 .WithSummary("Cập nhật trạng thái vận hành đơn theo quyền; không cho chuyển sang đã thanh toán hoặc đã hủy. Tùy chọn expectedRevision (If-Match)/expectedStatus: lệch thì 409 kèm đơn hiện tại; operationId (Idempotency-Key): gửi lại không thực hiện lại.")
+                .Produces<BaseResponse<WashOrderDetailDto>>(StatusCodes.Status200OK).Produces<BaseResponse<WashOrderDetailDto>>(StatusCodes.Status400BadRequest).Produces<BaseResponse<WashOrderDetailDto>>(StatusCodes.Status404NotFound).Produces<BaseResponse<WashOrderDetailDto>>(StatusCodes.Status409Conflict)
                 .WithOpenApi();
 
             group.MapPut("/{id:guid}/actual-weight", async (Guid id, UpdateActualWeightCommand command, HttpContext http, IWashOrderAppService svc) =>
@@ -126,6 +134,7 @@ namespace WashGo.HttpApi.Endpoints.WashOrder
                 .RequireAuthorization("MerchantOnly")
                 .WithName("Merchant cập nhật cân nặng thực tế và chốt giá")
                 .WithSummary("Merchant cân đồ đã thu gom, tính lại giá và thời gian dự kiến; đơn giữ trạng thái Collected. Hỗ trợ expectedRevision/expectedStatus (409) và operationId như PUT /status.")
+                .Produces<BaseResponse<WashOrderDetailDto>>(StatusCodes.Status200OK).Produces<BaseResponse<WashOrderDetailDto>>(StatusCodes.Status400BadRequest).Produces<BaseResponse<WashOrderDetailDto>>(StatusCodes.Status404NotFound).Produces<BaseResponse<WashOrderDetailDto>>(StatusCodes.Status409Conflict)
                 .WithOpenApi();
 
             group.MapPost("/move-to-storage", async (MoveOrderToStorageCommand command, HttpContext http, IWashOrderAppService svc) =>
@@ -133,6 +142,7 @@ namespace WashGo.HttpApi.Endpoints.WashOrder
                 .RequireAuthorization("ShipperOrAdmin")
                 .WithName("Ghi nhận chuyển đồ quá hạn sang kho")
                 .WithSummary("Shipper hoặc Admin ghi nhận chuyển đồ quá hạn khỏi locker sang kho. Hỗ trợ expectedRevision/expectedStatus (409) và operationId (gửi lại không thực hiện lại; tra cứu bằng GET /wash-order/{id}/operations/{operationId}). Điều kiện xem trước ở allowedActions.canMoveToStorage.")
+                .Produces<BaseResponse<WashOrderDetailDto>>(StatusCodes.Status200OK).Produces<BaseResponse<WashOrderDetailDto>>(StatusCodes.Status400BadRequest).Produces<BaseResponse<WashOrderDetailDto>>(StatusCodes.Status404NotFound).Produces<BaseResponse<WashOrderDetailDto>>(StatusCodes.Status409Conflict)
                 .WithOpenApi();
 
             group.MapPut("/assign-shipper", async (AssignShipperCommand command, HttpContext http, IWashOrderAppService svc) =>
@@ -140,6 +150,7 @@ namespace WashGo.HttpApi.Endpoints.WashOrder
                 .RequireAuthorization("MerchantOrAdmin")
                 .WithName("Phân công Shipper cho đơn")
                 .WithSummary("Merchant hoặc Admin phân công riêng chuyến lấy đồ hoặc chuyến trả đồ theo trạng thái đơn. Hỗ trợ expectedRevision/expectedStatus (409) và operationId như PUT /status.")
+                .Produces<BaseResponse<WashOrderDetailDto>>(StatusCodes.Status200OK).Produces<BaseResponse<WashOrderDetailDto>>(StatusCodes.Status400BadRequest).Produces<BaseResponse<WashOrderDetailDto>>(StatusCodes.Status404NotFound).Produces<BaseResponse<WashOrderDetailDto>>(StatusCodes.Status409Conflict)
                 .WithOpenApi();
 
             group.MapGet("/{id:guid}/operations/{operationId:guid}", async (Guid id, Guid operationId, IWashOrderAppService svc) =>
@@ -147,6 +158,7 @@ namespace WashGo.HttpApi.Endpoints.WashOrder
                 .RequireAuthorization("MerchantOrAdmin")
                 .WithName("Tra cứu kết quả thao tác trên đơn")
                 .WithSummary("Sau timeout/lỗi mạng: tra theo operationId đã gửi xem thao tác status/actual-weight/assign-shipper đã thực hiện chưa; 404 = chưa thực hiện, có thể gửi lại cùng operationId.")
+                .Produces<BaseResponse<OrderOperationDto>>(StatusCodes.Status200OK).Produces<BaseResponse<OrderOperationDto>>(StatusCodes.Status400BadRequest).Produces<BaseResponse<OrderOperationDto>>(StatusCodes.Status404NotFound)
                 .WithOpenApi();
 
             group.MapGet("/{id:guid}/available-shippers", async (Guid id, IWashOrderAppService svc) =>
@@ -154,6 +166,7 @@ namespace WashGo.HttpApi.Endpoints.WashOrder
                 .RequireAuthorization("MerchantOrAdmin")
                 .WithName("Xem Shipper khả dụng cho đơn")
                 .WithSummary("Liệt kê Shipper đủ điều kiện nhận nhiệm vụ lấy hoặc trả đồ của đơn hàng.")
+                .Produces<BaseResponse<List<AvailableShipperDto>>>(StatusCodes.Status200OK).Produces<BaseResponse<List<AvailableShipperDto>>>(StatusCodes.Status400BadRequest).Produces<BaseResponse<List<AvailableShipperDto>>>(StatusCodes.Status404NotFound)
                 .WithOpenApi();
 
             group.MapPost("/column-distinct-values", async (string field, WashOrderFilterQuery query, IWashOrderAppService svc) =>
