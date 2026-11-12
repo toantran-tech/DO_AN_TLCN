@@ -30,7 +30,10 @@ namespace WashGo.Application.Contracts.Features.ServiceAreaContracts.Results
         public string BusinessName { get; set; } = string.Empty;
         public string District { get; set; } = string.Empty;
         public string City { get; set; } = string.Empty;
-        public decimal Rating { get; set; }
+        /// <summary>Điểm đánh giá công khai; null khi chưa có đánh giá công khai.</summary>
+        public decimal? Rating { get; set; }
+        public int PublicRatingCount { get; set; }
+        public bool HasRating => PublicRatingCount > 0;
         public bool Assigned { get; set; }
         public int? Priority { get; set; }
     }

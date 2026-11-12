@@ -111,12 +111,14 @@ namespace WashGo.Application.Features.ShipperApplication.Services
             }
 
             var sorts = query.SortBy ?? [];
+            // Shipper star ratings were dropped: sortBy is no longer supported; a legacy Rating sort is ignored (default order).
             if (sorts.Any(x => !string.Equals(x.Field, "Rating", StringComparison.OrdinalIgnoreCase)))
                 return new PaginatedResult<ShipperDto>
                 {
                     Succeeded = false, StatusCode = System.Net.HttpStatusCode.BadRequest,
-                    Message = "Chỉ hỗ trợ sắp xếp theo Rating.", CurrentPage = query.Page, PageSize = query.Take
+                    Message = "Danh sách Shipper không hỗ trợ sắp xếp tùy chọn.", CurrentPage = query.Page, PageSize = query.Take
                 };
+            sorts = [];
 
             var page = Math.Max(1, query.Page);
             var take = Math.Clamp(query.Take, 1, 100);

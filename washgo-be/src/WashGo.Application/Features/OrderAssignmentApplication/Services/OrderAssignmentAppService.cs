@@ -428,7 +428,7 @@ namespace WashGo.Application.Features.OrderAssignmentApplication.Services
                 {
                     MerchantId = m.Id,
                     BusinessName = m.BusinessName,
-                    Rating = m.Rating, RatingForScore = effectiveRating,
+                    Rating = ratingCounts.GetValueOrDefault(m.Id) == 0 ? null : m.Rating, RatingForScore = effectiveRating,
                     PriorityScore = Math.Round(35 * priorityScore, 4), LoadScore = Math.Round(25 * loadScore, 4),
                     RatingScore = Math.Round(25 * ratingScore, 4), DistanceScore = Math.Round(15 * distanceScore, 4),
                     PublicRatingCount = ratingCounts.GetValueOrDefault(m.Id),

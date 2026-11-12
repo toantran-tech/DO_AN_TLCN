@@ -34,7 +34,8 @@ namespace WashGo.Application.Contracts.Features.OrderAssignmentContracts.Results
     {
         public Guid MerchantId { get; set; }
         public string BusinessName { get; set; } = string.Empty;
-        public decimal Rating { get; set; }
+        /// <summary>Điểm đánh giá công khai; null khi chưa có đánh giá công khai (không trả 5 sao mặc định).</summary>
+        public decimal? Rating { get; set; }
         public decimal RatingForScore { get; set; }
         public double PriorityScore { get; set; }
         public double LoadScore { get; set; }

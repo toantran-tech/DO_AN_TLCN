@@ -137,6 +137,11 @@ namespace WashGo.Application.Features.ServiceAreaApplication.Services
             var linkedIds = links.Keys.ToList();
             // Active Merchants plus any inactive Merchant still linked, so the Admin can see and remove it.
             var merchants = await _merchantRepo.GetListAsync(x => x.Status == MerchantStatus.Active || linkedIds.Contains(x.Id));
+            var merchantIds = merchants.Select(m => m.Id).ToList();
+            var ratingCounts = (await AsyncExecuter.ToListAsync((await LazyServiceProvider.LazyGetRequiredService<Volo.Abp.Domain.Repositories.IRepository<WashGo.Domain.Entities.Feedback.OrderRating, Guid>>()
+                    .GetQueryableAsync()).Where(r => !r.IsDeleted && !r.IsHidden && r.MerchantId != null && merchantIds.Contains(r.MerchantId.Value))
+                    .GroupBy(r => r.MerchantId!.Value).Select(g => new { g.Key, Count = g.Count() })))
+                .ToDictionary(x => x.Key, x => x.Count);
             var dto = ObjectMapper.Map<ServiceArea, ServiceAreaResultDto>(area);
             dto.MerchantCount = links.Count;
             return new AreaMerchantsDto
@@ -149,7 +154,8 @@ namespace WashGo.Application.Features.ServiceAreaApplication.Services
                         BusinessName = m.BusinessName,
                         District = m.District,
                         City = m.City,
-                        Rating = m.Rating,
+                        Rating = ratingCounts.GetValueOrDefault(m.Id) == 0 ? null : m.Rating,
+                        PublicRatingCount = ratingCounts.GetValueOrDefault(m.Id),
                         Assigned = links.ContainsKey(m.Id),
                         Priority = links.TryGetValue(m.Id, out var p) ? p : null
                     })

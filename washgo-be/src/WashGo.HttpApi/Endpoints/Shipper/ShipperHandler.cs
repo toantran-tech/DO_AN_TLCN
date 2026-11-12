@@ -23,7 +23,7 @@ namespace WashGo.HttpApi.Endpoints.Shipper
             group.MapPost("/filter", async (ShipperFilterQuery query, IShipperManagementAppService svc) =>
                 (await svc.GetListAsync(query)).CustomResult())
                 .WithName("Lọc danh sách Shipper")
-                .WithSummary("Merchant xem Shipper của tiệm (họ tên, avatar, SĐT, phương tiện, biển số, trạng thái, số đơn đã giao, đánh giá); Admin lọc được theo Merchant. sortBy: [{field:\"Rating\", isDescending:true}] sắp xếp toàn bộ kết quả trước khi phân trang, Shipper chưa có đánh giá đứng cuối.")
+                .WithSummary("Merchant xem Shipper của tiệm (họ tên, avatar, SĐT, phương tiện, biển số, trạng thái, số đơn đã giao, đánh giá); Admin lọc được theo Merchant. Thứ tự cố định: đang làm việc trước, rồi theo tên, rồi Id. Sao Shipper đã ngừng dùng: sortBy Rating (cũ) bị bỏ qua, trường rating/hasRating chỉ giữ để tương thích.")
                 .WithOpenApi();
 
             group.MapGet("/summary", async (Guid? merchantId, IShipperManagementAppService svc) =>

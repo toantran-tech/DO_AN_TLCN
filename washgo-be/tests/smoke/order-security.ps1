@@ -12,6 +12,10 @@ $ErrorActionPreference = 'Stop'
 function Call-Api($Method, $Path, $Body, $Token) {
     $request = @{ Method = $Method; Uri = "$BaseUrl$Path"; TimeoutSec = 30 }
     if ($Token) { $request.Headers = @{ Authorization = "Bearer $Token" } }
+    # Locker creation requires a unique code; generate one when a test does not set it.
+    if ($Method -eq 'Post' -and $Path -eq '/locker/' -and $Body -is [hashtable] -and -not $Body.ContainsKey('code')) {
+        $Body = $Body.Clone(); $Body.code = "SMK_$([Guid]::NewGuid().ToString('N').Substring(0,16))"
+    }
     # System settings writes need the version the Admin saw; fill it in when a test does not set it.
     if ($Method -eq 'Put' -and $Path -like '/system-setting/*' -and $Token -and $Body -is [hashtable] -and -not $Body.ContainsKey('expectedVersion')) {
         try { $Body = $Body.Clone(); $Body.expectedVersion = (Invoke-RestMethod -Method Get -Uri "$BaseUrl/system-setting/" -Headers @{ Authorization = "Bearer $Token" } -TimeoutSec 30).data.version } catch { }

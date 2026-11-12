@@ -48,6 +48,11 @@ try {
     $fifteen=New-PaidOrder
     Sql "UPDATE washgo.merchants SET commission_rate=25 WHERE user_id='$teamId';" | Out-Null
     if((Call-Api Get "/wash-order/$($fifteen.id)" $null $team).data.commissionRateApplied -ne 15){throw 'Rate change rewrote an old order.'}
+    # Reassignment: money snapshotted for another Merchant is not shown to the current one; Admin sees all of it.
+    Sql "UPDATE washgo.payment_transactions SET merchant_id_snapshot='$([Guid]::NewGuid())' WHERE order_id='$($fifteen.id)';" | Out-Null
+    $mv=(Call-Api Get "/wash-order/$($fifteen.id)" $null $team).data; $av=(Call-Api Get "/wash-order/$($fifteen.id)" $null $admin).data
+    if($mv.collectedLaundryAmount -ne 0 -or $av.collectedLaundryAmount -ne $fifteen.finalAmount){throw "Merchant scope of order money wrong: $($mv.collectedLaundryAmount) / $($av.collectedLaundryAmount)"}
+    Sql "UPDATE washgo.payment_transactions SET merchant_id_snapshot='$teamId' WHERE order_id='$($fifteen.id)';" | Out-Null
     $missing=New-PaidOrder
     # Legacy order: neither the order nor its payment carries a locked rate.
     Sql "UPDATE washgo.orders SET commission_rate_applied=NULL, commission_locked_at=NULL WHERE id='$($missing.id)'; UPDATE washgo.payment_transactions SET financial_snapshot_basis=NULL, commission_rate_snapshot=NULL WHERE order_id='$($missing.id)';" | Out-Null

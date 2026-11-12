@@ -36,6 +36,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             public decimal? Rate { get; init; }
             public Guid? SettlementId { get; init; }
             public bool Refund { get; init; }
+            public Guid? MerchantId { get; init; }
         }
 
         /// <summary>
@@ -53,17 +54,22 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 .Where(p => ids.Contains(p.OrderId) && !p.IsDeleted && p.Purpose == PaymentPurpose.Order && p.CompletedAt != null &&
                             (p.Status == PaymentTransactionStatus.Succeeded || p.Status == PaymentTransactionStatus.Refunded))
                 .Select(p => new Tx { OrderId = p.OrderId, Amount = p.Amount, SettlementId = p.SettlementId,
-                    Rate = p.FinancialSnapshotBasis != null ? p.CommissionRateSnapshot : null }));
+                    Rate = p.FinancialSnapshotBasis != null ? p.CommissionRateSnapshot : null,
+                    MerchantId = p.FinancialSnapshotBasis != null ? p.MerchantIdSnapshot : null }));
             txs.AddRange(await _executer.ToListAsync((await _refundRepo.GetQueryableAsync())
                 .Where(r => ids.Contains(r.OrderId) && !r.IsDeleted && r.Status == RefundRequestStatus.Refunded)
                 .Select(r => new Tx { OrderId = r.OrderId, Amount = r.Amount, SettlementId = r.SettlementId, Refund = true,
-                    Rate = r.FinancialSnapshotBasis != null ? r.CommissionRateSnapshot : null })));
+                    Rate = r.FinancialSnapshotBasis != null ? r.CommissionRateSnapshot : null,
+                    MerchantId = r.FinancialSnapshotBasis != null ? r.MerchantIdSnapshot : null })));
             var settlementIds = txs.Where(x => x.SettlementId.HasValue).Select(x => x.SettlementId!.Value).Distinct().ToList();
             var paidSettlements = (await _executer.ToListAsync((await _settlementRepo.GetQueryableAsync())
                 .Where(s => settlementIds.Contains(s.Id) && !s.IsDeleted && s.Status == SettlementStatus.Paid).Select(s => s.Id))).ToHashSet();
             foreach (var order in orders)
             {
-                var mine = txs.Where(x => x.OrderId == order.Id).ToList();
+                // Same Merchant scope as reports/settlements: the Merchant snapshotted on each transaction (legacy: the order's).
+                // A Merchant only sees money attributed to it; Admin sees every transaction of the order.
+                var mine = txs.Where(x => x.OrderId == order.Id &&
+                                          (role == "Admin" || (x.MerchantId ?? order.MerchantId) == order.MerchantId)).ToList();
                 decimal Signed(Tx x) => x.Refund ? -x.Amount : x.Amount;
                 var collected = mine.Where(x => !x.Refund).Sum(x => x.Amount);
                 var back = mine.Where(x => x.Refund).Sum(x => x.Amount);

@@ -38,14 +38,11 @@ UPDATE washgo.users SET avatar=to_jsonb('https://example.com/a-$run.png'::text) 
     if((Call-Api Get "/shipper/summary?merchantId=$teamId" $null $merchant).data.total -ne $seedTotal){throw 'Merchant could read another team.'}
     if((Call-Api Post '/shipper/filter' @{keyword='zz-no-match';page=1;take=1} $team).total -ne 0 -or (Call-Api Get '/shipper/summary' $null $team).data.total -ne 4){throw 'Summary follows table filters.'}
 
-    Write-Output '2. Rating sort over the whole result before paging, unrated last'
-    $desc1=(Call-Api Post '/shipper/filter' @{page=1;take=2;sortBy=@(@{field='Rating';isDescending=$true})} $team).list
-    $desc2=(Call-Api Post '/shipper/filter' @{page=2;take=2;sortBy=@(@{field='Rating';isDescending=$true})} $team).list
-    if((Names $desc1) -ne "Team $run B,Team $run A" -or (Names $desc2) -ne "Team $run D,Team $run C"){throw "Desc order wrong: $(Names $desc1) | $(Names $desc2)"}
-    $asc=(Call-Api Post '/shipper/filter' @{page=1;take=10;sortBy=@(@{field='rating';isDescending=$false})} $team).list
-    if((Names $asc) -ne "Team $run D,Team $run A,Team $run B,Team $run C"){throw "Asc order wrong: $(Names $asc)"}
+    Write-Output '2. Shipper star sort retired: legacy Rating sort is ignored, default order kept'
     $default=(Call-Api Post '/shipper/filter' @{page=1;take=10} $team).list
     if((Names $default) -ne "Team $run A,Team $run B,Team $run C,Team $run D"){throw "Default order changed: $(Names $default)"}
+    $asc=(Call-Api Post '/shipper/filter' @{page=1;take=10;sortBy=@(@{field='Rating';isDescending=$true})} $team).list
+    if((Names $asc) -ne (Names $default)){throw "Legacy Rating sort not ignored: $(Names $asc)"}
     Assert-Status 400 Post '/shipper/filter' @{page=1;take=10;sortBy=@(@{field='CreatedAt';isDescending=$true})} $team
 
     Write-Output '3. Avatar on list/detail and on available shippers; unrated flag'
@@ -64,7 +61,7 @@ UPDATE washgo.users SET avatar=to_jsonb('https://example.com/a-$run.png'::text) 
     $avail=(Call-Api Get "/wash-order/$($o.id)/available-shippers" $null $merchant).data
     if(@($avail | Where-Object { $_.avatarUrl -eq "https://example.com/seed-$run.png" }).Count -ne 1){throw 'Avatar missing on available shippers.'}
 
-    Write-Output 'PASS: team summary (total/working/onLeave/available/busy/offline) in one count, scoped by JWT, Admin by merchantId, independent of table filters; Rating sort desc/asc over the whole set before paging with unrated last and stable name order; default order kept; other sort fields rejected; avatarUrl on list/detail/available shippers; hasRating flag.'
+    Write-Output 'PASS: team summary (total/working/onLeave/available/busy/offline) in one count, scoped by JWT, Admin by merchantId, independent of table filters; legacy Rating sort ignored (star ratings retired), default order kept; other sort fields rejected; avatarUrl on list/detail/available shippers; hasRating flag.'
 }
 finally {
     foreach($session in $sessions.Values){try{Call-Api Post '/auth/logout' @{refreshToken=$session.refreshToken} $session.accessToken|Out-Null}catch{Write-Warning 'Smoke session logout failed.'}}
