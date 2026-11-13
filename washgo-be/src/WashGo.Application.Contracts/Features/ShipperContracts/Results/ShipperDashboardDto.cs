@@ -2,6 +2,11 @@ namespace WashGo.Application.Contracts.Features.ShipperContracts.Results;
 
 public class ShipperDashboardDto
 {
+    public int PendingStorageTransferCount { get; set; }
+    public int PendingStorageReturnCount { get; set; }
+    public int CompletedStorageTransferCount { get; set; }
+    public int CompletedStorageReturnCount { get; set; }
+    public List<MyShipperTaskDto> PendingStorage { get; set; } = [];
     public int PendingCollectCount { get; set; }
     public int PendingReturnCount { get; set; }
     public int CompletedCollectCount { get; set; }

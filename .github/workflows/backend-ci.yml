@@ -95,6 +95,7 @@ jobs:
           mkdir -p tests/ci/results
           dotnet run --project tests/smoke/Mapping/Mapping.csproj -c Release | tee tests/ci/results/mapping.log
           dotnet run --project tests/smoke/Privacy/Privacy.csproj -c Release | tee tests/ci/results/privacy.log
+          dotnet run --project tests/smoke/Storage/Storage.csproj -c Release | tee tests/ci/results/storage.log
           dotnet run --project tests/smoke/PrivateDocuments/PrivateDocuments.csproj -c Release | tee tests/ci/results/documents.log
           dotnet run --project tests/smoke/EmailLogo/EmailLogo.csproj -c Release | tee tests/ci/results/email.log
       - name: API regression on isolated PostgreSQL

@@ -3,7 +3,7 @@ namespace WashGo.Application.Features.ChatbotApplication.Knowledge;
 /// <summary>Reviewed baseline: UC 1.1, 1.2, 1.3, 1.4 and 1.5; live money/time rules come from read tools.</summary>
 public static class ChatbotKnowledge
 {
-    public const string Version = "2026-11-13-v1";
+    public const string Version = "storage-workflow-v2";
     public const string Content = """
         WashGo là dịch vụ giặt qua locker. Chỉ trả lời hỗ trợ WashGo, hỏi lại khi thiếu thông tin.
         Đăng ký: điền thông tin đăng ký, gửi OTP về email, nhập OTP hợp lệ để hoàn tất; sau đó đăng nhập.
@@ -13,7 +13,7 @@ public static class ChatbotKnowledge
         Tiệm nhận đồ, cân và chốt giá trước; giặt xong mới cho thanh toán. Đơn thanh toán xong được phân công chuyến trả riêng.
         Nhận đồ: khi đồ về locker, mở chi tiết đơn, thanh toán đủ tiền giặt và phí còn thiếu; xác thực mã nhận để mở ô mô phỏng, lấy hết đồ rồi xác nhận đóng cửa. Khi đó mới giải phóng ô và tự hoàn tất đơn.
         Hủy đơn: chỉ dùng chức năng hủy khi được phép; xem báo phí server trước khi xác nhận. Đã có đồ trong ô không được giải phóng ô sớm. Phí hủy chưa trả phải thanh toán trước khi nhận lại đồ. Đồ đã về tiệm được Shipper trả về locker; nhận bằng luồng QR/PIN. Khoản hoàn là yêu cầu cần xử lý, không phải đã chuyển tiền ngay.
-        Quá hạn nhận: phí locker cộng dồn theo từng chu kỳ 24 giờ bắt đầu; ngưỡng chuyển kho tính từ hạn nhận, không phải thời điểm đồ về tủ. Phí tại kho là phí locker chốt khi chuyển cộng phí kho từ lúc chuyển; chu kỳ 24 giờ bắt đầu làm tròn lên.
+        Quá hạn nhận: phí locker cộng dồn theo từng chu kỳ 24 giờ bắt đầu; ngưỡng chuyển kho tính từ hạn nhận, không phải thời điểm đồ về tủ. Phí locker dừng khi Shipper xác nhận lấy khỏi tủ. Kho là khu lưu tại tiệm, phí kho chỉ tính từ bàn giao vào tiệm tới xuất kho; giờ vận chuyển không tính phí kho. Khách yêu cầu giao lại locker, không đến tiệm nhận, không có phí giao lại riêng trong bản đầu. Mỗi lần đặt lại locker có 24 giờ miễn phí mới, phí vòng trước vẫn giữ; chu kỳ 24 giờ bắt đầu làm tròn lên.
         Quá hạn thanh toán: thời hạn tính từ khi chuyển Chờ thanh toán. Đồ chuyển lưu kho tại tiệm; chưa từng về locker thì không có phí locker trước đó.
         Khiếu nại: báo sự cố cho đơn đã hoàn tất trong 3 ngày từ lúc hoàn tất; hư hỏng/mất đồ bắt buộc có ảnh, video chỉ bổ sung. Giá trị khách khai tối đa 100 triệu; Admin xác nhận giá trị/mức bồi thường. Không hứa duyệt hoặc trả tiền tự động.
         ETA là thời điểm dự kiến giặt xong/chờ thanh toán, không phải thời điểm đồ về locker. Không suy đoán nguyên nhân trễ khi chưa có thông tin.

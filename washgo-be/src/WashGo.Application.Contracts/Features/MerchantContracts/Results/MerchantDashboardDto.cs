@@ -52,6 +52,8 @@ namespace WashGo.Application.Contracts.Features.MerchantContracts.Results
         public int ReadyToReturn { get; set; }
         public int Returned { get; set; }
         public int Completed { get; set; }
+        public int TransferringToStorage { get; set; }
+        public int ReturningFromStorage { get; set; }
         public int MovedToStorage { get; set; }
         public int Cancelled { get; set; }
 

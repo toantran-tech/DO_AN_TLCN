@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using Volo.Abp.Data;
 using Volo.Abp.EntityFrameworkCore;
 using WashGo.Domain.Entities.Policy;
@@ -25,6 +25,8 @@ namespace WashGo.EntityFrameworkCore.EntityFrameworkCore
     [ConnectionStringName("Default")]
     public class WashGoDbContext : AbpDbContext<WashGoDbContext>
     {
+        public DbSet<OrderStorageCycle> StorageCycles { get; set; } = null!;
+        public DbSet<StorageReturnRequest> StorageReturnRequests { get; set; } = null!;
         public DbSet<ChatConversation> ChatConversations { get; set; } = null!;
         public DbSet<ChatMessage> ChatMessages { get; set; } = null!;
         public DbSet<Role> Roles { get; set; } = null!;
@@ -116,6 +118,8 @@ namespace WashGo.EntityFrameworkCore.EntityFrameworkCore
             builder.ApplyConfiguration(new OrderOperationEntityTypeConfiguration());
             builder.ApplyConfiguration(new ShipperAuditEntityTypeConfiguration());
             builder.ApplyConfiguration(new DeliveryTaskEntityTypeConfiguration());
+            builder.ApplyConfiguration(new OrderStorageCycleEntityTypeConfiguration());
+            builder.ApplyConfiguration(new StorageReturnRequestEntityTypeConfiguration());
             builder.ApplyConfiguration(new AuditLogEntityTypeConfiguration());
             builder.ApplyConfiguration(new IncidentMessageEntityTypeConfiguration());
             builder.ApplyConfiguration(new MerchantSettlementEntityTypeConfiguration());

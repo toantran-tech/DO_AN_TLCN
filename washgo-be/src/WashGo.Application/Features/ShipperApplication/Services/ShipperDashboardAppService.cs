@@ -47,6 +47,7 @@ public class ShipperDashboardAppService(IShipperRepository shippers, IRepository
         var counts = await AsyncExecuter.ToListAsync(pendingQuery.GroupBy(x => x.TaskType).Select(g => new { Type = g.Key, Count = g.Count() }));
         var pendingCollect = await AsyncExecuter.ToListAsync(pendingQuery.Where(x => x.TaskType == DeliveryTaskType.Collect).OrderBy(x => x.Deadline).ThenBy(x => x.Id).Take(5));
         var pendingReturn = await AsyncExecuter.ToListAsync(pendingQuery.Where(x => x.TaskType == DeliveryTaskType.Return).OrderBy(x => x.Deadline).ThenBy(x => x.Id).Take(5));
+        var pendingStorage = await AsyncExecuter.ToListAsync(pendingQuery.Where(x => x.TaskType == DeliveryTaskType.StorageTransfer || x.TaskType == DeliveryTaskType.StorageReturn).OrderBy(x => x.Deadline).ThenBy(x => x.Id).Take(10));
         var completionQuery = (await tasks.GetQueryableAsync()).Where(x => x.CompletedBy == CurrentUser.Id && x.CompletedByRole == "Shipper" &&
             x.Status == DeliveryTaskStatus.Completed && x.CompletionEventId != null && x.CompletedAt >= previousFrom && x.CompletedAt <= to);
         var events = await AsyncExecuter.ToListAsync(completionQuery.OrderBy(x => x.CompletedAt).ThenBy(x => x.Id).Take(ShipperReadRules.ExportLimit + 1));
@@ -62,10 +63,15 @@ public class ShipperDashboardAppService(IShipperRepository shippers, IRepository
         {
             var next = bucket + step;
             var rows = current.Where(x => x.CompletedAt >= bucket && x.CompletedAt < next).ToList();
-            chart.Add(new() { BucketStart = bucket, CollectCount = rows.Count(x => x.TaskType == DeliveryTaskType.Collect), ReturnCount = rows.Count(x => x.TaskType == DeliveryTaskType.Return) });
+            chart.Add(new() { BucketStart = bucket, CollectCount = rows.Count(x => x.TaskType == DeliveryTaskType.Collect), ReturnCount = rows.Count(x => x.TaskType == DeliveryTaskType.Return), StorageTransferCount = rows.Count(x => x.TaskType == DeliveryTaskType.StorageTransfer), StorageReturnCount = rows.Count(x => x.TaskType == DeliveryTaskType.StorageReturn) });
         }
         var result = new ShipperDashboardDto
         {
+            PendingStorageTransferCount = counts.FirstOrDefault(x => x.Type == DeliveryTaskType.StorageTransfer)?.Count ?? 0,
+            PendingStorageReturnCount = counts.FirstOrDefault(x => x.Type == DeliveryTaskType.StorageReturn)?.Count ?? 0,
+            CompletedStorageTransferCount = current.Count(x => x.TaskType == DeliveryTaskType.StorageTransfer),
+            CompletedStorageReturnCount = current.Count(x => x.TaskType == DeliveryTaskType.StorageReturn),
+            PendingStorage = await presentation.MapAsync(pendingStorage),
             PendingCollectCount = counts.FirstOrDefault(x => x.Type == DeliveryTaskType.Collect)?.Count ?? 0,
             PendingReturnCount = counts.FirstOrDefault(x => x.Type == DeliveryTaskType.Return)?.Count ?? 0,
             CompletedCollectCount = current.Count(x => x.TaskType == DeliveryTaskType.Collect), CompletedReturnCount = current.Count(x => x.TaskType == DeliveryTaskType.Return),

@@ -1,3 +1,5 @@
+﻿> Bổ sung 14/11/2026: luồng kho/giao lại, task type 3/4, order 14/15 và self-status xem [STORAGE_WORKFLOW_API_REVIEW.md](STORAGE_WORKFLOW_API_REVIEW.md). Với đơn v1 không dùng shortcut nhận trực tiếp ở kho. Chatbot hướng dẫn yêu cầu giao lại locker; không đưa mã/địa chỉ tiệm vào AI. Phần cũ bên dưới cần đọc cùng hợp đồng bổ sung; Docker chính chưa cập nhật cụm này.
+
 # Hợp đồng BE Shipper — 11/11/2026
 
 Nghiệm thu local: Docker build, Swagger/OpenAPI, model sạch và các smoke `shipper-workspace`, `shipper-profile`, `shipper-tasks`, `shipper-assignment`, `qr-pin-flow`, `order-cancellation` PASS. Hồi quy thanh toán dùng Mock/SMTP tắt tạm thời; đã khôi phục cấu hình Live của sandbox chính thức từ `.env`. Không gửi giao dịch thật. Chia thành 3 nhánh nối tiếp; xem [hướng dẫn PR](SHIPPER_GIT_PUSH_PLAN.md).

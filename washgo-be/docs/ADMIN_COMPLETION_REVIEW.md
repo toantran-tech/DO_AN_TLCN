@@ -1,3 +1,5 @@
+﻿> Bổ sung 14/11/2026: luồng kho/giao lại, task type 3/4, order 14/15 và self-status xem [STORAGE_WORKFLOW_API_REVIEW.md](STORAGE_WORKFLOW_API_REVIEW.md). Với đơn v1 không dùng shortcut nhận trực tiếp ở kho. Chatbot hướng dẫn yêu cầu giao lại locker; không đưa mã/địa chỉ tiệm vào AI. Phần cũ bên dưới cần đọc cùng hợp đồng bổ sung; Docker chính chưa cập nhật cụm này.
+
 > Quyết định thành viên mới nhất và thay đổi hợp đồng tại [AGREED_BUSINESS_RULES_20261109.md](AGREED_BUSINESS_RULES_20261109.md). Phần này cập nhật nghiệp vụ hợp đồng/khiếu nại/bù trừ; không còn chặn tạo kỳ chỉ vì thực nhận âm hoặc bằng 0.
 
 # Hướng dẫn review đợt hoàn thiện Backend — 09/11/2026

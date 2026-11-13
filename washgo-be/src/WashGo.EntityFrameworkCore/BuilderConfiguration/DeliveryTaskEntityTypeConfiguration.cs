@@ -12,7 +12,7 @@ namespace WashGo.EntityFrameworkCore.BuilderConfiguration
             GuidKeyConfiguration.ConfigureGeneratedGuid(builder);
             builder.ToTable(WashGoDbProperties.DeliveryTasks, WashGoDbProperties.Schema);
             builder.HasIndex(x => new { x.ShipperId, x.Status });
-            builder.HasIndex(x => x.OrderId);
+            builder.HasIndex(x => x.OrderId).IsUnique().HasFilter("status = 1 AND task_type IN (3,4)");
             builder.HasIndex(x => x.CompletionEventId).IsUnique();
             builder.HasIndex(x => new { x.CompletedBy, x.CompletedAt, x.Id });
             builder.HasIndex(x => new { x.ShipperId, x.Status, x.AssignedAt });

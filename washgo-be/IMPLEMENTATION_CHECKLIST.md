@@ -1,8 +1,27 @@
-# Checklist hoàn thiện Backend WashGo
+﻿# Checklist hoàn thiện Backend WashGo
+
+## Cụm 2 — Shipper self-status, lưu kho tại tiệm và giao lại — 14/11/2026
+
+Nhánh `feat/toantran/storage-lifecycle`, base 26398e6; chưa commit/push. [Plan C–G](docs/NEW_BACKEND_REQUIREMENTS_PLAN_20261113.md), [API FE](docs/STORAGE_WORKFLOW_API_REVIEW.md), [dự thảo Word/điều khoản](docs/STORAGE_TERMS_USECASE_DRAFT.md).
+
+- [x] C: Shipper tự Available/Offline với revision/operation/replay/lookup, capability/lý do; chặn Offline khi còn chuyến và không ghi đè quản lý nhân sự; cùng khóa assignment.
+- [x] D: cycle/request, nhiệm vụ StorageTransfer/StorageReturn, trạng thái order 14/15; bảng/index chống trùng, mốc/biên nhận/phí từng vòng; snapshot địa chỉ tiệm, không CRUD kho riêng.
+- [x] E: phân công → Shipper collect giải phóng ô → handover có biên nhận mới bắt đầu lưu; bảo vệ mã/lockout, SLA 4h cảnh báo, không reset khi gán lại, không Admin xác nhận thay.
+- [x] F: Customer quote ký 5 phút/yêu cầu giao lại/hủy trước xuất; đủ tiền và xác nhận lại phí tăng mới depart; transit không tính phí; place chiếm ô phù hợp hoặc rollback, mã/hạn nhận mới, nhận qua hai bước đang có. Giữ tiền/phí nhiều vòng, không tự thu phí giao lại.
+- [x] Tích hợp payment phí, worker quá hạn 7 ngày, task/history/dashboard/busy predicate, cảnh báo SLA kho 4h/24h và notification ẩn danh. Exception giữ custody và audit, không tự hủy/gán lại sau lấy.
+- [x] Legacy v0 không đổi tiền/ngày/biên nhận hàng loạt; cần Admin xác minh thực tế ở tiệm trước khi mở giao lại v1. Route shortcut bị chặn v1, v0 giữ tương thích.
+- [x] G: nguồn Chatbot/nextStep cập nhật; API review liên kết cho FE và dự thảo Word/điều khoản đã soạn. Không publish điều khoản tự động.
+- [x] Build Release 0 lỗi; model EF sạch; migration áp trên DB tạm từ đầu. Storage console PASS. HTTP lifecycle PASS: hai vòng, concurrent request replay/step replay, fee/lockout/no-slot rollback, privacy, self-status, legacy, unpaid worker và dashboard/alerts. Parser 6 script sửa PASS.
+- [x] CI thêm Storage console/lifecycle; bốn smoke shortcut cũ chỉ chuyển chính fixture sang v0, không đổi dữ liệu thật.
+- [ ] GitHub CI của cụm mới (gồm hồi quy rộng/security); chưa push. Kiểm thử race assignment-vs-Offline/pickup-vs-collect và các tình huống legacy mở rộng chưa phải toàn bộ đã chạy.
+- [ ] Áp migration/rebuild Docker chính có backup và kiểm tra legacy; đợt này chỉ dùng source host/DB tạm, không thay container/DB chính.
+- [ ] Đưa dự thảo vào Word gốc và duyệt/phát hành điều khoản qua Admin; UAT FE/Gemini thật theo nguồn mới.
+
+Giới hạn build local: 5 nullable warnings cũ và 7 NU1900 do nguồn audit NuGet không truy cập được. Không coi dependency scan của cụm mới đã PASS; CI vẫn giữ security gate.
 
 ## Cụm 1 — Review publishing và quyền riêng tư — 13/11/2026
 
-Nhánh: `feat/toantran/review-publishing-privacy` (base 04bb072). Chưa commit/push. Hợp đồng FE/Swagger: [REVIEW_PUBLISHING_PRIVACY_API.md](docs/REVIEW_PUBLISHING_PRIVACY_API.md); plan: [NEW_BACKEND_REQUIREMENTS_PLAN_20261113.md](docs/NEW_BACKEND_REQUIREMENTS_PLAN_20261113.md).
+Nhánh: `feat/toantran/review-publishing-privacy` (base 04bb072). Đã commit 26398e6; trạng thái remote/PR do người dùng quản lý. Hợp đồng FE/Swagger: [REVIEW_PUBLISHING_PRIVACY_API.md](docs/REVIEW_PUBLISHING_PRIVACY_API.md); plan: [NEW_BACKEND_REQUIREMENTS_PLAN_20261113.md](docs/NEW_BACKEND_REQUIREMENTS_PLAN_20261113.md).
 
 - [x] Redactor chung sau enrich cho đơn list/detail/create/mutation/conflict/replay; Customer không có identity/contact/ảnh/mã tiệm/kho của nhân sự, staff không có Customer identity/avatar/free text/locker codes. Giữ thông tin vận hành và mã riêng của Customer.
 - [x] Customer không suy luận nhân sự qua merchantId/shipperId, column filters/sort, mã tiệm; staff filter/distinct không nhận trường Customer riêng tư.
@@ -14,7 +33,7 @@ Nhánh: `feat/toantran/review-publishing-privacy` (base 04bb072). Chưa commit/p
 - [x] Docker CI/HTTP PASS: ABP/JWT, catalog, actual-weight/vòng đời đơn, keyword privacy và review publication. Review HTTP gồm 4 role, foreign owner, withheld filters, conflict DTO, receipt/inbox, contacts/missing profile, single/batch/replay/lookup/limit, concurrent Publish/Hide 200/409, audit và aggregate; fixture/container CI đã dọn. Mock payment và không SMTP ngoài ở CI.
 - [x] Đã thêm Privacy console và hai suite review vào workflow/runner CI; chưa có run GitHub của cụm mới cho tới khi push.
 - [x] Docker local đã build/recreate bản cuối; Swagger HTTP 200 có POST /rating/{id}/publish. Migration có trong history washgo_main và đủ hai cột mới; số rating giữ nguyên 1. Đã backup DB ra thư mục Temp ngoài repo trước triển khai; không đưa backup/log vào Git. Container CI đã dọn.
-- [ ] Chặng C self-status Shipper và D–G kho/giao lại/tài liệu theo luồng mới: chưa triển khai. Không ghi toàn bộ plan đã xong.
+- [x] Code C–F và tài liệu G đã triển khai trong cụm 2 phía trên; các bước deploy/CI/UAT chưa tick riêng, không coi nghiệm thu toàn bộ đã xong.
 
 ## CI Backend đợt 1 — ngày 13/11/2026
 

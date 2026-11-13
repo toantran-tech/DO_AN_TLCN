@@ -85,6 +85,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
         /// <summary>Lý do không được ghi nhận chuyển kho; null = được phép (cùng luật với POST /wash-order/move-to-storage).</summary>
         public static Block? MoveToStorage(WashOrder order, string role, DateTime now)
         {
+            if (order.StorageWorkflowVersion >= 1)
+                return new("UseStorageWorkflow", "Dùng luồng kho có phân công và xác nhận bàn giao.");
             if (role is not ("Admin" or "Shipper"))
                 return new("RoleNotAllowed", "Chỉ Shipper hoặc Admin được ghi nhận chuyển kho.");
             if (order.MovedToStorageAt.HasValue)

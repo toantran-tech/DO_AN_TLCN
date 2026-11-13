@@ -1,3 +1,5 @@
+﻿> Bổ sung 14/11/2026: luồng kho/giao lại, task type 3/4, order 14/15 và self-status xem [STORAGE_WORKFLOW_API_REVIEW.md](STORAGE_WORKFLOW_API_REVIEW.md). Với đơn v1 không dùng shortcut nhận trực tiếp ở kho. Chatbot hướng dẫn yêu cầu giao lại locker; không đưa mã/địa chỉ tiệm vào AI. Phần cũ bên dưới cần đọc cùng hợp đồng bổ sung; Docker chính chưa cập nhật cụm này.
+
 # Hợp đồng Backend trợ lý AI cho Customer
 
 Cập nhật 13/11/2026. Phạm vi: UC 1.5.1–1.5.6. BE đã triển khai, migration local đã áp dụng, smoke tích hợp với provider fixture PASS. **Gemini thật đã kết nối và PASS 4 tình huống cơ bản**: hướng dẫn nhận đồ, dịch vụ/giá, hỏi locker chưa cấp vị trí, tìm locker với tọa độ thử nghiệm. Không có FE trong đợt này.

@@ -1,4 +1,4 @@
-# Hướng dẫn CI Backend WashGo
+﻿# Hướng dẫn CI Backend WashGo
 
 Đợt 1 tự kiểm tra Pull Request bằng GitHub Actions; chưa deploy staging, chưa đẩy image lên registry và không dùng key thật. Fen vẫn tạo nhánh → commit/push → PR như thường. GitHub tự chạy các job và lưu report để reviewer kiểm tra.
 
@@ -118,3 +118,7 @@ Sau đó mới làm CD: chọn server staging, HTTPS, image registry/tag/digest,
 - Gitleaks CLI: https://github.com/gitleaks/gitleaks
 
 Action được ghim commit SHA đã xác minh; Gitleaks ghim version và image digest. Khi cập nhật cần kiểm tra release/test lại, không tự thay bằng `latest`.
+
+## Bổ sung cụm lưu kho ngày 14/11/2026
+
+Regression có `tests/smoke/Storage` (fee/cycle/transit/HMAC/busy predicate) và `storage-lifecycle.ps1` trong API runner. HTTP suite kiểm tra hai vòng kho, concurrent replay, PIN, phí, rollback hết ô, self-status, legacy và worker; dùng Mock/DB riêng. Chỉ CI chạy bộ rộng sau push; local tập trung test mới, không rebuild Docker chính mỗi vòng sửa. Run mới phải xem Actions/artifact, không suy từ kết quả run PR cũ. Các script legacy chưa trong runner không tự được coi PASS.

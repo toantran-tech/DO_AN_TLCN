@@ -32,6 +32,10 @@ namespace WashGo.HttpApi.Endpoints.Shipper
                 .WithSummary("Sửa họ tên, SĐT, avatar, phương tiện, biển số; email và Merchant phụ trách không đổi.")
                 .WithOpenApi();
 
+            group.MapPut("/work-status", async (UpdateShipperWorkStatusCommand command, IShipperProfileAppService svc) =>
+                (await svc.UpdateWorkStatusAsync(command)).CustomResult())
+                .WithSummary("Shipper tự Available/Offline; cần expectedRevision và operationId. Còn nhiệm vụ hiệu lực không được Offline; không ghi đè Busy hoặc trạng thái khóa nhân sự. Dùng lookup hồ sơ hiện có.").WithOpenApi();
+
             group.MapGet("/operations/{operationId:guid}", async (Guid operationId, IShipperProfileAppService svc) =>
                 (await svc.GetOperationAsync(operationId)).CustomResult())
                 .WithSummary("Tra kết quả cập nhật hồ sơ của chính tài khoản theo operationId; không thấy kết quả không khẳng định request trước thất bại.").WithOpenApi();

@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$BaseUrl = 'http://localhost:5000',
     [string]$PostgresContainer = 'washgo_postgres',
     [string]$PostgresUser = 'postgres',
@@ -257,6 +257,8 @@ FROM washgo.shippers s WHERE user_id = '$seedUser';
     $qrBody.qrCode=(Call-Api Get "/shipper-tasks/$($task.taskId)/credentials" $null $shipper).data.qrCode
     Call-Api Post "/wash-order/$storageId/shipper-return" $qrBody $shipper | Out-Null
     Sql "UPDATE washgo.orders SET pickup_deadline=NOW()-INTERVAL '73 hours' WHERE id='$storageId';" | Out-Null
+    # Explicit v0 compatibility fixture; v1 uses the two-stage storage task.
+    Sql "UPDATE washgo.orders SET storage_workflow_version=0 WHERE id='$storageId';" | Out-Null
     $moved=(Call-Api Post '/wash-order/move-to-storage' @{
         orderId="$storageId";storageLocation='Smoke warehouse';storageReference='SMOKE'
     } $admin).data

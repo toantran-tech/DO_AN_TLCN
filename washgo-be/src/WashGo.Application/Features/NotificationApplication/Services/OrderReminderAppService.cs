@@ -66,9 +66,29 @@ namespace WashGo.Application.Features.NotificationApplication.Services
             await RemindReturnAsync(now, settings);
             await RemindPickupAsync(now, settings);
             await RemindPaymentAsync(now);
+            await RemindStorageTasksAsync(now);
 
             return Success(new ReminderRunResultDto { RanAt = now, Sent = new(_sent), Total = _sent.Values.Sum() },
                 "Đã quét nhắc nhở.");
+        }
+
+        private async Task RemindStorageTasksAsync(DateTime now)
+        {
+            var cycleRepo = LazyServiceProvider.LazyGetRequiredService<IRepository<OrderStorageCycle, Guid>>();
+            var requestRepo = LazyServiceProvider.LazyGetRequiredService<IRepository<StorageReturnRequest, Guid>>();
+            var inbound = (await cycleRepo.GetListAsync(x => (x.State == StorageCycleState.AwaitingCollection || x.State == StorageCycleState.InboundTransit) && x.TransferDeadline < now))
+                .Select(x => new { x.OrderId, Key = $"storage-in:{x.Id}", Deadline = x.TransferDeadline!.Value });
+            var outbound = (await requestRepo.GetListAsync(x => x.Deadline < now && (x.State == StorageReturnState.Requested || x.State == StorageReturnState.Assigned || x.State == StorageReturnState.InTransit)))
+                .Select(x => new { x.OrderId, Key = $"storage-out:{x.Id}", x.Deadline });
+            foreach (var item in inbound.Concat(outbound))
+            {
+                if (!await ClaimAsync("storage-sla", item.Key, item.OrderId, now)) continue;
+                var order = await _orderRepo.FindAsync(item.OrderId);
+                if (order == null || order.IsDeleted) continue;
+                var content = $"Đơn #{order.OrderCode} trễ SLA giao nhận kho; vẫn cho phép thực hiện, cần điều phối hỗ trợ.";
+                await _notifications.SendToAdminsAsync(NotificationType.SlaWarning, "Trễ SLA kho", content, "order", order.Id);
+                await _notifications.SendAsync([order.MerchantId], NotificationType.SlaWarning, "Trễ SLA kho", content, "order", order.Id);
+            }
         }
 
         /// <summary>Ghi khóa trước khi gửi; khóa đã tồn tại nghĩa là lời nhắc này đã gửi ở lần quét trước.</summary>

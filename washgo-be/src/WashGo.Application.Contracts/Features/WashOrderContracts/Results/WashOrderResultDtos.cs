@@ -17,6 +17,9 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Results
         public string? TaskBoxNumber { get; set; }
         public DateTime? TaskDeadline { get; set; }
         public DateTime TaskServerNow { get; set; }
+        public int StorageWorkflowVersion { get; set; }
+        public Guid? ActiveStorageCycleId { get; set; }
+        public decimal AccumulatedStorageFee { get; set; }
         public Guid Id { get; set; }
         public DateTime? OperationalPolicyCapturedAt { get; set; }
         public string? OperationalPolicyBasis { get; set; }
