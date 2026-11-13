@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$BaseUrl='http://localhost:5000',
     [string]$MailpitUrl='http://localhost:8025',
     [string]$PostgresContainer='washgo_postgres',
@@ -88,6 +88,8 @@ try {
     Sql "UPDATE washgo.orders SET merchant_id='$teamId', status=10, payment_status=2, return_locker_id='$lockerId', return_box_id='$box', return_box_number=ls.slot_number, pickup_deadline=now() AT TIME ZONE 'utc' - interval '1 hour' FROM washgo.locker_slots ls WHERE washgo.orders.id='$($s.id)' AND ls.id='$box'; UPDATE washgo.locker_slots SET status=2 WHERE id='$box';" | Out-Null
     $d=(Call-Api Get "/wash-order/$($s.id)" $null $admin).data.allowedActions
     if($d.canMoveToStorage -or $d.moveToStorageReasonCode -ne 'NotYetDue' -or !$d.transferToStorageEligibleAt){throw "Not-yet-due metadata wrong: $($d | ConvertTo-Json -Compress)"}
+    # Explicit legacy fixture: this suite verifies the v0 shortcut; storage-lifecycle covers v1.
+    Sql "UPDATE washgo.orders SET storage_workflow_version=0 WHERE id='$($s.id)';" | Out-Null
     Sql "UPDATE washgo.orders SET pickup_deadline=now() AT TIME ZONE 'utc' - interval '80 hours' WHERE id='$($s.id)';" | Out-Null
     $d=(Call-Api Get "/wash-order/$($s.id)" $null $admin).data
     if(!$d.allowedActions.canMoveToStorage){throw 'canMoveToStorage false when due.'}

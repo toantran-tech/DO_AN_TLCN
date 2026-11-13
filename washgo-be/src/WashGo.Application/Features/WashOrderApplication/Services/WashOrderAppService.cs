@@ -1,4 +1,4 @@
-using WashGo.Application.Features.AuditApplication.Services;
+﻿using WashGo.Application.Features.AuditApplication.Services;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -287,6 +287,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                     Folding = C(WashOrderStatus.Folding), AwaitingPayment = C(WashOrderStatus.AwaitingPayment),
                     Paid = C(WashOrderStatus.Paid), ReadyToReturn = C(WashOrderStatus.ReadyToReturn),
                     Returned = C(WashOrderStatus.Returned), Completed = C(WashOrderStatus.Completed),
+                    TransferringToStorage = C(WashOrderStatus.TransferringToStorage), ReturningFromStorage = C(WashOrderStatus.ReturningFromStorage),
                     MovedToStorage = C(WashOrderStatus.MovedToStorage), Cancelled = C(WashOrderStatus.Cancelled)
                 },
                 FromDate = query.FromDate,
@@ -596,6 +597,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 LockerId = locker.Id,
                 LockerName = locker.Name,
                 BoxId = box.Id,
+                DepositBoxSize = box.Size,
                 BoxNumber = box.BoxNumber,
                 ReturnLockerId = command.ReturnLockerId ?? locker.Id,
                 PaymentMethod = command.PaymentMethod,
@@ -1054,6 +1056,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 return NotFound<WashOrderDetailDto>("Không tìm thấy đơn hàng được phép chuyển kho.");
             var storageRequest = OrderWriteGuard.Fingerprint("moveToStorage",
                 $"{command.StorageLocation.Trim()}|{command.StorageReference.Trim()}|{command.Note?.Trim()}");
+            if (order.StorageWorkflowVersion >= 1)
+                return BadRequest<WashOrderDetailDto>("Dùng /storage để phân công, lấy đồ và xác nhận bàn giao tại tiệm.");
             if (await GuardAsync(order, scope, command, "MoveToStorage", storageRequest) is { } stop)
                 return stop;
 
@@ -1614,7 +1618,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 return BadRequest<OpenPickupBoxResultDto>("Đơn hàng đã quá hạn 72 giờ và chuyển sang quy trình lưu kho. Vui lòng liên hệ hỗ trợ hoặc nhận đồ tại kho.");
             }
 
-            var overdueFee = cancelledPickup ? 0m : OverdueFeeCalculator.Calculate(order.PickupDeadline, DateTime.UtcNow, await _settings.ForOrderAsync(order));
+            var overdueFee = cancelledPickup ? 0m : OverdueFeeCalculator.GetTotalStorageDue(order, DateTime.UtcNow, await _settings.ForOrderAsync(order));
             order.OverdueFeeTotal = overdueFee;
             if (order.StorageFeeTotal < overdueFee)
             {
@@ -1715,7 +1719,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 return BadRequest<WashOrderDetailDto>("Phiên lấy đồ không hợp lệ hoặc đã hết hạn (10 phút). Vui lòng quét mã mở tủ lại.");
             }
 
-            var overdueFee = cancelledPickup ? 0m : OverdueFeeCalculator.Calculate(order.PickupDeadline, DateTime.UtcNow, await _settings.ForOrderAsync(order));
+            var overdueFee = cancelledPickup ? 0m : OverdueFeeCalculator.GetTotalStorageDue(order, DateTime.UtcNow, await _settings.ForOrderAsync(order));
             order.OverdueFeeTotal = overdueFee;
             if (order.StorageFeeTotal < overdueFee)
             {
@@ -1774,6 +1778,21 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             });
 
             order.Status = WashOrderStatus.Completed;
+            if (order.ActiveStorageCycleId is { } cycleId)
+            {
+                var cycleRepo = LazyServiceProvider.LazyGetRequiredService<IRepository<OrderStorageCycle, Guid>>();
+                var pendingCycle = await cycleRepo.FindAsync(cycleId);
+                if (pendingCycle?.State == StorageCycleState.AwaitingCollection)
+                {
+                    pendingCycle.State = StorageCycleState.Cancelled; pendingCycle.ClosedAt = DateTime.UtcNow;
+                    await cycleRepo.UpdateAsync(pendingCycle);
+                    var taskRepo = LazyServiceProvider.LazyGetRequiredService<IRepository<DeliveryTask, Guid>>();
+                    foreach (var task in await taskRepo.GetListAsync(x => x.StorageCycleId == cycleId && x.Status == DeliveryTaskStatus.Assigned))
+                    { task.Status = DeliveryTaskStatus.Cancelled; task.EndedAt = DateTime.UtcNow; await taskRepo.UpdateAsync(task); }
+                    order.ActiveStorageCycleId = null; order.AssignedTaskType = null;
+                    order.ShipperTaskPinCode = null; order.ShipperTaskQrString = null;
+                }
+            }
             await _orderRepo.UpdateAsync(order, autoSave: true);
             await _notifications.PickedUpAsync(order);
             await uow.CompleteAsync();
@@ -1805,6 +1824,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             if (order.PaymentStatus != PaymentStatus.Paid)
                 return BadRequest<WashOrderDetailDto>("Đơn hàng chưa được thanh toán tiền giặt.");
 
+            if (order.StorageWorkflowVersion >= 1)
+                return BadRequest<WashOrderDetailDto>("Đồ được nhận lại tại locker qua yêu cầu giao lại; không tự xác nhận nhận tại tiệm.");
             if (order.Status != WashOrderStatus.MovedToStorage)
                 return BadRequest<WashOrderDetailDto>("Đơn hàng không ở trạng thái lưu kho.");
 

@@ -101,9 +101,9 @@ public class MyShipperTaskAppService(IRepository<DeliveryTask, Guid> tasks, IShi
     {
         if (Validate(query) is { } error) return BadRequest<ShipperTaskSummaryDto>(error);
         var rows = await FilterAsync(query, summary: true);
-        var counts = await AsyncExecuter.FirstOrDefaultAsync(rows.GroupBy(x => 1).Select(g => new { Total = g.Count(), Collect = g.Count(x => x.TaskType == DeliveryTaskType.Collect) }));
+        var counts = await AsyncExecuter.FirstOrDefaultAsync(rows.GroupBy(x => 1).Select(g => new { Total = g.Count(), Collect = g.Count(x => x.TaskType == DeliveryTaskType.Collect), Return = g.Count(x => x.TaskType == DeliveryTaskType.Return), StorageTransfer = g.Count(x => x.TaskType == DeliveryTaskType.StorageTransfer), StorageReturn = g.Count(x => x.TaskType == DeliveryTaskType.StorageReturn) }));
         return Success(new ShipperTaskSummaryDto { TotalPending = counts?.Total ?? 0, CollectPending = counts?.Collect ?? 0,
-            ReturnPending = (counts?.Total ?? 0) - (counts?.Collect ?? 0), GeneratedAt = DateTime.UtcNow,
+            ReturnPending = counts?.Return ?? 0, StorageTransferPending = counts?.StorageTransfer ?? 0, StorageReturnPending = counts?.StorageReturn ?? 0, GeneratedAt = DateTime.UtcNow,
             Keyword = query.Keyword, AssignedFrom = query.AssignedFrom, AssignedTo = query.AssignedTo });
     }
 
@@ -113,7 +113,7 @@ public class MyShipperTaskAppService(IRepository<DeliveryTask, Guid> tasks, IShi
         if (task == null) return NotFound<MyShipperTaskDto>("Không tìm thấy nhiệm vụ.");
         var dto = (await presentation.MapAsync([task])).Single();
         // Only current assignments may use the order detail endpoint; old tasks expose snapshots, not a new assignee's order.
-        if (dto.CanCollect || dto.CanReturn)
+        if (dto.CanCollect || dto.CanReturn || dto.CanStorageCollect || dto.CanStorageHandover || dto.CanStorageDepart || dto.CanStoragePlace)
         {
             var detail = await orderService.GetByIdAsync(task.OrderId);
             if (detail.Succeeded) dto.Order = detail.Data;

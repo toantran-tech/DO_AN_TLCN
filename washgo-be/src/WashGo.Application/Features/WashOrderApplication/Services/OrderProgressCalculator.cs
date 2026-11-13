@@ -24,7 +24,9 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             (WashOrderStatus.AwaitingPayment, "Chờ thanh toán"),
             (WashOrderStatus.Paid, "Đã thanh toán"),
             (WashOrderStatus.ReadyToReturn, "Đồ sẵn sàng tại locker"),
-            (WashOrderStatus.MovedToStorage, "Lưu kho"),
+            (WashOrderStatus.TransferringToStorage, "Đang chuyển về tiệm"),
+            (WashOrderStatus.MovedToStorage, "Lưu kho tại tiệm"),
+            (WashOrderStatus.ReturningFromStorage, "Đang giao lại locker"),
             (WashOrderStatus.Completed, "Hoàn tất")
         ];
 
@@ -58,6 +60,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 var applicable = step switch
                 {
                     _ when ProcessingSteps.Contains(step) => processing.Contains(step) || done,
+                    WashOrderStatus.TransferringToStorage or WashOrderStatus.ReturningFromStorage => done,
                     WashOrderStatus.MovedToStorage => stored,
                     // Laundry moved to storage unpaid never sits in a return locker.
                     WashOrderStatus.ReadyToReturn => !stored || done,

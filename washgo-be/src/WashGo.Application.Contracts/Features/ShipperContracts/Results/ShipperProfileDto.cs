@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using WashGo.Domain.Shared.Enums;
 
 namespace WashGo.Application.Contracts.Features.ShipperContracts.Results
@@ -6,6 +6,10 @@ namespace WashGo.Application.Contracts.Features.ShipperContracts.Results
     /// <summary>UC 4.1.3: hồ sơ cá nhân của Shipper.</summary>
     public class ShipperProfileDto
     {
+        public bool CanChangeWorkStatus { get; set; }
+        public bool CanGoOffline { get; set; }
+        public string? WorkStatusBlockedReason { get; set; }
+        public string? GoOfflineBlockedReason { get; set; }
         public Guid Id { get; set; }
         public string FullName { get; set; } = string.Empty;
         public string Email { get; set; } = string.Empty;

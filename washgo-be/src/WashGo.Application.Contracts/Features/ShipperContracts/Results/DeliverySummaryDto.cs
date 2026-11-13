@@ -2,6 +2,8 @@ namespace WashGo.Application.Contracts.Features.ShipperContracts.Results;
 
 public class DeliverySummaryDto
 {
+    public int StorageTransferCount { get; set; }
+    public int StorageReturnCount { get; set; }
     public int Total { get; set; }
     public int CollectCount { get; set; }
     public int ReturnCount { get; set; }

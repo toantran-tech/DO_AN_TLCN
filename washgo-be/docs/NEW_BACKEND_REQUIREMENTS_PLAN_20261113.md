@@ -1,8 +1,8 @@
-# Kế hoạch xử lý yêu cầu Backend bổ sung ngày 13 tháng 11 năm 2026
+﻿# Kế hoạch xử lý yêu cầu Backend bổ sung ngày 13 tháng 11 năm 2026
 
-Trạng thái hiện tại: **đã triển khai cụm 1 (ẩn danh đơn/biên lai/thông báo và Admin Publish đánh giá); test CI Docker/HTTP PASS. Chặng C–G còn lại chưa triển khai.** Không phải hoàn thành toàn bộ thư mục yêu cầu.
+Trạng thái 14/11/2026: **A/B đã commit 26398e6; C–F đã triển khai code và smoke HTTP kho PASS trên DB tạm. G đã có bản bàn giao FE, nguồn AI và dự thảo Word/điều khoản.** Chưa chạy CI GitHub của cụm mới, chưa deploy DB/Docker chính, chưa sửa Word gốc/publish điều khoản hoặc UAT FE/Gemini thật.
 
-Cụm 1 ở nhánh `feat/toantran/review-publishing-privacy`, base `04bb072` (bản vá CI của PR #106). Chưa commit/push. API và điểm cần FE cập nhật: [REVIEW_PUBLISHING_PRIVACY_API.md](REVIEW_PUBLISHING_PRIVACY_API.md). Checklist hiện hành: [IMPLEMENTATION_CHECKLIST.md](../IMPLEMENTATION_CHECKLIST.md).
+Cụm 1 ở nhánh `feat/toantran/review-publishing-privacy`, base `04bb072` (bản vá CI của PR #106). Đã commit 26398e6. API và điểm cần FE cập nhật: [REVIEW_PUBLISHING_PRIVACY_API.md](REVIEW_PUBLISHING_PRIVACY_API.md). Checklist hiện hành: [IMPLEMENTATION_CHECKLIST.md](../IMPLEMENTATION_CHECKLIST.md).
 
 Đã xác minh: build Host, Privacy console, model EF sạch, migrations/seed trên PostgreSQL CI mới; hồi quy ABP/JWT/catalog/vòng đời đơn/actual-weight; keyword privacy và review publishing qua HTTP. Test Publish/Hide cạnh tranh trả 200/409, replay không trùng audit và aggregate khớp. Container CI đã dọn. Migration mới: `20261113094800_AddRatingContentApproval`; kiểm tra DB local trước backfill có 1 rating, 0 nội dung đã phát hành. Docker local bản cuối đã chạy, Swagger HTTP 200 có API Publish, migration đã áp dụng vào washgo_main và số rating giữ nguyên 1; DB được sao lưu vào Temp ngoài repo trước triển khai.
 
@@ -81,7 +81,7 @@ Người dùng đồng ý phương án sau phần giải thích về self-status
 | Locker → tiệm | 4 giờ từ lúc phân công đến khi xác nhận bàn giao tại tiệm | Trễ thì cảnh báo và ghi lịch sử; vẫn cho lấy/bàn giao |
 | Tiệm → locker | 24 giờ từ lúc Customer gửi yêu cầu giao lại hợp lệ đến khi đặt đồ vào locker thành công | Bao gồm thời gian chờ phân công; trễ thì cảnh báo và ghi lịch sử, vẫn cho giao nhận |
 
-SLA không phải phí của Customer, không tự trừ lương/phạt tiền Shipper và không thay đổi công thức phí lưu kho. Phân công lại không làm đặt lại mốc SLA của chuyến đang thực hiện; lưu mốc bắt đầu/hạn theo chuyến để không che thời gian trễ. Các giá trị này đã được người dùng đồng ý, chưa được triển khai trong source ở lượt lập plan.
+SLA không phải phí của Customer, không tự trừ lương/phạt tiền Shipper và không thay đổi công thức phí lưu kho. Phân công lại không làm đặt lại mốc SLA của chuyến đang thực hiện; lưu mốc bắt đầu/hạn theo chuyến để không che thời gian trễ. Các giá trị này đã được người dùng đồng ý và đã triển khai trong cụm kho C–F; không reset hạn do phân công lại.
 
 Ví dụ cách hiểu phí đã chốt: khách yêu cầu nhận lại lúc 10h, Shipper xác nhận xuất kho lúc 14h thì phí kho vẫn tính đến 14h. Đồ vào locker lúc 15h thì hạn nhận miễn phí mới bắt đầu từ 15h; không tính giờ vận chuyển thành phí kho. Ngày lưu kho vẫn làm tròn theo chu kỳ hiện hành, không tự đổi đơn giá 100.000đ/ngày.
 
@@ -97,7 +97,7 @@ Chưa cần chốt tên enum/endpoint với người dùng nếu không làm tha
 6. **Chặng F: Kho → locker theo yêu cầu Customer**, chốt phí/ô/mã mới.
 7. **Chặng G: Hồi quy toàn luồng, đồng bộ Word/điều khoản/hướng dẫn AI và bàn giao FE.**
 
-Mỗi chặng sửa code phải build/test phù hợp, build/recreate Docker rồi đưa kịch bản Swagger. Không tick hoàn thành chỉ vì đã có endpoint. Các chặng kho phụ thuộc nhau; không mở UI chức năng mới khi chỉ có schema hoặc endpoint đơn lẻ.
+Theo yêu cầu tối ưu mới: build/test sát phần sửa; hồi quy rộng qua CI. Chỉ rebuild Docker chính khi cần nghiệm thu Swagger/deploy, không tự sửa DB chính mỗi vòng code. Không tick hoàn thành chỉ vì đã có endpoint. Các chặng kho phụ thuộc nhau; không mở UI chức năng mới khi chỉ có schema hoặc endpoint đơn lẻ.
 
 ## 5. Chặng A Ẩn danh và bộ lọc Partner
 
@@ -133,12 +133,13 @@ Kiểm chứng cụm 1: `Privacy` console và `review-publishing.ps1` PASS trên
 
 Giải thích nghiệp vụ: Available là nhận phân công mới, Offline là tạm không nhận phân công. Offline không phải khóa tài khoản; không thay User.IsActive/Shipper.IsActive hoặc Merchant phụ trách. Trạng thái Busy cá nhân và tải nhiệm vụ suy ra từ đơn không được ghi đè tự động.
 
-- [ ] Endpoint đề xuất `PUT /shipper-profile/work-status`, chỉ Shipper hiện đăng nhập; command chỉ status, expectedVersion, operationId, không nhận shipperId/merchantId.
-- [ ] Capability và reason từ server; trạng thái đích chỉ Available/Offline. Chặn nếu hồ sơ/tài khoản nhân sự bị ngừng hoặc Busy thủ công; không cho self-status ghi đè kiểm soát nhân sự.
-- [ ] Dùng cùng row lock Shipper với phân công, đọc lại trạng thái/nhiệm vụ sau khóa. Assignment và đổi Offline cạnh tranh thì chỉ một phía thành công theo dữ liệu mới nhất.
-- [ ] Tái sử dụng operation ledger/lookup của self-profile theo action riêng; không lập ledger thứ hai. Replay không đổi trạng thái hoặc ghi audit lại.
-- [ ] Cập nhật filter/candidate/dashboard capability. Khi thêm task kho phải mở rộng chung predicate bận; không đếm mỗi Collect/Return rồi cho Offline giữa chuyến kho.
-- [ ] Test không nhiệm vụ, còn nhiệm vụ, role khác, hai phiên đổi, assignment race, same/different payload replay, timeout/lookup.
+- [x] Endpoint đề xuất `PUT /shipper-profile/work-status`, chỉ Shipper hiện đăng nhập; command chỉ status, expectedRevision, operationId, không nhận shipperId/merchantId.
+- [x] Capability và reason từ server; trạng thái đích chỉ Available/Offline. Chặn nếu hồ sơ/tài khoản nhân sự bị ngừng hoặc Busy thủ công; không cho self-status ghi đè kiểm soát nhân sự.
+- [x] Dùng cùng row lock Shipper với phân công, đọc lại trạng thái/nhiệm vụ sau khóa. Assignment và đổi Offline cạnh tranh thì chỉ một phía thành công theo dữ liệu mới nhất.
+- [x] Tái sử dụng operation ledger/lookup của self-profile theo action riêng; không lập ledger thứ hai. Replay không đổi trạng thái hoặc ghi audit lại.
+- [x] Cập nhật filter/candidate/dashboard capability. Khi thêm task kho phải mở rộng chung predicate bận; không đếm mỗi Collect/Return rồi cho Offline giữa chuyến kho.
+- [x] Smoke self-status: không/còn nhiệm vụ, role khác, stale revision, same-payload replay; dùng chung khóa assignment.
+- [ ] Nghiệm thu concurrency mở rộng: assignment-vs-Offline, hai phiên status/different-payload và timeout recovery theo ma trận; không coi kiểm tra code/khóa là đã chạy đủ các race HTTP.
 
 Nghiệm thu: Offline vẫn xem hồ sơ/lịch sử theo quyền, không được phân công mới, không bỏ dở nhiệm vụ nhờ tự đổi status.
 
@@ -154,7 +155,7 @@ Nghiệm thu: Offline vẫn xem hồ sơ/lịch sử theo quyền, không đư�
 
 Tái sử dụng payment transactions, order/timeline, operation guards và notification outbox hiện có nếu phù hợp. Không làm hệ thống kế toán hoặc chép lại logic Collect/Return thành nhiều service gần giống nhau. Mỗi vòng lưu kho phải giữ phí/mốc lịch sử riêng để không ghi đè phí khi Customer lại nhận trễ ở vòng tiếp.
 
-### Luồng trạng thái đề xuất, chưa phải enum đã có
+### Luồng trạng thái đã triển khai (hợp đồng chi tiết trong API review)
 
 ```mermaid
 flowchart LR
@@ -168,53 +169,55 @@ flowchart LR
     H --> I[Customer mở ô và xác nhận lấy\nReturned rồi Completed]
 ```
 
-- [ ] Chốt mã enum trung gian hoặc fulfillment phase với capability đủ rõ; mọi API/FE không được hiểu hàng đang vận chuyển là đã ở kho/sẵn sàng nhận.
-- [ ] Chốt source-of-truth vị trí: đúng một nơi giữ hàng tại một thời điểm; sau xuất kho không vẫn tính inventory là đang ở kho.
-- [ ] Partial unique index cho một yêu cầu nhận lại và một task hiệu lực tương ứng; snapshot lịch sử không thay bằng profile hiện tại.
-- [ ] Nơi lưu đồ là tiệm Merchant xử lý đơn; không nhận địa chỉ kho tùy ý hoặc chọn tiệm khác từ client. Dùng địa chỉ tiệm hiện có và snapshot theo chuyến; không tạo bảng/API CRUD kho riêng.
-- [ ] Chốt quote, thời hạn quote, payment purpose/reference, fee snapshots theo vòng và đối chiếu khi xác nhận; không để FE tự tính.
-- [ ] Thống nhất API filter/summary/detail/capabilities, DTO cho từng role, commands/version/operation lookup trước khi FE code.
-- [ ] Thiết kế legacy: dùng MerchantId và thông tin lưu kho của đơn; mốc/biên nhận/snapshot thiếu phải ghi rõ chưa có. Không tạo lịch sử bàn giao giả hoặc tự đổi tiền/trạng thái, không yêu cầu backfill WarehouseId.
+- [x] Chốt mã enum trung gian hoặc fulfillment phase với capability đủ rõ; mọi API/FE không được hiểu hàng đang vận chuyển là đã ở kho/sẵn sàng nhận.
+- [x] Chốt source-of-truth vị trí: đúng một nơi giữ hàng tại một thời điểm; sau xuất kho không vẫn tính inventory là đang ở kho.
+- [x] Partial unique index cho một yêu cầu nhận lại và một task hiệu lực tương ứng; snapshot lịch sử không thay bằng profile hiện tại.
+- [x] Nơi lưu đồ là tiệm Merchant xử lý đơn; không nhận địa chỉ kho tùy ý hoặc chọn tiệm khác từ client. Dùng địa chỉ tiệm hiện có và snapshot theo chuyến; không tạo bảng/API CRUD kho riêng.
+- [x] Chốt quote, thời hạn quote, payment purpose/reference, fee snapshots theo vòng và đối chiếu khi xác nhận; không để FE tự tính.
+- [x] Thống nhất API filter/summary/detail/capabilities, DTO cho từng role, commands/version/operation lookup trước khi FE code.
+- [x] Thiết kế legacy: dùng MerchantId và thông tin lưu kho của đơn; mốc/biên nhận/snapshot thiếu phải ghi rõ chưa có. Không tạo lịch sử bàn giao giả hoặc tự đổi tiền/trạng thái, không yêu cầu backfill WarehouseId.
 
 Tình huống riêng đã chốt: quá hạn thanh toán 7 ngày nhưng đồ còn tại tiệm thì chuyển sang lưu kho ngay tại tiệm xử lý đơn. Ghi mốc bắt đầu lưu kho và lịch sử hệ thống; không cần chuyến Shipper hoặc biên nhận bàn giao giả. Phí locker bằng 0 ở nhánh này; phí kho bắt đầu từ mốc chuyển lưu kho.
 
 ## 9. Chặng E Locker về kho
 
-- [ ] Merchant list/summary đơn đủ điều kiện, lọc/phân trang server và Shipper eligible. Admin có cùng dữ liệu toàn hệ thống nhưng can thiệp cần lý do.
-- [ ] Assignment kiểm tra đơn tới hạn, Merchant của đơn, địa chỉ tiệm hợp lệ, Shipper active/phạm vi/tải; giữ snapshot đích và actor.
-- [ ] Phân công lại/hủy chỉ trước khi lấy, đổi mã/revoke task version cũ; dùng guard/idempotency chung, không tự đổi deadline cho đủ điều kiện.
-- [ ] Shipper xác nhận lấy theo task/version/credential. Trong cùng transaction: khóa order/task, cạnh tranh với Customer pickup, giải phóng đúng ô một lần, chốt phí/mốc và ghi vị trí đang vận chuyển.
-- [ ] Shipper xác nhận bàn giao tại đúng tiệm xử lý đơn kèm mã biên nhận, ghi actor và server time. Sau bước này mới hoàn tất task và đánh dấu lưu kho.
-- [ ] Sau đã lấy không dùng thao tác hủy/phân công lại thông thường; ghi exception và quy trình phục hồi có audit, giữ trách nhiệm hàng hóa.
-- [ ] Chặn route gộp cũ cho luồng mới để không bypass hai bước. Admin không được xác nhận thay Shipper bằng operation thông thường.
-- [ ] Mở rộng task list/summary/detail/history/dashboard/credentials và busy predicate; áp dụng SLA locker → tiệm 4 giờ từ phân công, tiệm → locker 24 giờ từ yêu cầu hợp lệ. Lưu mốc/hạn theo chuyến, không reset do phân công lại; quá hạn cảnh báo và ghi lịch sử, không chặn giao nhận hoặc tự phạt tiền.
-- [ ] Notification gửi đúng Merchant/Shipper và Customer theo template ẩn danh. Nội dung “đã lưu kho” chỉ sau bàn giao.
+- [x] Merchant list/summary đơn đủ điều kiện, lọc/phân trang server và Shipper eligible. Admin có cùng dữ liệu toàn hệ thống nhưng can thiệp cần lý do.
+- [x] Assignment kiểm tra đơn tới hạn, Merchant của đơn, địa chỉ tiệm hợp lệ, Shipper active/phạm vi/tải; giữ snapshot đích và actor.
+- [x] Phân công lại/hủy chỉ trước khi lấy, đổi mã/revoke task version cũ; dùng guard/idempotency chung, không tự đổi deadline cho đủ điều kiện.
+- [x] Shipper xác nhận lấy theo task/version/credential. Trong cùng transaction: khóa order/task, cạnh tranh với Customer pickup, giải phóng đúng ô một lần, chốt phí/mốc và ghi vị trí đang vận chuyển.
+- [x] Shipper xác nhận bàn giao tại đúng tiệm xử lý đơn kèm mã biên nhận, ghi actor và server time. Sau bước này mới hoàn tất task và đánh dấu lưu kho.
+- [x] Sau đã lấy không dùng thao tác hủy/phân công lại thông thường; ghi exception và quy trình phục hồi có audit, giữ trách nhiệm hàng hóa.
+- [x] Chặn route gộp cũ cho luồng mới để không bypass hai bước. Admin không được xác nhận thay Shipper bằng operation thông thường.
+- [x] Mở rộng task list/summary/detail/history/dashboard/credentials và busy predicate; áp dụng SLA locker → tiệm 4 giờ từ phân công, tiệm → locker 24 giờ từ yêu cầu hợp lệ. Lưu mốc/hạn theo chuyến, không reset do phân công lại; quá hạn cảnh báo và ghi lịch sử, không chặn giao nhận hoặc tự phạt tiền.
+- [x] Notification gửi đúng Merchant/Shipper và Customer theo template ẩn danh. Nội dung “đã lưu kho” chỉ sau bàn giao.
 
 Nghiệm thu: assignment không giải phóng ô; collect giải phóng đúng một lần; handover mới hoàn tất kho; race nhận đồ/chuyển kho chỉ một nhánh thắng, rollback không để đơn/ô/custody lệch nhau.
 
 ## 10. Chặng F Customer yêu cầu và giao lại locker
 
-- [ ] Chủ đơn thực sự đã ở kho mới tạo yêu cầu; chọn locker hợp lệ và nhận quote/capability/lý do. Một yêu cầu hiệu lực/đơn, replay không tính tiền hoặc tạo task lại.
-- [ ] Quy tắc hủy trước xuất kho và trường hợp sau xuất kho có capability rõ ràng; khoản phí đã thu không tự hoàn/miễn ngoài chính sách đã chốt.
-- [ ] Merchant nhận yêu cầu bằng mã nghiệp vụ, không có Customer contact; phân công Shipper của mình đến tiệm đang lưu đồ.
-- [ ] Kiểm tra/chốt kho → người vận chuyển khi xác nhận xuất kho; tính/dừng phí đúng thời điểm đã chốt. Nếu phát sinh thêm phí so với báo giá thì server trả quote mới, không âm thầm thu.
-- [ ] Chọn/giữ ô, TTL và recovery phải có hợp đồng. Đề xuất bản đầu chỉ chiếm ô phù hợp trong transaction đặt đồ; không giữ ô nhiều giờ khi mới gửi yêu cầu. Nếu cần giữ trước phải có TTL/release/renew rõ ràng.
-- [ ] Hết ô: giữ request/task ở trạng thái chờ/ngoại lệ với đúng người giữ hàng; không tự chọn locker khác. Đổi locker cần Customer xác nhận và version/quote kiểm tra lại.
-- [ ] Đặt đồ thành công mới ghi ReturnBoxId/vòng ô mới, phát hành PIN/QR mới và hạn nhận mới. Revoke session/token/mã cũ; không giải phóng ô của vòng trước lần nữa.
-- [ ] Thực hiện mở ô → session token → xác nhận lấy theo luồng Customer đang có. Giao lại locker không tự đánh dấu Customer đã nhận.
-- [ ] Route pickup-storage cũ không tiếp tục cho đơn thuộc mô hình mới tự nhận ở kho. Đơn legacy phải có kế hoạch tương thích được duyệt; không đổi hành vi/tiền hàng loạt bằng cách xóa route ngay.
-- [ ] Đơn chưa trả tiền giặt vẫn phải đối chiếu và thanh toán tiền giặt/fee theo điều kiện; không coi có request giao lại là PaymentStatus=Paid.
+- [x] Chủ đơn thực sự đã ở kho mới tạo yêu cầu; chọn locker hợp lệ và nhận quote/capability/lý do. Một yêu cầu hiệu lực/đơn, replay không tính tiền hoặc tạo task lại.
+- [x] Quy tắc hủy trước xuất kho và trường hợp sau xuất kho có capability rõ ràng; khoản phí đã thu không tự hoàn/miễn ngoài chính sách đã chốt.
+- [x] Merchant nhận yêu cầu bằng mã nghiệp vụ, không có Customer contact; phân công Shipper của mình đến tiệm đang lưu đồ.
+- [x] Kiểm tra/chốt kho → người vận chuyển khi xác nhận xuất kho; tính/dừng phí đúng thời điểm đã chốt. Nếu phát sinh thêm phí so với báo giá thì server trả quote mới, không âm thầm thu.
+- [x] Chọn/giữ ô, TTL và recovery phải có hợp đồng. Đề xuất bản đầu chỉ chiếm ô phù hợp trong transaction đặt đồ; không giữ ô nhiều giờ khi mới gửi yêu cầu. Nếu cần giữ trước phải có TTL/release/renew rõ ràng.
+- [x] Hết ô: giữ request/task ở trạng thái chờ/ngoại lệ với đúng người giữ hàng; không tự chọn locker khác. Đổi locker cần Customer xác nhận và version/quote kiểm tra lại.
+- [x] Đặt đồ thành công mới ghi ReturnBoxId/vòng ô mới, phát hành PIN/QR mới và hạn nhận mới. Revoke session/token/mã cũ; không giải phóng ô của vòng trước lần nữa.
+- [x] Thực hiện mở ô → session token → xác nhận lấy theo luồng Customer đang có. Giao lại locker không tự đánh dấu Customer đã nhận.
+- [x] Route pickup-storage cũ không tiếp tục cho đơn thuộc mô hình mới tự nhận ở kho. Đơn legacy phải có kế hoạch tương thích được duyệt; không đổi hành vi/tiền hàng loạt bằng cách xóa route ngay.
+- [x] Đơn chưa trả tiền giặt vẫn phải đối chiếu và thanh toán tiền giặt/fee theo điều kiện; không coi có request giao lại là PaymentStatus=Paid.
 
 Nghiệm thu: chủ khác/mã cũ đều bị từ chối; chưa đặt vào ô không có mã/hạn nhận mới; lỗi/replay không tạo ô/phí/task đôi; thử ít nhất hai vòng kho → locker → quá hạn để bảo đảm giữ đủ lịch sử/phí.
 
 ## 11. Chặng G Đồng bộ và nghiệm thu
 
-- [ ] Soạn phần Word cần đổi: kho là khu lưu đồ tại tiệm, bàn giao mô phỏng, Customer nhận tại locker, self-status đã chốt và công thức/mốc phí mới. Không thêm use case trùng.
-- [ ] Soạn điều khoản Customer cần phát hành; không tự publish phiên bản đang áp dụng khi mới chuẩn bị nội dung.
-- [ ] Cập nhật `ChatbotKnowledge`, gợi ý nextStep và read tools: bỏ hướng dẫn khách đến kho; chỉ trả WashGo và request giao lại. Test Gemini sau khi nguồn mới được duyệt.
-- [ ] Cập nhật các API review Admin/Merchant/Shipper/Customer, liệt kê breaking changes và kế hoạch tắt route cũ; không đưa FE các endpoint mới chưa chạy.
-- [ ] Build và migration/model check, áp dụng DB local có backup/check legacy theo chặng; Docker/Swagger và smoke phù hợp.
-- [ ] Cập nhật checklist hiện có theo kết quả; không thay mục đã làm bằng ghi chú “xong toàn bộ” khi còn feature flag/legacy chưa nghiệm thu.
+- [x] Soạn phần Word cần đổi: kho là khu lưu đồ tại tiệm, bàn giao mô phỏng, Customer nhận tại locker, self-status đã chốt và công thức/mốc phí mới. Không thêm use case trùng.
+- [x] Soạn điều khoản Customer cần phát hành; không tự publish phiên bản đang áp dụng khi mới chuẩn bị nội dung.
+- [x] Cập nhật ChatbotKnowledge version storage-workflow-v2 và nextStep: nhận tại locker qua request giao lại, không đưa danh tính/địa chỉ tiệm hay mã tủ vào AI. Công cụ vẫn chỉ đọc.
+- [ ] Test Gemini thật sau khi duyệt nguồn mới (không gọi mạng Gemini trong smoke).
+- [x] Cập nhật các API review Admin/Merchant/Shipper/Customer, liệt kê breaking changes và kế hoạch tắt route cũ; không đưa FE các endpoint mới chưa chạy.
+- [x] Build Release 0 lỗi; EF model check sạch. Migration AddStorageCyclesAndReturnWorkflow được áp từ đầu trên DB test tạm; Swagger/HTTP source host và smoke kho PASS.
+- [ ] Deploy DB chính có backup/kiểm tra legacy và rebuild Docker chính; bộ hồi quy GitHub CI sau push, UAT FE. Không ghi DB/Docker chính đã cập nhật.
+- [x] Cập nhật checklist hiện có theo kết quả; không thay mục đã làm bằng ghi chú “xong toàn bộ” khi còn feature flag/legacy chưa nghiệm thu.
 
 ## 12. Ma trận kiểm thử và chia nhánh
 
@@ -242,6 +245,10 @@ Nhánh dự kiến, chỉ tạo khi bắt đầu code:
 
 Test và tài liệu đi cùng từng nhánh, không dời toàn bộ đến cuối. Kho/transfer/return có phụ thuộc cần ghi base/merge order rõ ràng. Chưa commit/push/tạo PR trong lượt lập plan.
 
-## 13. Điểm tiếp theo
+## 13. Bàn giao cụm kho 14/11/2026
 
-Cụm 1 A/B đã có code và test như trên; người dùng có thể review/commit/push riêng. Chưa bắt đầu chặng C **Shipper tự Available/Offline**; đây là cụm tiếp theo, giữ cùng khóa với assignment và operation ledger hiện có. Sau đó D → E → F theo thứ tự phụ thuộc, rồi G đồng bộ tài liệu/AI và hồi quy rộng. Không hỏi lại các quyết định kho/SLA/phí đã chốt ở mục 3.
+Cụm mới ở `feat/toantran/storage-lifecycle`, base 26398e6; chưa commit/push. Hợp đồng Admin/Merchant/Shipper/Customer: [STORAGE_WORKFLOW_API_REVIEW.md](STORAGE_WORKFLOW_API_REVIEW.md). Nội dung đề nghị đưa vào Word/điều khoản: [STORAGE_TERMS_USECASE_DRAFT.md](STORAGE_TERMS_USECASE_DRAFT.md); chưa áp vào Word gốc hoặc phát hành policy.
+
+Kiểm chứng thực tế: Storage console PASS (phí, chu kỳ, transit, HMAC, busy predicate); HTTP storage-lifecycle PASS hai vòng kho/giao lại, concurrent same-operation request, step replay, mã cũ, lockout độc lập, self-status/revision/role, rollback hết ô, phí cộng dồn, biên nhận, normal two-step pickup, worker unpaid, đối chiếu legacy, dashboard/alerts/filter/summary và lịch sử. Source host chạy DB tạm riêng; không phải Docker image mới trên DB chính. Build Release 0 lỗi; còn 5 nullable warnings cũ và 7 NU1900 do nguồn audit NuGet không truy cập được. Security/dependency audit chính thức chờ CI, không tắt gate.
+
+Các smoke cũ gọi shortcut được đánh dấu fixture v0 tương thích; chưa chạy lại toàn bộ bốn suite cũ trong cụm này. CI đã thêm Storage console và HTTP lifecycle. Những dòng chưa tick phía trên là kiểm chứng mở rộng, deploy và nghiệm thu bên ngoài; không còn chờ quyết định nghiệp vụ kho/SLA/phí để viết code.

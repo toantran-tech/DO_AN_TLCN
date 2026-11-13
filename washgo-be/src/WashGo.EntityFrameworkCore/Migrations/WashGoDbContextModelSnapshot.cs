@@ -3084,6 +3084,10 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("ended_at");
 
+                    b.Property<DateTime?>("GoodsCollectedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("goods_collected_at");
+
                     b.Property<string>("LockerAddressSnapshot")
                         .HasColumnType("text")
                         .HasColumnName("locker_address_snapshot");
@@ -3148,6 +3152,10 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("status");
 
+                    b.Property<Guid?>("StorageCycleId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("storage_cycle_id");
+
                     b.Property<int>("TaskType")
                         .HasColumnType("integer")
                         .HasColumnName("task_type");
@@ -3157,7 +3165,9 @@ namespace WashGo.EntityFrameworkCore.Migrations
                     b.HasIndex("CompletionEventId")
                         .IsUnique();
 
-                    b.HasIndex("OrderId");
+                    b.HasIndex("OrderId")
+                        .IsUnique()
+                        .HasFilter("status = 1 AND task_type IN (3,4)");
 
                     b.HasIndex("ShipperId", "Status");
 
@@ -3227,11 +3237,171 @@ namespace WashGo.EntityFrameworkCore.Migrations
                     b.ToTable("order_operations", "washgo");
                 });
 
+            modelBuilder.Entity("WashGo.Domain.Entities.WashOrder.OrderStorageCycle", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Basis")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("basis");
+
+                    b.Property<DateTime?>("ClosedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("closed_at");
+
+                    b.Property<DateTime?>("CollectedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("collected_at");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTime?>("DispatchedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("dispatched_at");
+
+                    b.Property<string>("ExceptionNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("exception_note");
+
+                    b.Property<Guid?>("IntakeActorId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("intake_actor_id");
+
+                    b.Property<DateTime?>("IntakeAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("intake_at");
+
+                    b.Property<string>("IntakeReceipt")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("intake_receipt");
+
+                    b.Property<decimal>("LockerFee")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("locker_fee");
+
+                    b.Property<Guid>("MerchantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("merchant_id");
+
+                    b.Property<Guid>("OrderId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("order_id");
+
+                    b.Property<string>("ShopAddress")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("shop_address");
+
+                    b.Property<Guid?>("SourceBoxId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("source_box_id");
+
+                    b.Property<Guid?>("SourceLockerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("source_locker_id");
+
+                    b.Property<int>("State")
+                        .HasColumnType("integer")
+                        .HasColumnName("state");
+
+                    b.Property<DateTime?>("TransferDeadline")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("transfer_deadline");
+
+                    b.Property<decimal>("WarehouseFee")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("warehouse_fee");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrderId")
+                        .IsUnique()
+                        .HasFilter("state IN (1,2,3,4)");
+
+                    b.HasIndex("MerchantId", "State", "CreatedAt");
+
+                    b.ToTable("order_storage_cycles", "washgo");
+                });
+
+            modelBuilder.Entity("WashGo.Domain.Entities.WashOrder.StorageReturnRequest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<decimal>("AcceptedFeeTotal")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("accepted_fee_total");
+
+                    b.Property<Guid>("CycleId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("cycle_id");
+
+                    b.Property<DateTime>("Deadline")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deadline");
+
+                    b.Property<DateTime?>("DeliveredAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("delivered_at");
+
+                    b.Property<DateTime>("FeeAcceptedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("fee_accepted_at");
+
+                    b.Property<Guid>("LockerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("locker_id");
+
+                    b.Property<Guid>("OrderId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("order_id");
+
+                    b.Property<DateTime>("RequestedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("requested_at");
+
+                    b.Property<int>("State")
+                        .HasColumnType("integer")
+                        .HasColumnName("state");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CycleId")
+                        .IsUnique()
+                        .HasFilter("state IN (1,2,3)");
+
+                    b.HasIndex("OrderId", "RequestedAt");
+
+                    b.ToTable("storage_return_requests", "washgo");
+                });
+
             modelBuilder.Entity("WashGo.Domain.Entities.WashOrder.WashOrder", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid")
                         .HasColumnName("id");
+
+                    b.Property<decimal>("AccumulatedStorageFee")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("accumulated_storage_fee");
+
+                    b.Property<Guid?>("ActiveStorageCycleId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("active_storage_cycle_id");
 
                     b.Property<int?>("ActualItemCount")
                         .HasColumnType("integer")
@@ -3377,6 +3547,10 @@ namespace WashGo.EntityFrameworkCore.Migrations
                     b.Property<long?>("DeletedOn")
                         .HasColumnType("bigint")
                         .HasColumnName("deleted_on");
+
+                    b.Property<int?>("DepositBoxSize")
+                        .HasColumnType("integer")
+                        .HasColumnName("deposit_box_size");
 
                     b.Property<DateTime?>("DepositDeadline")
                         .HasColumnType("timestamp with time zone")
@@ -3633,6 +3807,10 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasMaxLength(120)
                         .HasColumnType("character varying(120)")
                         .HasColumnName("storage_reference");
+
+                    b.Property<int>("StorageWorkflowVersion")
+                        .HasColumnType("integer")
+                        .HasColumnName("storage_workflow_version");
 
                     b.Property<int>("TaskPinAttemptCount")
                         .HasColumnType("integer")
@@ -4304,6 +4482,24 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .WithMany()
                         .HasForeignKey("OrderId")
                         .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("WashGo.Domain.Entities.WashOrder.OrderStorageCycle", b =>
+                {
+                    b.HasOne("WashGo.Domain.Entities.WashOrder.WashOrder", null)
+                        .WithMany()
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("WashGo.Domain.Entities.WashOrder.StorageReturnRequest", b =>
+                {
+                    b.HasOne("WashGo.Domain.Entities.WashOrder.OrderStorageCycle", null)
+                        .WithMany()
+                        .HasForeignKey("CycleId")
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
 

@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using System.Net;
 using System.Data;
 using System.Text;
@@ -42,12 +42,12 @@ public class ShipperDeliveryAppService(ShipperHistoryReader reader) : WashGoAppS
         var counts = await AsyncExecuter.FirstOrDefaultAsync(rows.GroupBy(x => 1).Select(g => new
         {
             Total = g.Count(), Collect = g.Count(x => x.TaskType == DeliveryTaskType.Collect),
-            Captured = g.Count(x => x.SnapshotSource == "CapturedAtCompletion")
+            Return = g.Count(x => x.TaskType == DeliveryTaskType.Return), StorageTransfer = g.Count(x => x.TaskType == DeliveryTaskType.StorageTransfer), StorageReturn = g.Count(x => x.TaskType == DeliveryTaskType.StorageReturn), Captured = g.Count(x => x.SnapshotSource == "CapturedAtCompletion")
         }));
         return Success(new DeliverySummaryDto
         {
             Total = counts?.Total ?? 0, CollectCount = counts?.Collect ?? 0,
-            ReturnCount = (counts?.Total ?? 0) - (counts?.Collect ?? 0), CapturedSnapshotCount = counts?.Captured ?? 0,
+            ReturnCount = counts?.Return ?? 0, StorageTransferCount = counts?.StorageTransfer ?? 0, StorageReturnCount = counts?.StorageReturn ?? 0, CapturedSnapshotCount = counts?.Captured ?? 0,
             FromDate = query.FromDate, ToDate = query.ToDate, GeneratedAt = DateTime.UtcNow,
             Keyword = query.Keyword, LockerId = query.LockerId, CancelledReturn = query.CancelledReturn
         });

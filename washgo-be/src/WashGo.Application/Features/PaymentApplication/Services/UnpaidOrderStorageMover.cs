@@ -1,6 +1,7 @@
 using System;
 using System.Threading.Tasks;
 using Volo.Abp.DependencyInjection;
+using WashGo.Application.Features.StorageApplication.Services;
 using Volo.Abp.Uow;
 using WashGo.Application.Features.NotificationApplication.Services;
 using WashGo.Domain.Entities.WashOrder;
@@ -22,13 +23,14 @@ namespace WashGo.Application.Features.PaymentApplication.Services
         private readonly IWashOrderRepository _orders;
         private readonly IUnitOfWorkManager _unitOfWorkManager;
         private readonly NotificationPublisher _notifications;
+        private readonly StorageCycleCoordinator _storage;
 
         public UnpaidOrderStorageMover(IWashOrderRepository orders, IUnitOfWorkManager unitOfWorkManager,
-            NotificationPublisher notifications)
+            NotificationPublisher notifications, StorageCycleCoordinator storage)
         {
             _orders = orders;
             _unitOfWorkManager = unitOfWorkManager;
-            _notifications = notifications;
+            _notifications = notifications; _storage = storage;
         }
 
         public static DateTime DeadlineFrom(DateTime awaitingPaymentAt) => awaitingPaymentAt.AddDays(StorageAfterDays);
@@ -63,6 +65,12 @@ namespace WashGo.Application.Features.PaymentApplication.Services
                 Note = $"Quá hạn thanh toán {StorageAfterDays} ngày; đồ được chuyển sang lưu kho tại {order.StorageLocation}, mã lưu kho {order.StorageReference}."
             });
 
+            if (order.StorageWorkflowVersion >= 1)
+            {
+                var cycle = await _storage.StartAsync(order, StorageCycleState.Stored, now, "SystemUnpaidAtShop");
+                if (cycle == null) { await uow.RollbackAsync(); return false; }
+                cycle.IntakeAt = now;
+            }
             await _orders.UpdateAsync(order, autoSave: true);
             await _notifications.UnpaidMovedToStorageAsync(order);
             await uow.CompleteAsync();
