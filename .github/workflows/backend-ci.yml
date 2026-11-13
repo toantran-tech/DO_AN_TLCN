@@ -1,0 +1,157 @@
+name: Backend CI
+
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build .NET
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: washgo-be
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Restore and build Backend
+        run: |
+          mkdir -p tests/ci/results
+          dotnet restore WashGo.HttpApi.Host/WashGo.HttpApi.Host.csproj
+          dotnet build WashGo.HttpApi.Host/WashGo.HttpApi.Host.csproj -c Release --no-restore --nologo | tee tests/ci/results/build.log
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: backend-build
+          path: washgo-be/tests/ci/results/build.log
+          retention-days: 14
+          if-no-files-found: ignore
+
+  analyze:
+    name: Analyze code
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: washgo-be
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Check changed whitespace and PowerShell syntax
+        shell: pwsh
+        env:
+          CI_BASE_COMMIT: ${{ github.event.pull_request.base.sha }}
+        run: ./tools/ci/Analyze.ps1 -BaseCommit $env:CI_BASE_COMMIT
+      - name: Run built-in .NET analyzers
+        run: |
+          mkdir -p tests/ci/results
+          dotnet restore WashGo.HttpApi.Host/WashGo.HttpApi.Host.csproj
+          dotnet build WashGo.HttpApi.Host/WashGo.HttpApi.Host.csproj -c Release --no-restore --nologo -p:EnableNETAnalyzers=true -p:AnalysisLevel=latest | tee tests/ci/results/analysis.log
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: backend-analysis
+          path: washgo-be/tests/ci/results/analysis.log
+          retention-days: 14
+          if-no-files-found: ignore
+
+  test:
+    name: Regression tests
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: washgo-be
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Document and email regression suites
+        run: |
+          mkdir -p tests/ci/results
+          dotnet run --project tests/smoke/PrivateDocuments/PrivateDocuments.csproj -c Release | tee tests/ci/results/documents.log
+          dotnet run --project tests/smoke/EmailLogo/EmailLogo.csproj -c Release | tee tests/ci/results/email.log
+      - name: API regression on isolated PostgreSQL
+        shell: pwsh
+        run: ./tests/ci/Run-ApiSmoke.ps1 -ProjectName "washgo-ci-${{ github.run_id }}-${{ github.run_attempt }}"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: backend-tests
+          path: washgo-be/tests/ci/results/
+          retention-days: 14
+          if-no-files-found: ignore
+
+  security:
+    name: Secret and dependency scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: washgo-be
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Restore dependency graph
+        run: dotnet restore WashGo.HttpApi.Host/WashGo.HttpApi.Host.csproj
+      - name: Scan all checked-out history and NuGet dependencies
+        shell: pwsh
+        run: ./tools/ci/Security.ps1
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: backend-security-redacted
+          path: washgo-be/tests/ci/results/security/
+          retention-days: 14
+          if-no-files-found: ignore
+
+  docker:
+    name: Docker package
+    needs: [build, analyze, test, security]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Build deployable image without publishing
+        env:
+          CI_IMAGE_TAG: washgo-be:ci-${{ github.sha }}
+        run: |
+          mkdir -p washgo-be/tests/ci/results
+          docker build --tag "$CI_IMAGE_TAG" washgo-be
+          docker image inspect "$CI_IMAGE_TAG" --format '{{.Id}}' > washgo-be/tests/ci/results/image-id.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: backend-image-metadata
+          path: washgo-be/tests/ci/results/image-id.txt
+          retention-days: 14
