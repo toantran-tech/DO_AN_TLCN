@@ -24,6 +24,7 @@ using WashGo.Domain.Entities.Partner;
 using WashGo.Domain.Entities.WashService;
 using WashGo.Domain.Entities.WashService.Interfaces;
 using WashGo.Domain.Shared.Enums;
+using System.Data;
 
 namespace WashGo.Application.Features.ServiceProposalApplication.Services
 {
@@ -115,7 +116,7 @@ namespace WashGo.Application.Features.ServiceProposalApplication.Services
         public async Task<BaseResponse<MerchantServiceSummaryDto>> GetSummaryAsync()
         {
             using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true,
-                isolationLevel: System.Data.IsolationLevel.RepeatableRead);
+                isolationLevel: IsolationLevel.RepeatableRead);
             var services = await AsyncExecuter.ToListAsync((await _serviceRepo.GetQueryableAsync())
                 .Where(x => !x.IsDeleted && x.ApprovalStatus == ServiceApprovalStatus.Approved)
                 .GroupBy(x => x.IsActive).Select(g => new { Active = g.Key, Count = g.Count() }));

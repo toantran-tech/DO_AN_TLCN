@@ -32,6 +32,8 @@ services:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_HTTP_PORTS=8080
       - Google__ClientId=${GOOGLE_CLIENT_ID}
+      - Chatbot__Gemini__ApiKey=${GEMINI_API_KEY:-}
+      - Chatbot__Gemini__Model=${GEMINI_MODEL:-gemini-3.5-flash-lite}
       - Payment__Provider=${PAYMENT_PROVIDER:-Live}
       - Payment__VnPay__TmnCode=${VNPAY_TMN_CODE:-}
       - Payment__VnPay__HashSecret=${VNPAY_HASH_SECRET:-}

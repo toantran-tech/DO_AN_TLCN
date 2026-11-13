@@ -19,6 +19,10 @@ using WashGo.Domain.Shared.Enums;
 using Volo.Abp.Domain.Repositories;
 using Volo.Abp.Uow;
 using WashGo.Application.Features.AuditApplication.Services;
+using System.Data;
+using System.Net;
+using WashGo.Application.Contracts.Features.AuditContracts.Commands;
+using WashGo.Application.Contracts.Features.AuditContracts.Results;
 
 namespace WashGo.Application.Features.LockerApplication.Services
 {
@@ -197,8 +201,8 @@ namespace WashGo.Application.Features.LockerApplication.Services
                 return NotFound<LockerResultDto>("Không tìm thấy trạm Locker để cập nhật!");
             }
             var version = await VersionAsync(locker);
-            if (string.IsNullOrWhiteSpace(command.ExpectedVersion)) return AdministrativeWriteGuard.Error<LockerResultDto>(System.Net.HttpStatusCode.BadRequest, "ExpectedVersionRequired", "Thiếu expectedVersion.");
-            if (command.ExpectedVersion != version) return AdministrativeWriteGuard.Error<LockerResultDto>(System.Net.HttpStatusCode.Conflict, "VersionMismatch", "Locker đã thay đổi; hãy tải lại.");
+            if (string.IsNullOrWhiteSpace(command.ExpectedVersion)) return AdministrativeWriteGuard.Error<LockerResultDto>(HttpStatusCode.BadRequest, "ExpectedVersionRequired", "Thiếu expectedVersion.");
+            if (command.ExpectedVersion != version) return AdministrativeWriteGuard.Error<LockerResultDto>(HttpStatusCode.Conflict, "VersionMismatch", "Locker đã thay đổi; hãy tải lại.");
             var error = await ValidateAsync(command, locker.Id);
             if (error != null)
                 return BadRequest<LockerResultDto>(error);
@@ -253,8 +257,8 @@ namespace WashGo.Application.Features.LockerApplication.Services
             var locker = await _lockerRepo.GetWithBoxesAsync(id);
             if (locker == null)
                 return NotFound<bool>("Không tìm thấy thông tin tủ Locker!");
-            if (string.IsNullOrWhiteSpace(expectedVersion)) return AdministrativeWriteGuard.Error<bool>(System.Net.HttpStatusCode.BadRequest, "ExpectedVersionRequired", "Thiếu expectedVersion.");
-            if (expectedVersion != await VersionAsync(locker)) return AdministrativeWriteGuard.Error<bool>(System.Net.HttpStatusCode.Conflict, "VersionMismatch", "Locker đã thay đổi.");
+            if (string.IsNullOrWhiteSpace(expectedVersion)) return AdministrativeWriteGuard.Error<bool>(HttpStatusCode.BadRequest, "ExpectedVersionRequired", "Thiếu expectedVersion.");
+            if (expectedVersion != await VersionAsync(locker)) return AdministrativeWriteGuard.Error<bool>(HttpStatusCode.Conflict, "VersionMismatch", "Locker đã thay đổi.");
             var inUse = locker.Boxes.Any(b => !b.IsDeleted && b.Status is LockerBoxStatus.Occupied or LockerBoxStatus.Reserved) ||
                         await _orderRepo.AnyAsync(o => !o.IsDeleted && (o.LockerId == id || o.ReturnLockerId == id) &&
                             (o.Status == WashOrderStatus.Cancelled
@@ -304,14 +308,14 @@ namespace WashGo.Application.Features.LockerApplication.Services
             {
                 return NotFound<bool>("Không tìm thấy ô tủ!");
             }
-            if (string.IsNullOrWhiteSpace(command.ExpectedVersion)) return AdministrativeWriteGuard.Error<bool>(System.Net.HttpStatusCode.BadRequest, "ExpectedVersionRequired", "Thiếu expectedVersion của locker.");
-            if (command.ExpectedVersion != await VersionAsync(locker)) return AdministrativeWriteGuard.Error<bool>(System.Net.HttpStatusCode.Conflict, "VersionMismatch", "Locker đã thay đổi.");
+            if (string.IsNullOrWhiteSpace(command.ExpectedVersion)) return AdministrativeWriteGuard.Error<bool>(HttpStatusCode.BadRequest, "ExpectedVersionRequired", "Thiếu expectedVersion của locker.");
+            if (command.ExpectedVersion != await VersionAsync(locker)) return AdministrativeWriteGuard.Error<bool>(HttpStatusCode.Conflict, "VersionMismatch", "Locker đã thay đổi.");
             // The locker version does not cover box states: the box state the Admin saw is checked under the same locker lock
             // that reservations use, so a change in between (other Admin, reservation) is a conflict, never applied blindly.
             if (!command.ExpectedBoxStatus.HasValue)
-                return AdministrativeWriteGuard.Error<bool>(System.Net.HttpStatusCode.BadRequest, "ExpectedBoxStatusRequired", "Thiếu expectedBoxStatus (trạng thái ô lúc bạn xem).");
+                return AdministrativeWriteGuard.Error<bool>(HttpStatusCode.BadRequest, "ExpectedBoxStatusRequired", "Thiếu expectedBoxStatus (trạng thái ô lúc bạn xem).");
             if (box.Status != command.ExpectedBoxStatus.Value)
-                return AdministrativeWriteGuard.Error<bool>(System.Net.HttpStatusCode.Conflict, "BoxStatusChanged", $"Ô tủ đã chuyển sang {box.Status}; hãy tải lại.");
+                return AdministrativeWriteGuard.Error<bool>(HttpStatusCode.Conflict, "BoxStatusChanged", $"Ô tủ đã chuyển sang {box.Status}; hãy tải lại.");
 
             if (box.Status == command.NewStatus)
             {
@@ -373,7 +377,7 @@ namespace WashGo.Application.Features.LockerApplication.Services
             var locker = await _lockerRepo.GetWithBoxesAsync(id);
             if (locker == null) return NotFound<LockerResultDto>("Không tìm thấy locker.");
             if (!Enum.IsDefined(command.Status) || string.IsNullOrWhiteSpace(command.ExpectedVersion)) return BadRequest<LockerResultDto>("Cần trạng thái hợp lệ và expectedVersion.");
-            if (command.ExpectedVersion != await VersionAsync(locker)) return AdministrativeWriteGuard.Error<LockerResultDto>(System.Net.HttpStatusCode.Conflict, "VersionMismatch", "Locker đã thay đổi.");
+            if (command.ExpectedVersion != await VersionAsync(locker)) return AdministrativeWriteGuard.Error<LockerResultDto>(HttpStatusCode.Conflict, "VersionMismatch", "Locker đã thay đổi.");
             var old = locker.Status; locker.Status = command.Status;
             if (!await _lockerRepo.TryUpdateDetailsAsync(locker, old)) return BadRequest<LockerResultDto>("Locker đang có đồ/giữ chỗ; chưa thể đổi trạng thái.");
             if (old != command.Status) await Audit.LogAsync(new AuditEntry("Locker", "Status", "Locker", id.ToString(), locker.Code) { ChangedFields = ["status"] });
@@ -384,7 +388,7 @@ namespace WashGo.Application.Features.LockerApplication.Services
             await uow.CompleteAsync(); return response;
         }
 
-        public Task<BaseResponse<WashGo.Application.Contracts.Features.AuditContracts.Results.AdministrativeBatchResultDto>> BatchAsync(WashGo.Application.Contracts.Features.AuditContracts.Commands.AdministrativeBatchCommand command) =>
+        public Task<BaseResponse<AdministrativeBatchResultDto>> BatchAsync(AdministrativeBatchCommand command) =>
             LazyServiceProvider.LazyGetRequiredService<AdministrativeBatchExecutor>().RunAsync("Locker", command, 50, async (item, key) =>
             {
                 if (command.Action == "Delete") return AdministrativeBatchExecutor.Item(item.Id, await DeleteAsync(item.Id, item.ExpectedVersion, key));
@@ -401,7 +405,7 @@ namespace WashGo.Application.Features.LockerApplication.Services
             !ScopeMerchantId.HasValue ||
             await _linkRepo.AnyAsync(x => x.LockerId == lockerId && x.MerchantId == ScopeMerchantId.Value);
 
-        private async System.Threading.Tasks.Task ReplaceMerchantsAsync(Guid lockerId, List<Guid> merchantIds)
+        private async Task ReplaceMerchantsAsync(Guid lockerId, List<Guid> merchantIds)
         {
             var existing = await _linkRepo.GetListAsync(x => x.LockerId == lockerId);
             await _linkRepo.DeleteManyAsync(existing, autoSave: true);
@@ -413,7 +417,7 @@ namespace WashGo.Application.Features.LockerApplication.Services
             }), autoSave: true);
         }
 
-        private async System.Threading.Tasks.Task FillNamesAsync(List<LockerResultDto> lockers)
+        private async Task FillNamesAsync(List<LockerResultDto> lockers)
         {
             var lockerIdsForLinks = lockers.Select(x => x.Id).ToList();
             var links = await _linkRepo.GetListAsync(x => lockerIdsForLinks.Contains(x.LockerId));
@@ -482,7 +486,7 @@ namespace WashGo.Application.Features.LockerApplication.Services
             var scope = ScopeMerchantId ?? merchantId;
             // Both counts in one repeatable-read transaction so lockers and boxes describe the same moment.
             using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true,
-                isolationLevel: System.Data.IsolationLevel.RepeatableRead);
+                isolationLevel: IsolationLevel.RepeatableRead);
             var links = await _linkRepo.GetQueryableAsync();
             var lockers = (await _lockerRepo.GetQueryableAsync()).Where(x => !x.IsDeleted);
             if (scope.HasValue)
@@ -511,7 +515,7 @@ namespace WashGo.Application.Features.LockerApplication.Services
             });
         }
 
-        private static PaginatedResult<LockerUsageDto> UsageError(System.Net.HttpStatusCode status, string message) => new()
+        private static PaginatedResult<LockerUsageDto> UsageError(HttpStatusCode status, string message) => new()
         {
             Succeeded = false, StatusCode = status, Message = message
         };
@@ -520,20 +524,20 @@ namespace WashGo.Application.Features.LockerApplication.Services
         {
             const long maxUnix = BaseFilterQuery.MaxUnixSeconds;
             if (query.FromDate is < 0 or > maxUnix || query.ToDate is < 0 or > maxUnix)
-                return UsageError(System.Net.HttpStatusCode.BadRequest, "Khoảng ngày không hợp lệ (fromDate/toDate là Unix giây, không âm).");
+                return UsageError(HttpStatusCode.BadRequest, "Khoảng ngày không hợp lệ (fromDate/toDate là Unix giây, không âm).");
             if (query.FromDate is > 0 && query.ToDate is > 0 && query.FromDate > query.ToDate)
-                return UsageError(System.Net.HttpStatusCode.BadRequest, "Ngày bắt đầu phải trước hoặc bằng ngày kết thúc.");
+                return UsageError(HttpStatusCode.BadRequest, "Ngày bắt đầu phải trước hoặc bằng ngày kết thúc.");
             var locker = await _lockerRepo.FindAsync(id);
             if (locker == null || locker.IsDeleted || !await InScopeAsync(locker.Id))
-                return UsageError(System.Net.HttpStatusCode.NotFound, "Không tìm thấy thông tin tủ Locker!");
+                return UsageError(HttpStatusCode.NotFound, "Không tìm thấy thông tin tủ Locker!");
             // A box of another locker is an input error, not an empty history; deleted boxes keep their history.
             if (query.BoxId.HasValue && !await _boxRepo.AnyAsync(x => x.Id == query.BoxId.Value && x.LockerId == id))
-                return UsageError(System.Net.HttpStatusCode.BadRequest, "Ô tủ không thuộc locker này.");
+                return UsageError(HttpStatusCode.BadRequest, "Ô tủ không thuộc locker này.");
 
             var page = Math.Max(1, query.Page); var take = Math.Clamp(query.Take, 1, 100);
             DateTime? from = query.FromDate is > 0 ? DateTimeOffset.FromUnixTimeSeconds(query.FromDate.Value).UtcDateTime : null;
             DateTime? to = query.ToDate is > 0 ? DateTimeOffset.FromUnixTimeSeconds(query.ToDate.Value).UtcDateTime : null;
-            using var snapshot = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true, isolationLevel: System.Data.IsolationLevel.RepeatableRead);
+            using var snapshot = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true, isolationLevel: IsolationLevel.RepeatableRead);
             var (rows, total) = await LazyServiceProvider.LazyGetRequiredService<ILockerUsageReader>().ReadAsync(id, ScopeMerchantId, query.BoxId, from, to, page, take);
             var dtos = rows.Select(x => new LockerUsageDto { UsageId = $"{x.OrderId}:{x.UsageType}", OrderId = x.OrderId, OrderCode = x.OrderCode,
                 BoxId = x.BoxId, BoxNumber = x.BoxNumber, UsageType = x.UsageType, PutInAt = x.PutInAt, TakenOutAt = x.TakenOutAt, OrderStatus = (WashOrderStatus)x.OrderStatus }).ToList();

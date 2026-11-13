@@ -28,6 +28,7 @@ using WashGo.Domain.Entities.Partner.Interfaces;
 using WashGo.Domain.Entities.WashOrder;
 using WashGo.Domain.Entities.WashOrder.Interfaces;
 using WashGo.Domain.Shared.Enums;
+using PasswordHasher = global::BCrypt.Net.BCrypt;
 
 namespace WashGo.Application.Features.ShipperApplication.Services
 {
@@ -115,7 +116,7 @@ namespace WashGo.Application.Features.ShipperApplication.Services
             if (sorts.Any(x => !string.Equals(x.Field, "Rating", StringComparison.OrdinalIgnoreCase)))
                 return new PaginatedResult<ShipperDto>
                 {
-                    Succeeded = false, StatusCode = System.Net.HttpStatusCode.BadRequest,
+                    Succeeded = false, StatusCode = HttpStatusCode.BadRequest,
                     Message = "Danh sách Shipper không hỗ trợ sắp xếp tùy chọn.", CurrentPage = query.Page, PageSize = query.Take
                 };
             sorts = [];
@@ -224,7 +225,7 @@ namespace WashGo.Application.Features.ShipperApplication.Services
             {
                 RoleId = role.Id,
                 Email = email,
-                PasswordHash = BCrypt.Net.BCrypt.HashPassword(temporaryPassword),
+                PasswordHash = PasswordHasher.HashPassword(temporaryPassword),
                 AuthProvider = AuthProvider.Local,
                 FullName = fullName,
                 Phone = phone,

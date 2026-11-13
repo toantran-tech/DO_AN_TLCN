@@ -1,5 +1,6 @@
 using System;
 using WashGo.Domain.Shared.Enums;
+using System.Text.Json.Serialization;
 
 namespace WashGo.Application.Contracts.Features.PromotionContracts.Commands
 {
@@ -28,7 +29,7 @@ namespace WashGo.Application.Contracts.Features.PromotionContracts.Commands
     {
         public Guid? OperationId { get; set; }
         public string? ExpectedVersion { get; set; }
-        [System.Text.Json.Serialization.JsonRequired]
+        [JsonRequired]
         public bool IsActive { get; set; }
     }
 }

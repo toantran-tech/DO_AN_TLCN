@@ -30,6 +30,10 @@ using System.Data;
 using System.Text.Json;
 
 using WashGo.Application.Features.SystemSettingApplication.Services;
+using PasswordHasher = global::BCrypt.Net.BCrypt;
+using System.Linq.Expressions;
+using WashGo.Application.Features.MerchantReportApplication.Services;
+using WashGo.Domain.Entities.Feedback;
 
 namespace WashGo.Application.Features.MerchantApplication.Services
 {
@@ -186,7 +190,7 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             var take = Math.Clamp(query.Take, 1, 100);
             var total = await AsyncExecuter.CountAsync(queryable);
             IOrderedQueryable<Merchant>? ordered = null;
-            void Sort<TKey>(System.Linq.Expressions.Expression<Func<Merchant, TKey>> field, bool descending) =>
+            void Sort<TKey>(Expression<Func<Merchant, TKey>> field, bool descending) =>
                 ordered = ordered == null ? descending ? queryable.OrderByDescending(field) : queryable.OrderBy(field) : descending ? ordered.ThenByDescending(field) : ordered.ThenBy(field);
             foreach (var option in sorts)
                 switch (option.Field.ToLowerInvariant())
@@ -253,7 +257,7 @@ namespace WashGo.Application.Features.MerchantApplication.Services
                 var displayName = command.BusinessName.Trim();
                 var user = new User(GuidGenerator.Create())
                 {
-                    RoleId = role.Id, Email = email, PasswordHash = BCrypt.Net.BCrypt.HashPassword(temporaryPassword),
+                    RoleId = role.Id, Email = email, PasswordHash = PasswordHasher.HashPassword(temporaryPassword),
                     AuthProvider = AuthProvider.Local,
                     // Account display names have a 100-character limit; the store retains its full legal name.
                     FullName = displayName.Length > 100 ? displayName[..100] : displayName, IsActive = true
@@ -580,7 +584,7 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             (await _imageRepo.GetListAsync(x => x.MerchantId == merchantId && x.ImageType == StoreImageType))
                 .OrderBy(x => x.DisplayOrder).Select(x => x.SecureUrl).ToList();
 
-        private async System.Threading.Tasks.Task ReplaceImagesAsync(Guid merchantId, List<string> urls)
+        private async Task ReplaceImagesAsync(Guid merchantId, List<string> urls)
         {
             var existing = await _imageRepo.GetListAsync(x => x.MerchantId == merchantId && x.ImageType == StoreImageType);
             if (existing.OrderBy(x => x.DisplayOrder).Select(x => x.SecureUrl).SequenceEqual(urls))
@@ -597,7 +601,7 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             }), autoSave: true);
         }
 
-        private async System.Threading.Tasks.Task ReplaceAreasAsync(Guid merchantId, List<Guid> areaIds)
+        private async Task ReplaceAreasAsync(Guid merchantId, List<Guid> areaIds)
         {
             var existing = await _msaRepo.GetListAsync(x => x.MerchantId == merchantId);
             var desired = areaIds.ToHashSet();
@@ -644,7 +648,7 @@ namespace WashGo.Application.Features.MerchantApplication.Services
 
             var dtos = ObjectMapper.Map<List<Merchant>, List<MerchantResultDto>>(merchants);
             var documents = await LazyServiceProvider.LazyGetRequiredService<PrivateDocumentStore>().MetadataAsync(merchants.SelectMany(x => new[] { x.BusinessLicenseDocumentId, x.ContractDocumentId, x.SlaDocumentId }));
-            var ratings = await AsyncExecuter.ToListAsync((await LazyServiceProvider.LazyGetRequiredService<IRepository<WashGo.Domain.Entities.Feedback.OrderRating, Guid>>().GetQueryableAsync())
+            var ratings = await AsyncExecuter.ToListAsync((await LazyServiceProvider.LazyGetRequiredService<IRepository<OrderRating, Guid>>().GetQueryableAsync())
                 .Where(x => x.MerchantId.HasValue && ids.Contains(x.MerchantId.Value) && !x.IsHidden && !x.IsDeleted).GroupBy(x => x.MerchantId).Select(g => new { Id = g.Key, Count = g.Count() }));
             foreach (var dto in dtos)
             {
@@ -675,7 +679,7 @@ namespace WashGo.Application.Features.MerchantApplication.Services
                 return BadRequest<MerchantDashboardDto>(error);
             // Counts, latest orders and settlements are read in one repeatable-read transaction: one consistent snapshot.
             using var snapshot = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true,
-                isolationLevel: System.Data.IsolationLevel.RepeatableRead);
+                isolationLevel: IsolationLevel.RepeatableRead);
 
             var ordersQuery = (await _orderRepo.GetQueryableAsync())
                 .Where(o => !o.IsDeleted && o.MerchantId == merchantId.Value);
@@ -787,11 +791,11 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             if (error != null)
                 return BadRequest<MerchantRevenueReportDto>(error);
             // Same definitions as /merchant-reports: money by transaction/refund date, commission at each order's locked rate.
-            var finance = LazyServiceProvider.LazyGetRequiredService<WashGo.Application.Features.MerchantReportApplication.Services.MerchantFinanceAggregator>();
+            var finance = LazyServiceProvider.LazyGetRequiredService<MerchantFinanceAggregator>();
             DateTime? Exclusive(DateTime? inclusiveEnd) => inclusiveEnd?.AddTicks(1);
             // Current, previous and series totals are read from one repeatable-read snapshot.
             using var snapshot = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true,
-                isolationLevel: System.Data.IsolationLevel.RepeatableRead);
+                isolationLevel: IsolationLevel.RepeatableRead);
             var current = await finance.TotalsAsync(merchantId.Value, fromUtc, Exclusive(toUtc));
             var series = await finance.SeriesAsync(merchantId.Value, fromUtc, Exclusive(toUtc), hourly: false);
             var orders = (await _orderRepo.GetQueryableAsync()).Where(o => !o.IsDeleted && o.MerchantId == merchantId.Value && o.CancelledAt != null);
@@ -859,7 +863,7 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             var returnBefore = now.AddHours(-returnSlaHours);
 
             using var snapshot = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true,
-                isolationLevel: System.Data.IsolationLevel.RepeatableRead);
+                isolationLevel: IsolationLevel.RepeatableRead);
             var orders = (await _orderRepo.GetQueryableAsync()).Where(o => !o.IsDeleted && o.MerchantId == merchantId.Value);
             // Same rules as before, evaluated by the database for the whole scope; only the requested page is loaded.
             var collection = orders.Where(o => o.Status == WashOrderStatus.Deposited && o.DepositedAt != null && o.DepositedAt.Value.AddHours(o.CollectSlaHoursSnapshot ?? collectSlaHours) < now)

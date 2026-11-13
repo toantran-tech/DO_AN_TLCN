@@ -9,11 +9,13 @@ using WashGo.Application.Features.AuditApplication.Services;
 using WashGo.Core.Domain.Shared.Bases;
 using WashGo.Domain.Entities.Partner;
 using WashGo.Domain.Shared.Enums;
+using Volo.Abp.Auditing;
+using Volo.Abp.Validation;
 
 namespace WashGo.Application.Features.FileApplication.Services;
 
 [RemoteService(false)]
-[Volo.Abp.Auditing.DisableAuditing]
+[DisableAuditing]
 public class PrivateDocumentAppService : WashGoAppService, IPrivateDocumentAppService
 {
     private readonly IRepository<PrivateDocument, Guid> _repo;
@@ -23,7 +25,7 @@ public class PrivateDocumentAppService : WashGoAppService, IPrivateDocumentAppSe
     { _repo = repo; _merchants = merchants; _store = store; }
     private bool Admin => CurrentUser.IsInRole("Admin");
     private bool Merchant => CurrentUser.IsInRole("Merchant");
-    [Volo.Abp.Validation.DisableValidation]
+    [DisableValidation]
     public async Task<BaseResponse<PrivateDocumentDto>> UploadAsync(Stream stream, long length, string fileName, string kind, Guid? merchantId)
     {
         if (!Admin && !Merchant) return Forbidden<PrivateDocumentDto>();

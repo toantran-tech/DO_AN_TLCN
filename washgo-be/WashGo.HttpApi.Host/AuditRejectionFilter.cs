@@ -10,6 +10,7 @@ using Volo.Abp.Uow;
 using WashGo.Application.Features.AuditApplication.Services;
 using WashGo.Core.Domain.Shared.Bases;
 using WashGo.Domain.Shared.Enums;
+using System.Text.Json;
 
 namespace WashGo.HttpApi.Host
 {
@@ -34,7 +35,7 @@ namespace WashGo.HttpApi.Host
             string? code = null;
             if (body?.GetType().GetProperty("Meta")?.GetValue(body) is { } meta)
                 code = meta.GetType().GetProperty("code")?.GetValue(meta)?.ToString()
-                       ?? (meta is System.Text.Json.JsonElement json && json.ValueKind == System.Text.Json.JsonValueKind.Object &&
+                       ?? (meta is JsonElement json && json.ValueKind == JsonValueKind.Object &&
                            json.TryGetProperty("code", out var c) ? c.GetString() : null);
             var pattern = (http.GetEndpoint() as RouteEndpoint)?.RoutePattern.RawText ?? http.Request.Path.Value ?? string.Empty;
             var module = http.Request.Path.Value?.Trim('/').Split('/').FirstOrDefault() ?? "api";

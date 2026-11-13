@@ -20,6 +20,9 @@ using WashGo.Domain.Entities.Partner;
 using WashGo.Domain.Entities.WashOrder;
 using WashGo.Domain.Entities.WashOrder.Interfaces;
 using WashGo.Domain.Shared.Enums;
+using System.Data;
+using WashGo.Application.Contracts.Features.AuditContracts.Commands;
+using WashGo.Application.Contracts.Features.AuditContracts.Results;
 
 namespace WashGo.Application.Features.WashServiceApplication.Services
 {
@@ -121,18 +124,18 @@ namespace WashGo.Application.Features.WashServiceApplication.Services
             await FillActionsAsync([dto]);
             return Success(dto);
         }
-        public async Task<BaseResponse<WashGo.Application.Contracts.Features.AuditContracts.Results.AdministrativeSummaryDto>> GetSummaryAsync()
+        public async Task<BaseResponse<AdministrativeSummaryDto>> GetSummaryAsync()
         {
             // Service counts and pending proposals come from one repeatable-read snapshot.
-            using var snapshot = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true, isolationLevel: System.Data.IsolationLevel.RepeatableRead);
+            using var snapshot = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true, isolationLevel: IsolationLevel.RepeatableRead);
             var groups = await AsyncExecuter.ToListAsync((await _serviceRepo.GetQueryableAsync()).Where(x => !x.IsDeleted)
                 .GroupBy(x => new { x.ApprovalStatus, x.IsActive }).Select(g => new { g.Key.ApprovalStatus, g.Key.IsActive, Count = g.Count() }));
-            var pending = await AsyncExecuter.CountAsync((await LazyServiceProvider.LazyGetRequiredService<IRepository<WashGo.Domain.Entities.WashService.ServiceChangeRequest, Guid>>()
+            var pending = await AsyncExecuter.CountAsync((await LazyServiceProvider.LazyGetRequiredService<IRepository<ServiceChangeRequest, Guid>>()
                 .GetQueryableAsync()).Where(x => x.Status == ServiceApprovalStatus.Pending));
             await snapshot.CompleteAsync();
             var counts = groups.ToDictionary(x => $"{x.ApprovalStatus}:{(x.IsActive ? "Active" : "Inactive")}", x => x.Count);
             counts["PendingProposals"] = pending;
-            return Success(new WashGo.Application.Contracts.Features.AuditContracts.Results.AdministrativeSummaryDto { Total = groups.Sum(x => x.Count), Counts = counts, GeneratedAt = DateTime.UtcNow, PendingProposals = pending });
+            return Success(new AdministrativeSummaryDto { Total = groups.Sum(x => x.Count), Counts = counts, GeneratedAt = DateTime.UtcNow, PendingProposals = pending });
         }
 
         /// <summary>Action metadata from the same rule DeleteAsync applies (active orders block deletion); re-checked at commit.</summary>
@@ -145,7 +148,7 @@ namespace WashGo.Application.Features.WashServiceApplication.Services
                 join order in await _orderRepo.GetQueryableAsync() on item.WashOrderId equals order.Id
                 where ids.Contains(item.ServiceId) && !order.IsDeleted && order.Status != WashOrderStatus.Completed && order.Status != WashOrderStatus.Cancelled
                 select item.ServiceId)).ToHashSet();
-            var pendingIds = (await AsyncExecuter.ToListAsync((await LazyServiceProvider.LazyGetRequiredService<IRepository<WashGo.Domain.Entities.WashService.ServiceChangeRequest, Guid>>()
+            var pendingIds = (await AsyncExecuter.ToListAsync((await LazyServiceProvider.LazyGetRequiredService<IRepository<ServiceChangeRequest, Guid>>()
                 .GetQueryableAsync()).Where(x => x.Status == ServiceApprovalStatus.Pending && x.ServiceId != null && ids.Contains(x.ServiceId.Value))
                 .Select(x => x.ServiceId!.Value))).ToHashSet();
             foreach (var dto in dtos)
@@ -188,7 +191,7 @@ namespace WashGo.Application.Features.WashServiceApplication.Services
             var entity = ObjectMapper.Map<CreateWashServiceCommand, WashService>(command);
             var imageError = ApplyImages(entity, command.ImageUrls);
             if (imageError != null) return BadRequest<WashServiceResultDto>(imageError);
-            entity.ApprovalStatus = Domain.Shared.Enums.ServiceApprovalStatus.Approved;
+            entity.ApprovalStatus = ServiceApprovalStatus.Approved;
             entity.IsActive = true;
             await _serviceRepo.InsertAsync(entity, autoSave: true);
             var dto = ObjectMapper.Map<WashService, WashServiceResultDto>(entity);
@@ -268,7 +271,7 @@ namespace WashGo.Application.Features.WashServiceApplication.Services
             if (clean.Count > UploadStorage.MaxImagesPerSubmission) return "Quá số ảnh cho phép.";
             entity.Images = clean.Count == 0 ? null : JsonSerializer.Serialize(clean); return null;
         }
-        public Task<BaseResponse<WashGo.Application.Contracts.Features.AuditContracts.Results.AdministrativeBatchResultDto>> BatchAsync(WashGo.Application.Contracts.Features.AuditContracts.Commands.AdministrativeBatchCommand command) =>
+        public Task<BaseResponse<AdministrativeBatchResultDto>> BatchAsync(AdministrativeBatchCommand command) =>
             LazyServiceProvider.LazyGetRequiredService<AdministrativeBatchExecutor>().RunAsync("Service", command, 50, async (item, key) =>
             {
                 if (command.Action == "Delete") return AdministrativeBatchExecutor.Item(item.Id, await DeleteAsync(item.Id, item.ExpectedVersion, key));

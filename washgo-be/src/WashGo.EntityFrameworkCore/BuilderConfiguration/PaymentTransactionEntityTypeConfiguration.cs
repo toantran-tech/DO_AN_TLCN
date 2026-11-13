@@ -5,6 +5,7 @@ using NpgsqlTypes;
 using WashGo.Domain.Entities.Payment;
 using WashGo.Domain.Entities.WashOrder;
 using WashGo.Domain.Shared.Constants;
+using WashGo.Domain.Shared.Enums;
 
 namespace WashGo.EntityFrameworkCore.BuilderConfiguration
 {
@@ -24,8 +25,8 @@ namespace WashGo.EntityFrameworkCore.BuilderConfiguration
             builder.Property(x => x.CommissionRateSnapshot).HasPrecision(5, 2);
             builder.Property(x => x.FinancialSnapshotBasis).HasMaxLength(40);
             builder.Property(x => x.Purpose)
-                .HasDefaultValue(WashGo.Domain.Shared.Enums.PaymentPurpose.Order)
-                .HasSentinel((WashGo.Domain.Shared.Enums.PaymentPurpose)0);
+                .HasDefaultValue(PaymentPurpose.Order)
+                .HasSentinel((PaymentPurpose)0);
             builder.Property(x => x.PaymentUrl).HasMaxLength(1000);
             builder.Property(x => x.FailureReason).HasMaxLength(500);
             builder.HasIndex(x => x.OrderId);

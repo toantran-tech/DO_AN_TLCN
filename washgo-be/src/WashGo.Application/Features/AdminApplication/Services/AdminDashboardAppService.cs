@@ -18,6 +18,7 @@ using WashGo.Domain.Entities.Partner;
 using WashGo.Domain.Entities.Payment;
 using WashGo.Domain.Entities.WashOrder;
 using WashGo.Domain.Shared.Enums;
+using System.Data;
 
 namespace WashGo.Application.Features.AdminApplication.Services
 {
@@ -73,7 +74,7 @@ namespace WashGo.Application.Features.AdminApplication.Services
             Window? prev = prevFrom.HasValue && prevTo.HasValue ? new Window(prevFrom.Value, prevTo.Value) : null;
 
             using var snapshot = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true,
-                isolationLevel: System.Data.IsolationLevel.RepeatableRead);
+                isolationLevel: IsolationLevel.RepeatableRead);
             var orders = (await _orderRepo.GetQueryableAsync()).Where(o => !o.IsDeleted);
             var timeline = await _timelineRepo.GetQueryableAsync();
             var users = await _userRepo.GetQueryableAsync();
@@ -332,7 +333,7 @@ namespace WashGo.Application.Features.AdminApplication.Services
             var assignBefore = now.AddMinutes(-assignMinutes);
 
             using var snapshot = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true,
-                isolationLevel: System.Data.IsolationLevel.RepeatableRead);
+                isolationLevel: IsolationLevel.RepeatableRead);
             var orders = (await _orderRepo.GetQueryableAsync()).Where(o => !o.IsDeleted);
             var sources = new Dictionary<AdminAlertType, IQueryable<AlertRow>>
             {

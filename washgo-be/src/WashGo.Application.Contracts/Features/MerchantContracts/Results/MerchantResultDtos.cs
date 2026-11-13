@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using Volo.Abp.Application.Services;
 using WashGo.Core.Domain.Shared.Bases;
 using WashGo.Domain.Shared.Enums;
+using WashGo.Application.Contracts.Features.FileContracts.Results;
 
 namespace WashGo.Application.Contracts.Features.MerchantContracts.Results
 {
@@ -12,7 +13,7 @@ namespace WashGo.Application.Contracts.Features.MerchantContracts.Results
         public Guid? BusinessLicenseDocumentId { get; set; }
         public Guid? ContractDocumentId { get; set; }
         public Guid? SlaDocumentId { get; set; }
-        public List<WashGo.Application.Contracts.Features.FileContracts.Results.PrivateDocumentDto> Documents { get; set; } = [];
+        public List<PrivateDocumentDto> Documents { get; set; } = [];
         public Guid Id { get; set; }
         public string Version { get; set; } = string.Empty;
         /// <summary>Sent = SMTP đã chấp nhận, không bảo đảm đã vào inbox. Unknown có thể đang gửi hoặc chưa xác định.</summary>

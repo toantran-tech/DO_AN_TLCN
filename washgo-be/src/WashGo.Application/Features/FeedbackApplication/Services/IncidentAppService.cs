@@ -22,6 +22,7 @@ using WashGo.Domain.Entities.Partner;
 using WashGo.Domain.Entities.WashOrder;
 using WashGo.Domain.Entities.WashOrder.Interfaces;
 using WashGo.Domain.Shared.Enums;
+using WashGo.Application.Contracts.Features.AuditContracts.Results;
 
 namespace WashGo.Application.Features.FeedbackApplication.Services
 {
@@ -205,11 +206,11 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
             await LazyServiceProvider.LazyGetRequiredService<IncidentContactEnricher>().FillAsync([dto]);
             return Success(dto);
         }
-        public async Task<BaseResponse<WashGo.Application.Contracts.Features.AuditContracts.Results.AdministrativeSummaryDto>> GetSummaryAsync()
+        public async Task<BaseResponse<AdministrativeSummaryDto>> GetSummaryAsync()
         {
             var groups = await AsyncExecuter.ToListAsync((await _incidentRepo.GetQueryableAsync()).Where(x => !x.IsDeleted)
                 .GroupBy(x => x.Status).Select(g => new { Status = g.Key, Count = g.Count() }));
-            return Success(new WashGo.Application.Contracts.Features.AuditContracts.Results.AdministrativeSummaryDto { Total = groups.Sum(x => x.Count), Counts = groups.ToDictionary(x => x.Status.ToString(), x => x.Count), GeneratedAt = DateTime.UtcNow });
+            return Success(new AdministrativeSummaryDto { Total = groups.Sum(x => x.Count), Counts = groups.ToDictionary(x => x.Status.ToString(), x => x.Count), GeneratedAt = DateTime.UtcNow });
         }
 
         public async Task<BaseResponse<IncidentResultDto>> ResolveAsync(Guid id, ResolveIncidentCommand command)

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using WashGo.Domain.Shared.Enums;
+using WashGo.Core.Domain.Shared.Bases;
 
 namespace WashGo.Application.Contracts.Features.FinanceContracts.Results
 {
@@ -178,7 +179,7 @@ namespace WashGo.Application.Contracts.Features.FinanceContracts.Results
     }
 
     /// <summary>Trang dòng đối soát kèm căn cứ của chính trang này.</summary>
-    public class SettlementLinesPageDto : WashGo.Core.Domain.Shared.Bases.PaginatedResult<SettlementOrderLineDto>
+    public class SettlementLinesPageDto : PaginatedResult<SettlementOrderLineDto>
     {
         /// <summary>true: dòng chụp lúc chốt kỳ (bất biến). false: kỳ cũ chưa có snapshot, dòng tính lại từ nguồn hiện tại để tham khảo; số tiền của kỳ không đổi.</summary>
         public bool IsSnapshot { get; set; }

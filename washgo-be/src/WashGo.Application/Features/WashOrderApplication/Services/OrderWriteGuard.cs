@@ -5,6 +5,8 @@ using Volo.Abp.DependencyInjection;
 using Volo.Abp.Domain.Repositories;
 using WashGo.Application.Contracts.Features.WashOrderContracts.Commands;
 using WashGo.Domain.Entities.WashOrder;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace WashGo.Application.Features.WashOrderApplication.Services
 {
@@ -78,6 +80,6 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
         /// </summary>
         public static string Fingerprint(string fields, string? text) => text == null
             ? fields
-            : $"{fields};text={Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(text)))[..16].ToLowerInvariant()}";
+            : $"{fields};text={Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text)))[..16].ToLowerInvariant()}";
     }
 }

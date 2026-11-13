@@ -7,6 +7,7 @@ using WashGo.Application.Contracts.Features.WashServiceContracts.Commands;
 using WashGo.Application.Contracts.Features.WashServiceContracts.Queries;
 using WashGo.Application.Contracts.Features.WashServiceContracts.Services;
 using WashGo.Core.Endpoint;
+using WashGo.Application.Contracts.Features.AuditContracts.Commands;
 
 namespace WashGo.HttpApi.Endpoints.WashService
 {
@@ -29,7 +30,7 @@ namespace WashGo.HttpApi.Endpoints.WashService
                 .WithSummary("Admin xem dịch vụ, lọc theo Merchant, danh mục, trạng thái hoạt động và trạng thái duyệt.")
                 .WithOpenApi();
 
-            group.MapPost("/batch", async (WashGo.Application.Contracts.Features.AuditContracts.Commands.AdministrativeBatchCommand command, IWashServiceAppService svc) => (await svc.BatchAsync(command)).CustomResult())
+            group.MapPost("/batch", async (AdministrativeBatchCommand command, IWashServiceAppService svc) => (await svc.BatchAsync(command)).CustomResult())
                 .RequireAuthorization("AdminOnly").WithSummary("Xử lý 1–50 dịch vụ: Delete hoặc Status đích; id/expectedVersion từng dòng, operationId cho toàn batch.").WithOpenApi();
             group.MapDelete("/{id:guid}", async (Guid id, string? expectedVersion, Guid? operationId, IWashServiceAppService svc) =>
                 (await svc.DeleteAsync(id, expectedVersion, operationId)).CustomResult())

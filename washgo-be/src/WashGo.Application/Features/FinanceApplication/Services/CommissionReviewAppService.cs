@@ -15,6 +15,8 @@ using WashGo.Domain.Entities.Payment;
 using WashGo.Domain.Entities.WashOrder;
 using WashGo.Domain.Entities.WashOrder.Interfaces;
 using WashGo.Domain.Shared.Enums;
+using System.Collections.Generic;
+using System.Data;
 
 namespace WashGo.Application.Features.FinanceApplication.Services
 {
@@ -55,7 +57,7 @@ namespace WashGo.Application.Features.FinanceApplication.Services
         {
             var page = Math.Max(1, query.Page ?? 1);
             var take = Math.Clamp(query.Take ?? 20, 1, 100);
-            using var snapshot = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true, isolationLevel: System.Data.IsolationLevel.RepeatableRead);
+            using var snapshot = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true, isolationLevel: IsolationLevel.RepeatableRead);
             var q = await CandidatesAsync(query.MerchantId);
             var total = await AsyncExecuter.CountAsync(q);
             var orders = await AsyncExecuter.ToListAsync(q.OrderBy(o => o.CreatedOn).ThenBy(o => o.Id).Skip((page - 1) * take).Take(take));
@@ -65,7 +67,7 @@ namespace WashGo.Application.Features.FinanceApplication.Services
                 total == 0 ? "Không có đơn nào cần đối chiếu tỷ lệ hoa hồng." : null);
         }
 
-        private async Task<System.Collections.Generic.List<CommissionReviewItemDto>> ToItemsAsync(System.Collections.Generic.List<WashOrder> orders)
+        private async Task<List<CommissionReviewItemDto>> ToItemsAsync(List<WashOrder> orders)
         {
             var ids = orders.Select(o => o.Id).ToList();
             var merchantIds = orders.Where(o => o.MerchantId.HasValue).Select(o => o.MerchantId!.Value).Distinct().ToList();

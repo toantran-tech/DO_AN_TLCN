@@ -17,6 +17,7 @@ using WashGo.Domain.Entities.WashOrder;
 using WashGo.Domain.Entities.WashOrder.Interfaces;
 using WashGo.Domain.Entities.WashService.Interfaces;
 using WashGo.Domain.Shared.Enums;
+using System.Data;
 
 namespace WashGo.Application.Features.MerchantReportApplication.Services
 {
@@ -163,7 +164,7 @@ namespace WashGo.Application.Features.MerchantReportApplication.Services
 
             // Every number below is a SQL aggregate read inside one repeatable-read transaction (one snapshot).
             using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true,
-                isolationLevel: System.Data.IsolationLevel.RepeatableRead);
+                isolationLevel: IsolationLevel.RepeatableRead);
             var cur = await finance.TotalsAsync(merchantId, current.From, current.To);
             var prev = await finance.TotalsAsync(merchantId, previous.From, previous.To);
             var curMoney = await finance.SeriesAsync(merchantId, current.From, current.To, hourly);
@@ -341,7 +342,7 @@ namespace WashGo.Application.Features.MerchantReportApplication.Services
         {
             // All parts of the totals come from one repeatable-read snapshot.
             using var snapshot = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true,
-                isolationLevel: System.Data.IsolationLevel.RepeatableRead);
+                isolationLevel: IsolationLevel.RepeatableRead);
             var totals = await LazyServiceProvider.LazyGetRequiredService<MerchantFinanceAggregator>()
                 .TotalsAsync(CurrentUser.Id!.Value, null, null);
             await snapshot.CompleteAsync();

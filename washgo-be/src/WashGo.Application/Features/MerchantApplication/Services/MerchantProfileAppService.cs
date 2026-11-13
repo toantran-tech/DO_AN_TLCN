@@ -18,6 +18,8 @@ using WashGo.Domain.Entities.Feedback;
 using WashGo.Domain.Entities.Identity;
 using WashGo.Domain.Entities.Partner;
 using WashGo.Domain.Shared.Enums;
+using System.Net;
+using System.Text.RegularExpressions;
 
 namespace WashGo.Application.Features.MerchantApplication.Services
 {
@@ -120,9 +122,9 @@ namespace WashGo.Application.Features.MerchantApplication.Services
                 return BadRequest<MerchantProfileRequestDto>("Tài khoản Merchant không hoạt động.");
             // Checked under the Merchant lock: a proposal built on an outdated profile is never attached to the newer one.
             if (string.IsNullOrWhiteSpace(command.ExpectedMerchantVersion))
-                return MerchantWriteGuard.Error<MerchantProfileRequestDto>(System.Net.HttpStatusCode.BadRequest, "ExpectedVersionRequired", "Thiếu expectedMerchantVersion (version lấy từ GET /merchant-profile).");
+                return MerchantWriteGuard.Error<MerchantProfileRequestDto>(HttpStatusCode.BadRequest, "ExpectedVersionRequired", "Thiếu expectedMerchantVersion (version lấy từ GET /merchant-profile).");
             if (command.ExpectedMerchantVersion.Trim() != MerchantWriteGuard.Version(merchant))
-                return MerchantWriteGuard.Error<MerchantProfileRequestDto>(System.Net.HttpStatusCode.Conflict, "VersionMismatch", "Hồ sơ cửa hàng đã thay đổi kể từ lúc bạn mở; hãy tải lại trước khi gửi.");
+                return MerchantWriteGuard.Error<MerchantProfileRequestDto>(HttpStatusCode.Conflict, "VersionMismatch", "Hồ sơ cửa hàng đã thay đổi kể từ lúc bạn mở; hãy tải lại trước khi gửi.");
 
             var name = command.BusinessName?.Trim() ?? string.Empty;
             var address = command.Address?.Trim() ?? string.Empty;
@@ -151,7 +153,7 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             string? taxCode = command.TaxCode == null ? merchant.TaxCode : command.TaxCode.Trim();
             if (!string.IsNullOrEmpty(taxCode) && command.TaxCode != null)
             {
-                if (!System.Text.RegularExpressions.Regex.IsMatch(taxCode, @"^\d{10}(-\d{3})?$"))
+                if (!Regex.IsMatch(taxCode, @"^\d{10}(-\d{3})?$"))
                     return BadRequest<MerchantProfileRequestDto>("Mã số thuế phải gồm 10 chữ số hoặc 10 chữ số kèm -3 chữ số chi nhánh.");
                 if (await _merchantRepo.AnyAsync(x => x.TaxCode == taxCode && x.Id != merchant.Id))
                     return BadRequest<MerchantProfileRequestDto>("Mã số thuế này đã được cửa hàng khác sử dụng.");
@@ -293,11 +295,11 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             if (request == null)
                 return NotFound<MerchantProfileRequestDto>("Không tìm thấy yêu cầu cập nhật!");
             if (request.Status != ServiceApprovalStatus.Pending)
-                return MerchantWriteGuard.Error<MerchantProfileRequestDto>(System.Net.HttpStatusCode.Conflict, "AlreadyReviewed", "Yêu cầu đã được xử lý trước đó.");
+                return MerchantWriteGuard.Error<MerchantProfileRequestDto>(HttpStatusCode.Conflict, "AlreadyReviewed", "Yêu cầu đã được xử lý trước đó.");
             if (string.IsNullOrWhiteSpace(expectedVersion))
-                return MerchantWriteGuard.Error<MerchantProfileRequestDto>(System.Net.HttpStatusCode.BadRequest, "ExpectedVersionRequired", "Thiếu expectedVersion của yêu cầu.");
+                return MerchantWriteGuard.Error<MerchantProfileRequestDto>(HttpStatusCode.BadRequest, "ExpectedVersionRequired", "Thiếu expectedVersion của yêu cầu.");
             if (expectedVersion != MerchantWriteGuard.Version(request.UpdatedAt))
-                return MerchantWriteGuard.Error<MerchantProfileRequestDto>(System.Net.HttpStatusCode.Conflict, "VersionMismatch", "Yêu cầu đã thay đổi; hãy tải lại.");
+                return MerchantWriteGuard.Error<MerchantProfileRequestDto>(HttpStatusCode.Conflict, "VersionMismatch", "Yêu cầu đã thay đổi; hãy tải lại.");
             var merchant = await _merchantRepo.FindAsync(request.MerchantId);
             var data = Read(request.ProposedData);
             if (merchant == null)
@@ -313,7 +315,7 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             };
             if ((before.BaseMerchantVersion != null && before.BaseMerchantVersion != MerchantWriteGuard.Version(merchant)) ||
                 Changes(current, before).Count != 0)
-                return MerchantWriteGuard.Error<MerchantProfileRequestDto>(System.Net.HttpStatusCode.Conflict, "MerchantProfileChanged", "Hồ sơ cửa hàng đã đổi từ lúc gửi yêu cầu; không thể áp dữ liệu cũ. Hãy từ chối và yêu cầu gửi lại.");
+                return MerchantWriteGuard.Error<MerchantProfileRequestDto>(HttpStatusCode.Conflict, "MerchantProfileChanged", "Hồ sơ cửa hàng đã đổi từ lúc gửi yêu cầu; không thể áp dữ liệu cũ. Hãy từ chối và yêu cầu gửi lại.");
 
             var now = DateTime.UtcNow;
             if (data.DocumentsSnapshotIncluded)
@@ -385,11 +387,11 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             if (request == null)
                 return NotFound<MerchantProfileRequestDto>("Không tìm thấy yêu cầu cập nhật!");
             if (request.Status != ServiceApprovalStatus.Pending)
-                return MerchantWriteGuard.Error<MerchantProfileRequestDto>(System.Net.HttpStatusCode.Conflict, "AlreadyReviewed", "Yêu cầu đã được xử lý trước đó.");
+                return MerchantWriteGuard.Error<MerchantProfileRequestDto>(HttpStatusCode.Conflict, "AlreadyReviewed", "Yêu cầu đã được xử lý trước đó.");
             if (string.IsNullOrWhiteSpace(command.ExpectedVersion))
-                return MerchantWriteGuard.Error<MerchantProfileRequestDto>(System.Net.HttpStatusCode.BadRequest, "ExpectedVersionRequired", "Thiếu expectedVersion của yêu cầu.");
+                return MerchantWriteGuard.Error<MerchantProfileRequestDto>(HttpStatusCode.BadRequest, "ExpectedVersionRequired", "Thiếu expectedVersion của yêu cầu.");
             if (command.ExpectedVersion != MerchantWriteGuard.Version(request.UpdatedAt))
-                return MerchantWriteGuard.Error<MerchantProfileRequestDto>(System.Net.HttpStatusCode.Conflict, "VersionMismatch", "Yêu cầu đã thay đổi; hãy tải lại.");
+                return MerchantWriteGuard.Error<MerchantProfileRequestDto>(HttpStatusCode.Conflict, "VersionMismatch", "Yêu cầu đã thay đổi; hãy tải lại.");
 
             request.Status = ServiceApprovalStatus.Rejected;
             request.RejectionReason = reason;
@@ -414,7 +416,7 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             if (string.IsNullOrWhiteSpace(text)) return null;
             var value = text.Trim();
             var kind = value.StartsWith("/", StringComparison.Ordinal) || Uri.TryCreate(value, UriKind.Absolute, out _) ? "Url"
-                : System.Text.RegularExpressions.Regex.IsMatch(value, @"^[\p{L}\d][\p{L}\d./\- ]{0,99}$") && value.Any(char.IsDigit) ? "Number"
+                : Regex.IsMatch(value, @"^[\p{L}\d][\p{L}\d./\- ]{0,99}$") && value.Any(char.IsDigit) ? "Number"
                 : "Text";
             return new LegacyBusinessLicenseDto { Kind = kind, Value = value, SupersededByDocument = hasDocument };
         }

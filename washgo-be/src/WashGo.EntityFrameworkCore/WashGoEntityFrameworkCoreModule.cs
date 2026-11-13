@@ -14,6 +14,17 @@ using WashGo.Domain.Entities.WashOrder.Interfaces;
 using WashGo.Domain.Entities.WashService.Interfaces;
 using WashGo.EntityFrameworkCore.EntityFrameworkCore;
 using WashGo.EntityFrameworkCore.Repositories;
+using WashGo.Domain.Entities.Chatbot;
+using WashGo.Domain.Entities.Chatbot.Interfaces;
+using LockerEntity = global::WashGo.Domain.Entities.Locker.Locker;
+using NotificationEntity = global::WashGo.Domain.Entities.Notification.Notification;
+using PromotionEntity = global::WashGo.Domain.Entities.Promotion.Promotion;
+using WashGo.Domain.Entities.Feedback;
+using WashGo.Domain.Entities.Identity;
+using WashGo.Domain.Entities.Partner;
+using WashGo.Domain.Entities.Payment;
+using WashOrderEntity = global::WashGo.Domain.Entities.WashOrder.WashOrder;
+using WashServiceEntity = global::WashGo.Domain.Entities.WashService.WashService;
 
 namespace WashGo.EntityFrameworkCore
 {
@@ -29,18 +40,20 @@ namespace WashGo.EntityFrameworkCore
             context.Services.AddAbpDbContext<WashGoDbContext>(options =>
             {
                 options.AddDefaultRepositories(includeAllEntities: true);
-                options.AddRepository<WashGo.Domain.Entities.Identity.OtpCode, OtpCodeRepository>();
-                options.AddRepository<WashGo.Domain.Entities.WashOrder.WashOrder, WashOrderRepository>();
-                options.AddRepository<WashGo.Domain.Entities.Locker.Locker, LockerRepository>();
-                options.AddRepository<WashGo.Domain.Entities.Payment.PaymentTransaction, PaymentTransactionRepository>();
-                options.AddRepository<WashGo.Domain.Entities.Partner.Shipper, ShipperRepository>();
-                options.AddRepository<WashGo.Domain.Entities.WashService.WashService, WashServiceRepository>();
-                options.AddRepository<WashGo.Domain.Entities.Promotion.Promotion, PromotionRepository>();
-                options.AddRepository<WashGo.Domain.Entities.Feedback.Incident, IncidentRepository>();
-                options.AddRepository<WashGo.Domain.Entities.Notification.Notification, NotificationRepository>();
+                options.AddRepository<ChatConversation, ChatConversationRepository>();
+                options.AddRepository<OtpCode, OtpCodeRepository>();
+                options.AddRepository<WashOrderEntity, WashOrderRepository>();
+                options.AddRepository<LockerEntity, LockerRepository>();
+                options.AddRepository<PaymentTransaction, PaymentTransactionRepository>();
+                options.AddRepository<Shipper, ShipperRepository>();
+                options.AddRepository<WashServiceEntity, WashServiceRepository>();
+                options.AddRepository<PromotionEntity, PromotionRepository>();
+                options.AddRepository<Incident, IncidentRepository>();
+                options.AddRepository<NotificationEntity, NotificationRepository>();
             });
 
             context.Services.AddTransient<IWashOrderRepository, WashOrderRepository>();
+            context.Services.AddTransient<IChatConversationRepository, ChatConversationRepository>();
             context.Services.AddTransient<IOtpCodeRepository, OtpCodeRepository>();
             context.Services.AddTransient<ILockerRepository, LockerRepository>();
             context.Services.AddTransient<IPaymentTransactionRepository, PaymentTransactionRepository>();
