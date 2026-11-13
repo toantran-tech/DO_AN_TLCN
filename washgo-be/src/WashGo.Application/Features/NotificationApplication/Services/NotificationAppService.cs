@@ -48,7 +48,7 @@ namespace WashGo.Application.Features.NotificationApplication.Services
             var items = await AsyncExecuter.ToListAsync(queryable
                 .OrderByDescending(x => x.CreatedOn).ThenByDescending(x => x.Id)
                 .Skip((page - 1) * take).Take(take));
-            return Success(items.Select(ToDto).ToList(), total, page, take,
+            return Success(items.Select(ToCurrentUserDto).ToList(), total, page, take,
                 total == 0 ? "Bạn chưa có thông báo nào." : null);
         }
 
@@ -75,7 +75,10 @@ namespace WashGo.Application.Features.NotificationApplication.Services
             if (!string.IsNullOrEmpty(keyword))
             {
                 var lowered = keyword.ToLower();
-                filtered = filtered.Where(x => x.Title.ToLower().Contains(lowered) || x.Content.ToLower().Contains(lowered));
+                var customer = CurrentUser.IsInRole("Customer");
+                // Legacy order content may contain a warehouse address. Never search withheld text/count it for Customer.
+                filtered = filtered.Where(x => x.Title.ToLower().Contains(lowered) ||
+                    ((!customer || x.LinkType != "order") && x.Content.ToLower().Contains(lowered)));
             }
             if (groups.Count > 0)
             {
@@ -112,7 +115,7 @@ namespace WashGo.Application.Features.NotificationApplication.Services
 
             var result = new NotificationPageDto
             {
-                Items = items.Select(ToDto).ToList(),
+                Items = items.Select(ToCurrentUserDto).ToList(),
                 Total = total,
                 Page = page,
                 Take = take,
@@ -140,7 +143,7 @@ namespace WashGo.Application.Features.NotificationApplication.Services
                 await _notificationRepo.UpdateAsync(notification, autoSave: true);
                 await PushStateAsync("read", [id]);
             }
-            return Success(ToDto(notification));
+            return Success(ToCurrentUserDto(notification));
         }
 
         public async Task<BaseResponse<int>> MarkAllReadAsync()
@@ -194,6 +197,13 @@ namespace WashGo.Application.Features.NotificationApplication.Services
             }
             if (UnitOfWorkManager.Current is { } uow) uow.OnCompleted(SendAsync);
             else await SendAsync();
+        }
+
+        private NotificationDto ToCurrentUserDto(Notification row)
+        {
+            var dto = ToDto(row);
+            if (CurrentUser.IsInRole("Admin")) return dto;
+            return OrderNotificationPrivacy.Apply(dto, customer: CurrentUser.IsInRole("Customer"));
         }
 
         public static NotificationDto ToDto(Notification x) => new()

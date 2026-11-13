@@ -27,8 +27,11 @@ namespace WashGo.Domain.Entities.Feedback
         public string? HiddenReason { get; set; }
         public Guid? HiddenBy { get; set; }
         public DateTime? HiddenAt { get; set; }
-        /// <summary>Lần Admin kiểm duyệt gần nhất (ẩn hoặc hiển thị). Nhận xét/ảnh chỉ chuyển cho Merchant khi đã kiểm duyệt và đang hiển thị.</summary>
+        /// <summary>Lần Admin đổi trạng thái ẩn/hiển thị gần nhất. Không dùng làm bằng chứng phê duyệt nội dung.</summary>
         public DateTime? ModeratedAt { get; set; }
         public Guid? ModeratedBy { get; set; }
+        /// <summary>Content approval is independent of visibility moderation; hiding never approves content.</summary>
+        public DateTime? ContentApprovedAt { get; set; }
+        public Guid? ContentApprovedBy { get; set; }
     }
 }

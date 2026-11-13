@@ -65,7 +65,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                     .Where(x => lockerIds.Contains(x.Id)).Select(x => new { x.Id, x.Images })))
                 .ToDictionary(x => x.Id, x => StoredImageUrls.Read(x.Images));
 
-            var merchantIds = orders.Where(x => x.MerchantId.HasValue).Select(x => x.MerchantId!.Value).Distinct().ToList();
+            var merchantIds = orders.Where(x => role != "Customer" && x.MerchantId.HasValue).Select(x => x.MerchantId!.Value).Distinct().ToList();
             var merchantEmails = role == "Shipper"
                 ? (await _executer.ToListAsync((await _userRepo.GetQueryableAsync()).Where(x => merchantIds.Contains(x.Id))
                     .Select(x => new { x.Id, x.Email }))).ToDictionary(x => x.Id, x => x.Email)

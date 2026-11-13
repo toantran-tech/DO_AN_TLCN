@@ -652,6 +652,14 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("character varying(1000)")
                         .HasColumnName("comment");
 
+                    b.Property<DateTime?>("ContentApprovedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("content_approved_at");
+
+                    b.Property<Guid?>("ContentApprovedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("content_approved_by");
+
                     b.Property<string>("Created")
                         .HasColumnType("jsonb")
                         .HasColumnName("created");

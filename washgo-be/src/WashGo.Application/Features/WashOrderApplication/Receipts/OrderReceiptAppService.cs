@@ -142,6 +142,13 @@ namespace WashGo.Application.Features.WashOrderApplication.Receipts
             if (cancelPaid > 0)
                 receipt.Fees.Add(new ReceiptLineDto { Description = "Phí hủy đơn", Quantity = 1, UnitPrice = cancelPaid, Amount = cancelPaid });
             receipt.TotalPaid = laundryPaid + storagePaid + cancelPaid;
+            if (CurrentUser.IsInRole("Customer"))
+            {
+                receipt.MerchantOrderCode = null;
+                receipt.Seller = new ReceiptPartyDto { Name = "WashGo" };
+            }
+            else if (!CurrentUser.IsInRole("Admin"))
+                receipt.Buyer = new ReceiptPartyDto { Name = "Khách hàng" };
             await uow.CompleteAsync();
             return (receipt, null, false);
         }

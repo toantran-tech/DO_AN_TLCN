@@ -75,6 +75,26 @@ namespace WashGo.Application.Features.NotificationApplication.Services
                     MessageArgs = args
                 }).ToList();
             if (notifications.Count == 0) return;
+            // Sanitize before persistence and SignalR; inbox projection also protects legacy records.
+            if (linkType == "order")
+            {
+                var ids = notifications.Select(x => x.UserId).ToList();
+                var recipients = await _userRepo.AsyncExecuter.ToListAsync(
+                    from user in await _userRepo.GetQueryableAsync()
+                    join role in await _roleRepo.GetQueryableAsync() on user.RoleId equals role.Id
+                    where ids.Contains(user.Id)
+                    select new { user.Id, Role = role.Name });
+                foreach (var row in notifications)
+                {
+                    var role = recipients.FirstOrDefault(x => x.Id == row.UserId)?.Role;
+                    if (role is null or "Admin") continue;
+                    var safe = OrderNotificationPrivacy.Apply(NotificationAppService.ToDto(row), customer: role == "Customer");
+                    row.Title = safe.Title;
+                    row.Content = safe.Content;
+                    row.MessageKey = safe.MessageKey;
+                    row.MessageArgs = JsonSerializer.Serialize(safe.MessageArgs);
+                }
+            }
             await _notificationRepo.InsertManyAsync(notifications, autoSave: true);
 
             var uow = _unitOfWorkManager.Current;

@@ -36,14 +36,14 @@ namespace WashGo.HttpApi.Endpoints.Feedback
                 (await svc.GetListAsync(query)).CustomResult())
                 .RequireAuthorization("AdminOnly")
                 .WithName("Lọc danh sách đánh giá")
-                .WithSummary("Admin lọc đánh giá: sao 1-5, Merchant, trạng thái ẩn, orderId, customerId, ngày tạo, keyword (mã đơn/nhận xét/tên khách); kèm version/canHide/canShow và thông tin kiểm duyệt. Mới nhất trước rồi Id; take ≤ 100. Merchant dùng POST /rating/partner/filter.")
+                .WithSummary("Admin lọc đánh giá: sao 1-5, Merchant, trạng thái ẩn, orderId, customerId, ngày tạo, keyword (mã đơn/nhận xét/tên khách); kèm version/canHide/canShow/canPublish và thông tin kiểm duyệt. Mới nhất trước rồi Id; take ≤ 100. Merchant dùng POST /rating/partner/filter.")
                 .WithOpenApi();
 
             group.MapPost("/partner/filter", async (RatingFilterQuery query, IRatingAppService svc) =>
                 (await svc.GetPartnerListAsync(query)).CustomResult())
                 .RequireAuthorization("MerchantOnly")
                 .WithName("Merchant xem đánh giá dịch vụ")
-                .WithSummary("Merchant xem đánh giá đang hiển thị của chính tiệm (DTO riêng, không có mã/id đơn, định danh khách hay dữ liệu kiểm duyệt). Lọc sao 1-5, ngày tạo, keyword trong nhận xét; nhận xét/ảnh/video chỉ có sau khi Admin kiểm duyệt (contentReleased). Mới nhất trước rồi Id; take ≤ 100.")
+                .WithSummary("Merchant xem đánh giá đang hiển thị của chính tiệm (DTO riêng, không có mã/id đơn, định danh khách hay dữ liệu kiểm duyệt). Lọc sao 1-5, ngày tạo; keyword chỉ tìm trong nhận xét đã phát hành (contentReleased), áp dụng cho cả danh sách và tổng số kết quả. Nhận xét/ảnh/video chỉ có sau khi Admin kiểm duyệt. Mới nhất trước rồi Id; take ≤ 100.")
                 .WithOpenApi();
 
             group.MapGet("/operations/{operationId:guid}", async (Guid operationId, IRatingAppService svc) =>
@@ -56,7 +56,7 @@ namespace WashGo.HttpApi.Endpoints.Feedback
             group.MapGet("/{id:guid}", async (Guid id, IRatingAppService svc) => (await svc.GetByIdAsync(id)).CustomResult())
                 .RequireAuthorization("AdminOnly")
                 .WithName("Chi tiết đánh giá (Admin)")
-                .WithSummary("Một đánh giá với định danh nội bộ (đơn, khách, Merchant), nội dung/media, version, canHide/canShow, thông tin kiểm duyệt. 404 khi không có.")
+                .WithSummary("Một đánh giá với định danh nội bộ (đơn, khách, Merchant), nội dung/media, version, canHide/canShow/canPublish, thông tin kiểm duyệt. 404 khi không có.")
                 .WithOpenApi();
 
             group.MapPost("/summary", async (RatingFilterQuery query, IRatingAppService svc) => (await svc.GetSummaryAsync(query)).CustomResult())
@@ -68,7 +68,14 @@ namespace WashGo.HttpApi.Endpoints.Feedback
             group.MapPost("/batch", async (RatingBatchCommand command, IRatingAppService svc) => (await svc.BatchAsync(command)).CustomResult())
                 .RequireAuthorization("AdminOnly")
                 .WithName("Ẩn/hiện đánh giá hàng loạt")
-                .WithSummary("action Hide|Show cho 1-50 đánh giá được chọn (mỗi dòng id + expectedVersion), Hide cần lý do chung 1-500 ký tự. Từng dòng xử lý độc lập: outcome Changed/Unchanged/Skipped/Failed + reasonCode, totals. Cùng operationId trả kết quả cũ, khác nội dung → 409; tra cứu GET /admin-operations/Rating/{operationId}.")
+                .WithSummary("action Hide|Show|Publish cho 1-50 đánh giá được chọn (mỗi dòng id + expectedVersion), Hide cần lý do chung 1-500 ký tự. Từng dòng xử lý độc lập: outcome Changed/Unchanged/Skipped/Failed + reasonCode, totals. Cùng operationId trả kết quả cũ, khác nội dung → 409; tra cứu GET /admin-operations/Rating/{operationId}.")
+                .WithOpenApi();
+
+            group.MapPost("/{id:guid}/publish", async (Guid id, PublishRatingCommand command, IRatingAppService svc) =>
+                (await svc.PublishAsync(id, command)).CustomResult())
+                .RequireAuthorization("AdminOnly")
+                .WithName("Admin duyệt nội dung đánh giá")
+                .WithSummary("Admin kiểm tra nhận xét/ảnh/video rồi Publish để Merchant xem; không sửa nội dung hoặc đổi số sao. Cần expectedVersion; operationId hỗ trợ replay/lookup. Đánh giá đang ẩn không được Publish. Hide/Show độc lập với phê duyệt nội dung.")
                 .WithOpenApi();
 
             group.MapPatch("/{id:guid}/visibility", async (Guid id, SetRatingVisibilityCommand command, IRatingAppService svc) =>

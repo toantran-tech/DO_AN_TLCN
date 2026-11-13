@@ -2,7 +2,7 @@
 
 Đợt 1 tự kiểm tra Pull Request bằng GitHub Actions; chưa deploy staging, chưa đẩy image lên registry và không dùng key thật. Fen vẫn tạo nhánh → commit/push → PR như thường. GitHub tự chạy các job và lưu report để reviewer kiểm tra.
 
-Cập nhật PR #106: theo ảnh/log người dùng cung cấp, run GitHub đầu tiên đã PASS Build/Analyze/Regression, Security chặn đúng 3 dependency High. Người dùng chốt Mapster MIT không cần key, giữ ObjectMapper ABP và bản vá Microsoft. Xem [CI_DEPENDENCY_SECURITY_FIX.md](CI_DEPENDENCY_SECURITY_FIX.md) cho kết quả, danh sách file và lệnh commit; không cần đăng ký license mapper.
+Cập nhật PR #106: run đầu chặn đúng 3 dependency High; sau bản vá 04bb072, người dùng đã gửi ảnh cả 5 check GitHub PASS. Người dùng chốt Mapster MIT không cần key, giữ ObjectMapper ABP và bản vá Microsoft. Xem [CI_DEPENDENCY_SECURITY_FIX.md](CI_DEPENDENCY_SECURITY_FIX.md) cho kết quả, danh sách file và lệnh commit; không cần đăng ký license mapper.
 
 ## 1. Những gì đã chuẩn bị
 
@@ -12,7 +12,7 @@ Workflow nằm tại **DO_AN/.github/workflows/backend-ci.yml**, cùng cấp v�
 |---|---|
 | Build .NET | Restore và build Host Release bằng .NET 8 |
 | Analyze code | Kiểm tra whitespace thay đổi, cú pháp script PowerShell và chạy analyzer .NET, lưu log |
-| Regression tests | Mapping 5 module, PDF/DOC/DOCX và email MIME; tạo Backend + PostgreSQL mới, migrate/seed, kiểm thử ABP/JWT, catalog và lifecycle/cân giá đơn |
+| Regression tests | Mapping 5 module, Privacy theo role, PDF/DOC/DOCX và email MIME; tạo Backend + PostgreSQL mới, migrate/seed, kiểm thử ABP/JWT, catalog, lifecycle/cân giá đơn, keyword privacy và Publish đánh giá |
 | Secret and dependency scan | Gitleaks quét lịch sử checkout đầy đủ, che giá trị secret; audit NuGet trực tiếp và bắc cầu, chặn High/Critical |
 | Docker package | Sau khi các check trên thành công, build image gắn commit SHA, lưu image ID; chưa publish/deploy |
 
@@ -43,6 +43,7 @@ dotnet build WashGo.HttpApi.Host/WashGo.HttpApi.Host.csproj -c Release --no-rest
 dotnet run --project tests/smoke/PrivateDocuments/PrivateDocuments.csproj -c Release
 dotnet run --project tests/smoke/EmailLogo/EmailLogo.csproj -c Release
 dotnet run --project tests/smoke/Mapping/Mapping.csproj -c Release
+dotnet run --project tests/smoke/Privacy/Privacy.csproj -c Release
 ./tests/ci/Run-ApiSmoke.ps1
 ./tools/ci/Security.ps1
 ```
@@ -56,7 +57,7 @@ Lệnh API test tự dựng/dọn DB test; không chạy `docker compose down -v
 - Backend Docker + PostgreSQL mới PASS migrate/seed và bộ API catalog: visibility, name/price sort, khoảng giá/loại dịch vụ nhiều lựa chọn, validation, pagination và cleanup. Container test đã dọn.
 - Gitleaks v8.30.0 quét 143 commit local, không phát hiện secret theo bộ luật scanner. Không phải cam kết mọi hình thức rò rỉ đều đã được phát hiện.
 - **Phương án cuối:** bỏ AutoMapper/Volo.Abp.AutoMapper, dùng Mapster 10.0.14 MIT qua provider ABP; Caching.Memory 8.0.1, System.Text.Json 8.0.6 và JWT 8.14.0. Không cần key. Sau chuyển Mapster, Security local PASS (0 High/Critical), Docker HTTP mapping/JWT/catalog và vòng đời đơn/actual-weight PASS; giữ nguyên gate.
-- Workflow đã qua actionlint và có run GitHub đầu tiên theo ảnh/log PR #106: Build/Analyze/Regression xanh, Security đỏ với graph cũ. Bản vá local chưa commit/push; chưa khẳng định run GitHub mới xanh. Kết quả local không thay lịch sử Actions thật.
+- Workflow đã qua actionlint và có run GitHub đầu tiên theo ảnh/log PR #106: Build/Analyze/Regression xanh, Security đỏ với graph cũ. Bản vá 04bb072 đã commit/push và người dùng gửi ảnh cả 5 check PASS. Các thay đổi privacy/review mới trên nhánh riêng chưa push nên chưa có kết quả Actions cho cụm mới.
 - Chưa có coverage report, duplication metric, gate 0 lint/0 analyzer warning toàn repo, E2E/UI/tải, registry, staging, rollback hoặc monitoring. Chưa đạt trọn TC2.4/TC2.5/TC2.6 chỉ nhờ workflow này.
 
 Không thêm `continue-on-error`, giảm severity hoặc allowlist rộng chỉ để job Security xanh. Finding giả cần bằng chứng và ngoại lệ hẹp có người review; dependency có lỗi thật cần nâng/test hoặc quyết định xử lý được ghi lại.
