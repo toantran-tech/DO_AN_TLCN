@@ -12,6 +12,7 @@ using WashGo.Application.Contracts.Features.ServiceAreaContracts.Services;
 using WashGo.Core.Domain.Shared.Bases;
 using WashGo.Domain.Entities.Partner;
 using WashGo.Domain.Shared.Enums;
+using WashGo.Domain.Entities.Feedback;
 
 namespace WashGo.Application.Features.ServiceAreaApplication.Services
 {
@@ -138,7 +139,7 @@ namespace WashGo.Application.Features.ServiceAreaApplication.Services
             // Active Merchants plus any inactive Merchant still linked, so the Admin can see and remove it.
             var merchants = await _merchantRepo.GetListAsync(x => x.Status == MerchantStatus.Active || linkedIds.Contains(x.Id));
             var merchantIds = merchants.Select(m => m.Id).ToList();
-            var ratingCounts = (await AsyncExecuter.ToListAsync((await LazyServiceProvider.LazyGetRequiredService<Volo.Abp.Domain.Repositories.IRepository<WashGo.Domain.Entities.Feedback.OrderRating, Guid>>()
+            var ratingCounts = (await AsyncExecuter.ToListAsync((await LazyServiceProvider.LazyGetRequiredService<IRepository<OrderRating, Guid>>()
                     .GetQueryableAsync()).Where(r => !r.IsDeleted && !r.IsHidden && r.MerchantId != null && merchantIds.Contains(r.MerchantId.Value))
                     .GroupBy(r => r.MerchantId!.Value).Select(g => new { g.Key, Count = g.Count() })))
                 .ToDictionary(x => x.Key, x => x.Count);
@@ -164,7 +165,7 @@ namespace WashGo.Application.Features.ServiceAreaApplication.Services
             };
         }
 
-        private async System.Threading.Tasks.Task FillMerchantCountsAsync(List<ServiceAreaResultDto> areas)
+        private async Task FillMerchantCountsAsync(List<ServiceAreaResultDto> areas)
         {
             var ids = areas.Select(x => x.Id).ToList();
             var counts = (await _msaRepo.GetListAsync(x => ids.Contains(x.ServiceAreaId) && x.IsActive))

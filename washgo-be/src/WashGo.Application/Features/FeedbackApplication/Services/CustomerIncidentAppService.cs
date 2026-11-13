@@ -19,6 +19,7 @@ using WashGo.Domain.Entities.Identity;
 using WashGo.Domain.Entities.WashOrder;
 using WashGo.Domain.Entities.WashOrder.Interfaces;
 using WashGo.Domain.Shared.Enums;
+using System.Net;
 
 namespace WashGo.Application.Features.FeedbackApplication.Services
 {
@@ -61,7 +62,7 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
 
         private static PaginatedResult<IncidentResultDto> Invalid(string message) => new()
         {
-            StatusCode = System.Net.HttpStatusCode.BadRequest,
+            StatusCode = HttpStatusCode.BadRequest,
             Succeeded = false,
             Message = message
         };
@@ -247,8 +248,8 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
             var incident = await _incidentRepo.GetForUpdateAsync(id);
             if (incident == null || (!IsAdmin && incident.CustomerId != userId))
                 return NotFound<IncidentMessageDto>(NotFoundMessage);
-            if (IsAdmin && string.IsNullOrWhiteSpace(command.ExpectedVersion)) return AdministrativeWriteGuard.Error<IncidentMessageDto>(System.Net.HttpStatusCode.BadRequest, "ExpectedVersionRequired", "Thiếu expectedVersion.");
-            if (command.ExpectedVersion != null && command.ExpectedVersion != incident.Revision.ToString()) return AdministrativeWriteGuard.Error<IncidentMessageDto>(System.Net.HttpStatusCode.Conflict, "VersionMismatch", "Khiếu nại đã thay đổi.");
+            if (IsAdmin && string.IsNullOrWhiteSpace(command.ExpectedVersion)) return AdministrativeWriteGuard.Error<IncidentMessageDto>(HttpStatusCode.BadRequest, "ExpectedVersionRequired", "Thiếu expectedVersion.");
+            if (command.ExpectedVersion != null && command.ExpectedVersion != incident.Revision.ToString()) return AdministrativeWriteGuard.Error<IncidentMessageDto>(HttpStatusCode.Conflict, "VersionMismatch", "Khiếu nại đã thay đổi.");
             // The customer adds evidence while the incident is open; the Admin can still explain the outcome later.
             if (!IsAdmin && incident.Status != IncidentStatus.Pending)
                 return BadRequest<IncidentMessageDto>(NotPendingMessage);
@@ -285,7 +286,7 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
         public async Task<PaginatedResult<IncidentMessageDto>> GetMessagePageAsync(Guid id, int page, int take)
         {
             var incident = await _incidentRepo.FindAsync(id);
-            if (incident == null || (!IsAdmin && incident.CustomerId != CurrentUser.Id)) return new() { Succeeded = false, StatusCode = System.Net.HttpStatusCode.NotFound, Message = NotFoundMessage };
+            if (incident == null || (!IsAdmin && incident.CustomerId != CurrentUser.Id)) return new() { Succeeded = false, StatusCode = HttpStatusCode.NotFound, Message = NotFoundMessage };
             page = Math.Max(1, page); take = Math.Clamp(take, 1, 100);
             var q = (await _messageRepo.GetQueryableAsync()).Where(x => x.IncidentId == id);
             var count = await AsyncExecuter.CountAsync(q);

@@ -14,6 +14,8 @@ using WashGo.Core.Domain.Shared.Bases;
 using WashGo.Domain.Entities.Identity;
 using WashGo.Domain.Entities.WashOrder.Interfaces;
 using WashGo.Domain.Shared.Validation;
+using System.Collections.Generic;
+using System.Globalization;
 
 namespace WashGo.Application.Features.AdminApplication.Services
 {
@@ -64,7 +66,7 @@ namespace WashGo.Application.Features.AdminApplication.Services
                     Message = "Hồ sơ đã được thay đổi ở nơi khác; dữ liệu mới nhất được trả kèm, vui lòng kiểm tra rồi lưu lại."
                 };
 
-            var changed = new System.Collections.Generic.List<string>();
+            var changed = new List<string>();
             if (fullName != null && fullName != user.FullName) { user.FullName = fullName; changed.Add("fullName"); }
             if (phone != null)
             {
@@ -90,7 +92,7 @@ namespace WashGo.Application.Features.AdminApplication.Services
         }
 
         // UpdatedAt has microsecond precision in PostgreSQL: its ticks / 10 make a stable version.
-        private static string Version(User user) => (user.UpdatedAt.Ticks / 10).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        private static string Version(User user) => (user.UpdatedAt.Ticks / 10).ToString(CultureInfo.InvariantCulture);
 
         private static AdminProfileDto ToDto(User user) => new()
         {

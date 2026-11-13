@@ -7,6 +7,7 @@ using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
 using WashGo.Application.Contracts.Features.WashOrderContracts.Results;
 using WashGo.Domain.Shared.Enums;
+using PdfSettings = global::QuestPDF.Settings;
 
 namespace WashGo.Application.Features.WashOrderApplication.Receipts
 {
@@ -24,8 +25,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Receipts
             lock (Gate)
             {
                 if (_ready) return;
-                QuestPDF.Settings.License = LicenseType.Community;
-                QuestPDF.Settings.UseEnvironmentFonts = false;
+                PdfSettings.License = LicenseType.Community;
+                PdfSettings.UseEnvironmentFonts = false;
                 var assembly = typeof(ReceiptPdfRenderer).Assembly;
                 foreach (var name in new[] { "WashGo.ReceiptFonts.Regular.ttf", "WashGo.ReceiptFonts.Bold.ttf" })
                 {

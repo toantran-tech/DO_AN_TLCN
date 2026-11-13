@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using WashGo.Domain.Shared.Enums;
 using System.Text.Json.Serialization;
+using WashGo.Application.Contracts.Features.AuditContracts.Commands;
 
 namespace WashGo.Application.Contracts.Features.FeedbackContracts.Commands
 {
@@ -37,7 +38,7 @@ namespace WashGo.Application.Contracts.Features.FeedbackContracts.Commands
         public Guid OperationId { get; set; }
         public string Action { get; set; } = string.Empty;
         public string? Reason { get; set; }
-        public List<WashGo.Application.Contracts.Features.AuditContracts.Commands.AdministrativeBatchItem> Items { get; set; } = [];
+        public List<AdministrativeBatchItem> Items { get; set; } = [];
     }
 
     public class CreateIncidentCommand

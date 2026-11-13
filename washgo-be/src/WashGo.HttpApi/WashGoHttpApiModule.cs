@@ -22,6 +22,10 @@ using WashGo.HttpApi.Endpoints.ServiceProposal;
 using WashGo.HttpApi.Endpoints.ServiceArea;
 using WashGo.HttpApi.Endpoints.WashOrder;
 using WashGo.HttpApi.Endpoints.WashService;
+using WashGo.HttpApi.Endpoints.Admin;
+using WashGo.HttpApi.Endpoints.Audit;
+using WashGo.HttpApi.Endpoints.Chatbot;
+using WashGo.HttpApi.Endpoints.MerchantReport;
 
 namespace WashGo.HttpApi
 {
@@ -35,18 +39,19 @@ namespace WashGo.HttpApi
         public override void ConfigureServices(ServiceConfigurationContext context)
         {
             context.Services.AddTransient<IEndpointBase, AuthHandler>();
-            context.Services.AddTransient<IEndpointBase, WashGo.HttpApi.Endpoints.Audit.AuditLogHandler>();
-            context.Services.AddTransient<IEndpointBase, WashGo.HttpApi.Endpoints.Audit.AdministrativeOperationHandler>();
-            context.Services.AddTransient<IEndpointBase, WashGo.HttpApi.Endpoints.Auth.AccountSecurityHandler>();
-            context.Services.AddTransient<IEndpointBase, WashGo.HttpApi.Endpoints.Admin.AdminProfileHandler>();
-            context.Services.AddTransient<IEndpointBase, WashGo.HttpApi.Endpoints.Admin.AdminDashboardHandler>();
+            context.Services.AddTransient<IEndpointBase, AuditLogHandler>();
+            context.Services.AddTransient<IEndpointBase, AdministrativeOperationHandler>();
+            context.Services.AddTransient<IEndpointBase, AccountSecurityHandler>();
+            context.Services.AddTransient<IEndpointBase, AdminProfileHandler>();
+            context.Services.AddTransient<IEndpointBase, AdminDashboardHandler>();
             context.Services.AddTransient<IEndpointBase, CustomerHandler>();
+            context.Services.AddTransient<IEndpointBase, ChatbotHandler>();
             context.Services.AddTransient<IEndpointBase, WashOrderHandler>();
             context.Services.AddTransient<IEndpointBase, LockerHandler>();
             context.Services.AddTransient<IEndpointBase, WashServiceHandler>();
             context.Services.AddTransient<IEndpointBase, ServiceAreaHandler>();
             context.Services.AddTransient<IEndpointBase, MerchantHandler>();
-            context.Services.AddTransient<IEndpointBase, WashGo.HttpApi.Endpoints.MerchantReport.MerchantReportHandler>();
+            context.Services.AddTransient<IEndpointBase, MerchantReportHandler>();
             context.Services.AddTransient<IEndpointBase, PaymentHandler>();
             context.Services.AddTransient<IEndpointBase, PromotionHandler>();
             context.Services.AddTransient<IEndpointBase, FileHandler>();

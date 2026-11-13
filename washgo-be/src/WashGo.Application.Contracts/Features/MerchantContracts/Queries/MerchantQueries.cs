@@ -58,6 +58,6 @@ namespace WashGo.Application.Contracts.Features.MerchantContracts.Queries
     {
         public int? Page { get; set; }
         public int? Take { get; set; }
-        public WashGo.Domain.Shared.Enums.MerchantSlaAlertType? AlertType { get; set; }
+        public MerchantSlaAlertType? AlertType { get; set; }
     }
 }

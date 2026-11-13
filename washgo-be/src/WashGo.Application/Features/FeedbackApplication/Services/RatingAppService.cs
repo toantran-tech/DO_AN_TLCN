@@ -20,6 +20,8 @@ using WashGo.Domain.Entities.Feedback;
 using WashGo.Domain.Entities.Partner;
 using WashGo.Domain.Entities.WashOrder.Interfaces;
 using WashGo.Domain.Shared.Enums;
+using System.Data;
+using WashGo.Application.Contracts.Features.AuditContracts.Commands;
 
 namespace WashGo.Application.Features.FeedbackApplication.Services
 {
@@ -200,7 +202,7 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
 
         public async Task<BaseResponse<RatingSummaryDto>> GetSummaryAsync(RatingFilterQuery query)
         {
-            using var snapshot = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true, isolationLevel: System.Data.IsolationLevel.RepeatableRead);
+            using var snapshot = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true, isolationLevel: IsolationLevel.RepeatableRead);
             var (queryable, error) = await FilterAsync(query);
             if (queryable == null) return BadRequest<RatingSummaryDto>(error!);
             var groups = await AsyncExecuter.ToListAsync(queryable.GroupBy(x => new { x.OverallStars, x.IsHidden })
@@ -279,7 +281,7 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
             var reason = command.Reason?.Trim();
             if (command.Action == "Hide" && (string.IsNullOrWhiteSpace(reason) || reason.Length > 500))
                 return AdministrativeWriteGuard.Error<AdministrativeBatchResultDto>(HttpStatusCode.BadRequest, "ReasonRequired", "Ẩn hàng loạt cần một lý do chung 1-500 ký tự.");
-            var batch = new WashGo.Application.Contracts.Features.AuditContracts.Commands.AdministrativeBatchCommand
+            var batch = new AdministrativeBatchCommand
             {
                 OperationId = command.OperationId, Action = command.Action, Items = command.Items ?? [], Reason = reason
             };

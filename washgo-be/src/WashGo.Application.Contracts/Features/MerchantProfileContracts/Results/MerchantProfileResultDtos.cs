@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using WashGo.Domain.Shared.Enums;
+using WashGo.Application.Contracts.Features.FileContracts.Results;
 
 namespace WashGo.Application.Contracts.Features.MerchantProfileContracts.Results
 {
@@ -54,7 +55,7 @@ namespace WashGo.Application.Contracts.Features.MerchantProfileContracts.Results
         public string Version { get; set; } = string.Empty;
         /// <summary>null khi không có giá trị cũ.</summary>
         public LegacyBusinessLicenseDto? LegacyBusinessLicense { get; set; }
-        public List<WashGo.Application.Contracts.Features.FileContracts.Results.PrivateDocumentDto> Documents { get; set; } = [];
+        public List<PrivateDocumentDto> Documents { get; set; } = [];
         public Guid? BusinessLicenseDocumentId { get; set; }
         public Guid? ContractDocumentId { get; set; }
         public Guid? SlaDocumentId { get; set; }

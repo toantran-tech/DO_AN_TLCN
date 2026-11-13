@@ -10,6 +10,7 @@ using WashGo.Core.Domain.Shared.Bases;
 using WashGo.Domain.Entities.Partner;
 using WashGo.Domain.Entities.WashOrder.Interfaces;
 using WashGo.Domain.Services.Identity;
+using System.Globalization;
 
 namespace WashGo.Application.Features.MerchantApplication.Services;
 
@@ -24,7 +25,7 @@ public class MerchantWriteGuard : ITransientDependency
     { _repo = repo; _locks = locks; _conflicts = conflicts; }
 
     // Opaque string: .NET ticks/microseconds exceed JavaScript's safe integer range.
-    public static string Version(DateTime timestamp) => (timestamp.Ticks / 10).ToString(System.Globalization.CultureInfo.InvariantCulture);
+    public static string Version(DateTime timestamp) => (timestamp.Ticks / 10).ToString(CultureInfo.InvariantCulture);
     public static string Version(Merchant merchant) => Version(merchant.UpdatedAt);
     public static void Touch(Merchant merchant)
     {

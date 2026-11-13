@@ -10,6 +10,7 @@ using WashGo.Domain.Entities.Locker;
 using WashGo.Domain.Entities.Locker.Interfaces;
 using WashGo.Domain.Entities.WashOrder;
 using WashGo.Domain.Shared.Enums;
+using WashServiceEntity = global::WashGo.Domain.Entities.WashService.WashService;
 
 namespace WashGo.Application.Features.WashOrderApplication.Services
 {
@@ -18,7 +19,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
     {
         private readonly IRepository<WashOrderItem, Guid> _itemRepo;
         private readonly IRepository<LockerBox, Guid> _boxRepo;
-        private readonly IRepository<WashGo.Domain.Entities.WashService.WashService, Guid> _serviceRepo;
+        private readonly IRepository<WashServiceEntity, Guid> _serviceRepo;
         private readonly IRepository<WashOrderTimeline, Guid> _timelineRepo;
         private readonly ILockerRepository _lockerRepo;
         private readonly IAsyncQueryableExecuter _executer;
@@ -26,7 +27,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
 
         public OrderListEnricher(IRepository<WashOrderItem, Guid> itemRepo, IRepository<LockerBox, Guid> boxRepo,
             ILockerRepository lockerRepo, IAsyncQueryableExecuter executer,
-            IRepository<WashGo.Domain.Entities.WashService.WashService, Guid> serviceRepo, IRepository<WashOrderTimeline, Guid> timelineRepo,
+            IRepository<WashServiceEntity, Guid> serviceRepo, IRepository<WashOrderTimeline, Guid> timelineRepo,
             IRepository<DeliveryTask, Guid> tasks)
         {
             _tasks = tasks;

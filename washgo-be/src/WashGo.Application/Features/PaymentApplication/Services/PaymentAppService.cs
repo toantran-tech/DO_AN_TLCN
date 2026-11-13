@@ -25,6 +25,9 @@ using WashGo.Domain.Entities.WashOrder.Interfaces;
 
 using WashGo.Application.Features.NotificationApplication.Services;
 using WashGo.Application.Features.SystemSettingApplication.Services;
+using WashGo.Application.Contracts.Features.PaymentContracts.Queries;
+using WashGo.Domain.Entities.Identity;
+using WashGo.Domain.Entities.Partner;
 
 namespace WashGo.Application.Features.PaymentApplication.Services
 {
@@ -702,7 +705,7 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             return Success(dto);
         }
 
-        public async Task<PaginatedResult<RefundRequestDto>> FilterRefundRequestsAsync(WashGo.Application.Contracts.Features.PaymentContracts.Queries.RefundFilterQuery query)
+        public async Task<PaginatedResult<RefundRequestDto>> FilterRefundRequestsAsync(RefundFilterQuery query)
         {
             var error = query.DateRangeError();
             var sorts = query.SortBy ?? [];
@@ -768,11 +771,11 @@ namespace WashGo.Application.Features.PaymentApplication.Services
                 (x.Status == PaymentTransactionStatus.Succeeded || x.Status == PaymentTransactionStatus.Refunded));
             var refunds = await AsyncExecuter.ToListAsync((await _refundRequestRepo.GetQueryableAsync()).Where(x => ids.Contains(x.OrderId) && !x.IsDeleted && x.Status == RefundRequestStatus.Refunded)
                 .GroupBy(x => x.OrderId).Select(g => new { Id = g.Key, Amount = g.Sum(x => x.Amount) }));
-            var users = new Dictionary<Guid, WashGo.Domain.Entities.Identity.User>();
+            var users = new Dictionary<Guid, User>();
             if (CurrentUser.IsInRole("Admin"))
             {
                 var userIds = rows.Select(x => x.CustomerId).Distinct().ToList();
-                users = (await LazyServiceProvider.LazyGetRequiredService<IRepository<WashGo.Domain.Entities.Identity.User, Guid>>().GetListAsync(x => userIds.Contains(x.Id))).ToDictionary(x => x.Id);
+                users = (await LazyServiceProvider.LazyGetRequiredService<IRepository<User, Guid>>().GetListAsync(x => userIds.Contains(x.Id))).ToDictionary(x => x.Id);
             }
             foreach (var dto in rows)
             {
@@ -787,7 +790,7 @@ namespace WashGo.Application.Features.PaymentApplication.Services
                 if (users.TryGetValue(dto.CustomerId, out var customer)) { dto.CustomerEmail = customer.Email; dto.CustomerPhoneNumber = customer.Phone; dto.CustomerAvatarUrl = customer.Avatar; }
             }
             var merchantIds = rows.Where(x => x.MerchantId.HasValue).Select(x => x.MerchantId!.Value).Distinct().ToList();
-            var merchants = (await LazyServiceProvider.LazyGetRequiredService<IRepository<WashGo.Domain.Entities.Partner.Merchant, Guid>>().GetListAsync(x => merchantIds.Contains(x.Id))).ToDictionary(x => x.Id);
+            var merchants = (await LazyServiceProvider.LazyGetRequiredService<IRepository<Merchant, Guid>>().GetListAsync(x => merchantIds.Contains(x.Id))).ToDictionary(x => x.Id);
             foreach (var dto in rows) if (dto.MerchantId is { } merchantId) dto.MerchantName = merchants.GetValueOrDefault(merchantId)?.BusinessName;
         }
 
@@ -800,9 +803,9 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             if (request == null)
                 return NotFound<RefundRequestDto>("Không tìm thấy yêu cầu hoàn tiền.");
             if (request.Status != RefundRequestStatus.Pending)
-                return AdministrativeWriteGuard.Error<RefundRequestDto>(System.Net.HttpStatusCode.Conflict, "AlreadyReviewed", "Yêu cầu này đã được xử lý trước đó.");
-            if (string.IsNullOrWhiteSpace(command.ExpectedVersion)) return AdministrativeWriteGuard.Error<RefundRequestDto>(System.Net.HttpStatusCode.BadRequest, "ExpectedVersionRequired", "Thiếu expectedVersion.");
-            if (command.ExpectedVersion != ToDto(request).Version) return AdministrativeWriteGuard.Error<RefundRequestDto>(System.Net.HttpStatusCode.Conflict, "VersionMismatch", "Yêu cầu hoàn tiền đã thay đổi.");
+                return AdministrativeWriteGuard.Error<RefundRequestDto>(HttpStatusCode.Conflict, "AlreadyReviewed", "Yêu cầu này đã được xử lý trước đó.");
+            if (string.IsNullOrWhiteSpace(command.ExpectedVersion)) return AdministrativeWriteGuard.Error<RefundRequestDto>(HttpStatusCode.BadRequest, "ExpectedVersionRequired", "Thiếu expectedVersion.");
+            if (command.ExpectedVersion != ToDto(request).Version) return AdministrativeWriteGuard.Error<RefundRequestDto>(HttpStatusCode.Conflict, "VersionMismatch", "Yêu cầu hoàn tiền đã thay đổi.");
             if (command.ReviewNote?.Trim().Length > 1000 || (!command.Approve && string.IsNullOrWhiteSpace(command.ReviewNote))) return BadRequest<RefundRequestDto>("Lý do từ chối bắt buộc; ghi chú tối đa 1000 ký tự.");
 
             request.Status = command.Approve ? RefundRequestStatus.Approved : RefundRequestStatus.Rejected;
@@ -833,13 +836,13 @@ namespace WashGo.Application.Features.PaymentApplication.Services
                 return NotFound<RefundRequestDto>("Không tìm thấy yêu cầu hoàn tiền.");
             if (request.Status == RefundRequestStatus.Refunded)
             {
-                if (request.RefundReference != command.RefundReference?.Trim()) return AdministrativeWriteGuard.Error<RefundRequestDto>(System.Net.HttpStatusCode.Conflict, "RefundReferenceChanged", "Đã hoàn tiền với mã tham chiếu khác.");
+                if (request.RefundReference != command.RefundReference?.Trim()) return AdministrativeWriteGuard.Error<RefundRequestDto>(HttpStatusCode.Conflict, "RefundReferenceChanged", "Đã hoàn tiền với mã tham chiếu khác.");
                 var old = Success(ToDto(request), "Yêu cầu này đã được hoàn tiền.");
                 await Writes.RecordAsync(command.OperationId, CurrentUser.Id.Value, "Finance", "ConfirmRefund", id.ToString(), command, old);
                 await uow.CompleteAsync(); return old;
             }
-            if (string.IsNullOrWhiteSpace(command.ExpectedVersion)) return AdministrativeWriteGuard.Error<RefundRequestDto>(System.Net.HttpStatusCode.BadRequest, "ExpectedVersionRequired", "Thiếu expectedVersion.");
-            if (command.ExpectedVersion != ToDto(request).Version) return AdministrativeWriteGuard.Error<RefundRequestDto>(System.Net.HttpStatusCode.Conflict, "VersionMismatch", "Yêu cầu hoàn tiền đã thay đổi.");
+            if (string.IsNullOrWhiteSpace(command.ExpectedVersion)) return AdministrativeWriteGuard.Error<RefundRequestDto>(HttpStatusCode.BadRequest, "ExpectedVersionRequired", "Thiếu expectedVersion.");
+            if (command.ExpectedVersion != ToDto(request).Version) return AdministrativeWriteGuard.Error<RefundRequestDto>(HttpStatusCode.Conflict, "VersionMismatch", "Yêu cầu hoàn tiền đã thay đổi.");
             if (request.Status != RefundRequestStatus.Approved)
                 return BadRequest<RefundRequestDto>("Chỉ xác nhận hoàn tiền sau khi yêu cầu đã được duyệt.");
             if (string.IsNullOrWhiteSpace(command.RefundReference) || command.RefundReference.Trim().Length > 120)

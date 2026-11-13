@@ -4,6 +4,20 @@
 
 # Tiến độ WashGo theo Đặc tả usecase (Backend trước)
 
+## Chuẩn hóa using ngày 13/11/2026
+
+- Đã đưa các tham chiếu type đầy đủ trong source BE sang using/alias đầu file; bỏ qua migration/generated files và giữ nguyên chuỗi/comment.
+- Build BE PASS, 0 lỗi; còn 5 nullable warnings có sẵn. Không đổi nghiệp vụ hoặc schema DB.
+
+## Chatbot AI ngày 13/11/2026 — BE và nghiệm thu fixture
+
+- Đã triển khai UC 1.5.1–1.5.6: hội thoại/tin nhắn, lazy load cursor, owner checks, gửi lại an toàn, quota/lease và retention 90 ngày.
+- Công cụ chỉ đọc nguồn dịch vụ, locker, đơn/ETA/quote, chính sách; hướng dẫn versioned. Không có công cụ ghi trạng thái/đặt đơn/thanh toán, không đưa mã mở tủ vào ngữ cảnh AI.
+- Có adapter Gemini/configuration và 6 API Customer. Docker đã build/recreate, Swagger tải được. Migration AddCustomerChatbot áp dụng local, model sạch.
+- Smoke fixture PASS gồm concurrency/delete race/purge/privacy; adapter HTTP contract không gọi mạng PASS. Container thật khi thiếu key trả 503 AiNotConfigured.
+- Key đã được điền và nạp lại Docker. Gemini thật PASS 4 ca hướng dẫn nhận đồ/dịch vụ/locker có-không vị trí; còn nghiệm thu rộng đơn/ETA/chính sách, prompt-injection và độ trễ/quota. Chưa làm FE. Đã tách nhánh refactor và chatbot; chưa push, xem [hướng dẫn](docs/CHATBOT_GIT_PUSH_PLAN.md).
+- Chi tiết: [checklist](IMPLEMENTATION_CHECKLIST.md), [API review, cấu hình key và chạy test](docs/CHATBOT_API_REVIEW.md).
+
 ## Shipper ngày 11/11/2026 — hoàn tất BE cốt lõi và nghiệm thu local
 
 Đã triển khai phần BE cốt lõi của sáu chặng theo [SHIPPER_IMPLEMENTATION_PLAN.md](docs/SHIPPER_IMPLEMENTATION_PLAN.md). Hợp đồng API/guard và phần ngoài phạm vi tại [SHIPPER_API_REVIEW.md](docs/SHIPPER_API_REVIEW.md); kết quả build/migration/smoke và việc còn kiểm tra tại [checklist](IMPLEMENTATION_CHECKLIST.md), mục Shipper 11/11. Không coi IoT/2FA/thu nhập/tự nhận việc là đã triển khai. Đợt này được chia thành 3 nhánh nối tiếp; xem [hướng dẫn PR](docs/SHIPPER_GIT_PUSH_PLAN.md).

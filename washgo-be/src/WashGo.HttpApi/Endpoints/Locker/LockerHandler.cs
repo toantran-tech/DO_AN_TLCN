@@ -7,6 +7,8 @@ using WashGo.Application.Contracts.Features.LockerContracts.Commands;
 using WashGo.Application.Contracts.Features.LockerContracts.Queries;
 using WashGo.Application.Contracts.Features.LockerContracts.Services;
 using WashGo.Core.Endpoint;
+using System.Net;
+using WashGo.Application.Contracts.Features.AuditContracts.Commands;
 
 namespace WashGo.HttpApi.Endpoints.Locker
 {
@@ -45,7 +47,7 @@ namespace WashGo.HttpApi.Endpoints.Locker
                     FromDate = fromDate, ToDate = toDate, BoxId = boxId, Page = page ?? 1, Take = take ?? 20
                 });
                 // Paged results map every failure to 400; a locker outside the caller's scope is 404.
-                return result.StatusCode == System.Net.HttpStatusCode.NotFound ? Results.NotFound(result) : result.CustomResult();
+                return result.StatusCode == HttpStatusCode.NotFound ? Results.NotFound(result) : result.CustomResult();
             })
                 .WithName("Lịch sử sử dụng Locker")
                 .WithSummary("Các lượt dùng ô (usageId, boxId, mã đơn, ô, gửi/trả, thời gian đặt vào/lấy ra, trạng thái đơn); lọc theo thời gian đặt vào và theo ô. Merchant chỉ thấy lượt của đơn thuộc tiệm mình (locker dùng chung). Khoảng ngày sai hoặc boxId không thuộc locker → 400.")
@@ -72,7 +74,7 @@ namespace WashGo.HttpApi.Endpoints.Locker
                 .WithSummary("Cập nhật trạng thái ô tủ Locker.")
                 .WithOpenApi();
 
-            group.MapPost("/batch", async (WashGo.Application.Contracts.Features.AuditContracts.Commands.AdministrativeBatchCommand command, ILockerAppService svc) => (await svc.BatchAsync(command)).CustomResult())
+            group.MapPost("/batch", async (AdministrativeBatchCommand command, ILockerAppService svc) => (await svc.BatchAsync(command)).CustomResult())
                 .RequireAuthorization("AdminOnly").WithSummary("1–50 locker: action=Delete|Status, status đích, id/expectedVersion từng dòng; operationId bắt buộc và replay.").WithOpenApi();
             group.MapPut("/{id:guid}/status", async (Guid id, SetLockerStatusCommand command, ILockerAppService svc) => (await svc.SetStatusAsync(id, command)).CustomResult())
                 .RequireAuthorization("AdminOnly").WithSummary("Đổi trạng thái locker với expectedVersion và operationId; chặn ngừng hoạt động khi còn giữ ô/đồ.").WithOpenApi();

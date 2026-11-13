@@ -12,6 +12,8 @@ using WashGo.Domain.Entities.Locker.Interfaces;
 using WashGo.Domain.Entities.Partner;
 using WashGo.Domain.Entities.Partner.Interfaces;
 using WashGo.Domain.Entities.WashOrder;
+using WashGo.Domain.Shared.Enums;
+using WashServiceEntity = global::WashGo.Domain.Entities.WashService.WashService;
 
 namespace WashGo.Application.Features.WashOrderApplication.Services
 {
@@ -22,7 +24,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
     public class OrderMediaEnricher : ITransientDependency
     {
         private readonly IRepository<WashOrderItem, Guid> _itemRepo;
-        private readonly IRepository<WashGo.Domain.Entities.WashService.WashService, Guid> _serviceRepo;
+        private readonly IRepository<WashServiceEntity, Guid> _serviceRepo;
         private readonly ILockerRepository _lockerRepo;
         private readonly IRepository<Merchant, Guid> _merchantRepo;
         private readonly IRepository<MerchantImage, Guid> _merchantImageRepo;
@@ -31,7 +33,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
         private readonly IAsyncQueryableExecuter _executer;
 
         public OrderMediaEnricher(IRepository<WashOrderItem, Guid> itemRepo,
-            IRepository<WashGo.Domain.Entities.WashService.WashService, Guid> serviceRepo, ILockerRepository lockerRepo,
+            IRepository<WashServiceEntity, Guid> serviceRepo, ILockerRepository lockerRepo,
             IRepository<Merchant, Guid> merchantRepo, IRepository<MerchantImage, Guid> merchantImageRepo,
             IRepository<User, Guid> userRepo, IShipperRepository shipperRepo, IAsyncQueryableExecuter executer)
         {
@@ -86,7 +88,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                     .ToDictionary(x => x.Id, x => x.Avatar);
             }
 
-            var shippers = new Dictionary<Guid, (string? Avatar, string? Phone, string Email, Domain.Shared.Enums.VehicleType Vehicle, string? Plate)>();
+            var shippers = new Dictionary<Guid, (string? Avatar, string? Phone, string Email, VehicleType Vehicle, string? Plate)>();
             if (role is "Admin" or "Merchant")
             {
                 var shipperIds = orders.Where(x => x.ShipperId.HasValue).Select(x => x.ShipperId!.Value).Distinct().ToList();
@@ -109,7 +111,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                     }).ToList();
                 order.LockerImageUrls = lockerImages.GetValueOrDefault(order.LockerId) ?? [];
                 order.ReturnLockerImageUrls = lockerImages.GetValueOrDefault(order.ReturnLockerId ?? order.LockerId) ?? [];
-                order.TaskLockerImageUrls = order.AssignedTaskType == Domain.Shared.Enums.DeliveryTaskType.Collect
+                order.TaskLockerImageUrls = order.AssignedTaskType == DeliveryTaskType.Collect
                     ? order.LockerImageUrls : order.ReturnLockerImageUrls;
                 if (order.MerchantId is { } merchantId)
                 {

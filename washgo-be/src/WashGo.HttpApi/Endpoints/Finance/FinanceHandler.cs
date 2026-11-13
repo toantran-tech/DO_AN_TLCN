@@ -8,6 +8,7 @@ using WashGo.Application.Contracts.Features.FinanceContracts.Commands;
 using WashGo.Application.Contracts.Features.FinanceContracts.Queries;
 using WashGo.Application.Contracts.Features.FinanceContracts.Services;
 using WashGo.Core.Endpoint;
+using System.Net;
 
 namespace WashGo.HttpApi.Endpoints.Finance
 {
@@ -40,15 +41,15 @@ namespace WashGo.HttpApi.Endpoints.Finance
                 .WithSummary("Xuất báo cáo doanh thu ra file CSV.")
                 .WithOpenApi();
 
-            group.MapGet("/commission-snapshots/review", async ([AsParameters] WashGo.Application.Contracts.Features.FinanceContracts.Queries.CommissionReviewQuery query,
-                    WashGo.Application.Contracts.Features.FinanceContracts.Services.ICommissionReviewAppService svc) => (await svc.GetReviewAsync(query)).CustomResult())
+            group.MapGet("/commission-snapshots/review", async ([AsParameters] CommissionReviewQuery query,
+                    ICommissionReviewAppService svc) => (await svc.GetReviewAsync(query)).CustomResult())
                 .RequireAuthorization("AdminOnly")
                 .WithName("Đơn cần đối chiếu tỷ lệ hoa hồng")
                 .WithSummary("Đơn đã thu tiền giặt nhưng thiếu tỷ lệ chốt, hoặc 0% cũ chưa xác minh (không suy từ tỷ lệ hiện tại). Kèm tỷ lệ hiện tại của Merchant (chỉ tham khảo), số đã thu, đã vào kỳ đối soát chưa, có lịch sử phân công không. page, take ≤ 100, merchantId.")
                 .WithOpenApi();
 
-            group.MapPost("/commission-snapshots/{orderId:guid}/reconcile", async (Guid orderId, WashGo.Application.Contracts.Features.FinanceContracts.Commands.ReconcileCommissionCommand command,
-                    WashGo.Application.Contracts.Features.FinanceContracts.Services.ICommissionReviewAppService svc) => (await svc.ReconcileAsync(orderId, command)).CustomResult())
+            group.MapPost("/commission-snapshots/{orderId:guid}/reconcile", async (Guid orderId, ReconcileCommissionCommand command,
+                    ICommissionReviewAppService svc) => (await svc.ReconcileAsync(orderId, command)).CustomResult())
                 .RequireAuthorization("AdminOnly")
                 .WithName("Đối chiếu tỷ lệ hoa hồng của đơn")
                 .WithSummary("Admin xác nhận/sửa tỷ lệ của một đơn kèm căn cứ (10-1000 ký tự); expectedRate hoặc expectedMissing = true (lệch → 409 RateChanged); đơn đã có khoản trong kỳ đối soát → 409 AlreadySettled. Cập nhật tỷ lệ chụp trên các khoản thu/hoàn chưa đối soát, nguồn = AdminReconciled, ghi nhật ký trước/sau. operationId: gửi lại trả kết quả cũ.")
@@ -94,7 +95,7 @@ namespace WashGo.HttpApi.Endpoints.Finance
                 .WithOpenApi();
             group.MapGet("/settlements/{id:guid}", async (Guid id, IFinanceAppService svc) => (await svc.GetSettlementAsync(id)).CustomResult())
                 .RequireAuthorization("MerchantOrAdmin").WithSummary("Chi tiết kỳ đối soát gồm version, số tiền đã chốt và chứng từ; Merchant chỉ xem của mình.").WithOpenApi();
-            group.MapGet("/settlements/{id:guid}/lines", async (Guid id, int? page, int? take, IFinanceAppService svc) => { var r = await svc.GetSettlementLinesAsync(id, page ?? 1, take ?? 20); return r.StatusCode == System.Net.HttpStatusCode.OK ? Results.Ok(r) : r.StatusCode == System.Net.HttpStatusCode.NotFound ? Results.NotFound(r) : r.StatusCode == System.Net.HttpStatusCode.Forbidden ? Results.Json(r, statusCode: 403) : Results.BadRequest(r); })
+            group.MapGet("/settlements/{id:guid}/lines", async (Guid id, int? page, int? take, IFinanceAppService svc) => { var r = await svc.GetSettlementLinesAsync(id, page ?? 1, take ?? 20); return r.StatusCode == HttpStatusCode.OK ? Results.Ok(r) : r.StatusCode == HttpStatusCode.NotFound ? Results.NotFound(r) : r.StatusCode == HttpStatusCode.Forbidden ? Results.Json(r, statusCode: 403) : Results.BadRequest(r); })
                 .RequireAuthorization("MerchantOrAdmin").WithSummary("Phân trang dòng đối soát; mỗi trang kèm isSnapshot/basis/generatedAt: snapshot lúc chốt kỳ (bất biến) hoặc kỳ cũ tính lại từ nguồn hiện tại (chỉ tham khảo, tổng kỳ giữ nguyên).").WithOpenApi();
 
             group.MapPost("/settlements/{id:guid}/confirm-paid", async (Guid id, ConfirmSettlementPaidCommand command, IFinanceAppService svc) =>

@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Routing;
 using WashGo.Application.Contracts.Features.AuthContracts.Commands;
 using WashGo.Application.Contracts.Features.AuthContracts.Services;
 using WashGo.Core.Endpoint;
+using WashGo.Application.Contracts.Features.AuthContracts.Queries;
 
 namespace WashGo.HttpApi.Endpoints.Auth
 {
@@ -38,7 +39,7 @@ namespace WashGo.HttpApi.Endpoints.Auth
                 .WithSummary("Đổi mật khẩu khi đang đăng nhập: cần mật khẩu hiện tại; mật khẩu mới 8-128 ký tự có hoa/thường/số, khác mật khẩu cũ. Sai mật khẩu hiện tại 5 lần trong 15 phút → 429. revokeOtherSessions (mặc định true) đăng xuất mọi phiên khác, giữ phiên hiện tại.")
                 .WithOpenApi();
 
-            group.MapGet("/sessions", async ([AsParameters] WashGo.Application.Contracts.Features.AuthContracts.Queries.SessionListQuery query, HttpContext http, IAccountSecurityAppService svc) =>
+            group.MapGet("/sessions", async ([AsParameters] SessionListQuery query, HttpContext http, IAccountSecurityAppService svc) =>
                     TryIds(http, out var u, out var s) ? (await svc.GetSessionsAsync(u, s, query)).CustomResult() : Results.Unauthorized())
                 .WithName("Danh sách phiên đăng nhập")
                 .WithSummary("Các phiên còn hiệu lực của chính tài khoản, phân trang (page, take ≤ 100, total, hasMore), mới hoạt động nhất trước; `current` luôn trả phiên đang dùng. Id là phiên logic ổn định qua các lần làm mới token.")

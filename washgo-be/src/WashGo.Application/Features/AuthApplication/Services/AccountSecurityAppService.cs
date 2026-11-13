@@ -13,6 +13,9 @@ using WashGo.Core.Domain.Shared.Bases;
 using WashGo.Domain.Entities.Audit;
 using WashGo.Domain.Entities.Identity;
 using WashGo.Domain.Shared.Enums;
+using PasswordHasher = global::BCrypt.Net.BCrypt;
+using System.Linq.Expressions;
+using WashGo.Application.Contracts.Features.AuthContracts.Queries;
 
 namespace WashGo.Application.Features.AuthApplication.Services
 {
@@ -72,7 +75,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
                     Succeeded = false, StatusCode = HttpStatusCode.TooManyRequests,
                     Message = $"Bạn đã nhập sai mật khẩu hiện tại quá {MaxFailedChanges} lần. Vui lòng thử lại sau {FailedWindow.TotalMinutes:0} phút."
                 };
-            if (string.IsNullOrEmpty(command.CurrentPassword) || !BCrypt.Net.BCrypt.Verify(command.CurrentPassword, user.PasswordHash))
+            if (string.IsNullOrEmpty(command.CurrentPassword) || !PasswordHasher.Verify(command.CurrentPassword, user.PasswordHash))
             {
                 await Audit.LogAsync(new AuditEntry("Auth", "ChangePassword", "User", user.Id.ToString(), user.Email)
                 {
@@ -86,11 +89,11 @@ namespace WashGo.Application.Features.AuthApplication.Services
                 return BadRequest<bool>(passwordError);
             if (command.NewPassword != command.ConfirmNewPassword)
                 return BadRequest<bool>("Xác nhận mật khẩu mới không khớp.");
-            if (BCrypt.Net.BCrypt.Verify(command.NewPassword, user.PasswordHash))
+            if (PasswordHasher.Verify(command.NewPassword, user.PasswordHash))
                 return BadRequest<bool>("Mật khẩu mới phải khác mật khẩu hiện tại.");
 
             var now = DateTime.UtcNow;
-            user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(command.NewPassword);
+            user.PasswordHash = PasswordHasher.HashPassword(command.NewPassword);
             user.PasswordChangedAt = now;
             user.UpdatedAt = now;
             await _userRepo.UpdateAsync(user, autoSave: true);
@@ -107,7 +110,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
         }
 
         public async Task<BaseResponse<SessionListDto>> GetSessionsAsync(Guid userId, Guid sessionId,
-            WashGo.Application.Contracts.Features.AuthContracts.Queries.SessionListQuery query)
+            SessionListQuery query)
         {
             var page = Math.Max(1, query.Page ?? 1);
             var take = Math.Clamp(query.Take ?? 20, 1, 100);
@@ -173,7 +176,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
             return token?.SessionKey ?? tokenId;
         }
 
-        private async Task<int> RevokeAsync(Guid userId, System.Linq.Expressions.Expression<Func<RefreshToken, bool>> which)
+        private async Task<int> RevokeAsync(Guid userId, Expression<Func<RefreshToken, bool>> which)
         {
             var tokens = await AsyncExecuter.ToListAsync((await _tokenRepo.GetQueryableAsync())
                 .Where(x => x.UserId == userId && !x.IsRevoked).Where(which));

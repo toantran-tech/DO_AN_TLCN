@@ -1,5 +1,28 @@
 # Checklist hoàn thiện Backend WashGo
 
+## Chatbot AI — triển khai ngày 13/11/2026
+
+Nguồn: UC 1.5.1–1.5.6. [Plan](docs/CHATBOT_AI_IMPLEMENTATION_PLAN.md), [API review FE và cấu hình/test Gemini](docs/CHATBOT_API_REVIEW.md).
+
+- [x] Hội thoại/tin nhắn riêng Customer; tạo cùng tin đầu, chat tiếp, xóa khỏi lịch sử, lazy load cursor có chữ ký/owner/resource.
+- [x] 6 operations dưới `/customer/chatbot`; chỉ Customer, kiểm tra sở hữu cả history/send/lookup/delete; không lưu hội thoại rỗng.
+- [x] RequestId/fingerprint, lookup/replay, quota, lease, transaction ngắn; không giữ transaction khi gọi AI.
+- [x] Công cụ đọc dịch vụ, locker, đơn/ETA/quote, chính sách và hướng dẫn versioned; cards/sources do server sinh, allowlist dữ liệu, không đưa QR/PIN vào model.
+- [x] Gemini generateContent adapter, giữ thought signatures, giới hạn response, error/timeout mapping; không có production Mock fallback.
+- [x] Lịch sử 90 ngày, worker purge mỗi 30 phút; smoke xác minh ẩn và purge fixture hết hạn. Xóa hội thoại không reset quota hoặc bị response muộn làm sống lại.
+- [x] `chatbot.ps1` PASS qua host test riêng: scopes, cursor/snapshot, replay, nguồn dữ liệu/privacy, lỗi provider, concurrent/busy/delete race, stale lease, purge và quota sau delete.
+- [x] HTTP contract Gemini/cursor không gọi mạng PASS; model EF không còn pending changes. Migration `20261113025410_AddCustomerChatbot` đã áp dụng local.
+- [x] Docker build/recreate PASS; Swagger 5 paths/6 operations; container thật thiếu key trả HTTP 503 `AiNotConfigured`.
+- [x] Có .env/.env.example/compose mapping Gemini; key rỗng và .env bị ignore. Đã có API review/setup cho FE.
+- [x] Gemini key đã nạp Docker; 4 live test HTTP 200/Completed: hướng dẫn nhận đồ, dịch vụ/giá, locker chưa có vị trí và có tọa độ thử. Nguồn/cards đúng; key không in ra, chat thử đã ẩn.
+- [ ] Nghiệm thu rộng model thật: đơn/ETA/snapshot policy, prompt-injection ở lời trả lời, câu hỏi nhiều nghĩa, độ trễ/quota Google.
+- [ ] Kiểm thử FE lazy load/giữ cuộn và trải nghiệm chatbot trên trình duyệt; đợt này chỉ làm BE.
+- [ ] Kiểm thử chuyển mốc quota ngày thực tế và quan sát worker theo lịch; test hiện có gọi trực tiếp repository purge.
+- [x] Tách nhánh/commit theo nhiệm vụ: using refactor và chatbot Gemini, xem [hướng dẫn push/PR](docs/CHATBOT_GIT_PUSH_PLAN.md).
+- [ ] Người dùng push và tạo PR vào develop theo thứ tự; agent chưa push hoặc tạo PR.
+
+Kết quả fixture và Gemini thật được ghi riêng. Fixture dùng project `tests/smoke/ChatbotHost`; container Backend đã gọi Gemini thật, không bật Mock.
+
 ## Shipper — triển khai ngày 11/11/2026
 
 Hợp đồng và breaking changes FE: [SHIPPER_API_REVIEW.md](docs/SHIPPER_API_REVIEW.md). Plan gốc: [SHIPPER_IMPLEMENTATION_PLAN.md](docs/SHIPPER_IMPLEMENTATION_PLAN.md). Đợt này được chia thành 3 nhánh nối tiếp; xem [hướng dẫn PR](docs/SHIPPER_GIT_PUSH_PLAN.md).

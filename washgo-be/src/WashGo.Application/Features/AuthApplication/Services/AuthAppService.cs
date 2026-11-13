@@ -25,10 +25,13 @@ using WashGo.Domain.Entities.Identity.Interfaces;
 using WashGo.Domain.Entities.Partner;
 using WashGo.Domain.Shared.Enums;
 using WashGo.Domain.Shared.Validation;
+using Microsoft.AspNetCore.Http;
+using PasswordHasher = global::BCrypt.Net.BCrypt;
+using Volo.Abp.Auditing;
 
 namespace WashGo.Application.Features.AuthApplication.Services
 {
-    [Volo.Abp.Auditing.DisableAuditing]
+    [DisableAuditing]
     public class AuthAppService : WashGoAppService, IAuthAppService
     {
         private const string VerifiedRegistrationPrefix = "verified-register:";
@@ -80,7 +83,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
             bool isPasswordValid = false;
             if (!string.IsNullOrWhiteSpace(user.PasswordHash))
             {
-                isPasswordValid = BCrypt.Net.BCrypt.Verify(command.Password, user.PasswordHash);
+                isPasswordValid = PasswordHasher.Verify(command.Password, user.PasswordHash);
             }
 
             // Spec order: credentials (4a), then locked account (5a), then role of the portal (6a).
@@ -104,7 +107,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
             {
                 await Audit.LogAsync(new AuditEntry("Auth", "Login", "User", user.Id.ToString(), user.Email)
                 {
-                    Result = WashGo.Domain.Shared.Enums.AuditResult.Denied, ErrorCode = "WrongPortal",
+                    Result = AuditResult.Denied, ErrorCode = "WrongPortal",
                     ActorId = user.Id, ActorName = user.FullName, ActorRole = roleName, Details = new { portal = command.Portal.Trim() }
                 });
                 return BadRequest<AuthResponseDto>("Bạn không có quyền truy cập trang này.");
@@ -144,10 +147,10 @@ namespace WashGo.Application.Features.AuthApplication.Services
         }
 
         // A failed sign-in has no signed-in actor: the attempted account (if it exists) is the actor.
-        private Task AuditLoginFailedAsync(string email, WashGo.Domain.Entities.Identity.User? user, string code) =>
+        private Task AuditLoginFailedAsync(string email, User? user, string code) =>
             Audit.LogAsync(new AuditEntry("Auth", "Login", "User", user?.Id.ToString(), email.Trim().ToLowerInvariant())
             {
-                Result = WashGo.Domain.Shared.Enums.AuditResult.Failed, ErrorCode = code,
+                Result = AuditResult.Failed, ErrorCode = code,
                 ActorId = user?.Id, ActorName = user?.FullName ?? email.Trim().ToLowerInvariant(), ActorRole = user == null ? "Anonymous" : "User"
             });
 
@@ -293,7 +296,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
 
             if (string.IsNullOrWhiteSpace(user.PasswordHash) ||
                 string.IsNullOrWhiteSpace(command.CurrentPassword) ||
-                !BCrypt.Net.BCrypt.Verify(command.CurrentPassword, user.PasswordHash))
+                !PasswordHasher.Verify(command.CurrentPassword, user.PasswordHash))
             {
                 return BadRequest<bool>("Mật khẩu xác nhận không chính xác.");
             }
@@ -458,7 +461,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
                 return BadRequest<RegisterResultDto>("Email chưa được xác minh hoặc phiên xác minh đã hết hạn.");
             }
 
-            if (!BCrypt.Net.BCrypt.Verify(command.VerificationToken, validOtp.CodeHash[VerifiedRegistrationPrefix.Length..]))
+            if (!PasswordHasher.Verify(command.VerificationToken, validOtp.CodeHash[VerifiedRegistrationPrefix.Length..]))
             {
                 return BadRequest<RegisterResultDto>("Phiên xác minh email không hợp lệ.");
             }
@@ -476,7 +479,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
             validOtp.UsedAt = DateTime.UtcNow;
             await _otpRepo.UpdateAsync(validOtp, autoSave: true);
 
-            var passwordHash = BCrypt.Net.BCrypt.HashPassword(command.Password);
+            var passwordHash = PasswordHasher.HashPassword(command.Password);
             var userId = Guid.NewGuid();
 
             var user = new User(userId)
@@ -574,7 +577,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
             }
 
             var randomCode = RandomNumberGenerator.GetInt32(100000, 999999).ToString();
-            var codeHash = BCrypt.Net.BCrypt.HashPassword(randomCode);
+            var codeHash = PasswordHasher.HashPassword(randomCode);
 
             if (!await _authEmailSender.SendOtpAsync(email, randomCode, command.Purpose))
             {
@@ -635,7 +638,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
                 return BadRequest<VerifyOtpResultDto>("Bạn đã nhập sai mã OTP quá số lần quy định.");
             }
 
-            bool isValid = BCrypt.Net.BCrypt.Verify(command.Code, validOtp.CodeHash);
+            bool isValid = PasswordHasher.Verify(command.Code, validOtp.CodeHash);
             if (!isValid)
             {
                 validOtp.AttemptCount++;
@@ -648,7 +651,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
             var verificationToken = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
             var prefix = command.Purpose == OtpPurpose.Register
                 ? VerifiedRegistrationPrefix : VerifiedPasswordResetPrefix;
-            validOtp.CodeHash = prefix + BCrypt.Net.BCrypt.HashPassword(verificationToken);
+            validOtp.CodeHash = prefix + PasswordHasher.HashPassword(verificationToken);
             validOtp.ExpiryDate = DateTime.UtcNow.AddMinutes(10);
             await _otpRepo.UpdateAsync(validOtp, autoSave: true);
             await uow.CompleteAsync();
@@ -682,7 +685,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
             var validOtp = await _otpRepo.GetLatestActiveForUpdateAsync(email, OtpPurpose.ForgotPassword);
             if (validOtp == null ||
                 !validOtp.CodeHash.StartsWith(VerifiedPasswordResetPrefix, StringComparison.Ordinal) ||
-                !BCrypt.Net.BCrypt.Verify(command.VerificationToken, validOtp.CodeHash[VerifiedPasswordResetPrefix.Length..]))
+                !PasswordHasher.Verify(command.VerificationToken, validOtp.CodeHash[VerifiedPasswordResetPrefix.Length..]))
                 return BadRequest<bool>("Phiên đặt lại mật khẩu không hợp lệ hoặc đã hết hạn. Vui lòng yêu cầu OTP mới.");
 
             var user = await _userRepo.FirstOrDefaultAsync(u => u.Email.ToLower() == email);
@@ -691,7 +694,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
                 return NotFound<bool>("Không tìm thấy thông tin tài khoản người dùng.");
             }
 
-            user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(command.NewPassword);
+            user.PasswordHash = PasswordHasher.HashPassword(command.NewPassword);
             user.UpdatedAt = DateTime.UtcNow;
             user.PasswordChangedAt = DateTime.UtcNow;
 
@@ -777,7 +780,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
 
         private async Task<(string token, Guid sessionId)> GenerateAndSaveRefreshTokenAsync(Guid userId, DateTime? startedAt = null, Guid? sessionKey = null)
         {
-            var userAgent = LazyServiceProvider.LazyGetService<Microsoft.AspNetCore.Http.IHttpContextAccessor>()?
+            var userAgent = LazyServiceProvider.LazyGetService<IHttpContextAccessor>()?
                 .HttpContext?.Request.Headers.UserAgent.ToString();
             var randomBytes = new byte[64];
             using var rng = RandomNumberGenerator.Create();

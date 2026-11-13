@@ -18,6 +18,10 @@ using WashGo.Domain.Entities.Promotion;
 using WashGo.Domain.Entities.Promotion.Interfaces;
 using WashGo.Domain.Entities.WashOrder.Interfaces;
 using WashGo.Domain.Shared.Enums;
+using System.Data;
+using WashGo.Application.Contracts.Features.AuditContracts.Commands;
+using WashGo.Application.Contracts.Features.AuditContracts.Results;
+using WashGo.Domain.Entities.Identity;
 
 namespace WashGo.Application.Features.PromotionApplication.Services
 {
@@ -66,8 +70,8 @@ namespace WashGo.Application.Features.PromotionApplication.Services
                 return new() { Succeeded = false, StatusCode = HttpStatusCode.BadRequest, Message = "Bộ lọc lịch sử hoặc trường sắp xếp không hợp lệ." };
             if (!await _promotionRepo.AnyAsync(x => x.Id == id && !x.IsDeleted))
                 return new() { Succeeded = false, StatusCode = HttpStatusCode.NotFound, Message = "Không tìm thấy mã giảm giá." };
-            using var snapshot = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true, isolationLevel: System.Data.IsolationLevel.RepeatableRead);
-            var users = await LazyServiceProvider.LazyGetRequiredService<IRepository<WashGo.Domain.Entities.Identity.User, Guid>>().GetQueryableAsync();
+            using var snapshot = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true, isolationLevel: IsolationLevel.RepeatableRead);
+            var users = await LazyServiceProvider.LazyGetRequiredService<IRepository<User, Guid>>().GetQueryableAsync();
             var orders = await _orderRepo.GetQueryableAsync();
             var q = from usage in await _usageRepo.GetQueryableAsync()
                     join order in orders on usage.OrderId equals order.Id into relatedOrders
@@ -169,14 +173,14 @@ namespace WashGo.Application.Features.PromotionApplication.Services
             dto.ChangeCodeReasonCode = used ? "HasUsageHistory" : null;
             return Success(dto);
         }
-        public async Task<BaseResponse<WashGo.Application.Contracts.Features.AuditContracts.Results.AdministrativeSummaryDto>> GetSummaryAsync()
+        public async Task<BaseResponse<AdministrativeSummaryDto>> GetSummaryAsync()
         {
             var now = DateTime.UtcNow;
             var groups = await AsyncExecuter.ToListAsync((await _promotionRepo.GetQueryableAsync()).Where(x => !x.IsDeleted)
                 .GroupBy(x => !x.IsActive ? PromotionStatus.Inactive : x.StartAt > now ? PromotionStatus.Upcoming : x.EndAt < now ? PromotionStatus.Expired :
                     x.UsageLimit != null && x.UsedCount >= x.UsageLimit ? PromotionStatus.Exhausted : PromotionStatus.Active)
                 .Select(g => new { Status = g.Key, Count = g.Count() }));
-            return Success(new WashGo.Application.Contracts.Features.AuditContracts.Results.AdministrativeSummaryDto { Total = groups.Sum(x => x.Count), Counts = groups.ToDictionary(x => x.Status.ToString(), x => x.Count), GeneratedAt = now });
+            return Success(new AdministrativeSummaryDto { Total = groups.Sum(x => x.Count), Counts = groups.ToDictionary(x => x.Status.ToString(), x => x.Count), GeneratedAt = now });
         }
 
         public async Task<BaseResponse<PromotionResultDto>> CreateAsync(CreatePromotionCommand command)
@@ -329,7 +333,7 @@ namespace WashGo.Application.Features.PromotionApplication.Services
             return entity == null || entity.IsDeleted ? null : entity;
         }
 
-        public Task<BaseResponse<WashGo.Application.Contracts.Features.AuditContracts.Results.AdministrativeBatchResultDto>> BatchAsync(WashGo.Application.Contracts.Features.AuditContracts.Commands.AdministrativeBatchCommand command) =>
+        public Task<BaseResponse<AdministrativeBatchResultDto>> BatchAsync(AdministrativeBatchCommand command) =>
             LazyServiceProvider.LazyGetRequiredService<AdministrativeBatchExecutor>().RunAsync("Promotion", command, 100, async (item, key) =>
             {
                 if (command.Action == "Delete") return AdministrativeBatchExecutor.Item(item.Id, await DeleteAsync(item.Id, item.ExpectedVersion, key));
@@ -339,7 +343,7 @@ namespace WashGo.Application.Features.PromotionApplication.Services
 
         private async Task<PromotionStatisticsDto> BuildStatisticsAsync(Promotion promotion, long? fromDate, long? toDate)
         {
-            using var snapshot = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true, isolationLevel: System.Data.IsolationLevel.RepeatableRead);
+            using var snapshot = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true, isolationLevel: IsolationLevel.RepeatableRead);
             var usages = await _usageRepo.GetQueryableAsync();
             var orders = await _orderRepo.GetQueryableAsync();
             var query = from usage in usages
