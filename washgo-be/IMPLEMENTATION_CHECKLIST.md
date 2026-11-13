@@ -1,5 +1,53 @@
 # Checklist hoàn thiện Backend WashGo
 
+## Cụm 1 — Review publishing và quyền riêng tư — 13/11/2026
+
+Nhánh: `feat/toantran/review-publishing-privacy` (base 04bb072). Chưa commit/push. Hợp đồng FE/Swagger: [REVIEW_PUBLISHING_PRIVACY_API.md](docs/REVIEW_PUBLISHING_PRIVACY_API.md); plan: [NEW_BACKEND_REQUIREMENTS_PLAN_20261113.md](docs/NEW_BACKEND_REQUIREMENTS_PLAN_20261113.md).
+
+- [x] Redactor chung sau enrich cho đơn list/detail/create/mutation/conflict/replay; Customer không có identity/contact/ảnh/mã tiệm/kho của nhân sự, staff không có Customer identity/avatar/free text/locker codes. Giữ thông tin vận hành và mã riêng của Customer.
+- [x] Customer không suy luận nhân sự qua merchantId/shipperId, column filters/sort, mã tiệm; staff filter/distinct không nhận trường Customer riêng tư.
+- [x] Snapshot Shipper cũ che khi đọc cả replay/operation lookup, không rewrite ledger. Biên lai JSON/PDF dùng DTO theo role; thông báo kho Customer che trước lưu/push và khi đọc legacy inbox/mark-read. Key mới và giới hạn tìm title order được ghi trong hợp đồng FE.
+- [x] Admin contact theo lô, timestamp/basis hồ sơ hiện tại, tên snapshot giữ nguyên, missing profile null/[]; contact không thuộc version và không đưa vào Customer/Partner DTO.
+- [x] Publish riêng, canPublish/reason, version, operation/lookup, batch tối đa 50, audit actor; Hide/Show không tự phê duyệt. Merchant keyword/count/media dùng cùng ContentApprovedAt; Publish không đổi điểm.
+- [x] Migration AddRatingContentApproval và backfill có điều kiện (visible, không xóa, có người/thời điểm kiểm duyệt); trước migration local: 1 rating, 0 legacy released. Không tự duyệt hidden/unreviewed.
+- [x] Build .NET PASS, model EF không còn thay đổi chưa migrate; Privacy console PASS; parser 83 PowerShell scripts/diff check PASS. 5 nullable warnings cũ.
+- [x] Docker CI/HTTP PASS: ABP/JWT, catalog, actual-weight/vòng đời đơn, keyword privacy và review publication. Review HTTP gồm 4 role, foreign owner, withheld filters, conflict DTO, receipt/inbox, contacts/missing profile, single/batch/replay/lookup/limit, concurrent Publish/Hide 200/409, audit và aggregate; fixture/container CI đã dọn. Mock payment và không SMTP ngoài ở CI.
+- [x] Đã thêm Privacy console và hai suite review vào workflow/runner CI; chưa có run GitHub của cụm mới cho tới khi push.
+- [x] Docker local đã build/recreate bản cuối; Swagger HTTP 200 có POST /rating/{id}/publish. Migration có trong history washgo_main và đủ hai cột mới; số rating giữ nguyên 1. Đã backup DB ra thư mục Temp ngoài repo trước triển khai; không đưa backup/log vào Git. Container CI đã dọn.
+- [ ] Chặng C self-status Shipper và D–G kho/giao lại/tài liệu theo luồng mới: chưa triển khai. Không ghi toàn bộ plan đã xong.
+
+## CI Backend đợt 1 — ngày 13/11/2026
+
+Hướng dẫn: [BACKEND_CI_GUIDE.md](docs/BACKEND_CI_GUIDE.md). Workflow ở gốc repo `.github/workflows/backend-ci.yml`; PR #106 gồm commit 5ac8c29 và bản vá 04bb072. Theo ảnh người dùng, cả 5 check đã PASS; chưa xác nhận merge PR.
+
+- [x] Cấu hình 5 job: build .NET, analysis, regression, secret/dependency scan, Docker package. PR vào develop/main, push develop/main, manual trigger; contents read, action SHA pin, artifact 14 ngày; chưa deploy/publish image.
+- [x] Local build/analyzer/helper syntax PASS; actionlint kiểm tra workflow PASS. Analyzer giai đoạn đầu chưa là gate 0 warning/duplication toàn repo.
+- [x] Regression tài liệu PDF/DOC/DOCX và email MIME PASS; không gửi email thật.
+- [x] API catalog PASS trên Backend/PostgreSQL mới, migrate/seed từ đầu, test visibility/sort/filter/validation/paging và cleanup. Compose CI riêng, tmpfs, không nạp .env hay dùng DB local; chặn .env/.env.* khỏi Docker context.
+- [x] Gitleaks ghim v8.30.0/digest quét 143 commit local, chưa phát hiện secret theo bộ luật công cụ; báo cáo redacted. Không tương đương chứng minh mọi rò rỉ đều bằng 0.
+- [x] Người dùng chốt mapper không cần key: gỡ AutoMapper/Volo.Abp.AutoMapper, dùng Mapster 10.0.14 MIT qua provider ABP 8.2; chuyển 5 module mapping, giữ ObjectMapper call site, null clearing/in-place update/enrichment ignores. Bỏ wiring license đã thêm, không sửa .env thật. Giữ Caching.Memory 8.0.1, System.Text.Json 8.0.6 và JWT 8.14.0.
+- [x] Build và regression trực tiếp 5 module Mapster PASS; đưa Mapping vào CI, thêm HTTP ABP/JWT và order lifecycle/actual-weight vào CI API. Gate giữ nguyên; trạng thái HTTP/security sau chuyển Mapster cập nhật khi chạy xong.
+- [x] Sau chuyển Mapster: Security.ps1 PASS (Gitleaks 144 commit không có finding theo scanner; NuGet 0 High/Critical); resolved graph không còn AutoMapper/Volo.Abp.AutoMapper. Không sửa scanner/severity/allowlist.
+- [x] Docker build + DB tạm mới PASS: mapping ABP/JWT, catalog và actual-weight đầy đủ vòng đời đơn (3/5/10kg, giá snapshot/phụ phí/ETA, quyền, replay/concurrency, Mock payment, giao nhận/hoàn tất). Container/DB test đã dọn; suite tài liệu/email vẫn PASS.
+- [x] Theo ảnh/log người dùng, PR #106 đã có run GitHub-hosted: Build/Analyze/Regression PASS; Security fail đúng 3 High trên graph cũ, Docker package skip.
+- [x] Người dùng đã commit/push bản vá vào PR #106; ảnh GitHub xác nhận cả 5 check xanh, gồm Security và Docker package. Các thay đổi review/privacy sau đó cần run CI mới khi được push.
+- [ ] Bổ sung unit/coverage rộng, test E2E/NFR, static quality gate đầy đủ; CD/staging/registry/rollback/monitoring là chặng tiếp theo.
+
+## Bộ lọc đánh giá Merchant — ngày 13/11/2026
+
+- [x] Sửa keyword tại `RatingAppService.FilterAsync`: Merchant chỉ khớp Comment đã phát hành; sau cụm Publish dùng `!IsHidden && ContentApprovedAt != null` cho query và Partner DTO.
+- [x] Lọc trước Count/Skip/Take nên danh sách và tổng số kết quả dùng cùng predicate; giữ Admin tìm mã đơn/tên khách/nhận xét chưa duyệt.
+- [x] Không loại đánh giá chưa duyệt khỏi danh sách không keyword; sao vẫn hiển thị, comment/media tiếp tục theo redaction cũ.
+- [x] Cập nhật Swagger summary; build Host PASS (0 lỗi, 5 cảnh báo nullable có sẵn); script PowerShell parse PASS; `git diff --check` PASS.
+- [x] Thêm regression script `tests/smoke/rating-keyword-privacy.ps1`: fixture user/Merchant/order/rating riêng, chưa duyệt/đã phát hành/ẩn/xóa/khác Merchant, keyword chuẩn hóa, phân trang, scope và quyền HTTP; cleanup trong finally, không sửa seed. DB hiện tại không có email Merchant seed nên test dùng tài khoản tạm riêng.
+- [x] Regression HTTP/PostgreSQL PASS trên container thật, DB `washgo_main`: keyword chỉ khớp nhận xét đã phát hành, không lộ qua tổng/phân trang; Admin vẫn tìm được nhận xét chưa duyệt và mã đơn; không keyword vẫn có sao chưa duyệt nhưng comment bị che; 401/403 đúng. Cleanup xác minh: 8 orders, 1 rating, 1 Merchant như trước test; fixture users/orders còn 0.
+- [x] Docker build/recreate PASS sau khi người dùng khôi phục engine; container dùng đúng image mới. Swagger HTTP 200, `/rating/partner/filter` có summary mới. Không phát sinh migration; build giữ 5 cảnh báo nullable có sẵn.
+
+Khi Docker engine đã hoạt động, tại thư mục gốc DO_AN chạy `docker compose up -d --build washgo-be`, chờ Swagger sẵn sàng rồi chạy `powershell -NoProfile -File .\washgo-be\tests\smoke\rating-keyword-privacy.ps1`.
+Script mặc định dùng DB `washgo_db`; nếu Backend dùng DB khác qua `BACKEND_DB_NAME`, truyền `-Database <tên DB Backend>` (lượt này dùng `washgo_main`). Cần seed `admin@washgo.vn` với mật khẩu local `Admin@123`, các role Admin/Merchant/Customer và ít nhất một Merchant/một đơn làm mẫu clone. Test dùng tài khoản tạm, không phụ thuộc email Merchant/Customer seed. Không thay đổi provider thanh toán để chạy test này.
+
+Phạm vi này chưa hoàn thành toàn bộ chặng A (ẩn danh đơn) hoặc chặng B (Publish riêng).
+
 ## Chatbot AI — triển khai ngày 13/11/2026
 
 Nguồn: UC 1.5.1–1.5.6. [Plan](docs/CHATBOT_AI_IMPLEMENTATION_PLAN.md), [API review FE và cấu hình/test Gemini](docs/CHATBOT_API_REVIEW.md).

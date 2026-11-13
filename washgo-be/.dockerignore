@@ -7,3 +7,6 @@
 **/*.suo
 **/*.log
 **/.DS_Store
+**/.env
+**/.env.*
+tests/ci/results

@@ -149,71 +149,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             _ => false
         };
 
-        private static T RedactStaffData<T>(T dto, OrderScope scope) where T : WashOrderResultDto
-        {
-            if (scope.Role == "Admin")
-            {
-                // Admin screens do not need locker/task codes; support reads them via GET /wash-order/{id}/access-codes.
-                dto.DepositPinCode = string.Empty;
-                dto.PickupPinCode = string.Empty;
-                dto.QrCodeString = string.Empty;
-                dto.ShipperTaskPinCode = null;
-                dto.ShipperTaskQrString = null;
-            }
-            else if (scope.Role == "Customer")
-            {
-                // Customer cannot see Shipper task codes
-                dto.ShipperTaskPinCode = null;
-                dto.ShipperTaskQrString = null;
-                dto.ShipperNote = null;
-            }
-            else if (scope.Role == "Merchant")
-            {
-                dto.CancellationReason = null;
-                dto.CustomerId = Guid.Empty;
-                dto.CustomerName = "***";
-                dto.CustomerPhoneNumber = "***";
-                dto.DepositPinCode = string.Empty;
-                dto.PickupPinCode = string.Empty;
-                dto.QrCodeString = string.Empty;
-                dto.ShipperTaskPinCode = null;
-                dto.ShipperTaskQrString = null;
-                if (dto is WashOrderDetailDto detail)
-                {
-                    detail.CustomerNote = null;
-                    foreach (var entry in detail.Timeline.Where(x => x.ActorRole == "Customer"))
-                    {
-                        entry.ActorId = null;
-                        entry.ActorName = "Khách hàng";
-                        entry.Note = null;
-                    }
-                }
-            }
-            else if (scope.Role == "Shipper")
-            {
-                dto.CancellationReason = null;
-                dto.CustomerId = Guid.Empty;
-                dto.CustomerName = "***";
-                dto.CustomerPhoneNumber = "***";
-                dto.DepositPinCode = string.Empty;
-                dto.PickupPinCode = string.Empty;
-                dto.QrCodeString = string.Empty;
-                // Credentials are released only by the scoped task credential endpoint.
-                dto.ShipperTaskPinCode = null;
-                dto.ShipperTaskQrString = null;
-                if (dto is WashOrderDetailDto detail)
-                {
-                    detail.CustomerNote = null;
-                    foreach (var entry in detail.Timeline.Where(x => x.ActorRole == "Customer"))
-                    {
-                        entry.ActorId = null;
-                        entry.ActorName = "Khách hàng";
-                        entry.Note = null;
-                    }
-                }
-            }
-            return dto;
-        }
+        private static T RedactStaffData<T>(T dto, OrderScope scope) where T : WashOrderResultDto =>
+            OrderResponsePrivacy.Apply(dto, scope.Role);
 
         // Shared by the list and the summary: scope first, then the list filters (status only for the list).
         private static IQueryable<WashOrder> ApplyListFilters(IQueryable<WashOrder> q, WashOrderFilterQuery query,
@@ -254,20 +191,33 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             {
                 var kw = query.Keyword.Trim().ToLower();
                 q = q.Where(x => x.OrderCode.ToLower().Contains(kw) ||
-                                 x.MerchantOrderCode != null && x.MerchantOrderCode.ToLower().Contains(kw) || !isStaff && (
+                                 scope.Role != "Customer" && x.MerchantOrderCode != null && x.MerchantOrderCode.ToLower().Contains(kw) || !isStaff && (
                                  x.CustomerName.ToLower().Contains(kw) ||
                                  x.CustomerPhoneNumber.Contains(kw)));
             }
             return q;
         }
 
-        private static void RestrictStaffQuery(WashOrderFilterQuery query, OrderScope scope)
+        private static void RestrictPrivateQuery(WashOrderFilterQuery query, OrderScope scope)
         {
-            if (scope.Role is not ("Merchant" or "Shipper"))
-                return;
-            query.CustomerId = null;
-            query.ColumnFilters = query.ColumnFilters.Where(x => IsStaffField(x.Field)).ToList();
-            query.SortBy = query.SortBy.Where(x => IsStaffField(x.Field)).ToArray();
+            if (scope.Role == "Admin") return;
+            bool Allowed(string field) => scope.Role == "Customer"
+                ? new[] { "OrderCode", "LockerName", "Status", "PaymentStatus", "PaymentMethod", "CreatedOn",
+                    "TotalAmount", "FinalAmount", "ExpectedDeliveryTime", "DepositDeadline", "PickupDeadline" }
+                    .Contains(field, StringComparer.OrdinalIgnoreCase)
+                : IsStaffField(field);
+            if (scope.Role == "Customer")
+            {
+                query.MerchantId = null;
+                query.ShipperId = null;
+                query.TaskType = null;
+                query.PendingOnly = null;
+            }
+            else query.CustomerId = null;
+            query.ColumnFilters = (query.ColumnFilters ?? []).Where(x => x != null && Allowed(x.Field)).ToList();
+            query.SortBy = (query.SortBy ?? []).Where(x => x != null && Allowed(x.Field)).ToArray();
+            query.SelectFields = (query.SelectFields ?? []).Where(Allowed).ToArray();
+            query.Filters = (query.Filters ?? []).Where(x => Allowed(x.Key)).ToDictionary(x => x.Key, x => x.Value);
         }
 
         public async Task<PaginatedResult<WashOrderResultDto>> GetListAsync(WashOrderFilterQuery query)
@@ -279,17 +229,18 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                     Succeeded = false, StatusCode = HttpStatusCode.BadRequest, Message = dateError,
                     CurrentPage = query.Page, PageSize = query.Take
                 };
-            RestrictStaffQuery(query, scope);
+            RestrictPrivateQuery(query, scope);
             var (data, total) = await _orderRepo.FilterProjectedDataAsync<WashOrderResultDto>(
                 filterFunc: q => ApplyListFilters(q, query, scope, includeStatus: true),
                 parameters: query,
                 defaultOrder: q => q.OrderByDescending(x => x.CreatedOn)
             );
 
-            var list = data.Select(x => RedactStaffData(x, scope)).ToList();
+            var list = data.ToList();
             await _enricher.FillAsync(list, scope.Role);
             await _media.FillAsync(list, scope.Role);
             await LazyServiceProvider.LazyGetRequiredService<OrderFinanceEnricher>().FillAsync(list, scope.Role);
+            foreach (var dto in list) RedactStaffData(dto, scope);
             return Success(list, total, query.Page, query.Take, total > 0 ? null : scope.Role switch
             {
                 "Shipper" => "Bạn chưa có đơn hàng nào được phân công.",
@@ -313,7 +264,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 return NotFound<WashOrderSummaryDto>("Không tìm thấy dữ liệu được phép xem.");
             if (query.DateRangeError() is { } dateError)
                 return BadRequest<WashOrderSummaryDto>(dateError);
-            RestrictStaffQuery(query, scope);
+            RestrictPrivateQuery(query, scope);
             var q = ApplyListFilters(await _orderRepo.GetQueryableAsync(), query, scope, includeStatus: false);
             if (query.FromDate > 0)
                 q = q.Where(x => x.CreatedOn >= query.FromDate);
@@ -715,7 +666,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             await uow.CompleteAsync();
 
             var result = ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order);
-            return Created(result, "Tạo đơn hàng WashGo thành công!");
+            return Created(OrderResponsePrivacy.Apply(result, "Customer"), "Tạo đơn hàng WashGo thành công!");
         }
 
         private async Task<decimal> GetVerifiedPaidAmountAsync(WashOrder order)
@@ -898,7 +849,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             if (order == null || order.CustomerId != scope.Id)
                 return NotFound<WashOrderDetailDto>("Không tìm thấy đơn hàng của khách hàng.");
             if (order.Status == WashOrderStatus.Cancelled)
-                return Success(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), "Đơn hàng đã được hủy trước đó.");
+                return Success(RedactStaffData(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), scope), "Đơn hàng đã được hủy trước đó.");
             var now = DateTime.UtcNow;
             if (!OrderCancellationPolicy.TryCalculate(order, now, await _settings.ForOrderAsync(order), out _, out var percent, out var fee))
                 return BadRequest<WashOrderDetailDto>("Chỉ được hủy Pending, Deposited hoặc Collected đã cân; không hủy khi đã bắt đầu giặt.");
@@ -980,7 +931,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 await _taskRecorder.CancelledAsync(order.Id, now);
             await _notifications.CancelledAsync(order, voidedTaskShipperId);
             await uow.CompleteAsync();
-            return Success(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order),
+            return Success(RedactStaffData(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), scope),
                 "Đã hủy đơn. Phí còn thiếu phải thanh toán trước khi nhận lại đồ; đồ trong locker chưa được giải phóng.");
         }
 
@@ -1795,7 +1746,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 await _orderRepo.UpdateAsync(order, autoSave: true);
                 await _notifications.CancelledGoodsReturnedAsync(order);
                 await uow.CompleteAsync();
-                return Success(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), "Đã nhận lại đồ của đơn hủy.");
+                return Success(RedactStaffData(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), scope), "Đã nhận lại đồ của đơn hủy.");
             }
             var nowTs = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             order.Timeline.Add(new WashOrderTimeline
@@ -1998,6 +1949,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 return BadRequest<List<ColumnFilterDistinctValueDto>>("Không được lọc theo thông tin riêng tư của khách hàng.");
             if (query.DateRangeError() is { } dateError)
                 return BadRequest<List<ColumnFilterDistinctValueDto>>(dateError);
+            RestrictPrivateQuery(query, scope);
             var result = await _orderRepo.GetColumnDistinctValuesAsync(fieldName, query,
                 baseFilter: q => ApplyScope(q, scope));
             return Success(result);

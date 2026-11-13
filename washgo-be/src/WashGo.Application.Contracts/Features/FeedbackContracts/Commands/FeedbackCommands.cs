@@ -32,7 +32,7 @@ namespace WashGo.Application.Contracts.Features.FeedbackContracts.Commands
         public Guid? OperationId { get; set; }
     }
 
-    /// <summary>Ẩn/hiện hàng loạt 1-50 đánh giá được chọn; action Hide|Show; Hide cần một lý do chung.</summary>
+    /// <summary>Ẩn/hiện hàng loạt 1-50 đánh giá được chọn; action Hide|Show|Publish; Hide cần một lý do chung.</summary>
     public class RatingBatchCommand
     {
         public Guid OperationId { get; set; }

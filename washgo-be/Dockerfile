@@ -1,6 +1,7 @@
 # Stage 1: Build & Publish
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
+COPY ["Directory.Build.props", "./"]
 
 # Copy project files for caching dotnet restore layers
 COPY ["WashGo.HttpApi.Host/WashGo.HttpApi.Host.csproj", "WashGo.HttpApi.Host/"]

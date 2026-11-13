@@ -19,6 +19,7 @@ namespace WashGo.Application.Contracts.Features.FeedbackContracts.Services
         Task<BaseResponse<RatingResultDto>> GetByIdAsync(Guid id);
         Task<BaseResponse<RatingSummaryDto>> GetSummaryAsync(RatingFilterQuery query);
         Task<BaseResponse<RatingResultDto>> SetVisibilityAsync(Guid id, SetRatingVisibilityCommand command);
+        Task<BaseResponse<RatingResultDto>> PublishAsync(Guid id, PublishRatingCommand command);
         Task<BaseResponse<AdministrativeBatchResultDto>> BatchAsync(RatingBatchCommand command);
     }
 }

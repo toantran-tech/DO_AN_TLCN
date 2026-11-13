@@ -133,6 +133,24 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
         }
 
         private bool IsAdmin => CurrentUser.IsInRole("Admin");
+        private RatingContactEnricher Contacts => LazyServiceProvider.LazyGetRequiredService<RatingContactEnricher>();
+        private async Task<RatingResultDto> AdminDtoAsync(OrderRating rating)
+        {
+            var dto = ToAdminDto(rating);
+            await Contacts.FillAsync([dto]);
+            return dto;
+        }
+
+        private async Task<OrderRating?> LockRatingAsync(Guid id)
+        {
+            // Project before taking locks to avoid tracking a stale rating while waiting for another writer.
+            var merchantId = await AsyncExecuter.FirstOrDefaultAsync((await _ratingRepo.GetQueryableAsync())
+                .Where(x => x.Id == id && !x.IsDeleted).Select(x => x.MerchantId));
+            if (merchantId.HasValue) await Writes.LockAsync($"merchant-rating:{merchantId}");
+            await Writes.LockAsync($"rating:{id}");
+            var rating = await _ratingRepo.FindAsync(id);
+            return rating is { IsDeleted: false } ? rating : null;
+        }
 
         private async Task<(IQueryable<OrderRating>? Query, string? Error)> FilterAsync(RatingFilterQuery query)
         {
@@ -160,8 +178,10 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
             {
                 var kw = query.Keyword.Trim().ToLower();
                 var admin = IsAdmin;
-                queryable = queryable.Where(x => admin && x.OrderCode.ToLower().Contains(kw) ||
-                    (x.Comment != null && x.Comment.ToLower().Contains(kw)) ||
+                // Apply the same release rule as ToPartnerDto before counting or paging.
+                queryable = queryable.Where(x => (admin && x.OrderCode.ToLower().Contains(kw)) ||
+                    ((admin || (!x.IsHidden && x.ContentApprovedAt != null)) &&
+                        x.Comment != null && x.Comment.ToLower().Contains(kw)) ||
                     (admin && x.CustomerName.ToLower().Contains(kw)));
             }
             return (queryable, null);
@@ -182,6 +202,7 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
 
         public async Task<PaginatedResult<RatingResultDto>> GetListAsync(RatingFilterQuery query)
         {
+            if (!IsAdmin) return new PaginatedResult<RatingResultDto> { Succeeded = false, StatusCode = HttpStatusCode.Forbidden };
             var (queryable, error) = await FilterAsync(query);
             if (queryable == null)
                 return new PaginatedResult<RatingResultDto> { Succeeded = false, StatusCode = HttpStatusCode.BadRequest, Message = error };
@@ -191,17 +212,20 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
             var items = await AsyncExecuter.ToListAsync(queryable.OrderByDescending(x => x.CreatedOn).ThenByDescending(x => x.Id)
                 .Skip((page - 1) * take).Take(take));
             var dtos = items.Select(ToAdminDto).ToList();
+            await Contacts.FillAsync(dtos);
             return Success(dtos, total, page, take, total == 0 ? "Chưa có đánh giá nào." : null);
         }
 
         public async Task<BaseResponse<RatingResultDto>> GetByIdAsync(Guid id)
         {
+            if (!IsAdmin) return AdministrativeWriteGuard.Error<RatingResultDto>(HttpStatusCode.Forbidden, "AdminOnly", "Chỉ Admin được quản lý đánh giá.");
             var rating = await _ratingRepo.FindAsync(id);
-            return rating == null || rating.IsDeleted ? NotFound<RatingResultDto>("Không tìm thấy đánh giá!") : Success(ToAdminDto(rating));
+            return rating == null || rating.IsDeleted ? NotFound<RatingResultDto>("Không tìm thấy đánh giá!") : Success(await AdminDtoAsync(rating));
         }
 
         public async Task<BaseResponse<RatingSummaryDto>> GetSummaryAsync(RatingFilterQuery query)
         {
+            if (!IsAdmin) return AdministrativeWriteGuard.Error<RatingSummaryDto>(HttpStatusCode.Forbidden, "AdminOnly", "Chỉ Admin được quản lý đánh giá.");
             using var snapshot = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true, isolationLevel: IsolationLevel.RepeatableRead);
             var (queryable, error) = await FilterAsync(query);
             if (queryable == null) return BadRequest<RatingSummaryDto>(error!);
@@ -225,6 +249,7 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
 
         public async Task<BaseResponse<RatingResultDto>> SetVisibilityAsync(Guid id, SetRatingVisibilityCommand command)
         {
+            if (!IsAdmin) return AdministrativeWriteGuard.Error<RatingResultDto>(HttpStatusCode.Forbidden, "AdminOnly", "Chỉ Admin được quản lý đánh giá.");
             var reason = command.Reason?.Trim();
             if (command.IsHidden && (string.IsNullOrWhiteSpace(reason) || reason.Length > 500))
                 return AdministrativeWriteGuard.Error<RatingResultDto>(HttpStatusCode.BadRequest, "ReasonRequired", "Vui lòng nhập lý do ẩn đánh giá (1-500 ký tự).");
@@ -234,22 +259,20 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
 
             using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
             if (await Writes.ReplayAsync<RatingResultDto>(command.OperationId, CurrentUser.Id!.Value, "Rating", "Visibility", id.ToString(), payload) is { } replay)
+            {
+                if (replay.Data != null) await Contacts.FillAsync([replay.Data]);
                 return replay;
-            var rating = await _ratingRepo.FindAsync(id);
-            if (rating == null || rating.IsDeleted)
-                return NotFound<RatingResultDto>("Không tìm thấy đánh giá!");
-            // Merchant aggregate lock first, then the rating row: the same order as rating creation.
-            if (rating.MerchantId.HasValue) await Writes.LockAsync($"merchant-rating:{rating.MerchantId}");
-            await Writes.LockAsync($"rating:{id}");
-            rating = await _ratingRepo.GetAsync(id);
+            }
+            var rating = await LockRatingAsync(id);
+            if (rating == null) return NotFound<RatingResultDto>("Không tìm thấy đánh giá!");
             if (string.IsNullOrWhiteSpace(command.ExpectedVersion))
                 return AdministrativeWriteGuard.Error<RatingResultDto>(HttpStatusCode.BadRequest, "ExpectedVersionRequired", "Thiếu expectedVersion.");
             if (command.ExpectedVersion != Version(rating))
-                return AdministrativeWriteGuard.Error<RatingResultDto>(HttpStatusCode.Conflict, "VersionMismatch", "Đánh giá đã thay đổi; hãy tải lại.", ToAdminDto(rating));
+                return AdministrativeWriteGuard.Error<RatingResultDto>(HttpStatusCode.Conflict, "VersionMismatch", "Đánh giá đã thay đổi; hãy tải lại.", await AdminDtoAsync(rating));
 
             BaseResponse<RatingResultDto> response;
             if (rating.IsHidden == command.IsHidden)
-                response = AdministrativeBatchExecutor.Unchanged(Success(ToAdminDto(rating), command.IsHidden ? "Đánh giá đã ẩn." : "Đánh giá đang hiển thị."));
+                response = AdministrativeBatchExecutor.Unchanged(Success(await AdminDtoAsync(rating), command.IsHidden ? "Đánh giá đã ẩn." : "Đánh giá đang hiển thị."));
             else
             {
                 var before = new { rating.IsHidden, rating.HiddenReason };
@@ -269,9 +292,51 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
                     Reason = reason ?? before.HiddenReason, ChangedFields = ["isHidden"],
                     Details = new { before, after = new { rating.IsHidden, rating.HiddenReason }, operationId = command.OperationId }
                 });
-                response = Success(ToAdminDto(rating), command.IsHidden ? "Đã ẩn đánh giá." : "Đã hiển thị lại đánh giá.");
+                response = Success(await AdminDtoAsync(rating), command.IsHidden ? "Đã ẩn đánh giá." : "Đã hiển thị lại đánh giá.");
             }
             await Writes.RecordAsync(command.OperationId, CurrentUser.Id!.Value, "Rating", "Visibility", id.ToString(), payload, response);
+            await uow.CompleteAsync();
+            return response;
+        }
+
+        public async Task<BaseResponse<RatingResultDto>> PublishAsync(Guid id, PublishRatingCommand command)
+        {
+            if (!IsAdmin) return AdministrativeWriteGuard.Error<RatingResultDto>(HttpStatusCode.Forbidden, "AdminOnly", "Chỉ Admin được duyệt nội dung.");
+            var reason = command.Reason?.Trim();
+            if (reason?.Length > 500)
+                return AdministrativeWriteGuard.Error<RatingResultDto>(HttpStatusCode.BadRequest, "ReasonTooLong", "Lý do tối đa 500 ký tự.");
+            var payload = new { id, Reason = reason, command.ExpectedVersion };
+            using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            if (await Writes.ReplayAsync<RatingResultDto>(command.OperationId, CurrentUser.Id!.Value, "Rating", "Publish", id.ToString(), payload) is { } replay)
+            {
+                if (replay.Data != null) await Contacts.FillAsync([replay.Data]);
+                return replay;
+            }
+            var rating = await LockRatingAsync(id);
+            if (rating == null) return NotFound<RatingResultDto>("Không tìm thấy đánh giá!");
+            if (string.IsNullOrWhiteSpace(command.ExpectedVersion))
+                return AdministrativeWriteGuard.Error<RatingResultDto>(HttpStatusCode.BadRequest, "ExpectedVersionRequired", "Thiếu expectedVersion.");
+            if (command.ExpectedVersion != Version(rating))
+                return AdministrativeWriteGuard.Error<RatingResultDto>(HttpStatusCode.Conflict, "VersionMismatch", "Đánh giá đã thay đổi; hãy tải lại.", await AdminDtoAsync(rating));
+            if (rating.IsHidden)
+                return AdministrativeWriteGuard.Error<RatingResultDto>(HttpStatusCode.BadRequest, "HiddenRating", "Hiển thị lại đánh giá trước khi duyệt nội dung.");
+            BaseResponse<RatingResultDto> response;
+            if (rating.ContentApprovedAt.HasValue)
+                response = AdministrativeBatchExecutor.Unchanged(Success(await AdminDtoAsync(rating), "Nội dung đã được duyệt."));
+            else
+            {
+                var now = DateTime.UtcNow;
+                rating.ContentApprovedAt = new DateTime(now.Ticks - now.Ticks % 10, DateTimeKind.Utc);
+                rating.ContentApprovedBy = CurrentUser.Id;
+                await _ratingRepo.UpdateAsync(rating, autoSave: true);
+                await Audit.LogAsync(new AuditEntry("Rating", "Publish", "OrderRating", rating.Id.ToString(), rating.OrderCode)
+                {
+                    Reason = reason, ChangedFields = ["contentApprovedAt", "contentApprovedBy"],
+                    Details = new { operationId = command.OperationId }
+                });
+                response = Success(await AdminDtoAsync(rating), "Đã duyệt nội dung đánh giá cho Merchant.");
+            }
+            await Writes.RecordAsync(command.OperationId, CurrentUser.Id!.Value, "Rating", "Publish", id.ToString(), payload, response);
             await uow.CompleteAsync();
             return response;
         }
@@ -286,9 +351,10 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
                 OperationId = command.OperationId, Action = command.Action, Items = command.Items ?? [], Reason = reason
             };
             return await LazyServiceProvider.LazyGetRequiredService<AdministrativeBatchExecutor>().RunAsync("Rating", batch, 50,
-                async (item, key) => AdministrativeBatchExecutor.Item(item.Id, await SetVisibilityAsync(item.Id,
-                    new SetRatingVisibilityCommand { IsHidden = command.Action == "Hide", Reason = reason, ExpectedVersion = item.ExpectedVersion, OperationId = key })),
-                ["Hide", "Show"]);
+                async (item, key) => AdministrativeBatchExecutor.Item(item.Id, command.Action == "Publish"
+                    ? await PublishAsync(item.Id, new PublishRatingCommand { Reason = reason, ExpectedVersion = item.ExpectedVersion, OperationId = key })
+                    : await SetVisibilityAsync(item.Id, new SetRatingVisibilityCommand { IsHidden = command.Action == "Hide", Reason = reason, ExpectedVersion = item.ExpectedVersion, OperationId = key })),
+                ["Hide", "Show", "Publish"]);
         }
 
         // Older orders never stored the Merchant name, so fall back to the Merchant record.
@@ -314,7 +380,7 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
             await _merchantRepo.UpdateAsync(merchant, autoSave: true);
         }
 
-        private static string Version(OrderRating x) => AdministrativeWriteGuard.Version(new { x.Id, x.IsHidden, x.HiddenReason, x.ModeratedAt });
+        private static string Version(OrderRating x) => AdministrativeWriteGuard.Version(new { x.Id, x.IsHidden, x.HiddenReason, x.ModeratedAt, x.ContentApprovedAt, x.ContentApprovedBy });
 
         private static CustomerRatingDto ToCustomerDto(OrderRating x) => new()
         {
@@ -348,16 +414,20 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
             Version = Version(x),
             CanHide = !x.IsHidden,
             CanShow = x.IsHidden,
+            CanPublish = !x.IsHidden && x.ContentApprovedAt == null,
+            PublishReasonCode = x.IsHidden ? "HiddenRating" : x.ContentApprovedAt != null ? "AlreadyPublished" : null,
+            ContentApprovedAt = x.ContentApprovedAt,
+            ContentApprovedBy = x.ContentApprovedBy,
             ActionReasonCode = x.IsHidden ? "AlreadyHidden" : "AlreadyVisible",
             ModeratedAt = x.ModeratedAt,
             ModeratedBy = x.ModeratedBy,
-            ContentReleased = !x.IsHidden && x.ModeratedAt != null
+            ContentReleased = !x.IsHidden && x.ContentApprovedAt != null
         };
 
         /// <summary>Partner view: no customer/order identity; free text and media only after an Admin reviewed and kept it visible.</summary>
         private static PartnerRatingDto ToPartnerDto(OrderRating x)
         {
-            var released = !x.IsHidden && x.ModeratedAt != null;
+            var released = !x.IsHidden && x.ContentApprovedAt != null;
             return new PartnerRatingDto
             {
                 Id = x.Id, OverallStars = x.OverallStars,

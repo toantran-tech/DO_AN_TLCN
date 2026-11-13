@@ -22,7 +22,7 @@ namespace WashGo.HttpApi.Endpoints.Notification
             group.MapGet("/", async (int? page, int? take, bool? unreadOnly, INotificationAppService svc) =>
                 (await svc.GetMineAsync(page ?? 1, take ?? 20, unreadOnly ?? false)).CustomResult())
                 .WithName("Xem thông báo của tôi")
-                .WithSummary("Danh sách thông báo của tài khoản đang đăng nhập, mới nhất trước; real-time qua SignalR /hubs/notifications (sự kiện 'notification').")
+                .WithSummary("Danh sách thông báo của tài khoản đang đăng nhập, mới nhất trước. Customer không nhận địa chỉ/mã kho hoặc định danh nhân sự; key storage.customer.private dùng content làm fallback nếu chưa có bản dịch; real-time qua SignalR /hubs/notifications (sự kiện 'notification').")
                 .WithOpenApi();
 
             group.MapPost("/filter", async (NotificationFilterQuery query, INotificationAppService svc) =>
