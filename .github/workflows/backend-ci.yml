@@ -90,9 +90,10 @@ jobs:
       - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
           dotnet-version: '8.0.x'
-      - name: Document and email regression suites
+      - name: Mapping, document and email regression suites
         run: |
           mkdir -p tests/ci/results
+          dotnet run --project tests/smoke/Mapping/Mapping.csproj -c Release | tee tests/ci/results/mapping.log
           dotnet run --project tests/smoke/PrivateDocuments/PrivateDocuments.csproj -c Release | tee tests/ci/results/documents.log
           dotnet run --project tests/smoke/EmailLogo/EmailLogo.csproj -c Release | tee tests/ci/results/email.log
       - name: API regression on isolated PostgreSQL

@@ -1,19 +1,18 @@
-using AutoMapper;
-using WashGo.Application.Contracts.Features.MerchantContracts.Commands;
+using Mapster;
 using WashGo.Application.Contracts.Features.MerchantContracts.Results;
 using WashGo.Domain.Entities.Partner;
 
 namespace WashGo.Application.Features.MerchantApplication.Mappings
 {
-    public class MerchantMappingProfile : Profile
+    public class MerchantMappingProfile : IRegister
     {
-        public MerchantMappingProfile()
+        public void Register(TypeAdapterConfig config)
         {
-            CreateMap<Merchant, MerchantResultDto>()
-                .ForMember(dest => dest.Email, opt => opt.Ignore())
-                .ForMember(dest => dest.ImageUrls, opt => opt.Ignore())
-                .ForMember(dest => dest.UnfinishedOrders, opt => opt.Ignore())
-                .ForMember(dest => dest.ServiceAreaIds, opt => opt.Ignore());
+            config.NewConfig<Merchant, MerchantResultDto>()
+                .Ignore(dest => dest.Email)
+                .Ignore(dest => dest.ImageUrls)
+                .Ignore(dest => dest.UnfinishedOrders)
+                .Ignore(dest => dest.ServiceAreaIds);
         }
     }
 }

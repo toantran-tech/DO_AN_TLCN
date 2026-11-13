@@ -34,12 +34,16 @@ try {
     # Require actual tables/seed data so a Swagger-only response cannot pass CI.
     $seeded = & docker exec $postgres psql -U postgres -d washgo_ci -v ON_ERROR_STOP=1 -At -c "SELECT (SELECT count(*) FROM washgo.roles)>=4 AND (SELECT count(*) FROM washgo.services)>=3 AND EXISTS(SELECT 1 FROM washgo.users WHERE email='customer@washgo.vn');"
     if ($LASTEXITCODE -ne 0 -or "$seeded".Trim() -ne 't') { throw 'CI migrations or seed data are incomplete.' }
+    & (Join-Path $PSScriptRoot '../smoke/mapping-compatibility.ps1') -BaseUrl $baseUrl -PostgresContainer $postgres -Database washgo_ci
+    if (!$?) { throw 'ABP mapper/JWT compatibility smoke failed.' }
     & (Join-Path $PSScriptRoot '../smoke/customer-service-filter.ps1') -BaseUrl $baseUrl -PostgresContainer $postgres -Database washgo_ci
     if (!$?) { throw 'Customer service filter smoke failed.' }
+    & (Join-Path $PSScriptRoot '../smoke/actual-weight.ps1') -BaseUrl $baseUrl -PostgresContainer $postgres -Database washgo_ci
+    if (!$?) { throw 'Order lifecycle/actual-weight smoke failed.' }
     $fixtures = & docker exec $postgres psql -U postgres -d washgo_ci -At -c "SELECT count(*) FROM washgo.services WHERE code LIKE 'CATALOG_%';"
     if ($LASTEXITCODE -ne 0 -or "$fixtures".Trim() -ne '0') { throw 'API smoke left fixture services behind.' }
     Write-Output 'PASS: isolated PostgreSQL migrations/seed, real Backend HTTP, catalog visibility, multi-select filters, sorting, validation, pagination and fixture cleanup.'
-    'PASS: API catalog regression and isolated database initialization/cleanup.' | Set-Content (Join-Path $results 'api-result.txt')
+    'PASS: ABP mapper/JWT, API catalog and order lifecycle/actual-weight regression; isolated database initialization/cleanup.' | Set-Content (Join-Path $results 'api-result.txt')
     $succeeded = $true
 }
 finally {

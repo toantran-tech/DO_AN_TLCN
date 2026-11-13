@@ -1,22 +1,22 @@
 using System.Linq;
-using AutoMapper;
+using Mapster;
 using WashGo.Application.Contracts.Features.LockerContracts.Results;
 using WashGo.Domain.Entities.Locker;
 using WashGo.Domain.Shared.Enums;
 
 namespace WashGo.Application.Features.LockerApplication.Mappings
 {
-    public class LockerMappingProfile : Profile
+    public class LockerMappingProfile : IRegister
     {
-        public LockerMappingProfile()
+        public void Register(TypeAdapterConfig config)
         {
-            CreateMap<Locker, LockerResultDto>()
-                .ForMember(dest => dest.EmptyBoxesCount,
-                    opt => opt.MapFrom(src => src.Boxes.Count(b => b.Status == LockerBoxStatus.Available)))
-                .ForMember(dest => dest.Merchants, opt => opt.Ignore())
-                .ForMember(dest => dest.ServiceAreaName, opt => opt.Ignore())
-                .ForMember(dest => dest.ImageUrls, opt => opt.Ignore());
-            CreateMap<LockerBox, LockerBoxResultDto>();
+            config.NewConfig<Locker, LockerResultDto>()
+                .Map(dest => dest.EmptyBoxesCount, src => src.Boxes == null ? 0 : src.Boxes.Count(b => b.Status == LockerBoxStatus.Available))
+                .Map(dest => dest.Boxes, src => src.Boxes ?? new List<LockerBox>())
+                .Ignore(dest => dest.Merchants)
+                .Ignore(dest => dest.ServiceAreaName)
+                .Ignore(dest => dest.ImageUrls);
+            config.NewConfig<LockerBox, LockerBoxResultDto>();
         }
     }
 }
