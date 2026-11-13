@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Routing;
 using WashGo.Application.Contracts.Features.SystemSettingContracts.Commands;
 using WashGo.Application.Contracts.Features.SystemSettingContracts.Services;
 using WashGo.Core.Endpoint;
+using WashGo.Application.Contracts.Features.AuditContracts.Queries;
 
 namespace WashGo.HttpApi.Endpoints.SystemSetting
 {
@@ -25,7 +26,7 @@ namespace WashGo.HttpApi.Endpoints.SystemSetting
                 .WithOpenApi();
             group.MapGet("/operations/{id:guid}", async (Guid id, ISystemSettingAppService svc) => (await svc.GetOperationAsync(id)).CustomResult())
                 .WithSummary("Tra kết quả lưu cấu hình theo operationId của chính Admin; 404 chưa xác định được yêu cầu đang chạy.").WithOpenApi();
-            group.MapPost("/history/filter", async (WashGo.Application.Contracts.Features.AuditContracts.Queries.AuditLogFilterQuery query, ISystemSettingAppService svc) => (await svc.GetHistoryAsync(query)).CustomResult())
+            group.MapPost("/history/filter", async (AuditLogFilterQuery query, ISystemSettingAppService svc) => (await svc.GetHistoryAsync(query)).CustomResult())
                 .WithSummary("Lịch sử cấu hình append-only; lọc actor/thời gian/action=UpdateSla|UpdateCommission|UpdatePenalty, phân trang.").WithOpenApi();
 
             group.MapPut("/sla", async (UpdateSlaSettingsCommand command, ISystemSettingAppService svc) =>

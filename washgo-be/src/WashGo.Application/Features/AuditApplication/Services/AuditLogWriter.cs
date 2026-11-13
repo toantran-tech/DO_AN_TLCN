@@ -10,6 +10,7 @@ using Volo.Abp.Tracing;
 using Volo.Abp.Users;
 using WashGo.Domain.Entities.Audit;
 using WashGo.Domain.Shared.Enums;
+using System.Text.RegularExpressions;
 
 namespace WashGo.Application.Features.AuditApplication.Services
 {
@@ -90,10 +91,10 @@ namespace WashGo.Application.Features.AuditApplication.Services
 
         private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
 
-        private static readonly System.Text.RegularExpressions.Regex Jwt = new(@"eyJ[\w-]+\.[\w-]+\.[\w-]+", System.Text.RegularExpressions.RegexOptions.Compiled);
-        private static readonly System.Text.RegularExpressions.Regex SignedQuery = new(@"\?[^\s""']*(sig|signature|token|expires|x-amz-[a-z-]+|access_token)=[^\s""']*",
-            System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
-        private static readonly System.Text.RegularExpressions.Regex LongDigits = new(@"(?<!\d)\d{9,12}(?!\d)", System.Text.RegularExpressions.RegexOptions.Compiled);
+        private static readonly Regex Jwt = new(@"eyJ[\w-]+\.[\w-]+\.[\w-]+", RegexOptions.Compiled);
+        private static readonly Regex SignedQuery = new(@"\?[^\s""']*(sig|signature|token|expires|x-amz-[a-z-]+|access_token)=[^\s""']*",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex LongDigits = new(@"(?<!\d)\d{9,12}(?!\d)", RegexOptions.Compiled);
 
         /// <summary>
         /// Free text never carries secrets: JWT-like tokens, signed download URL queries and 9-12 digit numbers (identity card, account

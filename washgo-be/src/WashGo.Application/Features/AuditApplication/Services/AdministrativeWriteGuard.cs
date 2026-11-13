@@ -6,6 +6,8 @@ using WashGo.Application.Features.MerchantApplication.Services;
 using WashGo.Core.Domain.Shared.Bases;
 using WashGo.Domain.Entities.Audit;
 using WashGo.Domain.Entities.WashOrder.Interfaces;
+using System.Globalization;
+using System.Security.Cryptography;
 
 namespace WashGo.Application.Features.AuditApplication.Services;
 
@@ -18,7 +20,7 @@ public class AdministrativeWriteGuard(IRepository<AdministrativeOperation, Guid>
     {
         using var memory = new MemoryStream();
         using (var writer = new Utf8JsonWriter(memory)) WriteCanonical(writer, JsonSerializer.SerializeToElement(snapshot, Json));
-        return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(memory.ToArray()));
+        return Convert.ToHexString(SHA256.HashData(memory.ToArray()));
     }
     private static void WriteCanonical(Utf8JsonWriter writer, JsonElement element)
     {
@@ -31,7 +33,7 @@ public class AdministrativeWriteGuard(IRepository<AdministrativeOperation, Guid>
             case JsonValueKind.Array:
                 writer.WriteStartArray(); foreach (var item in element.EnumerateArray()) WriteCanonical(writer, item); writer.WriteEndArray(); break;
             case JsonValueKind.Number when element.TryGetDecimal(out var number):
-                writer.WriteRawValue(number.ToString("G29", System.Globalization.CultureInfo.InvariantCulture)); break;
+                writer.WriteRawValue(number.ToString("G29", CultureInfo.InvariantCulture)); break;
             default: element.WriteTo(writer); break;
         }
     }

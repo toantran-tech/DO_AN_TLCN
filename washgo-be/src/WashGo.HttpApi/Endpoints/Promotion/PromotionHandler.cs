@@ -8,6 +8,7 @@ using WashGo.Application.Contracts.Features.PromotionContracts.Commands;
 using WashGo.Application.Contracts.Features.PromotionContracts.Queries;
 using WashGo.Application.Contracts.Features.PromotionContracts.Services;
 using WashGo.Core.Endpoint;
+using WashGo.Application.Contracts.Features.AuditContracts.Commands;
 
 namespace WashGo.HttpApi.Endpoints.Promotion
 {
@@ -32,7 +33,7 @@ namespace WashGo.HttpApi.Endpoints.Promotion
                 .WithName("Lọc danh sách mã giảm giá")
                 .WithSummary("Lọc mã theo trạng thái, loại giảm, khoảng hiệu lực; sortBy nhiều tiêu chí Code/CreatedOn/StartAt/EndAt/UsageLimit/UsedCount/Id, Id phụ ổn định. UsageLimit null đứng cuối khi tăng dần theo PostgreSQL.")
                 .WithOpenApi();
-            group.MapPost("/batch", async (WashGo.Application.Contracts.Features.AuditContracts.Commands.AdministrativeBatchCommand command, IPromotionAppService svc) => (await svc.BatchAsync(command)).CustomResult())
+            group.MapPost("/batch", async (AdministrativeBatchCommand command, IPromotionAppService svc) => (await svc.BatchAsync(command)).CustomResult())
                 .WithSummary("Xử lý 1–100 mã: action=Delete|Status, isActive đích, items gồm id/expectedVersion; bắt buộc operationId, kết quả từng ID và replay.").WithOpenApi();
 
             group.MapGet("/{id:guid}", async (Guid id, IPromotionAppService svc) =>

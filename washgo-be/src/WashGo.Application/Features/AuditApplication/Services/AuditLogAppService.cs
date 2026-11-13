@@ -9,6 +9,7 @@ using WashGo.Application.Contracts.Features.AuditContracts.Results;
 using WashGo.Application.Contracts.Features.AuditContracts.Services;
 using WashGo.Core.Domain.Shared.Bases;
 using WashGo.Domain.Entities.Audit;
+using System.Net;
 
 namespace WashGo.Application.Features.AuditApplication.Services
 {
@@ -23,7 +24,7 @@ namespace WashGo.Application.Features.AuditApplication.Services
         {
             var dateError = query.DateRangeError();
             if (dateError != null)
-                return new PaginatedResult<AuditLogDto> { Succeeded = false, StatusCode = System.Net.HttpStatusCode.BadRequest, Message = dateError };
+                return new PaginatedResult<AuditLogDto> { Succeeded = false, StatusCode = HttpStatusCode.BadRequest, Message = dateError };
             var q = (await _repo.GetQueryableAsync()).AsQueryable();
             if (query.FromDate > 0)
             {

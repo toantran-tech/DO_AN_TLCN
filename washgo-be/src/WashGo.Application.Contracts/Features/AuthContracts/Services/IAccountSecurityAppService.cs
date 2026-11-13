@@ -5,6 +5,7 @@ using Volo.Abp.Application.Services;
 using WashGo.Application.Contracts.Features.AuthContracts.Commands;
 using WashGo.Application.Contracts.Features.AuthContracts.Results;
 using WashGo.Core.Domain.Shared.Bases;
+using WashGo.Application.Contracts.Features.AuthContracts.Queries;
 
 namespace WashGo.Application.Contracts.Features.AuthContracts.Services
 {
@@ -13,7 +14,7 @@ namespace WashGo.Application.Contracts.Features.AuthContracts.Services
     {
         Task<BaseResponse<SecurityStatusDto>> GetStatusAsync(Guid userId, Guid sessionId);
         Task<BaseResponse<bool>> ChangePasswordAsync(Guid userId, Guid sessionId, ChangePasswordCommand command);
-        Task<BaseResponse<SessionListDto>> GetSessionsAsync(Guid userId, Guid sessionId, WashGo.Application.Contracts.Features.AuthContracts.Queries.SessionListQuery query);
+        Task<BaseResponse<SessionListDto>> GetSessionsAsync(Guid userId, Guid sessionId, SessionListQuery query);
         Task<BaseResponse<RevokeSessionsResultDto>> RevokeOtherSessionsAsync(Guid userId, Guid sessionId);
         Task<BaseResponse<RevokeSessionsResultDto>> RevokeSessionAsync(Guid userId, Guid sessionId, Guid targetId);
     }

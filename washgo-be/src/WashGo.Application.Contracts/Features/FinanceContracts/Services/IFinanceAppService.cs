@@ -6,6 +6,7 @@ using WashGo.Application.Contracts.Features.FinanceContracts.Commands;
 using WashGo.Application.Contracts.Features.FinanceContracts.Queries;
 using WashGo.Application.Contracts.Features.FinanceContracts.Results;
 using WashGo.Core.Domain.Shared.Bases;
+using WashGo.Application.Contracts.Features.AuditContracts.Results;
 
 namespace WashGo.Application.Contracts.Features.FinanceContracts.Services
 {
@@ -17,7 +18,7 @@ namespace WashGo.Application.Contracts.Features.FinanceContracts.Services
         Task<BaseResponse<CommissionPageDto>> GetCommissionsPageAsync(FinancePeriodQuery query);
         Task<BaseResponse<SettlementDto>> CreateSettlementAsync(CreateSettlementCommand command);
         Task<BaseResponse<SettlementQuoteDto>> QuoteSettlementAsync(CreateSettlementCommand command);
-        Task<BaseResponse<WashGo.Application.Contracts.Features.AuditContracts.Results.AdministrativeOperationDto>> GetOperationAsync(Guid id);
+        Task<BaseResponse<AdministrativeOperationDto>> GetOperationAsync(Guid id);
         Task<PaginatedResult<SettlementDto>> GetSettlementsAsync(SettlementFilterQuery query);
         Task<BaseResponse<SettlementBreakdownDto>> GetSettlementBreakdownAsync(Guid id);
         Task<BaseResponse<SettlementDto>> GetSettlementAsync(Guid id);

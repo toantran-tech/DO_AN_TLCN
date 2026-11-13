@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace WashGo.Application.Contracts.Features.AuthContracts.Results
 {
@@ -37,7 +38,7 @@ namespace WashGo.Application.Contracts.Features.AuthContracts.Results
         public int Take { get; set; }
         public bool HasMore { get; set; }
         public SessionDto? Current { get; set; }
-        public System.Collections.Generic.List<SessionDto> Items { get; set; } = [];
+        public List<SessionDto> Items { get; set; } = [];
     }
 
     public class RevokeSessionsResultDto

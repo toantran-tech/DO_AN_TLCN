@@ -10,6 +10,7 @@ using WashGo.Domain.Entities.Locker;
 using WashGo.Domain.Entities.Partner;
 using WashGo.Domain.Entities.WashService;
 using WashGo.Domain.Shared.Enums;
+using PasswordHasher = global::BCrypt.Net.BCrypt;
 
 namespace WashGo.EntityFrameworkCore.Seeding
 {
@@ -73,10 +74,10 @@ namespace WashGo.EntityFrameworkCore.Seeding
             var merchantUserId = Guid.Parse("d3333333-3333-3333-3333-333333333333");
             var shipperUserId = Guid.Parse("e4444444-4444-4444-4444-444444444444");
 
-            var adminPassHash = BCrypt.Net.BCrypt.HashPassword("Admin@123");
-            var customerPassHash = BCrypt.Net.BCrypt.HashPassword("Customer@123");
-            var merchantPassHash = BCrypt.Net.BCrypt.HashPassword("Merchant@123");
-            var shipperPassHash = BCrypt.Net.BCrypt.HashPassword("Shipper@123");
+            var adminPassHash = PasswordHasher.HashPassword("Admin@123");
+            var customerPassHash = PasswordHasher.HashPassword("Customer@123");
+            var merchantPassHash = PasswordHasher.HashPassword("Merchant@123");
+            var shipperPassHash = PasswordHasher.HashPassword("Shipper@123");
 
             await SeedUserAsync(adminUserId, adminRole.Id, "admin@washgo.vn", adminPassHash, "Admin WashGo", "0901000001");
             await SeedUserAsync(customerUserId, customerRole.Id, "customer@washgo.vn", customerPassHash, "Nguyễn Văn Khách", "0902000002");

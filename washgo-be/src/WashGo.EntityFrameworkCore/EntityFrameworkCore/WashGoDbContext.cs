@@ -16,6 +16,8 @@ using WashGo.Domain.Entities.WashService;
 using WashGo.Domain.Shared.Constants;
 using WashGo.EntityFrameworkCore.BuilderConfiguration;
 using WashGo.Domain.Entities.Audit;
+using System.Text.RegularExpressions;
+using WashGo.Domain.Shared.Validation;
 
 namespace WashGo.EntityFrameworkCore.EntityFrameworkCore
 {
@@ -118,7 +120,7 @@ namespace WashGo.EntityFrameworkCore.EntityFrameworkCore
             builder.UseWashGoSnakeCaseColumns();
         }
 
-        private static readonly System.Text.RegularExpressions.Regex AssetUrl = new(@"/uploads/[0-9a-f]{32}/[0-9a-f]{32}\.(jpg|png|webp|mp4|webm|mov)", System.Text.RegularExpressions.RegexOptions.Compiled);
+        private static readonly Regex AssetUrl = new(@"/uploads/[0-9a-f]{32}/[0-9a-f]{32}\.(jpg|png|webp|mp4|webm|mov)", RegexOptions.Compiled);
         private static readonly HashSet<string> AssetOwners = ["User", "Merchant", "MerchantImage", "Locker", "WashService", "ServiceChangeRequest", "MerchantProfileRequest", "OrderRating", "Incident", "IncidentMessage", "Shipper"];
         public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
         {
@@ -140,7 +142,7 @@ namespace WashGo.EntityFrameworkCore.EntityFrameworkCore
                     var now = DateTime.UtcNow;
                     var changed = await UploadedAssets.Where(x => x.Id == id && !x.IsDeleted && (x.ReferencedAt != null || x.ExpiresAt > now))
                         .ExecuteUpdateAsync(s => s.SetProperty(x => x.ReferencedAt, x => x.ReferencedAt ?? now), cancellationToken);
-                    if (changed != 1) throw new WashGo.Domain.Shared.Validation.UploadAttachmentExpiredException();
+                    if (changed != 1) throw new UploadAttachmentExpiredException();
                 }
             }
             return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);

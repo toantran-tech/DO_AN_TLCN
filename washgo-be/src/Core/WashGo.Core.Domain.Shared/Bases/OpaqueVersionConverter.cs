@@ -1,6 +1,8 @@
 using System;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Buffers;
+using System.Text;
 
 namespace WashGo.Core.Domain.Shared.Bases
 {
@@ -11,7 +13,7 @@ namespace WashGo.Core.Domain.Shared.Bases
         {
             JsonTokenType.Null => null,
             JsonTokenType.String => reader.GetString(),
-            JsonTokenType.Number => System.Text.Encoding.UTF8.GetString(reader.HasValueSequence ? System.Buffers.BuffersExtensions.ToArray(reader.ValueSequence) : reader.ValueSpan.ToArray()),
+            JsonTokenType.Number => Encoding.UTF8.GetString(reader.HasValueSequence ? BuffersExtensions.ToArray(reader.ValueSequence) : reader.ValueSpan.ToArray()),
             _ => throw new JsonException("Version phải là chuỗi.")
         };
 

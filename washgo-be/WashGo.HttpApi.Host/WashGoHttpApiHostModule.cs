@@ -33,6 +33,9 @@ using WashGo.HttpApi;
 using WashGo.HttpApi.Hubs;
 using WashGo.HttpApi.Host.Workers;
 using WashGo.Domain.Entities.Identity;
+using Microsoft.AspNetCore.Authorization;
+using WashGo.Domain.Shared.Validation;
+using WashGo.HttpApi.Host;
 
 namespace WashGo.HttpApi.Host
 {
@@ -120,7 +123,7 @@ namespace WashGo.HttpApi.Host
                 };
             });
 
-            context.Services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationMiddlewareResultHandler, AuditingAuthorizationResultHandler>();
+            context.Services.AddSingleton<IAuthorizationMiddlewareResultHandler, AuditingAuthorizationResultHandler>();
             context.Services.AddAuthorization(options =>
             {
                 options.AddPolicy("AdminOnly", policy => policy.RequireRole("Admin"));
@@ -227,12 +230,12 @@ namespace WashGo.HttpApi.Host
             app.Use(async (http, next) =>
             {
                 try { await next(http); }
-                catch (WashGo.Domain.Shared.Validation.FinancialReportLimitException) when (!http.Response.HasStarted)
+                catch (FinancialReportLimitException) when (!http.Response.HasStarted)
                 {
                     http.Response.StatusCode = 413;
-                    await http.Response.WriteAsJsonAsync(new { succeeded = false, statusCode = 413, message = "Báo cáo vượt giới hạn xử lý trực tiếp. Vui lòng thu hẹp khoảng ngày hoặc chọn một Merchant.", meta = new { code = "ReportTooLarge", maxRowsPerSource = WashGo.Domain.Shared.Validation.FinancialReportLimitException.MaximumSourceRows } });
+                    await http.Response.WriteAsJsonAsync(new { succeeded = false, statusCode = 413, message = "Báo cáo vượt giới hạn xử lý trực tiếp. Vui lòng thu hẹp khoảng ngày hoặc chọn một Merchant.", meta = new { code = "ReportTooLarge", maxRowsPerSource = FinancialReportLimitException.MaximumSourceRows } });
                 }
-                catch (WashGo.Domain.Shared.Validation.UploadAttachmentExpiredException) when (!http.Response.HasStarted)
+                catch (UploadAttachmentExpiredException) when (!http.Response.HasStarted)
                 {
                     http.Response.StatusCode = 400;
                     await http.Response.WriteAsJsonAsync(new { succeeded = false, statusCode = 400, message = "Ảnh/video bản nháp đã hết hạn; vui lòng upload lại.", meta = new { code = "UploadExpired" } });
@@ -273,7 +276,7 @@ namespace WashGo.HttpApi.Host
             {
                 var handlers = context.ServiceProvider.GetServices<IEndpointBase>();
                 // Every API endpoint goes through the rejection audit filter.
-                var api = endpoints.MapGroup(string.Empty).AddEndpointFilter<WashGo.HttpApi.Host.AuditRejectionFilter>();
+                var api = endpoints.MapGroup(string.Empty).AddEndpointFilter<AuditRejectionFilter>();
                 foreach (var handler in handlers)
                 {
                     handler.MapEndpoint(api);

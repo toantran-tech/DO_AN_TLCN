@@ -7,6 +7,7 @@ using WashGo.Application.Contracts.Features.ShipperContracts.Commands;
 using WashGo.Application.Contracts.Features.ShipperContracts.Queries;
 using WashGo.Application.Contracts.Features.ShipperContracts.Services;
 using WashGo.Core.Endpoint;
+using System.Net;
 
 namespace WashGo.HttpApi.Endpoints.Shipper
 {
@@ -63,7 +64,7 @@ namespace WashGo.HttpApi.Endpoints.Shipper
             group.MapPost("/{id:guid}/tasks", async (Guid id, ShipperTaskQuery query, IShipperManagementAppService svc) =>
             {
                 var result = await svc.GetTasksAsync(id, query);
-                return result.StatusCode == System.Net.HttpStatusCode.NotFound ? Results.NotFound(result) : result.CustomResult();
+                return result.StatusCode == HttpStatusCode.NotFound ? Results.NotFound(result) : result.CustomResult();
             })
                 .WithName("Lịch sử nhiệm vụ của Shipper")
                 .WithSummary("Merchant xem nhiệm vụ lấy/trả của một Shipper trong tiệm (cả Shipper đã xóa): mã đơn, loại, trạng thái nhiệm vụ (Assigned/Completed/Reassigned/Cancelled), mốc phân công/hoàn tất/kết thúc thật; lọc taskType/status, phân trang tại BE.")

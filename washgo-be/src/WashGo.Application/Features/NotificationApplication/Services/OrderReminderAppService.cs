@@ -15,6 +15,7 @@ using WashGo.Domain.Entities.SystemConfig;
 using WashGo.Domain.Entities.WashOrder;
 using WashGo.Domain.Entities.WashOrder.Interfaces;
 using WashGo.Domain.Shared.Enums;
+using System.Globalization;
 
 namespace WashGo.Application.Features.NotificationApplication.Services
 {
@@ -208,7 +209,7 @@ namespace WashGo.Application.Features.NotificationApplication.Services
                         $"Đơn #{o.OrderCode} còn {Hours((o.PaymentDeadline.Value - now).TotalHours)} để thanh toán {o.FinalAmount:N0}đ. " +
                         "Quá hạn, đồ sẽ được chuyển sang lưu kho và tính phí lưu kho.", "order", o.Id,
                         NotificationPublisher.Message("paymentReminder.customer", ("orderCode", o.OrderCode),
-                            ("amount", o.FinalAmount.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)),
+                            ("amount", o.FinalAmount.ToString("0.##", CultureInfo.InvariantCulture)),
                             ("paymentDeadline", o.PaymentDeadline.Value.ToString("O"))));
             }
         }
@@ -252,7 +253,7 @@ namespace WashGo.Application.Features.NotificationApplication.Services
                         chargedDays == 1 ? "Đồ đã quá hạn lấy" : "Thông báo phí phạt", content, "order", o.Id,
                         NotificationPublisher.Message(chargedDays == 1 ? "overdueFee.firstDay.customer" : "overdueFee.customer",
                             ("orderCode", o.OrderCode), ("place", place), ("overdueDays", chargedDays.ToString()),
-                            ("fee", fee.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))));
+                            ("fee", fee.ToString("0.##", CultureInfo.InvariantCulture))));
                 }
 
                 if (OverdueFeeCalculator.IsTransferToStorageDue(deadline, now) &&

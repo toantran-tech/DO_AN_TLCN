@@ -24,6 +24,7 @@ using WashGo.Domain.Entities.Payment.Interfaces;
 using WashGo.Domain.Entities.WashOrder;
 using WashGo.Domain.Entities.WashOrder.Interfaces;
 using WashGo.Domain.Shared.Enums;
+using System.Data;
 
 namespace WashGo.Application.Features.FinanceApplication.Services
 {
@@ -119,7 +120,7 @@ namespace WashGo.Application.Features.FinanceApplication.Services
 
         public async Task<BaseResponse<RevenueReportDto>> GetRevenueReportAsync(FinancePeriodQuery query)
         {
-            using var snapshot = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true, isolationLevel: System.Data.IsolationLevel.RepeatableRead);
+            using var snapshot = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true, isolationLevel: IsolationLevel.RepeatableRead);
             var (from, to, error) = Period(query.FromDate, query.ToDate);
             if (error != null)
                 return BadRequest<RevenueReportDto>(error);
@@ -309,7 +310,7 @@ namespace WashGo.Application.Features.FinanceApplication.Services
 
         public async Task<BaseResponse<List<MerchantCommissionDto>>> GetCommissionsAsync(FinancePeriodQuery query)
         {
-            using var snapshot = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true, isolationLevel: System.Data.IsolationLevel.RepeatableRead);
+            using var snapshot = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true, isolationLevel: IsolationLevel.RepeatableRead);
             var (from, to, error) = Period(query.FromDate, query.ToDate);
             if (error != null)
                 return BadRequest<List<MerchantCommissionDto>>(error);
@@ -323,7 +324,7 @@ namespace WashGo.Application.Features.FinanceApplication.Services
             if (command.FromDate <= 0 || command.ToDate <= 0) return BadRequest<SettlementQuoteDto>("Vui lòng chọn kỳ đối soát.");
             var (from, to, error) = Period(command.FromDate, command.ToDate);
             if (error != null || to > DateTime.UtcNow) return BadRequest<SettlementQuoteDto>(error ?? "Kỳ đối soát phải đã kết thúc.");
-            using var snapshot = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true, isolationLevel: System.Data.IsolationLevel.RepeatableRead);
+            using var snapshot = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true, isolationLevel: IsolationLevel.RepeatableRead);
             var merchant = await _merchantRepo.FindAsync(command.MerchantId);
             if (merchant == null) return NotFound<SettlementQuoteDto>("Không tìm thấy Merchant.");
             var quote = await BuildQuoteAsync(merchant, from, to, null);
@@ -495,7 +496,7 @@ namespace WashGo.Application.Features.FinanceApplication.Services
             };
             page = Math.Max(1, page); take = Math.Clamp(take, 1, 100);
             if (!CurrentUser.Id.HasValue) return new() { Succeeded = false, StatusCode = HttpStatusCode.Forbidden };
-            using var snapshot = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true, isolationLevel: System.Data.IsolationLevel.RepeatableRead);
+            using var snapshot = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true, isolationLevel: IsolationLevel.RepeatableRead);
             var stored = await LazyServiceProvider.LazyGetRequiredService<ISettlementSnapshotReader>().ReadAsync(id, CurrentUser.IsInRole("Admin") ? null : CurrentUser.Id, page, take);
             if (stored.HasValue)
             {

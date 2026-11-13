@@ -8,6 +8,7 @@ using WashGo.Domain.Entities.Locker;
 using WashGo.Domain.Entities.Partner;
 using WashGo.Domain.Entities.WashService;
 using WashGo.Domain.Shared.Enums;
+using System.Net;
 
 namespace WashGo.Application.Features.CustomerApplication.Services;
 
@@ -53,7 +54,7 @@ public class CustomerCatalogAppService : WashGoAppService, ICustomerCatalogAppSe
         if (error != null)
             return new PaginatedResult<CustomerServiceCatalogDto>
             {
-                StatusCode = System.Net.HttpStatusCode.BadRequest,
+                StatusCode = HttpStatusCode.BadRequest,
                 Succeeded = false,
                 Message = error
             };
@@ -157,7 +158,7 @@ public class CustomerCatalogAppService : WashGoAppService, ICustomerCatalogAppSe
             return new PaginatedResult<CustomerLockerCatalogDto>
             {
                 Succeeded = false,
-                StatusCode = System.Net.HttpStatusCode.BadRequest,
+                StatusCode = HttpStatusCode.BadRequest,
                 Message = "Vị trí không hợp lệ."
             };
         var lat = latitude ?? 0;

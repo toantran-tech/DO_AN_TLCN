@@ -2,6 +2,8 @@ using System.Linq;
 using WashGo.Application.Contracts.Features.WashOrderContracts.Results;
 using WashGo.Domain.Entities.WashOrder;
 using WashGo.Domain.Shared.Enums;
+using WashGo.Application.Features.PaymentApplication.Services;
+using WashGo.Domain.Entities.SystemConfig;
 
 namespace WashGo.Application.Features.WashOrderApplication.Services
 {
@@ -89,8 +91,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 return new("AlreadyMoved", "Đơn hàng đã được ghi nhận chuyển kho trước đó.");
             if (order.Status != WashOrderStatus.ReadyToReturn)
                 return new("WrongStage", "Chỉ chuyển kho cho đồ đang nằm tại locker trả.");
-            if (!WashGo.Application.Features.PaymentApplication.Services.OverdueFeeCalculator.IsTransferToStorageDue(order.PickupDeadline, now))
-                return new("NotYetDue", $"Chỉ chuyển kho khi đã quá {WashGo.Domain.Entities.SystemConfig.SystemSetting.StorageTransferAfterHours} giờ kể từ hạn nhận đồ.");
+            if (!OverdueFeeCalculator.IsTransferToStorageDue(order.PickupDeadline, now))
+                return new("NotYetDue", $"Chỉ chuyển kho khi đã quá {SystemSetting.StorageTransferAfterHours} giờ kể từ hạn nhận đồ.");
             return null;
         }
 
@@ -107,7 +109,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
         }
 
         public static DateTime? TransferToStorageEligibleAt(WashOrder order) =>
-            order.PickupDeadline?.AddHours(WashGo.Domain.Entities.SystemConfig.SystemSetting.StorageTransferAfterHours);
+            order.PickupDeadline?.AddHours(SystemSetting.StorageTransferAfterHours);
 
         /// <summary>Metadata cho FE; null với vai trò không thao tác (Customer, Shipper).</summary>
         public static OrderAllowedActionsDto? Build(WashOrder order, string role)

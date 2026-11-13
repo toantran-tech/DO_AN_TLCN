@@ -13,6 +13,7 @@ using WashGo.Application.Contracts.Features.SystemSettingContracts.Results;
 using WashGo.Application.Contracts.Features.SystemSettingContracts.Services;
 using WashGo.Core.Domain.Shared.Bases;
 using WashGo.Domain.Entities.SystemConfig;
+using System.Globalization;
 
 namespace WashGo.Application.Features.SystemSettingApplication.Services
 {
@@ -144,7 +145,7 @@ namespace WashGo.Application.Features.SystemSettingApplication.Services
 
         private static SystemSettingDto ToDto(SystemSetting s, bool persisted = true) => new()
         {
-            Version = s.UpdatedAt.HasValue ? (s.UpdatedAt.Value.Ticks / 10).ToString(System.Globalization.CultureInfo.InvariantCulture) : "defaults-v1",
+            Version = s.UpdatedAt.HasValue ? (s.UpdatedAt.Value.Ticks / 10).ToString(CultureInfo.InvariantCulture) : "defaults-v1",
             IsPersisted = persisted, ServerNow = DateTime.UtcNow, UpdatedBy = s.UpdatedBy,
             DepositWindowMinutes = s.DepositWindowMinutes,
             MerchantCollectSlaHours = s.MerchantCollectSlaHours,

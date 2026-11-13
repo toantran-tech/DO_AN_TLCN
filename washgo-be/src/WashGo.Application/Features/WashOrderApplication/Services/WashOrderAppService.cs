@@ -34,6 +34,9 @@ using WashGo.Domain.Shared.Constants;
 using WashGo.Domain.Shared.Enums;
 using WashGo.Domain.Entities.Payment;
 using WashGo.Domain.Entities.Payment.Interfaces;
+using PromotionEntity = global::WashGo.Domain.Entities.Promotion.Promotion;
+using System.Globalization;
+using System.Net;
 
 namespace WashGo.Application.Features.WashOrderApplication.Services
 {
@@ -273,7 +276,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             if (query.DateRangeError() is { } dateError)
                 return new PaginatedResult<WashOrderResultDto>
                 {
-                    Succeeded = false, StatusCode = System.Net.HttpStatusCode.BadRequest, Message = dateError,
+                    Succeeded = false, StatusCode = HttpStatusCode.BadRequest, Message = dateError,
                     CurrentPage = query.Page, PageSize = query.Take
                 };
             RestrictStaffQuery(query, scope);
@@ -606,7 +609,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             var now = DateTime.UtcNow;
             if (!string.IsNullOrWhiteSpace(command.PromotionCode))
             {
-                var promoCode = WashGo.Domain.Entities.Promotion.Promotion.NormalizeCode(command.PromotionCode);
+                var promoCode = PromotionEntity.NormalizeCode(command.PromotionCode);
                 var promoId = await AsyncExecuter.FirstOrDefaultAsync((await _promotionRepo.GetQueryableAsync())
                     .Where(x => x.Code == promoCode && !x.IsDeleted).Select(x => (Guid?)x.Id));
                 if (promoId.HasValue) await _promotionRepo.GetForUpdateAsync(promoId.Value);
@@ -800,7 +803,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             if (order == null || order.IsDeleted)
                 return NotFound<WashOrderDetailDto>("Không tìm thấy đơn hàng!");
             var request = OrderWriteGuard.Fingerprint(
-                $"cancelExpiredDeposit;fee={command.ExpectedFeeAmount?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "-"}", reason);
+                $"cancelExpiredDeposit;fee={command.ExpectedFeeAmount?.ToString(CultureInfo.InvariantCulture) ?? "-"}", reason);
             if (await GuardAsync(order, scope, command, "CancelExpiredDeposit", request) is { } stop)
                 return stop;
             var now = DateTime.UtcNow;
@@ -808,13 +811,13 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             if (!quote.CanCancel)
                 return new BaseResponse<WashOrderDetailDto>
                 {
-                    Succeeded = false, StatusCode = System.Net.HttpStatusCode.BadRequest, Message = quote.Reason,
+                    Succeeded = false, StatusCode = HttpStatusCode.BadRequest, Message = quote.Reason,
                     Meta = new { code = quote.ReasonCode }
                 };
             if (command.ExpectedFeeAmount.HasValue && command.ExpectedFeeAmount.Value != quote.FeeAmount)
                 return new BaseResponse<WashOrderDetailDto>
                 {
-                    Succeeded = false, StatusCode = System.Net.HttpStatusCode.Conflict, Data = MapForAdmin(order, scope),
+                    Succeeded = false, StatusCode = HttpStatusCode.Conflict, Data = MapForAdmin(order, scope),
                     Message = $"Phí hủy đã thay đổi ({command.ExpectedFeeAmount:N0}đ → {quote.FeeAmount:N0}đ); vui lòng xem lại trước khi xác nhận.",
                     Meta = new { code = "QuoteChanged", feeAmount = quote.FeeAmount }
                 };
@@ -824,7 +827,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 await uow.RollbackAsync();
                 return new BaseResponse<WashOrderDetailDto>
                 {
-                    Succeeded = false, StatusCode = System.Net.HttpStatusCode.Conflict,
+                    Succeeded = false, StatusCode = HttpStatusCode.Conflict,
                     Message = "Ô tủ không còn được giữ chỗ cho đơn này; chưa hủy đơn.", Meta = new { code = "BoxNotReserved" }
                 };
             }
@@ -1246,7 +1249,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             return new BaseResponse<WashOrderDetailDto>
             {
                 Succeeded = replay,
-                StatusCode = replay ? System.Net.HttpStatusCode.OK : System.Net.HttpStatusCode.Conflict,
+                StatusCode = replay ? HttpStatusCode.OK : HttpStatusCode.Conflict,
                 Data = dto,
                 Message = decision.Message,
                 Meta = new OrderWriteMetaDto
