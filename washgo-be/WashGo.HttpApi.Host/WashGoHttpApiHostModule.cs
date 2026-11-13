@@ -171,6 +171,7 @@ namespace WashGo.HttpApi.Host
             context.Services.AddSignalR();
             context.Services.AddHostedService<ReminderWorker>();
             context.Services.AddHostedService<PrivateDocumentCleanupWorker>();
+            context.Services.AddHostedService<ChatbotCleanupWorker>();
             context.Services.AddEndpointsApiExplorer();
             context.Services.AddSwaggerGen(options =>
             {

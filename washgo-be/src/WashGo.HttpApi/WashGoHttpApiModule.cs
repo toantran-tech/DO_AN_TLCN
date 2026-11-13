@@ -24,6 +24,7 @@ using WashGo.HttpApi.Endpoints.WashOrder;
 using WashGo.HttpApi.Endpoints.WashService;
 using WashGo.HttpApi.Endpoints.Admin;
 using WashGo.HttpApi.Endpoints.Audit;
+using WashGo.HttpApi.Endpoints.Chatbot;
 using WashGo.HttpApi.Endpoints.MerchantReport;
 
 namespace WashGo.HttpApi
@@ -44,6 +45,7 @@ namespace WashGo.HttpApi
             context.Services.AddTransient<IEndpointBase, AdminProfileHandler>();
             context.Services.AddTransient<IEndpointBase, AdminDashboardHandler>();
             context.Services.AddTransient<IEndpointBase, CustomerHandler>();
+            context.Services.AddTransient<IEndpointBase, ChatbotHandler>();
             context.Services.AddTransient<IEndpointBase, WashOrderHandler>();
             context.Services.AddTransient<IEndpointBase, LockerHandler>();
             context.Services.AddTransient<IEndpointBase, WashServiceHandler>();

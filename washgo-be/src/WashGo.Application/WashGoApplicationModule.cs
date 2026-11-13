@@ -6,6 +6,8 @@ using Volo.Abp.Modularity;
 using WashGo.Application.Contracts;
 using WashGo.Core;
 using WashGo.Domain;
+using WashGo.Application.Features.ChatbotApplication.Providers;
+using WashGo.Application.Features.ChatbotApplication.Services;
 
 namespace WashGo.Application
 {
@@ -21,6 +23,8 @@ namespace WashGo.Application
         public override void ConfigureServices(ServiceConfigurationContext context)
         {
             context.Services.AddAutoMapperObjectMapper<WashGoApplicationModule>();
+            context.Services.AddHttpClient<IChatModelClient, GeminiChatModelClient>(client =>
+                client.Timeout = TimeSpan.FromSeconds(65));
 
             Configure<AbpAutoMapperOptions>(options =>
             {

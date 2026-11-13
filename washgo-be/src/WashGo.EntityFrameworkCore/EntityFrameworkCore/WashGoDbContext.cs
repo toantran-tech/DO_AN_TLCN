@@ -16,6 +16,7 @@ using WashGo.Domain.Entities.WashService;
 using WashGo.Domain.Shared.Constants;
 using WashGo.EntityFrameworkCore.BuilderConfiguration;
 using WashGo.Domain.Entities.Audit;
+using WashGo.Domain.Entities.Chatbot;
 using System.Text.RegularExpressions;
 using WashGo.Domain.Shared.Validation;
 
@@ -24,6 +25,8 @@ namespace WashGo.EntityFrameworkCore.EntityFrameworkCore
     [ConnectionStringName("Default")]
     public class WashGoDbContext : AbpDbContext<WashGoDbContext>
     {
+        public DbSet<ChatConversation> ChatConversations { get; set; } = null!;
+        public DbSet<ChatMessage> ChatMessages { get; set; } = null!;
         public DbSet<Role> Roles { get; set; } = null!;
         public DbSet<User> Users { get; set; } = null!;
         public DbSet<RefreshToken> RefreshTokens { get; set; } = null!;
@@ -75,6 +78,8 @@ namespace WashGo.EntityFrameworkCore.EntityFrameworkCore
             base.OnModelCreating(builder);
 
             builder.HasDefaultSchema(WashGoDbProperties.Schema);
+            builder.ApplyConfiguration(new ChatConversationEntityTypeConfiguration());
+            builder.ApplyConfiguration(new ChatMessageEntityTypeConfiguration());
 
             builder.ApplyConfiguration(new RoleEntityTypeConfiguration());
             builder.ApplyConfiguration(new UserEntityTypeConfiguration());

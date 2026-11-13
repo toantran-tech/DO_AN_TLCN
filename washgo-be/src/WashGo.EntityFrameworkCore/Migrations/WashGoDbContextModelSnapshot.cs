@@ -170,6 +170,212 @@ namespace WashGo.EntityFrameworkCore.Migrations
                     b.ToTable("audit_logs", "washgo");
                 });
 
+            modelBuilder.Entity("WashGo.Domain.Entities.Chatbot.ChatConversation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("ActiveMessageId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("active_message_id");
+
+                    b.Property<string>("Created")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("created");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("text")
+                        .HasColumnName("created_by");
+
+                    b.Property<long>("CreatedOn")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_on");
+
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("customer_id");
+
+                    b.Property<string>("DeletedBy")
+                        .HasColumnType("text")
+                        .HasColumnName("deleted_by");
+
+                    b.Property<long?>("DeletedOn")
+                        .HasColumnType("bigint")
+                        .HasColumnName("deleted_on");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
+
+                    b.Property<DateTime>("LastMessageAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_message_at");
+
+                    b.Property<DateTime?>("LeaseUntil")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("lease_until");
+
+                    b.Property<string>("Modified")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("modified");
+
+                    b.Property<string>("ModifiedBy")
+                        .HasColumnType("text")
+                        .HasColumnName("modified_by");
+
+                    b.Property<long>("ModifiedOn")
+                        .HasColumnType("bigint")
+                        .HasColumnName("modified_on");
+
+                    b.Property<long>("Sequence")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("sequence");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<long>("Sequence"));
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("title");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Sequence")
+                        .IsUnique();
+
+                    b.HasIndex("CustomerId", "Sequence");
+
+                    b.ToTable("chat_conversations", "washgo");
+                });
+
+            modelBuilder.Entity("WashGo.Domain.Entities.Chatbot.ChatMessage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasMaxLength(12000)
+                        .HasColumnType("character varying(12000)")
+                        .HasColumnName("content");
+
+                    b.Property<Guid>("ConversationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("conversation_id");
+
+                    b.Property<string>("Created")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("created");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("text")
+                        .HasColumnName("created_by");
+
+                    b.Property<long>("CreatedOn")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_on");
+
+                    b.Property<string>("DeletedBy")
+                        .HasColumnType("text")
+                        .HasColumnName("deleted_by");
+
+                    b.Property<long?>("DeletedOn")
+                        .HasColumnType("bigint")
+                        .HasColumnName("deleted_on");
+
+                    b.Property<string>("ErrorCode")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasColumnName("error_code");
+
+                    b.Property<string>("Fingerprint")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("fingerprint");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
+
+                    b.Property<string>("Model")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("model");
+
+                    b.Property<string>("Modified")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("modified");
+
+                    b.Property<string>("ModifiedBy")
+                        .HasColumnType("text")
+                        .HasColumnName("modified_by");
+
+                    b.Property<long>("ModifiedOn")
+                        .HasColumnType("bigint")
+                        .HasColumnName("modified_on");
+
+                    b.Property<Guid?>("ReplyToMessageId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("reply_to_message_id");
+
+                    b.Property<Guid?>("RequestId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("request_id");
+
+                    b.Property<string>("ResultJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("result_json");
+
+                    b.Property<int>("Role")
+                        .HasColumnType("integer")
+                        .HasColumnName("role");
+
+                    b.Property<long>("Sequence")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("sequence");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<long>("Sequence"));
+
+                    b.Property<int?>("Status")
+                        .HasColumnType("integer")
+                        .HasColumnName("status");
+
+                    b.Property<int?>("TotalTokens")
+                        .HasColumnType("integer")
+                        .HasColumnName("total_tokens");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.HasIndex("ReplyToMessageId")
+                        .IsUnique();
+
+                    b.HasIndex("Sequence")
+                        .IsUnique();
+
+                    b.HasIndex("ConversationId", "RequestId")
+                        .IsUnique()
+                        .HasFilter("request_id IS NOT NULL");
+
+                    b.HasIndex("ConversationId", "Sequence");
+
+                    b.ToTable("chat_messages", "washgo");
+                });
+
             modelBuilder.Entity("WashGo.Domain.Entities.Feedback.Incident", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3813,6 +4019,24 @@ namespace WashGo.EntityFrameworkCore.Migrations
                     NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("SearchVector"), "GIN");
 
                     b.ToTable("services", "washgo");
+                });
+
+            modelBuilder.Entity("WashGo.Domain.Entities.Chatbot.ChatConversation", b =>
+                {
+                    b.HasOne("WashGo.Domain.Entities.Identity.User", null)
+                        .WithMany()
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("WashGo.Domain.Entities.Chatbot.ChatMessage", b =>
+                {
+                    b.HasOne("WashGo.Domain.Entities.Chatbot.ChatConversation", null)
+                        .WithMany()
+                        .HasForeignKey("ConversationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("WashGo.Domain.Entities.Feedback.Incident", b =>

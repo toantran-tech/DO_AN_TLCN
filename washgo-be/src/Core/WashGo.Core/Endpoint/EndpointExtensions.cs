@@ -11,6 +11,8 @@ namespace WashGo.Core.Endpoint
             {
                 HttpStatusCode.OK => Results.Ok(response),
                 HttpStatusCode.Created => Results.Created(string.Empty, response),
+                HttpStatusCode.Accepted => Results.Json(response, statusCode: 202),
+                HttpStatusCode.ServiceUnavailable => Results.Json(response, statusCode: 503),
                 HttpStatusCode.BadRequest => Results.BadRequest(response),
                 HttpStatusCode.NotFound => Results.NotFound(response),
                 HttpStatusCode.Conflict => Results.Conflict(response),

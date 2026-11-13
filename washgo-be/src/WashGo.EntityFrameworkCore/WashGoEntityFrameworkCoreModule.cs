@@ -14,6 +14,8 @@ using WashGo.Domain.Entities.WashOrder.Interfaces;
 using WashGo.Domain.Entities.WashService.Interfaces;
 using WashGo.EntityFrameworkCore.EntityFrameworkCore;
 using WashGo.EntityFrameworkCore.Repositories;
+using WashGo.Domain.Entities.Chatbot;
+using WashGo.Domain.Entities.Chatbot.Interfaces;
 using LockerEntity = global::WashGo.Domain.Entities.Locker.Locker;
 using NotificationEntity = global::WashGo.Domain.Entities.Notification.Notification;
 using PromotionEntity = global::WashGo.Domain.Entities.Promotion.Promotion;
@@ -38,6 +40,7 @@ namespace WashGo.EntityFrameworkCore
             context.Services.AddAbpDbContext<WashGoDbContext>(options =>
             {
                 options.AddDefaultRepositories(includeAllEntities: true);
+                options.AddRepository<ChatConversation, ChatConversationRepository>();
                 options.AddRepository<OtpCode, OtpCodeRepository>();
                 options.AddRepository<WashOrderEntity, WashOrderRepository>();
                 options.AddRepository<LockerEntity, LockerRepository>();
@@ -50,6 +53,7 @@ namespace WashGo.EntityFrameworkCore
             });
 
             context.Services.AddTransient<IWashOrderRepository, WashOrderRepository>();
+            context.Services.AddTransient<IChatConversationRepository, ChatConversationRepository>();
             context.Services.AddTransient<IOtpCodeRepository, OtpCodeRepository>();
             context.Services.AddTransient<ILockerRepository, LockerRepository>();
             context.Services.AddTransient<IPaymentTransactionRepository, PaymentTransactionRepository>();

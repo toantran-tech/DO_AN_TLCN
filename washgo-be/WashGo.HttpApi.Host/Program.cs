@@ -69,6 +69,10 @@ namespace WashGo.HttpApi.Host
                                 Environment.SetEnvironmentVariable("Jwt__SecretKey", value);
                             if (key == "GOOGLE_CLIENT_ID" && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("Google__ClientId")))
                                 Environment.SetEnvironmentVariable("Google__ClientId", value);
+                            if (key == "GEMINI_API_KEY" && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("Chatbot__Gemini__ApiKey")))
+                                Environment.SetEnvironmentVariable("Chatbot__Gemini__ApiKey", value);
+                            if (key == "GEMINI_MODEL" && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("Chatbot__Gemini__Model")))
+                                Environment.SetEnvironmentVariable("Chatbot__Gemini__Model", value);
 
                             // Payment (MoMo & VNPay)
                             if (key == "PAYMENT_PROVIDER" && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("Payment__Provider")))
