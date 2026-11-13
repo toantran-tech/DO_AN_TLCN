@@ -8,6 +8,7 @@ using Volo.Abp.Domain.Repositories;
 using WashGo.Application.Contracts.Features.WashOrderContracts.Commands;
 using WashGo.Application.Contracts.Features.WashOrderContracts.Results;
 using WashGo.Core.Domain.Shared.Bases;
+using WashGo.Application.Features.WashOrderApplication.Services;
 using WashGo.Domain.Entities.WashOrder;
 using WashGo.Domain.Shared.Enums;
 
@@ -26,7 +27,7 @@ public class ShipperDeliveryGuard(IRepository<DeliveryTask, Guid> tasks, IReposi
             if (previous != null)
                 return previous.ActorId == actor && previous.OrderId == order.Id && previous.Operation == Operation(type) &&
                     previous.Request == Fingerprint(command) && previous.ResultJson != null
-                    ? new() { Succeeded = true, StatusCode = HttpStatusCode.OK, Data = JsonSerializer.Deserialize<WashOrderDetailDto>(previous.ResultJson),
+                    ? new() { Succeeded = true, StatusCode = HttpStatusCode.OK, Data = ReadResult(previous.ResultJson),
                         Message = "Thao tác đã được thực hiện trước đó.", Meta = new { code = "Replayed", replayed = true, operationId = id } }
                     : Error("OperationIdReused", "operationId đã được sử dụng cho yêu cầu khác.");
         }
@@ -54,13 +55,17 @@ public class ShipperDeliveryGuard(IRepository<DeliveryTask, Guid> tasks, IReposi
     {
         if (command.OperationId is not { } id) return;
         result = JsonSerializer.Deserialize<WashOrderDetailDto>(JsonSerializer.Serialize(result))!;
-        result.RedactForMerchant();
-        result.ShipperTaskQrString = null;
-        result.CustomerNote = null;
+        OrderResponsePrivacy.Apply(result, "Shipper");
         result.Timeline.Clear();
         await operations.InsertAsync(new OrderOperation(id) { OrderId = order.Id, ActorId = actor, Operation = Operation(type),
             Request = Fingerprint(command), DeliveryTaskId = command.TaskId, ResultStatus = order.Status, ResultRevision = order.Revision,
             ResultJson = JsonSerializer.Serialize(result), CreatedAt = DateTime.UtcNow }, autoSave: true);
+    }
+
+    public static WashOrderDetailDto? ReadResult(string json)
+    {
+        var dto = JsonSerializer.Deserialize<WashOrderDetailDto>(json);
+        return dto == null ? null : OrderResponsePrivacy.Apply(dto, "Shipper");
     }
 
     public async Task<OrderOperation?> FindAsync(Guid taskId, Guid operationId, Guid actor) =>

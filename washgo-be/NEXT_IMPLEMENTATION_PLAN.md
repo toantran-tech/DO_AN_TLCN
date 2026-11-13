@@ -1,8 +1,17 @@
+> Cụm 1 A/B ngày 13/11/2026: đã hoàn thiện Publish đánh giá/contacts Admin và bảo vệ dữ liệu đơn/biên lai/thông báo theo role. Docker CI HTTP, race/replay/aggregate, Privacy console, build và model check PASS. Chưa commit/push, chưa làm C–G. Chi tiết hiện hành: [checklist](IMPLEMENTATION_CHECKLIST.md), [plan bổ sung](docs/NEW_BACKEND_REQUIREMENTS_PLAN_20261113.md), [API bàn giao](docs/REVIEW_PUBLISHING_PRIVACY_API.md).
+
 > Nghiệp vụ thành viên chốt ngày 09/11/2026 đã triển khai: cảnh báo khiếu nại 48h, chứng từ/người chi bồi thường, hợp đồng hết hạn theo giờ VN, gán đơn theo điểm trung lập, nguồn đối soát chỉ nhận một lần và bù trừ kỳ âm/đóng kỳ 0. Phạm vi và hợp đồng mới tại [AGREED_BUSINESS_RULES_20261109.md](docs/AGREED_BUSINESS_RULES_20261109.md); trạng thái hiện hành xem mục 10 [checklist](IMPLEMENTATION_CHECKLIST.md). Đặc tả DO_AN/Đặc tả usecase.docx đã đồng bộ; chưa commit/push đợt này.
 
 > Cập nhật 09/11/2026: xem kết quả tại [IMPLEMENTATION_CHECKLIST.md](IMPLEMENTATION_CHECKLIST.md) và hợp đồng API mới tại [docs/ADMIN_COMPLETION_REVIEW.md](docs/ADMIN_COMPLETION_REVIEW.md). Các mục cũ phía dưới là lịch sử. Đã chia commit thành 4 nhánh, chưa push; xem docs/GIT_PUSH_PLAN.md.
 
 # Tiến độ WashGo theo Đặc tả usecase (Backend trước)
+
+## CI và mapper ngày 13/11/2026
+
+- CI đợt 1 ở PR #106: theo log người dùng, GitHub Build/Analyze/Regression PASS; Security chặn dependency High như thiết kế.
+- Phương án người dùng chốt cuối: Mapster 10.0.14 MIT không cần key thay AutoMapper; giữ ObjectMapper ABP 8.2. Chuyển 5 profile, config riêng compile sớm, đăng ký cặp rõ ràng, depth 32; giữ null clearing và cập nhật entity tại chỗ.
+- Local Security PASS, không còn AutoMapper trong graph; Docker regression mapping/JWT/catalog và vòng đời đơn/actual-weight PASS trên DB tạm đã dọn. Không hạ gate; còn 5 nullable warnings cũ. Bản vá đã commit/push (04bb072), người dùng gửi ảnh PR #106 cả 5 check PASS; chưa xác nhận đã merge.
+- Hướng dẫn stage/commit riêng phần CI/dependency tại [CI_DEPENDENCY_SECURITY_FIX.md](docs/CI_DEPENDENCY_SECURITY_FIX.md); trạng thái tại checklist. Chưa triển khai CD/staging hoặc coi đủ mọi metric rubric.
 
 ## Chuẩn hóa using ngày 13/11/2026
 

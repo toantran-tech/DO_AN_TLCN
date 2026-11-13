@@ -1,13 +1,13 @@
 using Microsoft.Extensions.DependencyInjection;
-using AutoMapper;
 using Volo.Abp.Application;
-using Volo.Abp.AutoMapper;
+using Volo.Abp.ObjectMapping;
 using Volo.Abp.Modularity;
 using WashGo.Application.Contracts;
 using WashGo.Core;
 using WashGo.Domain;
 using WashGo.Application.Features.ChatbotApplication.Providers;
 using WashGo.Application.Features.ChatbotApplication.Services;
+using WashGo.Application.Mappings;
 
 namespace WashGo.Application
 {
@@ -15,21 +15,17 @@ namespace WashGo.Application
         typeof(WashGoDomainModule),
         typeof(WashGoApplicationContractsModule),
         typeof(AbpDddApplicationModule),
-        typeof(AbpAutoMapperModule),
+        typeof(AbpObjectMappingModule),
         typeof(WashGoCoreModule)
     )]
     public class WashGoApplicationModule : AbpModule
     {
         public override void ConfigureServices(ServiceConfigurationContext context)
         {
-            context.Services.AddAutoMapperObjectMapper<WashGoApplicationModule>();
+            context.Services.AddWashGoObjectMapping();
             context.Services.AddHttpClient<IChatModelClient, GeminiChatModelClient>(client =>
                 client.Timeout = TimeSpan.FromSeconds(65));
 
-            Configure<AbpAutoMapperOptions>(options =>
-            {
-                options.AddMaps<WashGoApplicationModule>();
-            });
         }
     }
 }

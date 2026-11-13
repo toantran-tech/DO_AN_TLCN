@@ -1,0 +1,9 @@
+<Project>
+  <ItemGroup>
+    <!-- Pin patched .NET 8 dependencies throughout the Backend project graph. -->
+    <!-- GHSA-qj66-m88j-hmgj / CVE-2024-43483 -->
+    <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="8.0.1" />
+    <!-- GHSA-8g4q-xg66-9fp4 / CVE-2024-43485 -->
+    <PackageReference Include="System.Text.Json" Version="8.0.6" />
+  </ItemGroup>
+</Project>

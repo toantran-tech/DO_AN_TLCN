@@ -39,7 +39,7 @@ public class MyShipperTaskAppService(IRepository<DeliveryTask, Guid> tasks, IShi
         var operation = await guard.FindAsync(taskId, operationId, CurrentUser.Id ?? Guid.Empty);
         return Success(new ShipperOperationDto { OperationId = operationId, TaskId = taskId,
             State = operation == null ? "unknown" : "succeeded",
-            Result = operation?.ResultJson == null ? null : JsonSerializer.Deserialize<WashOrderDetailDto>(operation.ResultJson) });
+            Result = operation?.ResultJson == null ? null : ShipperDeliveryGuard.ReadResult(operation.ResultJson) });
     }
 
     private static string? Validate(MyShipperTaskQuery query)

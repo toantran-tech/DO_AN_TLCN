@@ -1,24 +1,24 @@
-using AutoMapper;
+using Mapster;
 using WashGo.Application.Contracts.Features.WashServiceContracts.Commands;
 using WashGo.Application.Contracts.Features.WashServiceContracts.Results;
 using WashGo.Domain.Entities.WashService;
 
 namespace WashGo.Application.Features.WashServiceApplication.Mappings
 {
-    public class WashServiceMappingProfile : Profile
+    public class WashServiceMappingProfile : IRegister
     {
-        public WashServiceMappingProfile()
+        public void Register(TypeAdapterConfig config)
         {
-            CreateMap<WashService, WashServiceResultDto>()
-                .ForMember(dest => dest.ImageUrls, opt => opt.Ignore())
-                .ForMember(dest => dest.Version, opt => opt.Ignore())
-                .ForMember(dest => dest.HasPendingProposal, opt => opt.Ignore())
-                .ForMember(dest => dest.MyPendingProposalId, opt => opt.Ignore())
-                .ForMember(dest => dest.CanProposeUpdate, opt => opt.Ignore())
-                .ForMember(dest => dest.ProposeBlockedCode, opt => opt.Ignore())
-                .ForMember(dest => dest.ProposeBlockedReason, opt => opt.Ignore());
-            CreateMap<CreateWashServiceCommand, WashService>();
-            CreateMap<UpdateWashServiceCommand, WashService>();
+            config.NewConfig<WashService, WashServiceResultDto>()
+                .Ignore(dest => dest.ImageUrls)
+                .Ignore(dest => dest.Version)
+                .Ignore(dest => dest.HasPendingProposal)
+                .Ignore(dest => dest.MyPendingProposalId)
+                .Ignore(dest => dest.CanProposeUpdate)
+                .Ignore(dest => dest.ProposeBlockedCode)
+                .Ignore(dest => dest.ProposeBlockedReason);
+            config.NewConfig<CreateWashServiceCommand, WashService>();
+            config.NewConfig<UpdateWashServiceCommand, WashService>();
         }
     }
 }

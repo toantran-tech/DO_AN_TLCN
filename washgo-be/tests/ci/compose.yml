@@ -1,0 +1,36 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: washgo_ci
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ci-only
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d washgo_ci"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    tmpfs:
+      - /var/lib/postgresql/data
+
+  backend:
+    image: ${WASHGO_CI_IMAGE:-washgo-ci-local:latest}
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_HTTP_PORTS: "8080"
+      ConnectionStrings__Default: Host=postgres;Port=5432;Database=washgo_ci;Username=postgres;Password=ci-only
+      Jwt__SecretKey: CI-only-signing-key-not-for-real-users-1234567890
+      Payment__Provider: Mock
+      Email__Smtp__Host: ""
+      Email__Smtp__SenderAddress: ""
+      Chatbot__Gemini__ApiKey: ""
+      Google__ClientId: ""
+      Logging__LogLevel__Default: Warning
+    ports:
+      - "127.0.0.1:${WASHGO_CI_PORT:-5088}:8080"

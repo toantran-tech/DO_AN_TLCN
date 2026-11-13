@@ -7,12 +7,24 @@ namespace WashGo.Application.Contracts.Features.FeedbackContracts.Results
     /// <summary>Đánh giá cho Admin: đầy đủ, có định danh nội bộ (đơn, khách, Merchant) và thông tin kiểm duyệt. Chỉ dùng cho Admin.</summary>
     public class RatingResultDto
     {
+        public string? CustomerAvatarUrl { get; set; }
+        public string? CustomerEmail { get; set; }
+        public string? CustomerPhoneNumber { get; set; }
+        public List<string> MerchantImageUrls { get; set; } = [];
+        public string? MerchantEmail { get; set; }
+        public string? MerchantPhone { get; set; }
+        public string ContactBasis => "Current profile, Admin only; names are rating snapshots; contacts are not part of version.";
+        public DateTime? ContactRetrievedAt { get; set; }
+        public DateTime? ContentApprovedAt { get; set; }
+        public Guid? ContentApprovedBy { get; set; }
+        public bool CanPublish { get; set; }
+        public string? PublishReasonCode { get; set; }
         public Guid Id { get; set; }
         public Guid? OrderId { get; set; }
         public string? OrderCode { get; set; }
         public Guid? CustomerId { get; set; }
         public string? CustomerName { get; set; }
-        /// <summary>Admin: phiên bản (chuỗi opaque) gửi lại khi ẩn/hiện.</summary>
+        /// <summary>Admin: phiên bản (chuỗi opaque) gửi lại khi ẩn/hiện/duyệt nội dung.</summary>
         public string? Version { get; set; }
         public bool CanHide { get; set; }
         public bool CanShow { get; set; }
