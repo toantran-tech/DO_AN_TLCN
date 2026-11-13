@@ -1,3 +1,4 @@
+﻿using WashGo.HttpApi.Endpoints.Storage;
 using Microsoft.Extensions.DependencyInjection;
 using Volo.Abp.AspNetCore.Mvc;
 using Volo.Abp.Modularity;
@@ -47,6 +48,7 @@ namespace WashGo.HttpApi
             context.Services.AddTransient<IEndpointBase, CustomerHandler>();
             context.Services.AddTransient<IEndpointBase, ChatbotHandler>();
             context.Services.AddTransient<IEndpointBase, WashOrderHandler>();
+            context.Services.AddTransient<IEndpointBase, StorageHandler>();
             context.Services.AddTransient<IEndpointBase, LockerHandler>();
             context.Services.AddTransient<IEndpointBase, WashServiceHandler>();
             context.Services.AddTransient<IEndpointBase, ServiceAreaHandler>();

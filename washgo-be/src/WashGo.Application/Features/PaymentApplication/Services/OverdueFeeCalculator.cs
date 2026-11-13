@@ -1,4 +1,5 @@
 using System;
+using WashGo.Domain.Shared.Enums;
 using WashGo.Domain.Entities.WashOrder;
 
 using WashGo.Domain.Entities.SystemConfig;
@@ -38,6 +39,15 @@ namespace WashGo.Application.Features.PaymentApplication.Services
         public static decimal GetTotalStorageDue(WashOrder order, DateTime now, SystemSetting settings)
         {
             settings = OrderOperationalPolicy.Resolve(order, settings);
+            if (order.StorageWorkflowVersion >= 1)
+            {
+                if (order.Status is WashOrderStatus.Completed or WashOrderStatus.Returned) return order.OverdueFeeTotal;
+                if (order.Status == WashOrderStatus.MovedToStorage)
+                    return order.AccumulatedStorageFee + CalculateStorageFee(order.MovedToStorageAt, now, settings);
+                if (order.Status is WashOrderStatus.TransferringToStorage or WashOrderStatus.ReturningFromStorage)
+                    return order.AccumulatedStorageFee;
+                return order.AccumulatedStorageFee + Calculate(order.PickupDeadline, now, settings);
+            }
             if (order.MovedToStorageAt.HasValue)
             {
                 var lockerFee = order.LockerOverdueFeeAtStorageTransfer

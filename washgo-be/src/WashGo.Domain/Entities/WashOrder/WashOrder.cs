@@ -33,11 +33,15 @@ namespace WashGo.Domain.Entities.WashOrder
         [Filterable(ColumnVariant.Text)]
         public string LockerName { get; set; } = string.Empty;
 
+        public LockerBoxSize? DepositBoxSize { get; set; }
         public Guid BoxId { get; set; }
         public string BoxNumber { get; set; } = string.Empty;
         public Guid? ReturnLockerId { get; set; }
         public Guid? ReturnBoxId { get; set; }
         public string? ReturnBoxNumber { get; set; }
+        public int StorageWorkflowVersion { get; set; } = 1;
+        public Guid? ActiveStorageCycleId { get; set; }
+        public decimal AccumulatedStorageFee { get; set; }
         public Guid? MerchantId { get; set; }
 
         [Filterable(ColumnVariant.Text)]

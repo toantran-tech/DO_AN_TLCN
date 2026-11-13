@@ -5,10 +5,16 @@ namespace WashGo.Application.Contracts.Features.ShipperContracts.Results;
 
 public class MyShipperTaskDto : ShipperTaskDto
 {
+    public Guid? StorageCycleId { get; set; }
+    public string? StorageShopAddress { get; set; }
+    public bool CanStorageCollect { get; set; }
+    public bool CanStorageHandover { get; set; }
+    public bool CanStorageDepart { get; set; }
+    public bool CanStoragePlace { get; set; }
     public Guid AssignmentVersion => TaskId;
     public DeliveryTaskStatus TaskStatus => Status;
-    public DeliveryTaskType? NextAction => CanCollect ? DeliveryTaskType.Collect : CanReturn ? DeliveryTaskType.Return : null;
-    public bool IsOverdue => Deadline.HasValue && ServerNow > Deadline.Value && (CanCollect || CanReturn);
+    public DeliveryTaskType? NextAction => CanCollect ? DeliveryTaskType.Collect : CanReturn ? DeliveryTaskType.Return : CanStorageCollect || CanStorageHandover ? DeliveryTaskType.StorageTransfer : CanStorageDepart || CanStoragePlace ? DeliveryTaskType.StorageReturn : null;
+    public bool IsOverdue => Deadline.HasValue && ServerNow > Deadline.Value && (CanCollect || CanReturn || CanStorageCollect || CanStorageHandover || CanStorageDepart || CanStoragePlace);
     public long OrderRevision { get; set; }
     public string? TaskLockerName { get; set; }
     public string? TaskLockerAddress { get; set; }

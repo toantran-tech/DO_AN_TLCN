@@ -16,6 +16,8 @@ namespace WashGo.Domain.Entities.WashOrder
         public DeliveryTask() { }
         public DeliveryTask(Guid id) : base(id) { }
 
+        public Guid? StorageCycleId { get; set; }
+        public DateTime? GoodsCollectedAt { get; set; }
         public Guid OrderId { get; set; }
         public Guid ShipperId { get; set; }
         public Guid? MerchantId { get; set; }

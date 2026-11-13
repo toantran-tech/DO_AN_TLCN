@@ -712,6 +712,7 @@ namespace WashGo.Application.Features.MerchantApplication.Services
                 ReadyToReturn = countsByStatus.GetValueOrDefault(WashOrderStatus.ReadyToReturn),
                 Returned = countsByStatus.GetValueOrDefault(WashOrderStatus.Returned),
                 Completed = countsByStatus.GetValueOrDefault(WashOrderStatus.Completed),
+                TransferringToStorage = countsByStatus.GetValueOrDefault(WashOrderStatus.TransferringToStorage), ReturningFromStorage = countsByStatus.GetValueOrDefault(WashOrderStatus.ReturningFromStorage),
                 MovedToStorage = countsByStatus.GetValueOrDefault(WashOrderStatus.MovedToStorage),
                 Cancelled = countsByStatus.GetValueOrDefault(WashOrderStatus.Cancelled)
             };

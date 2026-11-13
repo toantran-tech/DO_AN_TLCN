@@ -10,6 +10,9 @@ using WashGo.Application.Features.AuditApplication.Services;
 using WashGo.Application.Features.FileApplication.Services;
 using WashGo.Core.Domain.Shared.Bases;
 using WashGo.Domain.Entities.Identity;
+using WashGo.Domain.Shared.Enums;
+using WashGo.Domain.Entities.WashOrder;
+using WashGo.Domain.Entities.WashOrder.Interfaces;
 using WashGo.Domain.Entities.Partner;
 using WashGo.Domain.Entities.Partner.Interfaces;
 
@@ -17,7 +20,7 @@ namespace WashGo.Application.Features.ShipperApplication.Services;
 
 public class ShipperProfileAppService(IShipperRepository shippers, IRepository<User, Guid> users,
     IRepository<Merchant, Guid> merchants, IRepository<MerchantImage, Guid> images,
-    IConfiguration configuration, AdministrativeWriteGuard guard) : WashGoAppService, IShipperProfileAppService
+    IConfiguration configuration, AdministrativeWriteGuard guard, IWashOrderRepository orders) : WashGoAppService, IShipperProfileAppService
 {
     private const string Module = "ShipperProfile";
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
@@ -78,6 +81,40 @@ public class ShipperProfileAppService(IShipperRepository shippers, IRepository<U
         return response;
     }
 
+    public async Task<BaseResponse<ShipperProfileDto>> UpdateWorkStatusAsync(UpdateShipperWorkStatusCommand command)
+    {
+        if (!CurrentUser.IsInRole("Shipper") || CurrentUser.Id is not { } actor) return Missing();
+        if (command.Status is not (ShipperStatus.Available or ShipperStatus.Offline))
+            return Error("InvalidWorkStatus", "Chỉ được chọn Available hoặc Offline.", HttpStatusCode.BadRequest);
+        if (command.OperationId is null || string.IsNullOrWhiteSpace(command.ExpectedRevision))
+            return Error("ProfileGuardRequired", "Cần expectedRevision và operationId.", HttpStatusCode.BadRequest);
+        using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+        var replay = await guard.ReplayAsync<ShipperProfileDto>(command.OperationId, actor, Module, "WorkStatus", actor.ToString(), command);
+        if (replay != null) return replay;
+        var id = await AsyncExecuter.FirstOrDefaultAsync((await shippers.GetQueryableAsync()).Where(x => x.UserId == actor).Select(x => (Guid?)x.Id));
+        if (!id.HasValue) return Missing();
+        var shipper = await shippers.GetForUpdateAsync(id.Value);
+        var user = await users.FindAsync(actor);
+        if (shipper == null || user == null || !user.IsActive || !shipper.IsActive || shipper.IsDeleted) return Missing();
+        if (command.ExpectedRevision != Version(shipper, user))
+            return Error("RevisionMismatch", "Hồ sơ đã thay đổi; vui lòng tải lại.", HttpStatusCode.Conflict, await ToDtoAsync(shipper, user));
+        if (shipper.Status == ShipperStatus.Busy)
+            return Error("StaffStatusManaged", "Trạng thái Busy do quản lý kiểm soát.", HttpStatusCode.Conflict);
+        if (command.Status == ShipperStatus.Offline && await AsyncExecuter.AnyAsync(DeliveryTaskRules.ActiveDeliveries(await orders.GetQueryableAsync()).Where(x => x.ShipperId == shipper.Id)))
+            return Error("ActiveDelivery", "Cần hoàn thành nhiệm vụ đang hiệu lực trước khi Offline.", HttpStatusCode.Conflict);
+        var changed = shipper.Status != command.Status;
+        if (changed)
+        {
+            shipper.Status = command.Status; shipper.UpdatedAt = DateTime.UtcNow;
+            await shippers.UpdateAsync(shipper, autoSave: true);
+            await Audit.LogAsync(new AuditEntry("Shipper", "SelfWorkStatus", "Shipper", shipper.Id.ToString(), null) { ChangedFields = ["status"] });
+        }
+        var response = Success(await ToDtoAsync(shipper, user), changed ? "Đã cập nhật trạng thái làm việc." : "Trạng thái đã được áp dụng.");
+        await guard.RecordAsync(command.OperationId, actor, Module, "WorkStatus", actor.ToString(), command, response);
+        await uow.CompleteAsync();
+        return response;
+    }
+
     private async Task<(Shipper? Shipper, User? User)> FindMineAsync()
     {
         if (!CurrentUser.Id.HasValue) return (null, null);
@@ -88,7 +125,7 @@ public class ShipperProfileAppService(IShipperRepository shippers, IRepository<U
 
     private static string Version(Shipper s, User u) => AdministrativeWriteGuard.Version(new
     {
-        s.Revision, s.MerchantId, s.IsActive, s.VehicleType, s.VehiclePlate,
+        s.Revision, s.Status, s.MerchantId, s.IsActive, s.VehicleType, s.VehiclePlate,
         u.FullName, u.Email, u.Phone, u.Avatar
     });
 
@@ -96,6 +133,8 @@ public class ShipperProfileAppService(IShipperRepository shippers, IRepository<U
     {
         var merchant = await merchants.FindAsync(s.MerchantId);
         var merchantUser = merchant == null ? null : await users.FindAsync(merchant.Id);
+        var blocked = !s.IsActive || !u.IsActive || s.IsDeleted ? "ProfileInactive" : s.Status == ShipperStatus.Busy ? "StaffStatusManaged" : null;
+        var activeDelivery = await AsyncExecuter.AnyAsync(DeliveryTaskRules.ActiveDeliveries(await orders.GetQueryableAsync()).Where(x => x.ShipperId == s.Id));
         return new ShipperProfileDto
         {
             Id = s.Id, FullName = u.FullName, Email = u.Email, Phone = u.Phone, AvatarUrl = u.Avatar,
@@ -106,6 +145,8 @@ public class ShipperProfileAppService(IShipperRepository shippers, IRepository<U
             MerchantAddress = merchant == null ? null : string.Join(", ", new[] { merchant.Address, merchant.District, merchant.City }.Where(x => !string.IsNullOrWhiteSpace(x))),
             MerchantImageUrls = merchant == null ? [] : (await images.GetListAsync(x => x.MerchantId == merchant.Id))
                 .OrderByDescending(x => x.IsPrimary).ThenBy(x => x.DisplayOrder).Select(x => x.SecureUrl).ToList(),
+            CanChangeWorkStatus = blocked == null, CanGoOffline = blocked == null && !activeDelivery,
+            WorkStatusBlockedReason = blocked, GoOfflineBlockedReason = blocked ?? (activeDelivery ? "ActiveDelivery" : null),
             Revision = Version(s, u), CreatedAt = s.CreatedAt, UpdatedAt = s.UpdatedAt > u.UpdatedAt ? s.UpdatedAt : u.UpdatedAt
         };
     }

@@ -1,4 +1,4 @@
-param(
+﻿param(
     [ValidateRange(1024,65535)][int]$Port = 5088,
     [string]$ProjectName = ('washgo-ci-' + [Guid]::NewGuid().ToString('N').Substring(0,8))
 )
@@ -40,14 +40,14 @@ try {
     if (!$?) { throw 'Customer service filter smoke failed.' }
     & (Join-Path $PSScriptRoot '../smoke/actual-weight.ps1') -BaseUrl $baseUrl -PostgresContainer $postgres -Database washgo_ci
     if (!$?) { throw 'Order lifecycle/actual-weight smoke failed.' }
-    foreach ($suite in @('rating-keyword-privacy.ps1', 'review-publishing.ps1')) {
+    foreach ($suite in @('rating-keyword-privacy.ps1', 'review-publishing.ps1', 'storage-lifecycle.ps1')) {
         & (Join-Path $PSScriptRoot "../smoke/$suite") -BaseUrl $baseUrl -PostgresContainer $postgres -Database washgo_ci
-        if (!$?) { throw "Review/privacy regression failed: $suite" }
+        if (!$?) { throw "API regression failed: $suite" }
     }
     $fixtures = & docker exec $postgres psql -U postgres -d washgo_ci -At -c "SELECT count(*) FROM washgo.services WHERE code LIKE 'CATALOG_%';"
     if ($LASTEXITCODE -ne 0 -or "$fixtures".Trim() -ne '0') { throw 'API smoke left fixture services behind.' }
     Write-Output 'PASS: isolated PostgreSQL migrations/seed, real Backend HTTP, catalog visibility, multi-select filters, sorting, validation, pagination and fixture cleanup.'
-    'PASS: ABP mapper/JWT, catalog, order lifecycle/weight, review publication and role privacy; isolated database initialization/cleanup.' | Set-Content (Join-Path $results 'api-result.txt')
+    'PASS: ABP mapper/JWT, catalog, order lifecycle/weight, review publication, storage/redelivery and role privacy; isolated database initialization/cleanup.' | Set-Content (Join-Path $results 'api-result.txt')
     $succeeded = $true
 }
 finally {

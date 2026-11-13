@@ -122,7 +122,7 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             if (order.Status == WashOrderStatus.MovedToStorage && order.PaymentStatus != PaymentStatus.Paid)
                 return BadRequest<PaymentResultDto>("Vui lòng thanh toán tiền giặt trước khi thanh toán phí lưu kho.");
             if (order.PaymentStatus != PaymentStatus.Paid ||
-                order.Status is not (WashOrderStatus.ReadyToReturn or WashOrderStatus.MovedToStorage))
+                order.Status is not (WashOrderStatus.ReadyToReturn or WashOrderStatus.MovedToStorage or WashOrderStatus.TransferringToStorage or WashOrderStatus.ReturningFromStorage))
                 return BadRequest<PaymentResultDto>("Phí lưu kho chỉ thanh toán khi đồ đã được bỏ vào locker chờ nhận.");
 
             var overdueTotal = OverdueFeeCalculator.GetTotalStorageDue(order, DateTime.UtcNow, await _settings.GetAsync());
@@ -295,7 +295,7 @@ namespace WashGo.Application.Features.PaymentApplication.Services
                 if (orderEntity == null)
                     return NotFound<PaymentResultDto>("Không tìm thấy đơn hàng cần cập nhật phí.");
                 if (orderEntity.PaymentStatus != PaymentStatus.Paid ||
-                    orderEntity.Status is not (WashOrderStatus.ReadyToReturn or WashOrderStatus.MovedToStorage))
+                    orderEntity.Status is not (WashOrderStatus.ReadyToReturn or WashOrderStatus.MovedToStorage or WashOrderStatus.TransferringToStorage or WashOrderStatus.ReturningFromStorage))
                     return BadRequest<PaymentResultDto>("Đơn không còn chờ khách nhận tại locker.");
 
                 var due = OverdueFeeCalculator.GetTotalStorageDue(orderEntity, DateTime.UtcNow, await _settings.GetAsync());
@@ -464,7 +464,7 @@ namespace WashGo.Application.Features.PaymentApplication.Services
                     break;
                 case PaymentPurpose.OverdueStorageFee:
                     if (order.PaymentStatus != PaymentStatus.Paid ||
-                        order.Status is not (WashOrderStatus.ReadyToReturn or WashOrderStatus.MovedToStorage))
+                        order.Status is not (WashOrderStatus.ReadyToReturn or WashOrderStatus.MovedToStorage or WashOrderStatus.TransferringToStorage or WashOrderStatus.ReturningFromStorage))
                         return GatewayOutcome.InvalidState;
                     var due = OverdueFeeCalculator.GetTotalStorageDue(order, DateTime.UtcNow, await _settings.GetAsync());
                     if (transaction.Amount > due - order.StorageFeeTotal)

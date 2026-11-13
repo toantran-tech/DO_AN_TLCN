@@ -12,6 +12,8 @@ namespace WashGo.Domain.Shared.Enums
         LockerNearlyFull = 8,
         IncidentPendingOverdue = 9,
         ContractExpiring = 10,
-        ContractExpired = 11
+        ContractExpired = 11,
+        StorageTransferOverdue = 12,
+        StorageReturnOverdue = 13
     }
 }

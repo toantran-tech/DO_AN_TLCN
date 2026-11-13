@@ -15,6 +15,8 @@ namespace WashGo.Domain.Shared.Enums
         Returned = 11,
         Completed = 12,
         MovedToStorage = 13,
+        TransferringToStorage = 14,
+        ReturningFromStorage = 15,
         Cancelled = 99
     }
 

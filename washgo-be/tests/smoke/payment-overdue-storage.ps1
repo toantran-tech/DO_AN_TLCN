@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$BaseUrl='http://localhost:5000',
     [string]$PostgresContainer='washgo_postgres',
     [string]$PostgresUser='postgres',
@@ -74,6 +74,8 @@ INSERT INTO washgo.shippers SELECT (jsonb_populate_record(NULL::washgo.shippers,
     if((Count-Note $customer $o.id 5) -ne 2){throw 'Payment reminder (type 5) not sent exactly once after the awaiting-payment notice.'}
     if((Order $o.id).status -ne 8){throw 'Order moved before the deadline.'}
 
+    # v0 compatibility: old pickup-storage remains valid only for legacy orders.
+    Sql "UPDATE washgo.orders SET storage_workflow_version=0 WHERE id='$($o.id)';" | Out-Null
     Write-Output '3. Deadline passed: moved to storage at the Merchant shop (UC 1.2.4 7b)'
     Sql "UPDATE washgo.orders SET payment_deadline=now()-interval '1 minute' WHERE id IN('$($o.id)','$($paid.id)');" | Out-Null
     Pay $paid.id | Out-Null

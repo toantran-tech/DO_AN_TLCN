@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$BaseUrl='http://localhost:5000',
     [string]$PostgresContainer='washgo_postgres',
     [string]$PostgresUser='postgres',
@@ -124,6 +124,8 @@ INSERT INTO washgo.services SELECT (jsonb_populate_record(NULL::washgo.services,
     if((Sql "SELECT count(*) FROM washgo.reminder_logs WHERE key='overdue-summary:$today';") -ne '1'){throw 'Daily overdue summary not recorded once.'}
 
     Write-Output '6. Picked-up orders are no longer reminded'
+    # Exercise the legacy route only on this fixture; v1 is covered by storage-lifecycle.
+    Sql "UPDATE washgo.orders SET storage_workflow_version=0 WHERE id='$($o1.id)';" | Out-Null
     Call-Api Post '/wash-order/move-to-storage' @{orderId=$o1.id;storageLocation='Kho test';storageReference='REM-1'} $admin | Out-Null
     $before=Sql "SELECT count(*) FROM washgo.reminder_logs WHERE order_id='$($o1.id)';"
     Run-Scan | Out-Null

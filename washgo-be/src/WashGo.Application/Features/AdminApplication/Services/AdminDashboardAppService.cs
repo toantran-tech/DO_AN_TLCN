@@ -289,13 +289,15 @@ namespace WashGo.Application.Features.AdminApplication.Services
         private static AdminAlertSeverity SeverityOf(AdminAlertType type) => type switch
         {
             AdminAlertType.AssignmentOverdue or AdminAlertType.CollectionOverdue or AdminAlertType.ProcessingOverdue or
-                AdminAlertType.ReturnOverdue or AdminAlertType.IncidentPendingOverdue or AdminAlertType.ContractExpired => AdminAlertSeverity.High,
+                AdminAlertType.StorageTransferOverdue or AdminAlertType.StorageReturnOverdue or AdminAlertType.ReturnOverdue or AdminAlertType.IncidentPendingOverdue or AdminAlertType.ContractExpired => AdminAlertSeverity.High,
             AdminAlertType.PickupOverdue or AdminAlertType.PaymentOverdue or AdminAlertType.LockerNearlyFull or AdminAlertType.ContractExpiring => AdminAlertSeverity.Medium,
             _ => AdminAlertSeverity.Low
         };
 
         private static string TitleOf(AdminAlertType type) => type switch
         {
+            AdminAlertType.StorageTransferOverdue => "Trễ bàn giao đồ về tiệm (SLA 4 giờ)",
+            AdminAlertType.StorageReturnOverdue => "Trễ giao lại từ tiệm về locker (SLA 24 giờ)",
             AdminAlertType.AssignmentOverdue => "Đơn chờ phân công Merchant quá 60 phút",
             AdminAlertType.CollectionOverdue => "Merchant trễ hạn lấy đồ",
             AdminAlertType.ProcessingOverdue => "Đơn quá thời gian giặt sấy dự kiến",
@@ -362,6 +364,16 @@ namespace WashGo.Application.Features.AdminApplication.Services
                     .Where(o => o.Status == WashOrderStatus.Pending && o.DepositDeadline != null && o.DepositDeadline < now)
                     .Select(o => new AlertRow { Id = o.Id, Type = AdminAlertType.DepositExpired, Deadline = o.DepositDeadline!.Value })
             };
+            var storageCycles = await LazyServiceProvider.LazyGetRequiredService<IRepository<OrderStorageCycle, Guid>>().GetQueryableAsync();
+            var returnRequests = await LazyServiceProvider.LazyGetRequiredService<IRepository<StorageReturnRequest, Guid>>().GetQueryableAsync();
+            sources[AdminAlertType.StorageTransferOverdue] = storageCycles.Where(x =>
+                (x.State == StorageCycleState.AwaitingCollection || x.State == StorageCycleState.InboundTransit) && x.TransferDeadline < now &&
+                orders.Any(o => o.Id == x.OrderId && o.ActiveStorageCycleId == x.Id))
+                .Select(x => new AlertRow { Id = x.OrderId, Type = AdminAlertType.StorageTransferOverdue, Deadline = x.TransferDeadline!.Value });
+            sources[AdminAlertType.StorageReturnOverdue] = returnRequests.Where(x => x.Deadline < now &&
+                (x.State == StorageReturnState.Requested || x.State == StorageReturnState.Assigned || x.State == StorageReturnState.InTransit) &&
+                orders.Any(o => o.Id == x.OrderId && o.ActiveStorageCycleId == x.CycleId))
+                .Select(x => new AlertRow { Id = x.OrderId, Type = AdminAlertType.StorageReturnOverdue, Deadline = x.Deadline });
             var incidents = (await LazyServiceProvider.LazyGetRequiredService<IRepository<Incident, Guid>>().GetQueryableAsync()).Where(x => !x.IsDeleted);
             var incidentCutoff = new DateTimeOffset(now.AddHours(-48)).ToUnixTimeSeconds();
             sources[AdminAlertType.IncidentPendingOverdue] = incidents.Where(x => x.Status == IncidentStatus.Pending && x.CreatedOn < incidentCutoff)
