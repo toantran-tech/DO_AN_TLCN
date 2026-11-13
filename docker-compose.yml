@@ -46,7 +46,7 @@ services:
       - Payment__Momo__RequestType=${MOMO_REQUEST_TYPE:-payWithMethod}
       - Payment__Momo__RedirectUrl=${MOMO_REDIRECT_URL:-http://localhost:5000/swagger/index.html}
       - Payment__Momo__IpnUrl=${MOMO_IPN_URL:-}
-      - ConnectionStrings__Default=Host=postgres;Port=5432;Database=${POSTGRES_DB:-washgo_db};Username=${POSTGRES_USER:-postgres};Password=${POSTGRES_PASSWORD:-123456};Include Error Detail=true;
+      - ConnectionStrings__Default=Host=postgres;Port=5432;Database=${BACKEND_DB_NAME:-${POSTGRES_DB:-washgo_db}};Username=${POSTGRES_USER:-postgres};Password=${POSTGRES_PASSWORD:-123456};Include Error Detail=true;
       - App__CorsOrigins=http://localhost:5173,http://localhost:3000,http://127.0.4.1:5173,http://127.0.0.1:3000
       - Jwt__SecretKey=${JWT_SECRET_KEY:-WashGo_Super_Secret_Key_For_Jwt_Token_Generation_2026!#@$}
       - Email__Smtp__Host=${SMTP_HOST:-smtp.gmail.com}
