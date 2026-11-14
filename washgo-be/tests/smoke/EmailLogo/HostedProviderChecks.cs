@@ -73,7 +73,7 @@ internal static class HostedProviderChecks
                 objects.Remove("washgo-uploads/" + uploadKey);
                 return new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new { }) };
             }
-            var key = path.Replace("/storage/v1/object/authenticated/", "").Replace("/storage/v1/object/", "");
+            var key = path.Replace("/storage/v1/object/info/authenticated/", "").Replace("/storage/v1/object/authenticated/", "").Replace("/storage/v1/object/", "");
             if (request.Method == HttpMethod.Post)
             {
                 Check(request.Headers.GetValues("x-upsert").Single() == "false", "Never overwrite an existing object");
@@ -84,7 +84,7 @@ internal static class HostedProviderChecks
             Check(path.Contains("/authenticated/"), "Downloads must not use the public object route");
             return objects.TryGetValue(key, out var value)
                 ? new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(value) }
-                : new HttpResponseMessage(HttpStatusCode.NotFound);
+                : new HttpResponseMessage(HttpStatusCode.BadRequest) { Content = JsonContent.Create(new { statusCode = "404", code = "NoSuchKey", error = "not_found" }) };
         };
         using var upload = new MemoryStream(payload);
         await storage.PutAsync(uploadKey, upload, "image/png");
@@ -105,6 +105,10 @@ internal static class HostedProviderChecks
         Check(error != null && requests == before, "Cross-owner evidence rejected before storage access");
         await storage.DeleteAsync(uploadKey);
         Check(!await storage.ExistsAsync(uploadKey), "Deleted media is absent");
+        handler.Handle = request => Task.FromResult(request.RequestUri!.AbsolutePath.StartsWith("/storage/v1/bucket/")
+            ? new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new { @public = false }) }
+            : new HttpResponseMessage(HttpStatusCode.BadRequest) { Content = JsonContent.Create(new { statusCode = "400", code = "InvalidRequest" }) });
+        await ExpectAsync<StorageUnavailableException>(async () => { await storage.ReadAsync(uploadKey, 1024); });
         Console.WriteLine("PASS: Brevo template/logo/auth/error contracts; Supabase private buckets, upload/read/delete, byte limit, traversal and owner checks (fake HTTP only).");
     }
 

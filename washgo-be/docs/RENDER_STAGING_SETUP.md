@@ -72,3 +72,20 @@ Tài liệu API nhà cung cấp: [Brevo transactional email](https://developers.
 - Render: giữ `Seeding__Enabled=false`, kết nối Neon dạng Npgsql `Host=...;...`, kiểm tra migration logs, đăng nhập Admin, health readiness. Chưa thay đổi secrets hay cài đặt trên dashboard Render trong đợt sửa này.
 - Cần kiểm tra Google/Gemini, VNPay/MoMo IPN sandbox, FE CORS và SignalR qua URL public. Reverse proxy/HTTPS và RAM cần đo khi deploy. Render Free có thể ngủ, không có cam kết worker liên tục và không giữ file local qua deploy; không dùng dữ liệu nhạy cảm thật để UAT.
 - CI hiện kiểm tra PR; cấu hình auto-deploy sau CI, số lần deploy, rollback và UAT cần hoàn thiện riêng, không coi adapter này là đã đạt toàn bộ tiêu chí CI/CD rubric.
+
+## Chuyển file cũ — cập nhật thực tế 14/11/2026
+
+Người dùng đã cấu hình Brevo và Supabase trên Render, xác nhận gửi OTP, logo email và upload ảnh Swagger 201. Chưa test đủ video/tài liệu/quyền tải, Google/Gemini và thanh toán thật qua sandbox; không đánh dấu hoàn thành toàn bộ staging.
+
+Đã sao chép **36 file / 44.419 byte** từ hai volume local của `washgo_backend` ra thư mục Temp riêng, tạo inventory SHA-256; nguồn không thay đổi. Đây là file tìm thấy trong container hiện tại, **chưa đối chiếu tất cả tham chiếu file trong Neon** nên chưa khẳng định đủ bytes cho toàn DB. Không tự lấy các thư mục test build khác làm dữ liệu nghiệp vụ.
+
+Việc chuyển dữ liệu một lần đã hoàn tất và giữ nguồn local nguyên vẹn; report size/SHA-256 ở Temp ngoài repo. Theo yêu cầu người dùng, không giữ script chuyển file Python hoặc test Python trong source và CI. API runtime vẫn chỉ dùng C#/.NET, không cần cài Python để chạy chức năng storage.
+
+### Kết quả chuyển file đã xác minh
+
+- Đã dùng key từ file local được Git ignore để thực hiện chuyển 36 file / 44.419 byte vào bucket `washgo-uploads` của project Supabase staging đã cấu hình. Đã GET lại từng file, xác minh size và SHA-256 khớp nguồn; 36 trạng thái `copied-and-verified`, tiến trình exit 0.
+- `private-documents` trong container nguồn trống; bucket `washgo-documents` đã kiểm tra private nhưng chưa có bằng chứng upload/download tài liệu thực tế hoặc kiểm tra quyền Merchant trên staging.
+- Không xóa file nguồn, không sửa metadata Neon hay local DB. Report và bản export nằm ngoài repo trong Temp; giữ bản nguồn Docker/backup để có thể phục hồi. Báo cáo chứa object key/hash, không commit.
+- Trong lúc chạy phát hiện Supabase trả HTTP 400 với `code=NoSuchKey`, `statusCode=404`, `error=not_found` khi object chưa tồn tại. ObjectStorage C# đã nhận diện chính xác mẫu này; không nới lỏng mọi lỗi 400. Kiểm tra tồn tại chuyển sang GET info/authenticated để đọc được structured error (HEAD không có body).
+- Provider contract tests .NET đã cập nhật cho trường hợp này, vẫn để CI PR thực thi theo yêu cầu. Chưa chạy local regression/build Docker, chưa deploy bản sửa NoSuchKey. Chuyển dữ liệu cloud đã hoàn thành độc lập với việc deploy bản sửa code.
+- Chưa đối chiếu toàn bộ URL metadata trong Neon với danh sách file nguồn để xác định các file đã thiếu từ trước. Không tuyên bố dữ liệu file của toàn bộ backup DB đã đầy đủ chỉ từ 36 file tìm thấy.
