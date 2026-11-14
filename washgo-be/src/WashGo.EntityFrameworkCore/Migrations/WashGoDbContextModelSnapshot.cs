@@ -763,6 +763,18 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("packaging_stars");
 
+                    b.Property<DateTime?>("PublicApprovedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("public_approved_at");
+
+                    b.Property<Guid?>("PublicApprovedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("public_approved_by");
+
+                    b.Property<Guid?>("PublicId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("public_id");
+
                     b.Property<int?>("QualityStars")
                         .HasColumnType("integer")
                         .HasColumnName("quality_stars");
@@ -787,7 +799,12 @@ namespace WashGo.EntityFrameworkCore.Migrations
 
                     b.HasIndex("OverallStars");
 
+                    b.HasIndex("PublicId")
+                        .IsUnique();
+
                     b.HasIndex("MerchantId", "IsHidden");
+
+                    b.HasIndex("PublicApprovedAt", "PublicId");
 
                     b.ToTable("order_ratings", "washgo");
                 });

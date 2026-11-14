@@ -1,4 +1,4 @@
-using WashGo.Application.Features.AuditApplication.Services;
+﻿using WashGo.Application.Features.AuditApplication.Services;
 using WashGo.Application.Contracts.Features.AuditContracts.Results;
 using System.Text.Json;
 using System.Net;
@@ -305,7 +305,9 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
             var reason = command.Reason?.Trim();
             if (reason?.Length > 500)
                 return AdministrativeWriteGuard.Error<RatingResultDto>(HttpStatusCode.BadRequest, "ReasonTooLong", "Lý do tối đa 500 ký tự.");
-            var payload = new { id, Reason = reason, command.ExpectedVersion };
+            object payload = command.PublishForCustomers
+                ? new { id, Reason = reason, command.ExpectedVersion, command.PublishForCustomers }
+                : new { id, Reason = reason, command.ExpectedVersion };
             using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
             if (await Writes.ReplayAsync<RatingResultDto>(command.OperationId, CurrentUser.Id!.Value, "Rating", "Publish", id.ToString(), payload) is { } replay)
             {
@@ -321,20 +323,26 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
             if (rating.IsHidden)
                 return AdministrativeWriteGuard.Error<RatingResultDto>(HttpStatusCode.BadRequest, "HiddenRating", "Hiển thị lại đánh giá trước khi duyệt nội dung.");
             BaseResponse<RatingResultDto> response;
-            if (rating.ContentApprovedAt.HasValue)
+            if (rating.ContentApprovedAt.HasValue && (!command.PublishForCustomers || rating.PublicApprovedAt.HasValue))
                 response = AdministrativeBatchExecutor.Unchanged(Success(await AdminDtoAsync(rating), "Nội dung đã được duyệt."));
             else
             {
                 var now = DateTime.UtcNow;
-                rating.ContentApprovedAt = new DateTime(now.Ticks - now.Ticks % 10, DateTimeKind.Utc);
-                rating.ContentApprovedBy = CurrentUser.Id;
+                rating.ContentApprovedAt ??= new DateTime(now.Ticks - now.Ticks % 10, DateTimeKind.Utc);
+                rating.ContentApprovedBy ??= CurrentUser.Id;
+                if (command.PublishForCustomers)
+                {
+                    rating.PublicId ??= Guid.NewGuid();
+                    rating.PublicApprovedAt = new DateTime(now.Ticks - now.Ticks % 10, DateTimeKind.Utc);
+                    rating.PublicApprovedBy = CurrentUser.Id;
+                }
                 await _ratingRepo.UpdateAsync(rating, autoSave: true);
                 await Audit.LogAsync(new AuditEntry("Rating", "Publish", "OrderRating", rating.Id.ToString(), rating.OrderCode)
                 {
-                    Reason = reason, ChangedFields = ["contentApprovedAt", "contentApprovedBy"],
-                    Details = new { operationId = command.OperationId }
+                    Reason = reason, ChangedFields = command.PublishForCustomers ? ["contentApprovedAt", "contentApprovedBy", "publicApprovedAt", "publicApprovedBy", "publicId"] : ["contentApprovedAt", "contentApprovedBy"],
+                    Details = new { operationId = command.OperationId, command.PublishForCustomers }
                 });
-                response = Success(await AdminDtoAsync(rating), "Đã duyệt nội dung đánh giá cho Merchant.");
+                response = Success(await AdminDtoAsync(rating), command.PublishForCustomers ? "Đã duyệt nội dung đánh giá cho Customer và Merchant." : "Đã duyệt nội dung đánh giá cho Merchant.");
             }
             await Writes.RecordAsync(command.OperationId, CurrentUser.Id!.Value, "Rating", "Publish", id.ToString(), payload, response);
             await uow.CompleteAsync();
@@ -380,7 +388,7 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
             await _merchantRepo.UpdateAsync(merchant, autoSave: true);
         }
 
-        private static string Version(OrderRating x) => AdministrativeWriteGuard.Version(new { x.Id, x.IsHidden, x.HiddenReason, x.ModeratedAt, x.ContentApprovedAt, x.ContentApprovedBy });
+        private static string Version(OrderRating x) => AdministrativeWriteGuard.Version(new { x.Id, x.IsHidden, x.HiddenReason, x.ModeratedAt, x.ContentApprovedAt, x.ContentApprovedBy, x.PublicApprovedAt, x.PublicApprovedBy, x.PublicId });
 
         private static CustomerRatingDto ToCustomerDto(OrderRating x) => new()
         {
@@ -415,6 +423,8 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
             CanHide = !x.IsHidden,
             CanShow = x.IsHidden,
             CanPublish = !x.IsHidden && x.ContentApprovedAt == null,
+            CanPublishForCustomers = !x.IsHidden && x.PublicApprovedAt == null,
+            PublicApprovedAt = x.PublicApprovedAt,
             PublishReasonCode = x.IsHidden ? "HiddenRating" : x.ContentApprovedAt != null ? "AlreadyPublished" : null,
             ContentApprovedAt = x.ContentApprovedAt,
             ContentApprovedBy = x.ContentApprovedBy,

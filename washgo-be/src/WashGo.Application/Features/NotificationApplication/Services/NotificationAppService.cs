@@ -76,9 +76,9 @@ namespace WashGo.Application.Features.NotificationApplication.Services
             {
                 var lowered = keyword.ToLower();
                 var customer = CurrentUser.IsInRole("Customer");
-                // Legacy order content may contain a warehouse address. Never search withheld text/count it for Customer.
-                filtered = filtered.Where(x => x.Title.ToLower().Contains(lowered) ||
-                    ((!customer || x.LinkType != "order") && x.Content.ToLower().Contains(lowered)));
+                // Search the same safe text the Customer actually receives, including protected legacy order rows.
+                filtered = customer ? filtered.Where(OrderNotificationPrivacy.CustomerMatches(lowered))
+                    : filtered.Where(x => x.Title.ToLower().Contains(lowered) || x.Content.ToLower().Contains(lowered));
             }
             if (groups.Count > 0)
             {
