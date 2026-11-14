@@ -91,15 +91,35 @@ public sealed class ObjectStorage(IConfiguration configuration, IHttpClientFacto
             throw new StorageUnavailableException($"Storage request failed (HTTP {(int)response.StatusCode}).");
     }
 
+    private static async Task<bool> IsMissingAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        if (response.StatusCode == HttpStatusCode.NotFound) return true;
+        if (response.StatusCode != HttpStatusCode.BadRequest) return false;
+        // Hosted Storage may return HTTP 400 with a structured NoSuchKey/404 payload.
+        // Do not treat other 400 responses (credentials, bucket, validation) as a missing object.
+        try
+        {
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            var bytes = await ReadLimitedAsync(stream, 4096, cancellationToken);
+            using var document = JsonDocument.Parse(bytes);
+            var error = document.RootElement;
+            return error.ValueKind == JsonValueKind.Object && error.TryGetProperty("code", out var code) &&
+                code.ValueKind == JsonValueKind.String && code.GetString() == "NoSuchKey" &&
+                error.TryGetProperty("statusCode", out var status) && status.ToString() == "404";
+        }
+        catch (Exception ex) when (ex is JsonException or IOException) { return false; }
+    }
+
     public async Task<bool> ExistsAsync(string key, bool documents = false, CancellationToken cancellationToken = default)
     {
         ValidateKey(key, documents);
         if (!IsCloud) return File.Exists(LocalPath(key, documents));
         var bucket = Bucket(documents);
         await CheckBucketAsync(bucket, cancellationToken);
-        using var request = Request(HttpMethod.Head, $"object/authenticated/{bucket}/{key}");
+        // GET info preserves the structured NoSuchKey error; HEAD has no error body.
+        using var request = Request(HttpMethod.Get, $"object/info/authenticated/{bucket}/{key}");
         using var response = await SendAsync(request, cancellationToken, HttpCompletionOption.ResponseHeadersRead);
-        if (response.StatusCode == HttpStatusCode.NotFound) return false;
+        if (await IsMissingAsync(response, cancellationToken)) return false;
         EnsureSuccess(response);
         return true;
     }
@@ -146,7 +166,7 @@ public sealed class ObjectStorage(IConfiguration configuration, IHttpClientFacto
         await CheckBucketAsync(bucket, cancellationToken);
         using var request = Request(HttpMethod.Get, $"object/authenticated/{bucket}/{key}");
         using var response = await SendAsync(request, cancellationToken, HttpCompletionOption.ResponseHeadersRead);
-        if (response.StatusCode == HttpStatusCode.NotFound) return null;
+        if (await IsMissingAsync(response, cancellationToken)) return null;
         EnsureSuccess(response);
         if (response.Content.Headers.ContentLength > maxBytes) throw new IOException("Stored object exceeds the size limit.");
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
@@ -180,7 +200,7 @@ public sealed class ObjectStorage(IConfiguration configuration, IHttpClientFacto
         await CheckBucketAsync(bucket, cancellationToken);
         using var request = Request(HttpMethod.Get, $"object/authenticated/{bucket}/{key}");
         using var response = await SendAsync(request, cancellationToken, HttpCompletionOption.ResponseHeadersRead);
-        if (response.StatusCode == HttpStatusCode.NotFound) return false;
+        if (await IsMissingAsync(response, cancellationToken)) return false;
         EnsureSuccess(response);
         if (response.Content.Headers.ContentLength > maxBytes) throw new IOException("Stored object exceeds the size limit.");
         await using var source = await response.Content.ReadAsStreamAsync(cancellationToken);

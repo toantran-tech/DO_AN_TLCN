@@ -1,4 +1,9 @@
-﻿> Sửa tiếp Swagger upload: CI đã phát hiện schema bị Swashbuckle 6.6.2 ghi đè thành string/binary từ Accepts<IFormFile>. Đã chuyển sang UploadOperationFilter tại Host, áp dụng sau bước sinh schema; giữ nguyên gate multipart/file trong CI, thêm artifact swagger.json và lỗi kèm requestBody thực tế. Chưa chạy lại test/build local; chờ PR CI xác minh.
+﻿> Theo yêu cầu người dùng: đã bỏ công cụ chuyển dữ liệu Python và test Python khỏi repo/CI. Giữ bản sửa C# nhận diện NoSuchKey, provider contract tests .NET và kết quả 36 file đã chuyển lên cloud; thay đổi này không xóa file cloud/local.
+
+> Đã chuyển Supabase ngày 14/11/2026: 36/36 file media cũ, tổng 44.419 byte, upload vào washgo-uploads và xác minh từng file bằng size + SHA-256 từ cloud. Nguồn local và DB giữ nguyên. Thư mục private-documents local trống, không có tài liệu cũ để chuyển. Đây là toàn bộ file trong container local đã export, chưa đối chiếu đủ tham chiếu file trong Neon. Adapter C# đã sửa trường hợp Supabase HTTP 400 có code=NoSuchKey/statusCode=404; các 400 khác vẫn là lỗi. Test cập nhật đã nối CI, chưa chạy hồi quy/build local; bản sửa cần commit/PR/deploy.
+
+
+> Sửa tiếp Swagger upload: CI đã phát hiện schema bị Swashbuckle 6.6.2 ghi đè thành string/binary từ Accepts<IFormFile>. Đã chuyển sang UploadOperationFilter tại Host, áp dụng sau bước sinh schema; giữ nguyên gate multipart/file trong CI, thêm artifact swagger.json và lỗi kèm requestBody thực tế. Chưa chạy lại test/build local; chờ PR CI xác minh.
 
 > Sửa Swagger upload 14/11/2026: khai báo multipart object + trường file binary bắt buộc cho ảnh/video/tài liệu (tài liệu thêm kind/merchantId). Ảnh thiếu file trả JSON hướng dẫn; CI API smoke kiểm tra schema cả 3 route. Chưa chạy test/build local, chờ PR CI và deploy rồi test lại chọn file trên Swagger. Curl staging trước sửa không có phần file; chưa kết luận Supabase lỗi.
 
