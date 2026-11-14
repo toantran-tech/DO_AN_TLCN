@@ -1,4 +1,6 @@
-﻿> Theo yêu cầu người dùng: đã bỏ công cụ chuyển dữ liệu Python và test Python khỏi repo/CI. Giữ bản sửa C# nhận diện NoSuchKey, provider contract tests .NET và kết quả 36 file đã chuyển lên cloud; thay đổi này không xóa file cloud/local.
+﻿> Customer Guest 15/11/2026: đã triển khai yêu cầu docs/BACKEND_CUSTOMER (1).md: mở đúng 7 API đọc, giữ API cá nhân/ghi có JWT; phê duyệt publishForGuests riêng không tự public review cũ, ảnh kiểm tra phạm vi/Hide mỗi lần, rate limit + input bounds. Có migration AddGuestReviewApproval. Ba smoke suite hiện có đã cập nhật/nối CI; mới kiểm tra cú pháp PowerShell và whitespace, chưa chạy tests/build/Docker local hoặc áp DB/deploy. Bàn giao: [CUSTOMER_GUEST_ACCESS_API_REVIEW.md](docs/CUSTOMER_GUEST_ACCESS_API_REVIEW.md).
+
+> Theo yêu cầu người dùng: đã bỏ công cụ chuyển dữ liệu Python và test Python khỏi repo/CI. Giữ bản sửa C# nhận diện NoSuchKey, provider contract tests .NET và kết quả 36 file đã chuyển lên cloud; thay đổi này không xóa file cloud/local.
 
 > Đã chuyển Supabase ngày 14/11/2026: 36/36 file media cũ, tổng 44.419 byte, upload vào washgo-uploads và xác minh từng file bằng size + SHA-256 từ cloud. Nguồn local và DB giữ nguyên. Thư mục private-documents local trống, không có tài liệu cũ để chuyển. Đây là toàn bộ file trong container local đã export, chưa đối chiếu đủ tham chiếu file trong Neon. Adapter C# đã sửa trường hợp Supabase HTTP 400 có code=NoSuchKey/statusCode=404; các 400 khác vẫn là lỗi. Test cập nhật đã nối CI, chưa chạy hồi quy/build local; bản sửa cần commit/PR/deploy.
 
@@ -914,3 +916,5 @@ docker compose down
 - **Tên bảng & Cột vật lý**: `snake_case` (theo thiết kế DB).
 - **Tên Class & Property C#**: `PascalCase`.
 - **Bảo mật**: Mật khẩu mã hóa BCrypt, không trả password hash/token/OTP trong response API.
+
+> Sửa CI Guest 15/11/2026: test quyền upload ảnh ẩn danh đã đổi từ JSON sang multipart hợp lệ để kiểm tra HTTP 401, tránh router trả HTTP 415 do sai Content-Type. Assert-Status bổ sung method/path và mã HTTP thực tế khi sai kỳ vọng. Chỉ kiểm tra cú pháp PowerShell và git diff --check; chưa chạy HTTP/build Docker local, chờ PR CI xác nhận.

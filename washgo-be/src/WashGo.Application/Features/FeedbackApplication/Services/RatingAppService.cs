@@ -305,7 +305,9 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
             var reason = command.Reason?.Trim();
             if (reason?.Length > 500)
                 return AdministrativeWriteGuard.Error<RatingResultDto>(HttpStatusCode.BadRequest, "ReasonTooLong", "Lý do tối đa 500 ký tự.");
-            object payload = command.PublishForCustomers
+            object payload = command.PublishForGuests
+                ? new { id, Reason = reason, command.ExpectedVersion, command.PublishForCustomers, command.PublishForGuests }
+                : command.PublishForCustomers
                 ? new { id, Reason = reason, command.ExpectedVersion, command.PublishForCustomers }
                 : new { id, Reason = reason, command.ExpectedVersion };
             using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
@@ -323,26 +325,32 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
             if (rating.IsHidden)
                 return AdministrativeWriteGuard.Error<RatingResultDto>(HttpStatusCode.BadRequest, "HiddenRating", "Hiển thị lại đánh giá trước khi duyệt nội dung.");
             BaseResponse<RatingResultDto> response;
-            if (rating.ContentApprovedAt.HasValue && (!command.PublishForCustomers || rating.PublicApprovedAt.HasValue))
+            if (rating.ContentApprovedAt.HasValue && (!(command.PublishForCustomers || command.PublishForGuests) || rating.PublicApprovedAt.HasValue)
+                && (!command.PublishForGuests || rating.GuestApprovedAt.HasValue))
                 response = AdministrativeBatchExecutor.Unchanged(Success(await AdminDtoAsync(rating), "Nội dung đã được duyệt."));
             else
             {
                 var now = DateTime.UtcNow;
                 rating.ContentApprovedAt ??= new DateTime(now.Ticks - now.Ticks % 10, DateTimeKind.Utc);
                 rating.ContentApprovedBy ??= CurrentUser.Id;
-                if (command.PublishForCustomers)
+                if (command.PublishForCustomers || command.PublishForGuests)
                 {
                     rating.PublicId ??= Guid.NewGuid();
-                    rating.PublicApprovedAt = new DateTime(now.Ticks - now.Ticks % 10, DateTimeKind.Utc);
-                    rating.PublicApprovedBy = CurrentUser.Id;
+                    rating.PublicApprovedAt ??= new DateTime(now.Ticks - now.Ticks % 10, DateTimeKind.Utc);
+                    rating.PublicApprovedBy ??= CurrentUser.Id;
+                }
+                if (command.PublishForGuests)
+                {
+                    rating.GuestApprovedAt ??= new DateTime(now.Ticks - now.Ticks % 10, DateTimeKind.Utc);
+                    rating.GuestApprovedBy ??= CurrentUser.Id;
                 }
                 await _ratingRepo.UpdateAsync(rating, autoSave: true);
                 await Audit.LogAsync(new AuditEntry("Rating", "Publish", "OrderRating", rating.Id.ToString(), rating.OrderCode)
                 {
-                    Reason = reason, ChangedFields = command.PublishForCustomers ? ["contentApprovedAt", "contentApprovedBy", "publicApprovedAt", "publicApprovedBy", "publicId"] : ["contentApprovedAt", "contentApprovedBy"],
-                    Details = new { operationId = command.OperationId, command.PublishForCustomers }
+                    Reason = reason, ChangedFields = command.PublishForGuests ? ["guestApprovedAt", "guestApprovedBy", "publicApprovedAt", "publicApprovedBy", "publicId", "contentApprovedAt", "contentApprovedBy"] : command.PublishForCustomers ? ["contentApprovedAt", "contentApprovedBy", "publicApprovedAt", "publicApprovedBy", "publicId"] : ["contentApprovedAt", "contentApprovedBy"],
+                    Details = new { operationId = command.OperationId, command.PublishForCustomers, command.PublishForGuests }
                 });
-                response = Success(await AdminDtoAsync(rating), command.PublishForCustomers ? "Đã duyệt nội dung đánh giá cho Customer và Merchant." : "Đã duyệt nội dung đánh giá cho Merchant.");
+                response = Success(await AdminDtoAsync(rating), command.PublishForGuests ? "Đã duyệt đánh giá cho khách chưa đăng nhập, Customer và Merchant." : command.PublishForCustomers ? "Đã duyệt nội dung đánh giá cho Customer và Merchant." : "Đã duyệt nội dung đánh giá cho Merchant.");
             }
             await Writes.RecordAsync(command.OperationId, CurrentUser.Id!.Value, "Rating", "Publish", id.ToString(), payload, response);
             await uow.CompleteAsync();
@@ -388,7 +396,9 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
             await _merchantRepo.UpdateAsync(merchant, autoSave: true);
         }
 
-        private static string Version(OrderRating x) => AdministrativeWriteGuard.Version(new { x.Id, x.IsHidden, x.HiddenReason, x.ModeratedAt, x.ContentApprovedAt, x.ContentApprovedBy, x.PublicApprovedAt, x.PublicApprovedBy, x.PublicId });
+        private static string Version(OrderRating x) => x.GuestApprovedAt.HasValue
+            ? AdministrativeWriteGuard.Version(new { x.Id, x.IsHidden, x.HiddenReason, x.ModeratedAt, x.ContentApprovedAt, x.ContentApprovedBy, x.PublicApprovedAt, x.PublicApprovedBy, x.PublicId, x.GuestApprovedAt, x.GuestApprovedBy })
+            : AdministrativeWriteGuard.Version(new { x.Id, x.IsHidden, x.HiddenReason, x.ModeratedAt, x.ContentApprovedAt, x.ContentApprovedBy, x.PublicApprovedAt, x.PublicApprovedBy, x.PublicId });
 
         private static CustomerRatingDto ToCustomerDto(OrderRating x) => new()
         {
@@ -425,6 +435,8 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
             CanPublish = !x.IsHidden && x.ContentApprovedAt == null,
             CanPublishForCustomers = !x.IsHidden && x.PublicApprovedAt == null,
             PublicApprovedAt = x.PublicApprovedAt,
+            CanPublishForGuests = !x.IsHidden && x.GuestApprovedAt == null,
+            GuestApprovedAt = x.GuestApprovedAt,
             PublishReasonCode = x.IsHidden ? "HiddenRating" : x.ContentApprovedAt != null ? "AlreadyPublished" : null,
             ContentApprovedAt = x.ContentApprovedAt,
             ContentApprovedBy = x.ContentApprovedBy,

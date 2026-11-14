@@ -22,6 +22,7 @@ try {
     }
     $admin=$sessions.Admin.accessToken;$customer=$sessions.Customer.accessToken;$owner=$sessions.Customer.user.id
     $baseline=(Call-Api Get '/customer/reviews/summary' $null $customer).data
+    $guestBaseline=(Call-Api Get '/customer/reviews/summary' $null $null).data
     $locker=(Call-Api Post '/locker/' @{merchantId=$sessions.Merchant.user.id;code="PUB_$run";name='Public review fixture';address='Fixture';district='Test';city='Test';latitude=10.7;longitude=106.7;boxes=@(@{boxNumber='1';size=2})} $admin).data
     $lockerId=[Guid]$locker.id
     $slot=(Call-Api Get "/customer/lockers/$lockerId" $null $customer).data.availableSlots[0]
@@ -79,8 +80,54 @@ VALUES ('$($ratingIds[$n])','$orderId','PU$($run.Substring(0,14))$n','$owner','P
     Visibility $ratingIds[0] $false
     if((Call-Api Get '/customer/reviews/summary' $null $customer).data.total -ne ($baseline.total+2)){throw 'Show did not restore publication.'}
     foreach($path in @('/customer/reviews?stars=6','/customer/reviews?take=21','/customer/reviews?page=0','/customer/reviews?serviceId=invalid')){Assert-Status 400 Get $path $null $customer}
-    Assert-Status 401 Get '/customer/reviews' $null $null
-    Assert-Status 403 Get '/customer/reviews' $null $admin
+    $guest=(Call-Api Get '/customer/reviews?page=1&take=20' $null $null).data
+    if (@($guest.items|Where-Object{$_.comment -like "*$run*"}).Count -ne 0) { throw 'Customer-only approvals leaked to anonymous visitors.' }
+    Assert-Status 404 Get $publicImage $null $null
+    $guestPublish=@{publishForGuests=$true;expectedVersion=(Review $ratingIds[0]).version;operationId=[Guid]::NewGuid().ToString()}
+    $approved=(Call-Api Post "/rating/$($ratingIds[0])/publish" $guestPublish $admin).data
+    $replayed=(Call-Api Post "/rating/$($ratingIds[0])/publish" $guestPublish $admin).data
+    if (!$approved.guestApprovedAt -or $approved.version -ne $replayed.version -or $approved.publicApprovedAt -ne $replayed.publicApprovedAt) { throw 'Guest approval/replay invalid.' }
+    $guest=(Call-Api Get '/customer/reviews?page=1&take=20' $null $null).data
+    $guestMine=@($guest.items|Where-Object{$_.comment -like "*$run*"})
+    if ($guestMine.Count -ne 1 -or $guestMine[0].id -ne $withImage.id) { throw 'Guest feed contains Customer-only/unapproved reviews.' }
+    if (@($guestMine[0].PSObject.Properties.Name|Where-Object{$_ -notin @('id','overallStars','comment','imageUrls','publishedAt')}).Count) { throw 'Guest review leaked private fields.' }
+    $guestSummary=(Call-Api Get '/customer/reviews/summary' $null $null).data
+    if ($guestSummary.total -ne ($guestBaseline.total+1) -or @($guestSummary.distribution).Count -ne 5) { throw 'Guest summary has wrong approval scope.' }
+    $guestImage=Invoke-WebRequest -Uri "$BaseUrl$publicImage" -UseBasicParsing
+    if ($guestImage.StatusCode -ne 200 -or $guestImage.Headers['Cache-Control'] -ne 'no-store') { throw 'Guest image must load without JWT and without caching.' }
+    Sql "UPDATE washgo.orders SET is_deleted=true WHERE id='$($orderIds[0])';" | Out-Null
+    Assert-Status 404 Get $publicImage $null $null
+    if ((Call-Api Get '/customer/reviews/summary' $null $null).data.total -ne $guestBaseline.total) { throw 'Review of deleted order remained public.' }
+    Sql "UPDATE washgo.orders SET is_deleted=false WHERE id='$($orderIds[0])';" | Out-Null
+    Sql "UPDATE washgo.order_ratings SET is_deleted=true WHERE id='$($ratingIds[0])';" | Out-Null
+    Assert-Status 404 Get $publicImage $null $null
+    Sql "UPDATE washgo.order_ratings SET is_deleted=false WHERE id='$($ratingIds[0])';" | Out-Null
+    Visibility $ratingIds[0] $true
+    Assert-Status 404 Get $publicImage $null $null
+    if ((Call-Api Get '/customer/reviews/summary' $null $null).data.total -ne $guestBaseline.total) { throw 'Hidden guest review still included in summary.' }
+    Visibility $ratingIds[0] $false
+    # Guest flag must take part in the idempotency fingerprint.
+    $mismatch=$guestPublish.Clone();$mismatch.publishForGuests=$false
+    Assert-Status 409 Post "/rating/$($ratingIds[0])/publish" $mismatch $admin
+    foreach($path in @('/customer/me','/notification/','/policy/customer')) { Assert-Status 401 Get $path $null $null }
+    Assert-Status 401 Put '/customer/me' @{} $null
+    Assert-Status 401 Post '/wash-order/' @{} $null
+    # Content-type routing runs before authorization: send the same valid multipart
+    # fixture without a JWT so this checks authentication, not JSON rejection (415).
+    $uploadStatus = try {
+        $null = Invoke-RestMethod -Uri "$BaseUrl/files/images" -Method Post -ContentType "multipart/form-data; boundary=$boundary" -Body ([byte[]]($prefix+$image+$suffix))
+        200
+    } catch {
+        if ($null -eq $_.Exception.Response) { throw }
+        [int]$_.Exception.Response.StatusCode
+    }
+    if ($uploadStatus -ne 401) { throw "Expected HTTP 401 for anonymous POST /files/images (multipart), received $uploadStatus." }
+    Assert-Status 401 Post '/payment/create-url' @{} $null
+    Assert-Status 401 Post '/policy/customer/acknowledge' @{} $null
+    Assert-Status 401 Post "/rating/$($ratingIds[0])/publish" @{publishForGuests=$true} $null
+    Assert-Status 403 Post "/rating/$($ratingIds[0])/publish" @{publishForGuests=$true} $customer
+    foreach($path in @('/customer/reviews?take=21','/customer/reviews?stars=0','/customer/reviews?page=0','/customer/reviews?serviceId=x','/customer/reviews/summary?stars=5')) { Assert-Status 400 Get $path $null $null }
+    if ((Call-Api Get '/customer/reviews/summary' $null $admin).data.total -ne ($guestBaseline.total+1)) { throw 'Staff public feed unexpectedly widens audience.' }
     Assert-Status 404 Get "/customer/reviews/$($mine[0].id)/images/0" $null $customer
     $safe="visible$run";$secret="internal$run"
     Sql @"
