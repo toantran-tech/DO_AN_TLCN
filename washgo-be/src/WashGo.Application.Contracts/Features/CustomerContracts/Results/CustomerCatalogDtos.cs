@@ -33,6 +33,8 @@ public class CustomerLockerCatalogDto
     public double? DistanceKm { get; set; }
     public string? Description { get; set; }
     public string? Images { get; set; }
+    /// <summary>All non-deleted slots of this locker, populated by the detail endpoint.</summary>
+    public List<CustomerLockerSlotStatusDto> Slots { get; set; } = [];
     public List<CustomerLockerSlotDto> AvailableSlots { get; set; } = [];
 }
 
