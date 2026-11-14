@@ -11,19 +11,21 @@ using WashGo.Domain.Shared.Enums;
 namespace WashGo.Application.Features.AuthApplication.Services
 {
     /// <summary>
-    /// Sends OTP and credential emails through SMTP.
+    /// Sends existing templates through the explicitly configured email provider.
     /// </summary>
     public class AuthEmailSender : IAuthEmailSender, ITransientDependency
     {
         private readonly IConfiguration _configuration;
         private readonly ILogger<AuthEmailSender> _logger;
+        private readonly BrevoEmailClient _brevo;
 
         public AuthEmailSender(
             IConfiguration configuration,
-            ILogger<AuthEmailSender> logger)
+            ILogger<AuthEmailSender> logger, BrevoEmailClient brevo)
         {
             _configuration = configuration;
             _logger = logger;
+            _brevo = brevo;
         }
 
         public Task<bool> SendOtpAsync(string email, string code, OtpPurpose purpose)
@@ -68,6 +70,14 @@ namespace WashGo.Application.Features.AuthApplication.Services
 
         private async Task<CredentialDeliveryStatus> SendWithStatusAsync(string email, string subject, string body, bool isHtml = false)
         {
+            var provider = _configuration["Email:Provider"] ?? "Smtp";
+            if (provider.Equals("Brevo", StringComparison.OrdinalIgnoreCase))
+                return await _brevo.SendAsync(email, subject, body, isHtml);
+            if (!provider.Equals("Smtp", StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogError("Email:Provider must be Smtp or Brevo.");
+                return CredentialDeliveryStatus.Failed;
+            }
             var host = _configuration["Email:Smtp:Host"] ?? _configuration["SMTP_HOST"] ?? "smtp.gmail.com";
             var senderAddress = _configuration["Email:Smtp:SenderAddress"] ?? _configuration["SMTP_SENDER_ADDRESS"];
             var senderName = _configuration["Email:Smtp:SenderName"] ?? _configuration["SMTP_SENDER_NAME"] ?? "Hệ thống WashGo";

@@ -246,7 +246,7 @@ namespace WashGo.Application.Features.ServiceProposalApplication.Services
                 if (images.Count > UploadStorage.MaxImagesPerSubmission)
                     return BadRequest<ServiceProposalDto>($"Tối đa {UploadStorage.MaxImagesPerSubmission} ảnh.");
                 var added = images.Where(x => !current.Contains(x)).ToList();
-                var imageError = UploadStorage.ValidateOwnedImages(_configuration, added, merchant.Id, 0, out _);
+                var imageError = (await UploadStorage.ValidateOwnedImagesAsync(LazyServiceProvider.LazyGetRequiredService<ObjectStorage>(), added, merchant.Id, 0)).Error;
                 if (imageError != null)
                     return BadRequest<ServiceProposalDto>(imageError);
             }

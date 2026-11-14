@@ -1,7 +1,6 @@
 using System.Net;
 using System.Data;
 using System.Text.RegularExpressions;
-using Microsoft.Extensions.Configuration;
 using Volo.Abp.Domain.Repositories;
 using Volo.Abp.Uow;
 using WashGo.Application.Contracts.Features.CustomerContracts.Results;
@@ -16,7 +15,7 @@ using WashGo.Domain.Shared.Enums;
 namespace WashGo.Application.Features.CustomerApplication.Services;
 
 public class CustomerReviewAppService(IRepository<OrderRating, Guid> ratings,
-    IRepository<WashOrder, Guid> orders, IConfiguration configuration) : WashGoAppService, ICustomerReviewAppService
+    IRepository<WashOrder, Guid> orders, ObjectStorage objects) : WashGoAppService, ICustomerReviewAppService
 {
     private static readonly Regex ImagePath = new(@"^/uploads/(?<owner>[0-9a-f]{32})/(?<file>[0-9a-f]{32}\.(jpg|png|webp))$", RegexOptions.Compiled);
 
@@ -40,12 +39,17 @@ public class CustomerReviewAppService(IRepository<OrderRating, Guid> ratings,
         var rows = await AsyncExecuter.ToListAsync(query.OrderByDescending(x => x.PublicApprovedAt).ThenBy(x => x.PublicId)
             .Skip((page - 1) * take).Take(take));
         var result = new CustomerReviewPageDto { Total = total, Page = page, Take = take };
-        result.Items = rows.Select(x => new CustomerReviewDto
+        foreach (var row in rows)
         {
-            Id = x.PublicId!.Value, OverallStars = x.OverallStars, Comment = x.Comment, PublishedAt = x.PublicApprovedAt!.Value,
-            ImageUrls = x.ImageUrls.Select((_, index) => index).Where(index => SafeImagePath(x, index) != null)
-                .Select(index => $"/customer/reviews/{x.PublicId}/images/{index}").ToList()
-        }).ToList();
+            var images = new List<string>();
+            for (var index = 0; index < row.ImageUrls.Count; index++)
+            {
+                var key = SafeImageKey(row, index);
+                if (key != null && await objects.ExistsAsync(key)) images.Add($"/customer/reviews/{row.PublicId}/images/{index}");
+            }
+            result.Items.Add(new CustomerReviewDto { Id = row.PublicId!.Value, OverallStars = row.OverallStars,
+                Comment = row.Comment, PublishedAt = row.PublicApprovedAt!.Value, ImageUrls = images });
+        }
         await uow.CompleteAsync();
         return Success(result);
     }
@@ -72,25 +76,25 @@ public class CustomerReviewAppService(IRepository<OrderRating, Guid> ratings,
     {
         if (!CurrentUser.IsInRole("Customer")) return Forbidden<PrivateDocumentDownloadDto>();
         var rating = await AsyncExecuter.FirstOrDefaultAsync((await ReleasedAsync()).Where(x => x.PublicId == publicId));
-        var path = rating == null ? null : SafeImagePath(rating, index);
+        var path = rating == null ? null : SafeImageKey(rating, index);
         if (path == null) return NotFound<PrivateDocumentDownloadDto>("Không tìm thấy ảnh đã phát hành.");
         try
         {
-            var bytes = await File.ReadAllBytesAsync(path);
-            if (bytes.Length > UploadStorage.MaxImageBytes) return NotFound<PrivateDocumentDownloadDto>("Không tìm thấy ảnh đã phát hành.");
+            var bytes = await objects.ReadAsync(path, UploadStorage.MaxImageBytes);
+            if (bytes == null) return NotFound<PrivateDocumentDownloadDto>("Không tìm thấy ảnh đã phát hành.");
             return Success(new PrivateDocumentDownloadDto { Bytes = bytes, FileName = "review" + Path.GetExtension(path),
                 ContentType = Path.GetExtension(path) switch { ".jpg" => "image/jpeg", ".png" => "image/png", _ => "image/webp" } });
         }
+        catch (StorageUnavailableException) { throw; }
         catch (IOException) { return NotFound<PrivateDocumentDownloadDto>("Không tìm thấy ảnh đã phát hành."); }
     }
 
-    private string? SafeImagePath(OrderRating rating, int index)
+    private static string? SafeImageKey(OrderRating rating, int index)
     {
         if (index < 0 || index >= rating.ImageUrls.Count) return null;
         var match = ImagePath.Match(rating.ImageUrls[index]);
         if (!match.Success || match.Groups["owner"].Value != rating.CustomerId.ToString("N")) return null;
-        var path = Path.Combine(UploadStorage.GetRoot(configuration), match.Groups["owner"].Value, match.Groups["file"].Value);
-        return File.Exists(path) && new FileInfo(path).Length <= UploadStorage.MaxImageBytes ? path : null;
+        return match.Groups["owner"].Value + "/" + match.Groups["file"].Value;
     }
 
     private static BaseResponse<T> Forbidden<T>() => new() { Succeeded = false, StatusCode = HttpStatusCode.Forbidden };

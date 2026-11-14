@@ -76,10 +76,10 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
             if (string.IsNullOrWhiteSpace(description) || description.Length > 2000)
                 return BadRequest<IncidentResultDto>("Mô tả sự cố phải có từ 1 đến 2000 ký tự.");
             // Evidence: at least one photo or one video.
-            var videoError = UploadStorage.ValidateOwnedVideos(_configuration, command.VideoUrls, customerId, out var videos);
+            var (videoError, videos) = await UploadStorage.ValidateOwnedVideosAsync(LazyServiceProvider.LazyGetRequiredService<ObjectStorage>(), command.VideoUrls, customerId);
             if (videoError != null)
                 return BadRequest<IncidentResultDto>(videoError);
-            var imageError = UploadStorage.ValidateOwnedImages(_configuration, command.ImageUrls, customerId, command.Type is IncidentType.Damaged or IncidentType.Lost ? 1 : videos.Count > 0 ? 0 : 1, out var images);
+            var (imageError, images) = await UploadStorage.ValidateOwnedImagesAsync(LazyServiceProvider.LazyGetRequiredService<ObjectStorage>(), command.ImageUrls, customerId, command.Type is IncidentType.Damaged or IncidentType.Lost ? 1 : videos.Count > 0 ? 0 : 1);
             if (imageError != null)
                 return BadRequest<IncidentResultDto>(videos.Count == 0 && images.Count == 0
                     ? "Vui lòng upload ít nhất 1 ảnh hoặc video minh chứng." : imageError);
@@ -295,7 +295,7 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
 
         public async Task<BaseResponse<IncidentResultDto>> ConfirmCompensationAsync(Guid id, ConfirmCompensationCommand command)
         {
-            var proofError = UploadStorage.ValidateOwnedImages(_configuration, command.ProofImageUrls, CurrentUser.Id!.Value, 0, out var proofs);
+            var (proofError, proofs) = await UploadStorage.ValidateOwnedImagesAsync(LazyServiceProvider.LazyGetRequiredService<ObjectStorage>(), command.ProofImageUrls, CurrentUser.Id!.Value, 0);
             if (proofError != null || proofs.Count > 3) return BadRequest<IncidentResultDto>(proofError ?? "Chỉ được đính kèm tối đa 3 ảnh biên lai.");
             var reference = command.Reference?.Trim();
             if (string.IsNullOrWhiteSpace(reference) || reference.Length > 120)

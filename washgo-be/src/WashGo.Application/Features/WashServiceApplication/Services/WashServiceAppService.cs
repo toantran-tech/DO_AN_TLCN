@@ -189,7 +189,7 @@ namespace WashGo.Application.Features.WashServiceApplication.Services
                 return BadRequest<WashServiceResultDto>(error);
 
             var entity = ObjectMapper.Map<CreateWashServiceCommand, WashService>(command);
-            var imageError = ApplyImages(entity, command.ImageUrls);
+            var imageError = await ApplyImagesAsync(entity, command.ImageUrls);
             if (imageError != null) return BadRequest<WashServiceResultDto>(imageError);
             entity.ApprovalStatus = ServiceApprovalStatus.Approved;
             entity.IsActive = true;
@@ -220,7 +220,7 @@ namespace WashGo.Application.Features.WashServiceApplication.Services
                 return BadRequest<WashServiceResultDto>(error);
 
             ObjectMapper.Map(command, entity);
-            var imageError = ApplyImages(entity, command.ImageUrls);
+            var imageError = await ApplyImagesAsync(entity, command.ImageUrls);
             if (imageError != null) return BadRequest<WashServiceResultDto>(imageError);
             await _serviceRepo.UpdateAsync(entity, autoSave: true);
             var dto = ObjectMapper.Map<WashService, WashServiceResultDto>(entity);
@@ -260,12 +260,12 @@ namespace WashGo.Application.Features.WashServiceApplication.Services
             await uow.CompleteAsync(); return response;
         }
 
-        private string? ApplyImages(WashService entity, List<string>? images)
+        private async Task<string?> ApplyImagesAsync(WashService entity, List<string>? images)
         {
             if (images == null) return null;
             var existing = ReadImages(entity.Images);
             var added = images.Where(x => !existing.Contains(x?.Trim() ?? string.Empty)).ToList();
-            var error = UploadStorage.ValidateOwnedImages(LazyServiceProvider.LazyGetRequiredService<IConfiguration>(), added, CurrentUser.Id!.Value, 0, out _);
+            var error = (await UploadStorage.ValidateOwnedImagesAsync(LazyServiceProvider.LazyGetRequiredService<ObjectStorage>(), added, CurrentUser.Id!.Value, 0)).Error;
             if (error != null) return error;
             var clean = images.Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x.Trim()).Distinct().ToList();
             if (clean.Count > UploadStorage.MaxImagesPerSubmission) return "Quá số ảnh cho phép.";

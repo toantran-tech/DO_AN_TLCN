@@ -1,3 +1,5 @@
+using WashGo.Application.Features.AuthApplication.Services;
+using WashGo.Application.Features.FileApplication.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Volo.Abp.Application;
 using Volo.Abp.ObjectMapping;
@@ -23,6 +25,10 @@ namespace WashGo.Application
         public override void ConfigureServices(ServiceConfigurationContext context)
         {
             context.Services.AddWashGoObjectMapping();
+            context.Services.AddHttpClient(BrevoEmailClient.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(20))
+                .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+            context.Services.AddHttpClient(ObjectStorage.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(120))
+                .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
             context.Services.AddHttpClient<IChatModelClient, GeminiChatModelClient>(client =>
                 client.Timeout = TimeSpan.FromSeconds(65));
 

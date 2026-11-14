@@ -66,7 +66,7 @@ public class ShipperProfileAppService(IShipperRepository shippers, IRepository<U
         {
             avatar = string.IsNullOrWhiteSpace(command.AvatarUrl) ? null : command.AvatarUrl.Trim();
             if (avatar?.Length > 2048 || avatar != null && avatar != user.Avatar &&
-                UploadStorage.ValidateOwnedImages(configuration, [avatar], user.Id, 1, out _) != null)
+                (await UploadStorage.ValidateOwnedImagesAsync(LazyServiceProvider.LazyGetRequiredService<ObjectStorage>(), [avatar], user.Id, 1)).Error != null)
                 return Error("AvatarNotOwned", "Ảnh không hợp lệ hoặc không thuộc tài khoản.", HttpStatusCode.BadRequest);
         }
         var now = DateTime.UtcNow;

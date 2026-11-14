@@ -1,4 +1,6 @@
-﻿> Staging 14/11/2026: đã chuyển backup mới vào Neon, đối chiếu đủ 45 bảng và Admin; local DB không đổi. Đã thêm guard tắt seed mặc định ngoài Development, chờ commit/CI/merge để Render dùng. Web Render/mail/storage chưa hoàn tất. Xem [RENDER_STAGING_SETUP.md](docs/RENDER_STAGING_SETUP.md) và checklist.
+﻿> Staging 14/11/2026: đã bổ sung Brevo HTTPS (template/logo hiện có), Supabase private storage cho media/tài liệu, health endpoints và trang payment return không xác nhận giao dịch. Test hợp đồng provider đã nối vào suite EmailLogo của CI. Chưa chạy test/build/Docker local theo yêu cầu; chưa có key Brevo/Supabase và chưa chuyển file cũ lên cloud. Cấu hình/việc còn lại: [Render staging](docs/RENDER_STAGING_SETUP.md), [mẫu env](docs/render-staging.env.example).
+
+> Staging 14/11/2026: đã chuyển backup mới vào Neon, đối chiếu đủ 45 bảng và Admin; local DB không đổi. Đã thêm guard tắt seed mặc định ngoài Development, chờ commit/CI/merge để Render dùng. Web Render/mail/storage chưa hoàn tất. Xem [RENDER_STAGING_SETUP.md](docs/RENDER_STAGING_SETUP.md) và checklist.
 
 > Customer hoàn tất 14/11/2026: cả 3 mục BACKEND_CUSTOMER.md đã code, build/model và HTTP trên DB tạm PASS; CI thêm hai smoke Customer. Bàn giao [CUSTOMER_COMPLETION_API_REVIEW.md](docs/CUSTOMER_COMPLETION_API_REVIEW.md), xem checklist hiện hành. Image local đã build nhưng chưa recreate container/migrate DB chính. Người dùng yêu cầu để họ/CI tự test và build/deploy tiếp; không chạy thêm kiểm thử rộng local.
 

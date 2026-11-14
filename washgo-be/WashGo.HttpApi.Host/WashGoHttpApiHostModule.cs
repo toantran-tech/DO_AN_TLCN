@@ -1,3 +1,4 @@
+using WashGo.HttpApi.Host.Endpoints;
 using System;
 using System.IO;
 using System.Linq;
@@ -220,13 +221,16 @@ namespace WashGo.HttpApi.Host
             app.UseStaticFiles();
             // Uploaded evidence images live outside wwwroot so a Docker volume can persist them.
             var uploadRoot = UploadStorage.GetRoot(context.ServiceProvider.GetRequiredService<IConfiguration>());
-            Directory.CreateDirectory(uploadRoot);
-            app.UseStaticFiles(new StaticFileOptions
+            if (ObjectStorage.Provider(context.ServiceProvider.GetRequiredService<IConfiguration>()) == "Local")
             {
-                FileProvider = new PhysicalFileProvider(uploadRoot),
-                RequestPath = UploadStorage.RequestPath,
-                ServeUnknownFileTypes = false
-            });
+                Directory.CreateDirectory(uploadRoot);
+                app.UseStaticFiles(new StaticFileOptions
+                {
+                    FileProvider = new PhysicalFileProvider(uploadRoot),
+                    RequestPath = UploadStorage.RequestPath,
+                    ServeUnknownFileTypes = false
+                });
+            }
             app.UseRouting();
             app.Use(async (http, next) =>
             {
@@ -235,6 +239,11 @@ namespace WashGo.HttpApi.Host
                 {
                     http.Response.StatusCode = 413;
                     await http.Response.WriteAsJsonAsync(new { succeeded = false, statusCode = 413, message = "Báo cáo vượt giới hạn xử lý trực tiếp. Vui lòng thu hẹp khoảng ngày hoặc chọn một Merchant.", meta = new { code = "ReportTooLarge", maxRowsPerSource = FinancialReportLimitException.MaximumSourceRows } });
+                }
+                catch (StorageUnavailableException) when (!http.Response.HasStarted)
+                {
+                    http.Response.StatusCode = 503;
+                    await http.Response.WriteAsJsonAsync(new { succeeded = false, statusCode = 503, message = "Dịch vụ lưu file tạm thời không khả dụng. Vui lòng thử lại sau.", meta = new { code = "StorageUnavailable" } });
                 }
                 catch (UploadAttachmentExpiredException) when (!http.Response.HasStarted)
                 {
@@ -286,6 +295,7 @@ namespace WashGo.HttpApi.Host
                 {
                     handler.MapEndpoint(api);
                 }
+                HostedAssetEndpoints.Map(endpoints);
                 endpoints.MapHub<NotificationHub>(NotificationHub.Path);
             });
         }

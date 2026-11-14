@@ -1,4 +1,6 @@
-﻿# Checklist hoàn thiện Backend WashGo
+﻿> Staging 14/11/2026: đã bổ sung Brevo HTTPS (template/logo hiện có), Supabase private storage cho media/tài liệu, health endpoints và trang payment return không xác nhận giao dịch. Test hợp đồng provider đã nối vào suite EmailLogo của CI. Chưa chạy test/build/Docker local theo yêu cầu; chưa có key Brevo/Supabase và chưa chuyển file cũ lên cloud. Cấu hình/việc còn lại: [Render staging](docs/RENDER_STAGING_SETUP.md), [mẫu env](docs/render-staging.env.example).
+
+# Checklist hoàn thiện Backend WashGo
 
 ## Staging Render/Neon — chuyển DB 14/11/2026
 
@@ -254,3 +256,14 @@ Ngoài phạm vi theo quyết định nhóm (không phải chức năng đã cod
 - Không thay schema trong đợt bổ sung này; không cần migration mới. Các thay đổi đã chia commit theo nhóm, chưa push.
 
 Smoke dùng fixture local, có SQL phục vụ chuẩn bị/cleanup; không chạy trên production. Thanh toán tự động trong smoke dùng Mock nội bộ và tắt SMTP; không phải bằng chứng cổng VNPay/MoMo chính thức đã được test lại. Parser tài liệu không thay thế quét malware. Fixture/audit test có thể còn lịch sử đã vô hiệu hóa.
+
+## Staging: email HTTPS và file bền vững — 14/11/2026
+
+- [x] Code Brevo HTTPS với template hiện hành, PNG logo, phân biệt Sent/Failed/Unknown; không fallback SMTP khi chọn Brevo.
+- [x] Code Local/Supabase storage, kiểm tra private bucket, key path, size/signature, quyền sở hữu; giữ API tài liệu và URL media tương thích.
+- [x] Health live/ready, payment return chỉ thông báo, mẫu biến môi trường và hướng dẫn cấu hình Render.
+- [x] Bổ sung provider contract tests vào EmailLogo đã được CI gọi; chưa thực thi local.
+- [ ] CI PR của đợt sửa này xanh; build/deploy do người dùng thực hiện.
+- [ ] Người dùng tạo Brevo/Supabase, xác minh sender, tạo bucket private và điền secrets trên Render.
+- [ ] Chuyển bytes file local sang đúng key/bucket; xác minh ảnh/giấy tờ còn đọc được sau redeploy.
+- [ ] Test email, Google/Gemini, payment IPN, CORS/SignalR trên staging thật và ghi nhận kết quả UAT.

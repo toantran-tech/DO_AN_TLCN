@@ -249,7 +249,7 @@ namespace WashGo.Application.Features.MerchantApplication.Services
                     return MerchantWriteGuard.Error<MerchantResultDto>(HttpStatusCode.Conflict, "TaxCodeAlreadyUsed", "Mã số thuế này đã được sử dụng.");
                 var (error, phone) = await ValidateAsync(command, email, null);
                 if (error != null) return BadRequest<MerchantResultDto>(error);
-                var imageError = UploadStorage.ValidateOwnedImages(_configuration, command.ImageUrls, CurrentUser.Id.Value, 0, out var images);
+                var (imageError, images) = await UploadStorage.ValidateOwnedImagesAsync(LazyServiceProvider.LazyGetRequiredService<ObjectStorage>(), command.ImageUrls, CurrentUser.Id.Value, 0);
                 if (imageError != null) return BadRequest<MerchantResultDto>(imageError);
                 var role = await _roleRepo.FirstOrDefaultAsync(x => x.Name == "Merchant");
                 if (role == null) return BadRequest<MerchantResultDto>("Có lỗi xảy ra. Vui lòng thử lại.");
@@ -368,7 +368,7 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             {
                 var current = await StoreImagesAsync(entity.Id);
                 var added = command.ImageUrls.Where(x => !current.Contains(x?.Trim() ?? string.Empty)).ToList();
-                var imageError = UploadStorage.ValidateOwnedImages(_configuration, added, CurrentUser.Id!.Value, 0, out _);
+                var imageError = (await UploadStorage.ValidateOwnedImagesAsync(LazyServiceProvider.LazyGetRequiredService<ObjectStorage>(), added, CurrentUser.Id!.Value, 0)).Error;
                 if (imageError != null)
                     return BadRequest<MerchantResultDto>(imageError);
                 images = command.ImageUrls.Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x.Trim()).Distinct().ToList();

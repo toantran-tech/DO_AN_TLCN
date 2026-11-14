@@ -124,7 +124,7 @@ namespace WashGo.Application.Features.LockerApplication.Services
             var error = await ValidateAsync(command, null);
             if (error != null)
                 return BadRequest<LockerResultDto>(error);
-            var imageError = UploadStorage.ValidateOwnedImages(_configuration, command.ImageUrls, CurrentUser.Id!.Value, 0, out var images);
+            var (imageError, images) = await UploadStorage.ValidateOwnedImagesAsync(LazyServiceProvider.LazyGetRequiredService<ObjectStorage>(), command.ImageUrls, CurrentUser.Id!.Value, 0);
             if (imageError != null)
                 return BadRequest<LockerResultDto>(imageError);
 
@@ -211,7 +211,7 @@ namespace WashGo.Application.Features.LockerApplication.Services
             {
                 // Images already on the locker stay valid; new ones must be the caller's uploads.
                 var added = command.ImageUrls.Where(x => !images.Contains(x?.Trim() ?? string.Empty)).ToList();
-                var imageError = UploadStorage.ValidateOwnedImages(_configuration, added, CurrentUser.Id!.Value, 0, out _);
+                var imageError = (await UploadStorage.ValidateOwnedImagesAsync(LazyServiceProvider.LazyGetRequiredService<ObjectStorage>(), added, CurrentUser.Id!.Value, 0)).Error;
                 if (imageError != null)
                     return BadRequest<LockerResultDto>(imageError);
                 images = command.ImageUrls.Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x.Trim()).Distinct().ToList();

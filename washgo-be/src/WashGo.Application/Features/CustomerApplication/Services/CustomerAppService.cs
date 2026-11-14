@@ -76,7 +76,7 @@ public class CustomerAppService : WashGoAppService, ICustomerAppService
             var avatar = Clean(command.AvatarUrl);
             // A new avatar must be an existing upload of this account (UC 1.1.5 9c).
             if (avatar != null && avatar != user.Avatar &&
-                UploadStorage.ValidateOwnedImages(_configuration, [avatar], user.Id, 1, out _) != null)
+                (await UploadStorage.ValidateOwnedImagesAsync(LazyServiceProvider.LazyGetRequiredService<ObjectStorage>(), [avatar], user.Id, 1)).Error != null)
                 return BadRequest<CustomerProfileDto>("Không thể upload ảnh. Vui lòng thử lại.");
             user.Avatar = avatar;
         }
