@@ -1,7 +1,6 @@
 using System;
 using System.IO;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Configuration;
 using Volo.Abp.Validation;
 using WashGo.Application.Contracts.Features.FileContracts.Results;
 using WashGo.Application.Contracts.Features.FileContracts.Services;
@@ -13,13 +12,6 @@ namespace WashGo.Application.Features.FileApplication.Services
     public class VideoUploadAppService : WashGoAppService, IVideoUploadAppService
     {
         private const string SizeMessage = "Video phải có dung lượng từ 1 byte đến 50MB.";
-
-        private readonly IConfiguration _configuration;
-
-        public VideoUploadAppService(IConfiguration configuration)
-        {
-            _configuration = configuration;
-        }
 
         // ABP's recursive parameter validation would probe Stream properties and throw; inputs are checked below.
         [DisableValidation]
@@ -39,22 +31,13 @@ namespace WashGo.Application.Features.FileApplication.Services
 
             var owner = CurrentUser.Id.Value.ToString("N");
             var fileName = $"{Guid.NewGuid():N}.{extension}";
-            var directory = Path.Combine(UploadStorage.GetRoot(_configuration), owner);
-            var path = Path.Combine(directory, fileName);
+            var storage = LazyServiceProvider.LazyGetRequiredService<ObjectStorage>();
             try
             {
-                Directory.CreateDirectory(directory);
-                await using var output = new FileStream(path, FileMode.CreateNew, FileAccess.Write);
-                await output.WriteAsync(header.AsMemory(0, read));
-                await content.CopyToAsync(output);
-                if (output.Length > UploadStorage.MaxVideoBytes)
-                {
-                    await output.DisposeAsync();
-                    File.Delete(path);
-                    return BadRequest<UploadedImageDto>(SizeMessage);
-                }
-                await output.FlushAsync();
+                await using var output = await UploadBuffer.CreateAsync(header.AsMemory(0, read), content, UploadStorage.MaxVideoBytes);
+                // Persist the TTL registry first so a failed/ambiguous cloud upload is still tracked for cleanup.
                 await LazyServiceProvider.LazyGetRequiredService<UploadedAssetRegistry>().RegisterAsync(CurrentUser.Id!.Value, fileName);
+                await storage.PutAsync($"{owner}/{fileName}", output, contentType!);
                 return Created(new UploadedImageDto
                 {
                     Url = $"{UploadStorage.RequestPath}/{owner}/{fileName}",
@@ -62,7 +45,8 @@ namespace WashGo.Application.Features.FileApplication.Services
                     ContentType = contentType!
                 }, "Upload video thành công.");
             }
-            catch (IOException)
+            catch (StorageUnavailableException) { throw; }
+            catch (Exception ex) when (ex is IOException or HttpRequestException or TaskCanceledException)
             {
                 return BadRequest<UploadedImageDto>("Không thể upload video. Vui lòng thử lại.");
             }

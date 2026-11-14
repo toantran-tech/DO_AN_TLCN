@@ -64,10 +64,10 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
             var comment = string.IsNullOrWhiteSpace(command.Comment) ? null : command.Comment.Trim();
             if (comment?.Length > 1000)
                 return BadRequest<CustomerRatingDto>("Nhận xét tối đa 1000 ký tự.");
-            var imageError = UploadStorage.ValidateOwnedImages(_configuration, command.ImageUrls, customerId, 0, out var images);
+            var (imageError, images) = await UploadStorage.ValidateOwnedImagesAsync(LazyServiceProvider.LazyGetRequiredService<ObjectStorage>(), command.ImageUrls, customerId, 0);
             if (imageError != null)
                 return BadRequest<CustomerRatingDto>(imageError);
-            var videoError = UploadStorage.ValidateOwnedVideos(_configuration, command.VideoUrls, customerId, out var videos);
+            var (videoError, videos) = await UploadStorage.ValidateOwnedVideosAsync(LazyServiceProvider.LazyGetRequiredService<ObjectStorage>(), command.VideoUrls, customerId);
             if (videoError != null)
                 return BadRequest<CustomerRatingDto>(videoError);
 

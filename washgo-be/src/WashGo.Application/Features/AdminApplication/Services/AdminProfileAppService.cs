@@ -50,7 +50,7 @@ namespace WashGo.Application.Features.AdminApplication.Services
                 return BadRequest<AdminProfileDto>("Số điện thoại không hợp lệ.");
             var avatar = command.Avatar?.Trim();
             if (!string.IsNullOrEmpty(avatar) &&
-                UploadStorage.ValidateOwnedImages(_configuration, [avatar], CurrentUser.Id.Value, 1, out _) != null)
+                (await UploadStorage.ValidateOwnedImagesAsync(LazyServiceProvider.LazyGetRequiredService<ObjectStorage>(), [avatar], CurrentUser.Id.Value, 1)).Error != null)
                 return BadRequest<AdminProfileDto>("Ảnh đại diện phải là ảnh do chính bạn upload qua /files/images.");
 
             using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);

@@ -22,6 +22,14 @@ namespace WashGo.HttpApi.Endpoints.Payment
             var group = app.MapGroup(Endpoint)
                 .WithTags("Payment - Thanh toán");
 
+            // Browser redirect is informational. Only verified IPN may settle the transaction.
+            group.MapGet("/return", (HttpContext context) =>
+            {
+                context.Response.Headers.CacheControl = "no-store";
+                context.Response.Headers["X-Content-Type-Options"] = "nosniff";
+                return Results.Content("Bạn đã quay lại WashGo. Vui lòng mở đơn hàng để xem trạng thái thanh toán.", "text/plain; charset=utf-8");
+            }).AllowAnonymous().WithSummary("Trang quay lại từ cổng thanh toán; không xác nhận đã trả tiền từ query string.").WithOpenApi();
+
             group.MapPost("/create-url", async (CreatePaymentCommand command, HttpContext context, IPaymentAppService service) =>
             {
                 command.ClientIpAddress = context.Connection.RemoteIpAddress?.MapToIPv4().ToString() ?? "127.0.0.1";

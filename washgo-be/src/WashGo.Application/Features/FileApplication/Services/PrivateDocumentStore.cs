@@ -1,4 +1,3 @@
-using Microsoft.Extensions.Configuration;
 using Volo.Abp.DependencyInjection;
 using Volo.Abp.Domain.Repositories;
 using Volo.Abp.Linq;
@@ -16,17 +15,18 @@ public class PrivateDocumentStore : ITransientDependency
     private readonly IWashOrderRepository _locks;
     private readonly IAsyncQueryableExecuter _queries;
     private readonly IUnitOfWorkManager _uow;
-    public string Root { get; }
+    private readonly ObjectStorage _objects;
     public PrivateDocumentStore(IRepository<PrivateDocument, Guid> repo, IWashOrderRepository locks,
-        IAsyncQueryableExecuter queries, IUnitOfWorkManager uow, IConfiguration configuration)
+        IAsyncQueryableExecuter queries, IUnitOfWorkManager uow, ObjectStorage objects)
     {
         _repo = repo; _locks = locks; _queries = queries; _uow = uow;
-        Root = Path.GetFullPath(configuration["Storage:PrivateDocumentPath"] ?? Path.Combine(AppContext.BaseDirectory, "private-documents"));
-        var publicRoot = UploadStorage.GetRoot(configuration).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
-        if ((Root.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar).StartsWith(publicRoot, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException("Private documents must not be stored below public uploads.");
+        _objects = objects;
     }
-    public string PathOf(PrivateDocument file) => Path.Combine(Root, file.Id.ToString("N") + file.Extension);
+    private static string Key(PrivateDocument file) => file.Id.ToString("N") + file.Extension;
+    public Task<bool> ExistsAsync(PrivateDocument file) => _objects.ExistsAsync(Key(file), documents: true);
+    public Task PutAsync(PrivateDocument file, Stream content) => _objects.PutAsync(Key(file), content, file.ContentType, documents: true);
+    public Task<byte[]?> ReadAsync(PrivateDocument file) => _objects.ReadAsync(Key(file), PrivateDocumentValidator.MaxBytes, documents: true);
+    public Task DeleteAsync(PrivateDocument file) => _objects.DeleteAsync(Key(file), documents: true);
     public Task LockAsync(Guid id) => _locks.AcquireLockAsync($"private-document:{id}");
     public static PrivateDocumentDto ToDto(PrivateDocument f) => new()
     {
@@ -48,7 +48,7 @@ public class PrivateDocumentStore : ITransientDependency
         foreach (var (id, kind) in files)
         {
             var f = await _repo.FindAsync(id);
-            if (f == null || f.IsDeleted || f.Kind != kind || !File.Exists(PathOf(f)) ||
+            if (f == null || f.IsDeleted || f.Kind != kind || !await ExistsAsync(f) ||
                 (f.ReferencedAt == null && f.ExpiresAt <= DateTime.UtcNow) ||
                 (f.MerchantId.HasValue && f.MerchantId != merchantId) ||
                 (f.OwnerId != actorId && !(admin && f.ReferencedAt.HasValue && f.MerchantId == merchantId)))
@@ -75,7 +75,7 @@ public class PrivateDocumentStore : ITransientDependency
             await LockAsync(id);
             var file = await _repo.FindAsync(id);
             if (file == null || file.IsDeleted || file.ReferencedAt != null || file.ExpiresAt > DateTime.UtcNow) continue;
-            File.Delete(PathOf(file));
+            await DeleteAsync(file);
             file.IsDeleted = true;
             await _repo.UpdateAsync(file, autoSave: true);
             await write.CompleteAsync(); count++;

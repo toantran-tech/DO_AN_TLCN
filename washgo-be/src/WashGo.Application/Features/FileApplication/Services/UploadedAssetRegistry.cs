@@ -1,4 +1,3 @@
-using Microsoft.Extensions.Configuration;
 using Volo.Abp.DependencyInjection;
 using Volo.Abp.Domain.Repositories;
 using Volo.Abp.Linq;
@@ -9,7 +8,7 @@ using WashGo.Domain.Entities.WashOrder.Interfaces;
 namespace WashGo.Application.Features.FileApplication.Services;
 
 public class UploadedAssetRegistry(IRepository<UploadedAsset, Guid> files, IWashOrderRepository locks,
-    IUnitOfWorkManager units, IAsyncQueryableExecuter queries, IConfiguration configuration) : ITransientDependency
+    IUnitOfWorkManager units, IAsyncQueryableExecuter queries, ObjectStorage objects) : ITransientDependency
 {
     public Task RegisterAsync(Guid owner, string fileName)
     {
@@ -35,10 +34,8 @@ public class UploadedAssetRegistry(IRepository<UploadedAsset, Guid> files, IWash
             await locks.AcquireLockAsync($"upload-asset:{id}");
             var asset = await files.FindAsync(id);
             if (asset == null || asset.IsDeleted || asset.ReferencedAt != null || asset.ExpiresAt > DateTime.UtcNow) continue;
-            var path = Path.GetFullPath(Path.Combine(UploadStorage.GetRoot(configuration), asset.Url["/uploads/".Length..].Replace('/', Path.DirectorySeparatorChar)));
-            var root = UploadStorage.GetRoot(configuration).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
-            if (!path.StartsWith(root, StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("Invalid upload path.");
-            File.Delete(path); asset.IsDeleted = true;
+            if (!asset.Url.StartsWith("/uploads/", StringComparison.Ordinal)) throw new InvalidOperationException("Invalid upload URL.");
+            await objects.DeleteAsync(asset.Url["/uploads/".Length..]); asset.IsDeleted = true;
             await files.UpdateAsync(asset, autoSave: true); await write.CompleteAsync(); count++;
         }
         await scan.CompleteAsync(); return count;

@@ -201,10 +201,10 @@ namespace WashGo.Application.Features.ShipperApplication.Services
                 return BadRequest<ShipperDto>("Dùng identityFrontImageUrl/identityBackImageUrl hoặc identityImageUrls, không dùng cả hai.");
             if (front != null && front == back)
                 return BadRequest<ShipperDto>("Ảnh mặt trước và mặt sau phải khác nhau.");
-            if (front != null && ValidateSides(front, back!) is { } sideError)
+            if (front != null && await ValidateSidesAsync(front, back!) is { } sideError)
                 return BadRequest<ShipperDto>(sideError);
-            var imageError = UploadStorage.ValidateOwnedImages(_configuration, command.IdentityImageUrls,
-                CurrentUser.Id!.Value, 0, out var images);
+            var (imageError, images) = await UploadStorage.ValidateOwnedImagesAsync(LazyServiceProvider.LazyGetRequiredService<ObjectStorage>(), command.IdentityImageUrls,
+                CurrentUser.Id!.Value, 0);
             if (imageError != null)
                 return BadRequest<ShipperDto>(imageError);
             // The advisory lock only lives inside a transaction: hold one (gate) until the account is committed, so a concurrent
@@ -334,7 +334,7 @@ namespace WashGo.Application.Features.ShipperApplication.Services
             var active = (await ActiveTaskCountsAsync([shipper.Id])).GetValueOrDefault(shipper.Id);
             if (!command.IsActive && shipper.IsActive && active > 0)
                 return BadRequest<ShipperDto>("Shipper đang có nhiệm vụ lấy/trả chưa hoàn tất; không thể chuyển sang Tạm nghỉ.");
-            var (identityError, identityChanges) = ApplyIdentity(shipper, command);
+            var (identityError, identityChanges) = await ApplyIdentityAsync(shipper, command);
             if (identityError != null)
                 return BadRequest<ShipperDto>(identityError);
 
@@ -626,14 +626,14 @@ namespace WashGo.Application.Features.ShipperApplication.Services
         private static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
         // New identity images must be uploads of the current Merchant/Admin (same rule as other evidence images).
-        private string? ValidateSides(params string[] urls) =>
-            UploadStorage.ValidateOwnedImages(_configuration, urls, CurrentUser.Id!.Value, urls.Length, out _);
+        private async Task<string?> ValidateSidesAsync(params string[] urls) =>
+            (await UploadStorage.ValidateOwnedImagesAsync(LazyServiceProvider.LazyGetRequiredService<ObjectStorage>(), urls, CurrentUser.Id!.Value, urls.Length)).Error;
 
         /// <summary>
         /// Applies identityNumber / front / back from an update (null keeps, "" clears) and returns the changed field names
         /// (never the values) for the audit. Front and back must end up both set or both empty.
         /// </summary>
-        private (string? Error, List<string> Changes) ApplyIdentity(Shipper shipper, UpdateShipperCommand command)
+        private async Task<(string? Error, List<string> Changes)> ApplyIdentityAsync(Shipper shipper, UpdateShipperCommand command)
         {
             var changes = new List<string>();
             if (command.IdentityNumber != null)
@@ -657,7 +657,7 @@ namespace WashGo.Application.Features.ShipperApplication.Services
             // Only newly sent images are checked; the stored ones were accepted before.
             var added = new[] { front, back }.Where(x => x != null && x != shipper.IdentityFrontImageUrl && x != shipper.IdentityBackImageUrl)
                 .Select(x => x!).ToArray();
-            if (added.Length > 0 && ValidateSides(added) is { } imageError)
+            if (added.Length > 0 && await ValidateSidesAsync(added) is { } imageError)
                 return (imageError, changes);
             if (front != shipper.IdentityFrontImageUrl)
                 changes.Add("identityFrontImage");
