@@ -1,3 +1,4 @@
+using WashGo.HttpApi.Host.OpenApi;
 using WashGo.HttpApi.Host.Endpoints;
 using System;
 using System.IO;
@@ -183,6 +184,7 @@ namespace WashGo.HttpApi.Host
                     Description = "RESTful & Minimal APIs cho hệ thống WashGo (DDD + Clean Architecture + ABP Framework)"
                 });
                 options.CustomSchemaIds(type => type.FullName);
+                options.OperationFilter<UploadOperationFilter>();
 
                 // Add JWT Security Definition for Swagger UI
                 var securityScheme = new OpenApiSecurityScheme
