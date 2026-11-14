@@ -32,12 +32,15 @@ try {
     if (!$ready) { throw 'CI Backend did not become ready.' }
     # Swagger must send an actual multipart file, not just a Content-Type header.
     $openApi = Invoke-RestMethod "$baseUrl/swagger/v1/swagger.json"
+    $openApi | ConvertTo-Json -Depth 100 | Set-Content (Join-Path $results 'swagger.json')
     foreach ($route in @('/files/images', '/files/videos', '/files/documents/')) {
-        $operation = $openApi.paths.PSObject.Properties[$route].Value.post
+        $path = @($openApi.paths.PSObject.Properties | Where-Object { $_.Name.TrimEnd('/') -eq $route.TrimEnd('/') })
+        if ($path.Count -ne 1) { throw "Missing or ambiguous Swagger upload route: $route" }
+        $operation = $path[0].Value.post
         $multipart = $operation.requestBody.content.'multipart/form-data'.schema
         if (!$operation.requestBody.required -or $multipart.type -ne 'object' -or
             $multipart.properties.file.type -ne 'string' -or $multipart.properties.file.format -ne 'binary' -or
-            'file' -notin $multipart.required) { throw "Invalid Swagger file upload contract: $route" }
+            'file' -notin $multipart.required) { throw "Invalid Swagger file upload contract: $route. Actual request body: $($operation.requestBody | ConvertTo-Json -Depth 12 -Compress)" }
         if ($route -eq '/files/documents/' -and ('kind' -notin $multipart.required -or !$multipart.properties.merchantId)) {
             throw 'Document multipart contract must include kind and optional merchantId.'
         }

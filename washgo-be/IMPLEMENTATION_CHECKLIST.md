@@ -1,4 +1,6 @@
-﻿> Sửa Swagger upload 14/11/2026: khai báo multipart object + trường file binary bắt buộc cho ảnh/video/tài liệu (tài liệu thêm kind/merchantId). Ảnh thiếu file trả JSON hướng dẫn; CI API smoke kiểm tra schema cả 3 route. Chưa chạy test/build local, chờ PR CI và deploy rồi test lại chọn file trên Swagger. Curl staging trước sửa không có phần file; chưa kết luận Supabase lỗi.
+﻿> Sửa tiếp Swagger upload: CI đã phát hiện schema bị Swashbuckle 6.6.2 ghi đè thành string/binary từ Accepts<IFormFile>. Đã chuyển sang UploadOperationFilter tại Host, áp dụng sau bước sinh schema; giữ nguyên gate multipart/file trong CI, thêm artifact swagger.json và lỗi kèm requestBody thực tế. Chưa chạy lại test/build local; chờ PR CI xác minh.
+
+> Sửa Swagger upload 14/11/2026: khai báo multipart object + trường file binary bắt buộc cho ảnh/video/tài liệu (tài liệu thêm kind/merchantId). Ảnh thiếu file trả JSON hướng dẫn; CI API smoke kiểm tra schema cả 3 route. Chưa chạy test/build local, chờ PR CI và deploy rồi test lại chọn file trên Swagger. Curl staging trước sửa không có phần file; chưa kết luận Supabase lỗi.
 
 > Staging 14/11/2026: đã bổ sung Brevo HTTPS (template/logo hiện có), Supabase private storage cho media/tài liệu, health endpoints và trang payment return không xác nhận giao dịch. Test hợp đồng provider đã nối vào suite EmailLogo của CI. Chưa chạy test/build/Docker local theo yêu cầu; chưa có key Brevo/Supabase và chưa chuyển file cũ lên cloud. Cấu hình/việc còn lại: [Render staging](docs/RENDER_STAGING_SETUP.md), [mẫu env](docs/render-staging.env.example).
 

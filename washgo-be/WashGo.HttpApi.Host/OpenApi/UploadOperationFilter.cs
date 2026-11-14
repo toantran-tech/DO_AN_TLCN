@@ -1,13 +1,20 @@
 using Microsoft.OpenApi.Models;
+using Swashbuckle.AspNetCore.SwaggerGen;
 
-namespace WashGo.HttpApi.Endpoints.Files;
+namespace WashGo.HttpApi.Host.OpenApi;
 
-internal static class UploadOpenApi
+/// <summary>Apply after Swashbuckle regenerates the schema inferred from Accepts metadata.</summary>
+public sealed class UploadOperationFilter : IOperationFilter
 {
-    public static OpenApiOperation Media(OpenApiOperation operation) => Describe(operation, documents: false);
-    public static OpenApiOperation Documents(OpenApiOperation operation) => Describe(operation, documents: true);
+    public void Apply(OpenApiOperation operation, OperationFilterContext context)
+    {
+        if (!string.Equals(context.ApiDescription.HttpMethod, "POST", StringComparison.OrdinalIgnoreCase)) return;
+        var route = context.ApiDescription.RelativePath?.Trim('/');
+        if (route is not ("files/images" or "files/videos" or "files/documents")) return;
+        Describe(operation, documents: route == "files/documents");
+    }
 
-    private static OpenApiOperation Describe(OpenApiOperation operation, bool documents)
+    private static void Describe(OpenApiOperation operation, bool documents)
     {
         var schema = new OpenApiSchema
         {
@@ -32,6 +39,5 @@ internal static class UploadOpenApi
                 ["multipart/form-data"] = new() { Schema = schema }
             }
         };
-        return operation;
     }
 }
