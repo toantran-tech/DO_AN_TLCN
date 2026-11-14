@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.OpenApi;
@@ -75,7 +75,7 @@ namespace WashGo.HttpApi.Endpoints.Feedback
                 (await svc.PublishAsync(id, command)).CustomResult())
                 .RequireAuthorization("AdminOnly")
                 .WithName("Admin duyệt nội dung đánh giá")
-                .WithSummary("Admin kiểm tra nhận xét/ảnh/video rồi Publish để Merchant xem; không sửa nội dung hoặc đổi số sao. Cần expectedVersion; operationId hỗ trợ replay/lookup. Đánh giá đang ẩn không được Publish. Hide/Show độc lập với phê duyệt nội dung.")
+                .WithSummary("Admin kiểm tra nhận xét/ảnh/video rồi Publish để Merchant xem; publishForCustomers=true xác nhận duyệt PII để phát hành cho Customer, mặc định false giữ riêng Merchant; không sửa nội dung hoặc đổi số sao. Cần expectedVersion; operationId hỗ trợ replay/lookup. Đánh giá đang ẩn không được Publish. Hide/Show độc lập với phê duyệt nội dung.")
                 .WithOpenApi();
 
             group.MapPatch("/{id:guid}/visibility", async (Guid id, SetRatingVisibilityCommand command, IRatingAppService svc) =>

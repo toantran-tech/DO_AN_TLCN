@@ -25,6 +25,8 @@ namespace WashGo.EntityFrameworkCore.BuilderConfiguration
             builder.HasIndex(x => x.OrderId).IsUnique();
             builder.HasIndex(x => new { x.MerchantId, x.IsHidden });
             builder.HasIndex(x => x.OverallStars);
+            builder.HasIndex(x => x.PublicId).IsUnique();
+            builder.HasIndex(x => new { x.PublicApprovedAt, x.PublicId });
             builder.HasOne<WashOrderEntity>()
                 .WithMany()
                 .HasForeignKey(x => x.OrderId)

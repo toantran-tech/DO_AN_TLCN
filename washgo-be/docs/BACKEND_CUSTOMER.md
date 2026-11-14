@@ -1,4 +1,4 @@
-﻿# Customer — yêu cầu BE còn thiếu
+﻿# Customer — yêu cầu BE bổ sung
 
 Đối chiếu source14/11/2026. Không yêu cầu làm lại ảnh catalog/đơn hàng, quote khuyến mãi hoặc tìm locker theo tọa độ: các API đó đã có.
 
@@ -6,7 +6,7 @@
 
 **Cập nhật 14/11/2026: mục 1 đã sửa code, build Release PASS (0 lỗi, 5 nullable warnings cũ).** Detail trả đúng một locker theo id, có `slots` chỉ metadata/status của mọi ô chưa xóa; giữ shape `availableSlots`. Đọc ô một lần rồi suy ra danh sách/count ô trống. Hết ô vẫn trả 200; quyền/điều kiện xem locker cũ giữ nguyên. List `/customer/lockers` vẫn tìm tủ còn ô trống, `slots` chỉ nạp ở detail. Không migration.
 
-Smoke `customer-locker-slots.ps1` đã nối API runner CI; chưa chạy HTTP suite hoặc rebuild Docker chính bản này. Mục 2 và 3 vẫn chưa triển khai.
+Cập nhật hoàn tất: cả 3 mục đã có code và tài liệu [CUSTOMER_COMPLETION_API_REVIEW.md](CUSTOMER_COMPLETION_API_REVIEW.md). Build/model check và hai smoke HTTP trên DB tạm PASS; suite đã nối CI. Docker image đã build trước khi người dùng yêu cầu để CI/người dùng tự kiểm thử; chưa recreate container hoặc áp migration lên DB chính. Không chạy thêm bộ test rộng local.
 
 Bổ sung GET `/customer/lockers/{id}`:
 
@@ -31,9 +31,9 @@ FE đã đọc `slots` khi có ở chi tiết locker và tạo đơn; khi chưa 
 
 ## 2. Feedback công khai đã kiểm duyệt của dịch vụ WashGo
 
-Hiện chỉ có đánh giá đơn của chính Customer, API Admin và API partner. Chưa có API Customer đọc feedback công khai. Home đã có section **Khách hàng nói về WashGo**, hiện là trạng thái trống, không số sao/nhận xét mẫu.
+**Đã triển khai:** list/summary Customer-only và URL ảnh ẩn danh. Admin Publish cần publishForCustomers=true để duyệt rõ phạm vi Customer; review cũ/Merchant-only không tự public. Public ID ngẫu nhiên độc lập, ẩn danh, Hide/Show cập nhật query/media; migration AddPublicCustomerReviewApproval. FE nối section Home theo hợp đồng bàn giao, không tạo nhận xét mẫu.
 
-Cần chốt và bổ sung endpoint Customer-only riêng, đề xuất:
+Hợp đồng đã triển khai (chi tiết/default/error/media xem API review):
 
 - GET `/customer/reviews?page=1&take=4&stars=5`: sort publishedAt giảm dần rồi id, phân trang server. stars tùy chọn1–5, take tối đa20. Response `succeeded: true, data: { items, total, page, take, hasMore }`.
 - Mỗi item: public `id`, `overallStars`1–5, `comment`, `imageUrls`, `publishedAt`; chỉ nội dung/media được duyệt. Public ID không dùng để suy ra đơn/khách.
@@ -50,8 +50,8 @@ Sau khi BE có API, FE nối section Home với endpoint và bổ sung xem thêm
 
 ## 3. Tìm nội dung thông báo đơn hàng an toàn cho Customer
 
-`POST /notification/filter` hiện tìm title không phân biệt hoa/thường; content chỉ tìm với thông báo không có `linkType=order` khi role Customer. BE chủ động loại content đơn hàng vì bản legacy có thể chứa địa chỉ kho nội bộ.
+**Đã triển khai:** POST /notification/filter tìm title/content đã được phép hiển thị cho Customer bằng biểu thức SQL dùng chung quy tắc privacy với DTO. Legacy storage được thay text trước tìm/count/paging, không tìm raw nội dung bị che; giữ UserId và bộ lọc cũ. Không rewrite lịch sử.
 
 - Bổ sung tìm theo nội dung **đã được làm sạch và được phép hiển thị cho Customer**, bao gồm các thông báo đơn hàng. Dùng cùng nguồn nội dung an toàn cho truy vấn, kết quả gợi ý, list và total.
 - Không bỏ điều kiện bảo vệ rồi tìm trên raw Content cũ; không để kết quả hoặc số lượng tiết lộ kho/merchant/shipper/PII đang bị ẩn. Giữ giới hạn UserId hiện tại, group/type/unread/date và pagination.
-- Chưa có: FE dùng đúng API hiện tại, không tải mọi thông báo rồi tìm raw content ở client. Gợi ý tiêu đề/nội dung được API cho phép và số lượng kết quả đã hoạt động.
+- FE dùng keyword tại API, không tải cả inbox rồi tìm raw content. Total sau lọc, counts/unreadTotal vẫn toàn inbox như cũ. Đã test tìm text nhìn thấy, ẩn raw title/content, scope và bộ lọc trên PostgreSQL tạm.

@@ -33,5 +33,8 @@ namespace WashGo.Domain.Entities.Feedback
         /// <summary>Content approval is independent of visibility moderation; hiding never approves content.</summary>
         public DateTime? ContentApprovedAt { get; set; }
         public Guid? ContentApprovedBy { get; set; }
+        public Guid? PublicId { get; set; }
+        public DateTime? PublicApprovedAt { get; set; }
+        public Guid? PublicApprovedBy { get; set; }
     }
 }

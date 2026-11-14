@@ -15,6 +15,32 @@ public class CustomerHandler : IEndpointBase
         var group = app.MapGroup("/customer").WithTags("Customer - Hồ sơ khách hàng")
             .RequireAuthorization("CustomerOnly");
 
+        group.MapGet("/reviews", async (HttpRequest request, int? page, int? take, int? stars, ICustomerReviewAppService reviews) =>
+        {
+            if (request.Query.Keys.Any(key => key is not ("page" or "take" or "stars")))
+                return Results.BadRequest(new { succeeded = false, message = "Chỉ hỗ trợ page, take, stars.", statusCode = 400 });
+            return (await reviews.GetAsync(page ?? 1, take ?? 4, stars)).CustomResult();
+        }).WithName("Customer xem feedback WashGo đã phát hành")
+            .WithSummary("Feedback ẩn danh đã được Admin duyệt riêng cho Customer, không Hidden; page từ 1, take 1–20 (mặc định 4), stars 1–5 tùy chọn. Mới phát hành trước rồi public ID. Không hỗ trợ serviceId.").WithOpenApi();
+
+        group.MapGet("/reviews/summary", async (HttpRequest request, ICustomerReviewAppService reviews) =>
+        {
+            if (request.Query.Count != 0)
+                return Results.BadRequest(new { succeeded = false, message = "Summary tính toàn tập, không nhận bộ lọc.", statusCode = 400 });
+            return (await reviews.SummaryAsync()).CustomResult();
+        })
+            .WithName("Customer xem tổng hợp feedback WashGo")
+            .WithSummary("Tổng/điểm trung bình và phân bố đủ 1–5 sao của toàn tập được phát hành; averageStars=null khi rỗng, rate là % 0–100.").WithOpenApi();
+
+        group.MapGet("/reviews/{publicId:guid}/images/{index:int}", async (Guid publicId, int index, HttpResponse response, ICustomerReviewAppService reviews) =>
+        {
+            response.Headers.CacheControl = "no-store";
+            response.Headers["X-Content-Type-Options"] = "nosniff";
+            var result = await reviews.GetImageAsync(publicId, index);
+            return result.Succeeded && result.Data != null ? Results.File(result.Data.Bytes, result.Data.ContentType) : result.CustomResult();
+        }).WithName("Customer xem ảnh feedback đã phát hành")
+            .WithSummary("URL ảnh ẩn danh, không lộ owner/upload path. Cần JWT Customer (FE fetch blob), kiểm tra lại trạng thái duyệt/Hide mỗi request; index từ 0, không redirect sang URL gốc.").WithOpenApi();
+
         group.MapGet("/me", async (ICustomerAppService service) =>
             (await service.GetMyProfileAsync()).CustomResult())
             .WithName("Xem hồ sơ Customer của tôi")

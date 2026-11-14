@@ -18,6 +18,8 @@ namespace WashGo.Application.Contracts.Features.FeedbackContracts.Results
         public DateTime? ContentApprovedAt { get; set; }
         public Guid? ContentApprovedBy { get; set; }
         public bool CanPublish { get; set; }
+        public bool CanPublishForCustomers { get; set; }
+        public DateTime? PublicApprovedAt { get; set; }
         public string? PublishReasonCode { get; set; }
         public Guid Id { get; set; }
         public Guid? OrderId { get; set; }
