@@ -255,7 +255,7 @@ namespace WashGo.HttpApi.Host
                 options.RoutePrefix = "swagger";
             });
 
-            // Auto-migrate and seed data on startup
+            // Apply migrations everywhere; demo seeding defaults to Development only.
             using (var scope = context.ServiceProvider.CreateScope())
             {
                 try
@@ -263,8 +263,12 @@ namespace WashGo.HttpApi.Host
                     var dbContext = scope.ServiceProvider.GetRequiredService<WashGoDbContext>();
                     dbContext.Database.Migrate();
 
-                    var seeder = scope.ServiceProvider.GetRequiredService<IDataSeeder>();
-                    AsyncHelper.RunSync(() => seeder.SeedAsync());
+                    var configuration = scope.ServiceProvider.GetRequiredService<IConfiguration>();
+                    if (configuration.GetValue("Seeding:Enabled", env.IsDevelopment()))
+                    {
+                        var seeder = scope.ServiceProvider.GetRequiredService<IDataSeeder>();
+                        AsyncHelper.RunSync(() => seeder.SeedAsync());
+                    }
                 }
                 catch (Exception ex)
                 {

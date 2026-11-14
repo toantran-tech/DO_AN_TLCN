@@ -1,4 +1,6 @@
-﻿> Customer hoàn tất 14/11/2026: cả 3 mục BACKEND_CUSTOMER.md đã code, build/model và HTTP trên DB tạm PASS; CI thêm hai smoke Customer. Bàn giao [CUSTOMER_COMPLETION_API_REVIEW.md](docs/CUSTOMER_COMPLETION_API_REVIEW.md), xem checklist hiện hành. Image local đã build nhưng chưa recreate container/migrate DB chính. Người dùng yêu cầu để họ/CI tự test và build/deploy tiếp; không chạy thêm kiểm thử rộng local.
+﻿> Staging 14/11/2026: đã chuyển backup mới vào Neon, đối chiếu đủ 45 bảng và Admin; local DB không đổi. Đã thêm guard tắt seed mặc định ngoài Development, chờ commit/CI/merge để Render dùng. Web Render/mail/storage chưa hoàn tất. Xem [RENDER_STAGING_SETUP.md](docs/RENDER_STAGING_SETUP.md) và checklist.
+
+> Customer hoàn tất 14/11/2026: cả 3 mục BACKEND_CUSTOMER.md đã code, build/model và HTTP trên DB tạm PASS; CI thêm hai smoke Customer. Bàn giao [CUSTOMER_COMPLETION_API_REVIEW.md](docs/CUSTOMER_COMPLETION_API_REVIEW.md), xem checklist hiện hành. Image local đã build nhưng chưa recreate container/migrate DB chính. Người dùng yêu cầu để họ/CI tự test và build/deploy tiếp; không chạy thêm kiểm thử rộng local.
 
 > Customer bổ sung 14/11/2026: đã sửa mục 1 [BACKEND_CUSTOMER.md](docs/BACKEND_CUSTOMER.md): detail một locker có đủ slots/status, giữ availableSlots và trả 200 khi hết ô. Build PASS; smoke đã nối CI, chưa chạy HTTP/rebuild Docker bản này. Không migration. Mục feedback công khai và search notification chưa làm. Xem [checklist](IMPLEMENTATION_CHECKLIST.md).
 
