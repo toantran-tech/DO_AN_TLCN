@@ -1,10 +1,20 @@
 ﻿# Checklist hoàn thiện Backend WashGo
 
+## Customer hoàn tất ba mục bổ sung — 14/11/2026
+
+- [x] Slots/detail một locker và giữ availableSlots; HTTP smoke customer-locker-slots PASS (status/deleted/order/PII/full locker/auth).
+- [x] Feedback Customer list/summary, public UUID độc lập, predicate chung/phân trang snapshot, sao/phân bố toàn tập, không identity; ảnh proxy JWT/no-store kiểm tra lại approval/Hide, không lộ upload owner.
+- [x] PublishForCustomers=true xác nhận riêng; giữ mặc định Merchant-only và replay payload cũ. Không auto public review legacy. Migration AddPublicCustomerReviewApproval thêm 3 cột nullable/index, đã áp DB test tạm từ đầu; model sạch.
+- [x] Notification keyword dùng cùng safe title/content SQL/DTO trước count/paging; giữ scope/filter; HTTP smoke chứng minh nội dung bị che không lộ qua kết quả/total.
+- [x] Build Release PASS, không thêm warning (clean build còn 5 nullable warnings cũ); customer-public-reviews-notifications HTTP PASS: publish/replay/ẩn danh/media/summary/Hide/Show/validation/auth và safe search. Hai suite Customer đã nối CI.
+- [x] Bàn giao FE/Admin: [CUSTOMER_COMPLETION_API_REVIEW.md](docs/CUSTOMER_COMPLETION_API_REVIEW.md); yêu cầu gốc cập nhật trạng thái ở BACKEND_CUSTOMER.md.
+- [ ] CI GitHub sau PR, nghiệm thu FE và triển khai container/DB chính do người dùng thực hiện. Image Docker local đã build trước tin nhắn dừng build/test; chưa recreate container/áp migration chính. Từ đây không chạy thêm test rộng/build Docker local theo yêu cầu tối ưu.
+
 ## Customer — chi tiết trạng thái ô tủ — 14/11/2026
 
 - [x] Mục 1 [BACKEND_CUSTOMER.md](docs/BACKEND_CUSTOMER.md): GET /customer/lockers/{id} trả một locker với slots/status của mọi ô chưa xóa, sắp slotNumber rồi ID; chỉ public metadata. Giữ shape availableSlots; list/count ô trống suy ra từ cùng một lần đọc, hết ô không trả 404. Không thay cơ chế giữ ô khi tạo đơn.
 - [x] Build Release PASS, 0 lỗi, 5 nullable warnings cũ; không cần migration. Có smoke riêng cho status/ordering/deleted/privacy/compatibility/full locker/auth và nối CI.
-- [ ] HTTP smoke/CI sau push và rebuild Docker chính để FE test. Hai mục feedback công khai và search notification chưa triển khai.
+- [x] HTTP smoke riêng PASS; hai mục feedback/search đã hoàn thiện trong cập nhật phía trên. CI/triển khai chính và nghiệm thu FE do người dùng thực hiện.
 
 ## Cụm 2 — Shipper self-status, lưu kho tại tiệm và giao lại — 14/11/2026
 
