@@ -39,7 +39,7 @@ namespace WashGo.HttpApi.Endpoints.Files
                 await using var stream = file.OpenReadStream();
                 return (await svc.UploadAsync(stream, file.Length, file.FileName, form["kind"].ToString(), merchantId)).CustomResult();
             }).DisableAntiforgery().Accepts<IFormFile>("multipart/form-data")
-                .WithSummary("Upload giấy tờ PDF/DOC/DOCX tối đa 10 MB: file, kind=BusinessLicense|Contract|Sla, merchantId tùy chọn. Merchant chỉ upload giấy phép của mình; bản nháp hết hạn sau 24 giờ.").WithOpenApi();
+                .WithSummary("Upload giấy tờ PDF/DOC/DOCX tối đa 10 MB: file, kind=BusinessLicense|Contract|Sla, merchantId tùy chọn. Merchant chỉ upload giấy phép của mình; bản nháp hết hạn sau 24 giờ.").WithOpenApi(UploadOpenApi.Documents);
             documents.MapGet("/{id:guid}", async (Guid id, IPrivateDocumentAppService svc) => (await svc.GetAsync(id)).CustomResult())
                 .WithSummary("Xem metadata giấy tờ được phép truy cập.").WithOpenApi();
             documents.MapGet("/{id:guid}/download", async (Guid id, HttpContext context, IPrivateDocumentAppService svc) =>
@@ -55,15 +55,22 @@ namespace WashGo.HttpApi.Endpoints.Files
             documents.MapPost("/cleanup", async (IPrivateDocumentAppService svc) => (await svc.CleanupExpiredAsync()).CustomResult())
                 .RequireAuthorization("AdminOnly").WithSummary("Admin dọn tối đa 100 bản nháp quá hạn; worker cũng chạy định kỳ.").WithOpenApi();
 
-            group.MapPost("/images", async (IFormFile file, IImageUploadAppService svc) =>
+            group.MapPost("/images", async (HttpContext context, IImageUploadAppService svc) =>
             {
+                if (!context.Request.HasFormContentType)
+                    return Results.BadRequest(new { message = "Cần multipart/form-data với file ảnh trong trường 'file'." });
+                var form = await context.Request.ReadFormAsync(context.RequestAborted);
+                var file = form.Files.GetFile("file");
+                if (file == null)
+                    return Results.BadRequest(new { message = "Thiếu file ảnh. Vui lòng chọn ảnh trong trường 'file'." });
                 await using var stream = file.OpenReadStream();
                 return (await svc.UploadAsync(stream, file.Length)).CustomResult();
             })
                 .DisableAntiforgery()
+                .Accepts<IFormFile>("multipart/form-data")
                 .WithName("Upload ảnh minh chứng")
                 .WithSummary("Upload một ảnh JPG/PNG/WEBP tối đa 5MB (form field 'file'); trả URL dùng cho đánh giá hoặc báo cáo sự cố.")
-                .WithOpenApi();
+                .WithOpenApi(UploadOpenApi.Media);
 
             // The form is read by hand: Kestrel's default 30MB body limit must be raised before the body is read.
             group.MapPost("/videos", async (HttpContext context, IVideoUploadAppService svc) =>
@@ -83,7 +90,7 @@ namespace WashGo.HttpApi.Endpoints.Files
                 .Accepts<IFormFile>("multipart/form-data")
                 .WithName("Upload video minh chứng")
                 .WithSummary("Upload một video MP4/WEBM/MOV tối đa 50MB (form field 'file'); trả URL dùng trong videoUrls của đánh giá hoặc báo cáo sự cố (tối đa 2 video).")
-                .WithOpenApi();
+                .WithOpenApi(UploadOpenApi.Media);
         }
     }
 }

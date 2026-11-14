@@ -30,6 +30,20 @@ try {
         Start-Sleep -Seconds 2
     }
     if (!$ready) { throw 'CI Backend did not become ready.' }
+    # Swagger must send an actual multipart file, not just a Content-Type header.
+    $openApi = Invoke-RestMethod "$baseUrl/swagger/v1/swagger.json"
+    foreach ($route in @('/files/images', '/files/videos', '/files/documents/')) {
+        $operation = $openApi.paths.PSObject.Properties[$route].Value.post
+        $multipart = $operation.requestBody.content.'multipart/form-data'.schema
+        if (!$operation.requestBody.required -or $multipart.type -ne 'object' -or
+            $multipart.properties.file.type -ne 'string' -or $multipart.properties.file.format -ne 'binary' -or
+            'file' -notin $multipart.required) { throw "Invalid Swagger file upload contract: $route" }
+        if ($route -eq '/files/documents/' -and ('kind' -notin $multipart.required -or !$multipart.properties.merchantId)) {
+            throw 'Document multipart contract must include kind and optional merchantId.'
+        }
+    }
+    Write-Output 'PASS: Swagger multipart file schema for image, video and document uploads.'
+
     # Startup currently logs migration/seed exceptions instead of failing the process.
     # Require actual tables/seed data so a Swagger-only response cannot pass CI.
     $seeded = & docker exec $postgres psql -U postgres -d washgo_ci -v ON_ERROR_STOP=1 -At -c "SELECT (SELECT count(*) FROM washgo.roles)>=4 AND (SELECT count(*) FROM washgo.services)>=3 AND EXISTS(SELECT 1 FROM washgo.users WHERE email='customer@washgo.vn');"
