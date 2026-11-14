@@ -1,5 +1,14 @@
 ﻿# Checklist hoàn thiện Backend WashGo
 
+## Staging Render/Neon — chuyển DB 14/11/2026
+
+- [x] Restore backup_toan_new.sql (custom archive) do người dùng cung cấp vào Neon neondb đã xác nhận trống; transaction, no-owner/no-privileges, có backup đích trước restore. Không sửa DB local.
+- [x] Đủ 45 bảng khớp số dòng nguồn; 10 users, 8 orders, 1 rating, 60 migrations; Admin yêu cầu có đúng role/active/hash. Lịch sử đã có AddPublicCustomerReviewApproval, không tự gán migration giả.
+- [x] Code Host thêm guard Seeding:Enabled, mặc định chỉ seed Development; Staging dùng DB vừa nhập và không tạo demo account mặc định. Chưa chạy build/test cho thay đổi nhỏ này, để CI kiểm tra theo yêu cầu người dùng.
+- [ ] Commit/CI/merge guard và deploy Render; mail HTTPS, external storage/private docs, Google/Gemini/payment callbacks và nghiệm thu URL public còn lại. DB restore không đồng nghĩa file upload/service đã deploy.
+
+Hướng dẫn hiện hành: [RENDER_STAGING_SETUP.md](docs/RENDER_STAGING_SETUP.md). Secrets nằm trong file Git-ignored/Render, không đưa vào source.
+
 ## Customer hoàn tất ba mục bổ sung — 14/11/2026
 
 - [x] Slots/detail một locker và giữ availableSlots; HTTP smoke customer-locker-slots PASS (status/deleted/order/PII/full locker/auth).
