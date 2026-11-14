@@ -287,3 +287,5 @@ Smoke dùng fixture local, có SQL phục vụ chuẩn bị/cleanup; không ch�
 - [ ] PR CI + deploy bản sửa NoSuchKey, thử media sau redeploy.
 - [ ] Kiểm thử video/tài liệu và truy cập sai quyền trên staging.
 - [ ] Đối chiếu đầy đủ tham chiếu file trong Neon với cloud để phát hiện file thiếu từ trước.
+
+> Sửa CI Guest 15/11/2026: test quyền upload ảnh ẩn danh đã đổi từ JSON sang multipart hợp lệ để kiểm tra HTTP 401, tránh router trả HTTP 415 do sai Content-Type. Assert-Status bổ sung method/path và mã HTTP thực tế khi sai kỳ vọng. Chỉ kiểm tra cú pháp PowerShell và git diff --check; chưa chạy HTTP/build Docker local, chờ PR CI xác nhận.

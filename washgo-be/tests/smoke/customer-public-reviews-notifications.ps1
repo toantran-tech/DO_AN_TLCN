@@ -112,7 +112,16 @@ VALUES ('$($ratingIds[$n])','$orderId','PU$($run.Substring(0,14))$n','$owner','P
     foreach($path in @('/customer/me','/notification/','/policy/customer')) { Assert-Status 401 Get $path $null $null }
     Assert-Status 401 Put '/customer/me' @{} $null
     Assert-Status 401 Post '/wash-order/' @{} $null
-    Assert-Status 401 Post '/files/images' @{} $null
+    # Content-type routing runs before authorization: send the same valid multipart
+    # fixture without a JWT so this checks authentication, not JSON rejection (415).
+    $uploadStatus = try {
+        $null = Invoke-RestMethod -Uri "$BaseUrl/files/images" -Method Post -ContentType "multipart/form-data; boundary=$boundary" -Body ([byte[]]($prefix+$image+$suffix))
+        200
+    } catch {
+        if ($null -eq $_.Exception.Response) { throw }
+        [int]$_.Exception.Response.StatusCode
+    }
+    if ($uploadStatus -ne 401) { throw "Expected HTTP 401 for anonymous POST /files/images (multipart), received $uploadStatus." }
     Assert-Status 401 Post '/payment/create-url' @{} $null
     Assert-Status 401 Post '/policy/customer/acknowledge' @{} $null
     Assert-Status 401 Post "/rating/$($ratingIds[0])/publish" @{publishForGuests=$true} $null

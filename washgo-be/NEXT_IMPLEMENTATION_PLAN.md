@@ -916,3 +916,5 @@ docker compose down
 - **Tên bảng & Cột vật lý**: `snake_case` (theo thiết kế DB).
 - **Tên Class & Property C#**: `PascalCase`.
 - **Bảo mật**: Mật khẩu mã hóa BCrypt, không trả password hash/token/OTP trong response API.
+
+> Sửa CI Guest 15/11/2026: test quyền upload ảnh ẩn danh đã đổi từ JSON sang multipart hợp lệ để kiểm tra HTTP 401, tránh router trả HTTP 415 do sai Content-Type. Assert-Status bổ sung method/path và mã HTTP thực tế khi sai kỳ vọng. Chỉ kiểm tra cú pháp PowerShell và git diff --check; chưa chạy HTTP/build Docker local, chờ PR CI xác nhận.
