@@ -40,7 +40,7 @@ try {
     if (!$?) { throw 'Customer service filter smoke failed.' }
     & (Join-Path $PSScriptRoot '../smoke/actual-weight.ps1') -BaseUrl $baseUrl -PostgresContainer $postgres -Database washgo_ci
     if (!$?) { throw 'Order lifecycle/actual-weight smoke failed.' }
-    foreach ($suite in @('rating-keyword-privacy.ps1', 'review-publishing.ps1', 'storage-lifecycle.ps1')) {
+    foreach ($suite in @('rating-keyword-privacy.ps1', 'review-publishing.ps1', 'storage-lifecycle.ps1', 'customer-locker-slots.ps1')) {
         & (Join-Path $PSScriptRoot "../smoke/$suite") -BaseUrl $baseUrl -PostgresContainer $postgres -Database washgo_ci
         if (!$?) { throw "API regression failed: $suite" }
     }

@@ -260,17 +260,24 @@ public class CustomerCatalogAppService : WashGoAppService, ICustomerCatalogAppSe
             return NotFound<CustomerLockerCatalogDto>("Không tìm thấy tủ đang hoạt động.");
 
         var slots = await _slots.GetQueryableAsync();
-        dto.AvailableSlots = await AsyncExecuter.ToListAsync(slots
-            .Where(slot => slot.LockerId == id && !slot.IsDeleted && slot.Status == LockerBoxStatus.Available)
+        dto.Slots = await AsyncExecuter.ToListAsync(slots
+            .Where(slot => slot.LockerId == id && !slot.IsDeleted)
             .OrderBy(slot => slot.SlotNumber)
+            .ThenBy(slot => slot.Id)
+            .Select(slot => new CustomerLockerSlotStatusDto
+            {
+                Id = slot.Id,
+                SlotNumber = slot.SlotNumber,
+                Size = slot.Size,
+                Status = slot.Status
+            }));
+        dto.AvailableSlots = dto.Slots.Where(slot => slot.Status == LockerBoxStatus.Available)
             .Select(slot => new CustomerLockerSlotDto
             {
                 Id = slot.Id,
                 SlotNumber = slot.SlotNumber,
                 Size = slot.Size
-            }));
-        if (dto.AvailableSlots.Count == 0)
-            return NotFound<CustomerLockerCatalogDto>("Tủ hiện không còn ô trống.");
+            }).ToList();
         dto.AvailableSlotCount = dto.AvailableSlots.Count;
         return Success(dto);
     }
