@@ -48,8 +48,8 @@ public class CustomerHandler : IEndpointBase
 
         group.MapGet("/lockers/{id:guid}", async (Guid id, ICustomerCatalogAppService catalog) =>
             (await catalog.GetLockerAsync(id)).CustomResult())
-            .WithName("Customer xem các ô tủ còn trống")
-            .WithSummary("Customer xem các ô tủ còn trống.")
+            .WithName("Customer xem chi tiết tủ và trạng thái ô")
+            .WithSummary("Một locker theo id: slots gồm mọi ô chưa xóa theo slotNumber, status 1=Available/2=Occupied/3=Reserved/4=Maintenance; availableSlots chỉ gồm ô trống. Tủ hợp lệ hết ô trống vẫn trả 200. Khi tạo đơn, server kiểm tra và giữ ô lại atomically.")
             .WithOpenApi();
     }
 }

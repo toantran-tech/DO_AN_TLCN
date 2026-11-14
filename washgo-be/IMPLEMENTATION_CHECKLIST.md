@@ -1,5 +1,11 @@
 ﻿# Checklist hoàn thiện Backend WashGo
 
+## Customer — chi tiết trạng thái ô tủ — 14/11/2026
+
+- [x] Mục 1 [BACKEND_CUSTOMER.md](docs/BACKEND_CUSTOMER.md): GET /customer/lockers/{id} trả một locker với slots/status của mọi ô chưa xóa, sắp slotNumber rồi ID; chỉ public metadata. Giữ shape availableSlots; list/count ô trống suy ra từ cùng một lần đọc, hết ô không trả 404. Không thay cơ chế giữ ô khi tạo đơn.
+- [x] Build Release PASS, 0 lỗi, 5 nullable warnings cũ; không cần migration. Có smoke riêng cho status/ordering/deleted/privacy/compatibility/full locker/auth và nối CI.
+- [ ] HTTP smoke/CI sau push và rebuild Docker chính để FE test. Hai mục feedback công khai và search notification chưa triển khai.
+
 ## Cụm 2 — Shipper self-status, lưu kho tại tiệm và giao lại — 14/11/2026
 
 Nhánh `feat/toantran/storage-lifecycle`, base 26398e6; chưa commit/push. [Plan C–G](docs/NEW_BACKEND_REQUIREMENTS_PLAN_20261113.md), [API FE](docs/STORAGE_WORKFLOW_API_REVIEW.md), [dự thảo Word/điều khoản](docs/STORAGE_TERMS_USECASE_DRAFT.md).
