@@ -160,7 +160,7 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
             var description = command.Description?.Trim();
             if (string.IsNullOrWhiteSpace(description) || description.Length > 2000)
                 return BadRequest<IncidentResultDto>("Mô tả sự cố phải có từ 1 đến 2000 ký tự.");
-            var evidenceError = ValidateEvidence(command.ImageUrls, command.VideoUrls, customerId, true, out var images, out var videos);
+            var (evidenceError, images, videos) = await ValidateEvidenceAsync(command.ImageUrls, command.VideoUrls, customerId, true);
             if (evidenceError != null)
                 return BadRequest<IncidentResultDto>(evidenceError);
 
@@ -239,7 +239,7 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
             var content = command.Content?.Trim();
             if (string.IsNullOrWhiteSpace(content) || content.Length > 2000)
                 return BadRequest<IncidentMessageDto>("Nội dung trao đổi phải có từ 1 đến 2000 ký tự.");
-            var evidenceError = ValidateEvidence(command.ImageUrls, command.VideoUrls, userId, false, out var images, out var videos);
+            var (evidenceError, images, videos) = await ValidateEvidenceAsync(command.ImageUrls, command.VideoUrls, userId, false);
             if (evidenceError != null)
                 return BadRequest<IncidentMessageDto>(evidenceError);
 
@@ -295,17 +295,16 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
         }
 
         /// <summary>Own uploads only; an incident itself needs at least one photo or video.</summary>
-        private string? ValidateEvidence(List<string>? imageUrls, List<string>? videoUrls, Guid ownerId, bool required,
-            out List<string> images, out List<string> videos)
+        private async Task<(string? Error, List<string> Images, List<string> Videos)> ValidateEvidenceAsync(
+            List<string>? imageUrls, List<string>? videoUrls, Guid ownerId, bool required)
         {
-            images = [];
-            var videoError = UploadStorage.ValidateOwnedVideos(_configuration, videoUrls, ownerId, out videos);
-            if (videoError != null)
-                return videoError;
-            var imageError = UploadStorage.ValidateOwnedImages(_configuration, imageUrls, ownerId, required && videos.Count == 0 ? 1 : 0, out images);
-            if (imageError != null)
-                return required && videos.Count == 0 && images.Count == 0 ? "Vui lòng upload ít nhất 1 ảnh hoặc video minh chứng." : imageError;
-            return null;
+            var storage = LazyServiceProvider.LazyGetRequiredService<ObjectStorage>();
+            var (videoError, videos) = await UploadStorage.ValidateOwnedVideosAsync(storage, videoUrls, ownerId);
+            if (videoError != null) return (videoError, [], videos);
+            var (imageError, images) = await UploadStorage.ValidateOwnedImagesAsync(storage, imageUrls, ownerId, required && videos.Count == 0 ? 1 : 0);
+            if (imageError != null && required && videos.Count == 0 && images.Count == 0)
+                imageError = "Vui lòng upload ít nhất 1 ảnh hoặc video minh chứng.";
+            return (imageError, images, videos);
         }
 
         private IncidentMessageDto ToDto(IncidentMessage x) => new()

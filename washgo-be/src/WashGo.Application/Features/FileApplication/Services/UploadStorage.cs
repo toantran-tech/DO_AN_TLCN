@@ -28,43 +28,40 @@ namespace WashGo.Application.Features.FileApplication.Services
         /// <summary>
         /// Chỉ chấp nhận ảnh do chính người dùng upload và còn tồn tại, để không gắn URL tùy ý hoặc ảnh của người khác.
         /// </summary>
-        public static string? ValidateOwnedImages(IConfiguration configuration, IEnumerable<string>? urls, Guid ownerId,
-            int minCount, out List<string> normalized)
+        public static async Task<(string? Error, List<string> Urls)> ValidateOwnedImagesAsync(ObjectStorage storage, IEnumerable<string>? urls, Guid ownerId,
+            int minCount)
         {
-            normalized = (urls ?? []).Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x.Trim()).Distinct().ToList();
+            var normalized = (urls ?? []).Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x.Trim()).Distinct().ToList();
             if (normalized.Count < minCount)
-                return "Vui lòng upload ít nhất 1 ảnh minh chứng.";
+                return ("Vui lòng upload ít nhất 1 ảnh minh chứng.", normalized);
             if (normalized.Count > MaxImagesPerSubmission)
-                return $"Tối đa {MaxImagesPerSubmission} ảnh.";
-            var root = GetRoot(configuration);
+                return ($"Tối đa {MaxImagesPerSubmission} ảnh.", normalized);
             var owner = ownerId.ToString("N");
             foreach (var url in normalized)
             {
                 var match = UrlPattern.Match(url);
                 if (!match.Success || match.Groups["owner"].Value != owner ||
-                    !File.Exists(Path.Combine(root, owner, match.Groups["file"].Value)))
-                    return "Ảnh đính kèm không hợp lệ; vui lòng upload lại.";
+                    !await storage.ExistsAsync(owner + "/" + match.Groups["file"].Value))
+                    return ("Ảnh đính kèm không hợp lệ; vui lòng upload lại.", normalized);
             }
-            return null;
+            return (null, normalized);
         }
 
         /// <summary>Như ảnh: chỉ nhận video do chính người dùng upload qua /files/videos và còn tồn tại.</summary>
-        public static string? ValidateOwnedVideos(IConfiguration configuration, IEnumerable<string>? urls, Guid ownerId,
-            out List<string> normalized)
+        public static async Task<(string? Error, List<string> Urls)> ValidateOwnedVideosAsync(ObjectStorage storage, IEnumerable<string>? urls, Guid ownerId)
         {
-            normalized = (urls ?? []).Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x.Trim()).Distinct().ToList();
+            var normalized = (urls ?? []).Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x.Trim()).Distinct().ToList();
             if (normalized.Count > MaxVideosPerSubmission)
-                return $"Tối đa {MaxVideosPerSubmission} video.";
-            var root = GetRoot(configuration);
+                return ($"Tối đa {MaxVideosPerSubmission} video.", normalized);
             var owner = ownerId.ToString("N");
             foreach (var url in normalized)
             {
                 var match = VideoUrlPattern.Match(url);
                 if (!match.Success || match.Groups["owner"].Value != owner ||
-                    !File.Exists(Path.Combine(root, owner, match.Groups["file"].Value)))
-                    return "Video đính kèm không hợp lệ; vui lòng upload lại.";
+                    !await storage.ExistsAsync(owner + "/" + match.Groups["file"].Value))
+                    return ("Video đính kèm không hợp lệ; vui lòng upload lại.", normalized);
             }
-            return null;
+            return (null, normalized);
         }
     }
 }

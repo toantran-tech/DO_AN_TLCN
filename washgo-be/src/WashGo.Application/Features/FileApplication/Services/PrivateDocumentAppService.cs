@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using System.Net;
 using System.Security.Cryptography;
 using Volo.Abp;
@@ -55,17 +56,20 @@ public class PrivateDocumentAppService : WashGoAppService, IPrivateDocumentAppSe
             OwnerId = CurrentUser.Id!.Value, MerchantId = merchantId, Kind = type, FileName = safeName, Extension = extension,
             ContentType = mime, Size = bytes.Length, Sha256 = Convert.ToHexString(SHA256.HashData(bytes)), UploadedAt = now, ExpiresAt = now.AddHours(24)
         };
-        Directory.CreateDirectory(_store.Root);
-        var path = _store.PathOf(file);
         try
         {
-            await File.WriteAllBytesAsync(path, bytes);
+            using var upload = new MemoryStream(bytes, writable: false);
+            await _store.PutAsync(file, upload);
             using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
             await _repo.InsertAsync(file, autoSave: true);
             await Audit.LogAsync(new AuditEntry("Documents", "Upload", "PrivateDocument", file.Id.ToString(), null) { Details = new { kind = type.ToString() } });
             await uow.CompleteAsync();
         }
-        catch { File.Delete(path); throw; }
+        catch
+        {
+            try { await _store.DeleteAsync(file); } catch (Exception cleanupError) { Logger.LogWarning("Document upload cleanup failed: {ErrorType}", cleanupError.GetType().Name); }
+            throw;
+        }
         return Created(PrivateDocumentStore.ToDto(file));
     }
     private async Task<PrivateDocument?> AllowedAsync(Guid id)
@@ -83,8 +87,9 @@ public class PrivateDocumentAppService : WashGoAppService, IPrivateDocumentAppSe
     public async Task<BaseResponse<PrivateDocumentDownloadDto>> DownloadAsync(Guid id)
     {
         var f = await AllowedAsync(id);
-        if (f == null || !File.Exists(_store.PathOf(f))) return NotFound<PrivateDocumentDownloadDto>("Không tìm thấy tài liệu được phép tải.");
-        return Success(new PrivateDocumentDownloadDto { Bytes = await File.ReadAllBytesAsync(_store.PathOf(f)), FileName = f.FileName, ContentType = f.ContentType });
+        var bytes = f == null ? null : await _store.ReadAsync(f);
+        if (f == null || bytes == null) return NotFound<PrivateDocumentDownloadDto>("Không tìm thấy tài liệu được phép tải.");
+        return Success(new PrivateDocumentDownloadDto { Bytes = bytes, FileName = f.FileName, ContentType = f.ContentType });
     }
     public async Task<BaseResponse<bool>> DeleteDraftAsync(Guid id)
     {
@@ -93,7 +98,7 @@ public class PrivateDocumentAppService : WashGoAppService, IPrivateDocumentAppSe
         var f = await AllowedAsync(id);
         if (f == null || f.OwnerId != CurrentUser.Id) return NotFound<bool>("Không tìm thấy bản nháp của bạn.");
         if (f.ReferencedAt != null) return BadRequest<bool>("Tài liệu đang hoặc đã được hồ sơ/lịch sử tham chiếu; không thể xóa.");
-        File.Delete(_store.PathOf(f)); f.IsDeleted = true; await _repo.UpdateAsync(f, autoSave: true);
+        await _store.DeleteAsync(f); f.IsDeleted = true; await _repo.UpdateAsync(f, autoSave: true);
         await uow.CompleteAsync(); return Success(true);
     }
     public async Task<BaseResponse<int>> CleanupExpiredAsync() => Admin ? Success(await _store.CleanupExpiredAsync()) : Forbidden<int>();

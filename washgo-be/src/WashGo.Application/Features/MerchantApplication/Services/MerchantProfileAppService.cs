@@ -162,7 +162,7 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             if (!string.IsNullOrEmpty(license) && command.BusinessLicense != null && license != currentLicense)
             {
                 var isFile = license.StartsWith("/", StringComparison.Ordinal) || license.StartsWith("http", StringComparison.OrdinalIgnoreCase);
-                if (isFile && UploadStorage.ValidateOwnedImages(_configuration, [license], merchant.Id, 1, out _) != null)
+                if (isFile && (await UploadStorage.ValidateOwnedImagesAsync(LazyServiceProvider.LazyGetRequiredService<ObjectStorage>(), [license], merchant.Id, 1)).Error != null)
                     return BadRequest<MerchantProfileRequestDto>("Ảnh giấy phép phải là ảnh do chính cửa hàng upload qua /files/images.");
                 if (!isFile && license.Length > 100)
                     return BadRequest<MerchantProfileRequestDto>("Số giấy phép kinh doanh tối đa 100 ký tự.");
@@ -194,7 +194,7 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             if (command.ImageUrls != null)
             {
                 var added = command.ImageUrls.Where(x => !current.ImageUrls.Contains(x?.Trim() ?? string.Empty)).ToList();
-                if (UploadStorage.ValidateOwnedImages(_configuration, added, merchant.Id, 0, out _) != null)
+                if ((await UploadStorage.ValidateOwnedImagesAsync(LazyServiceProvider.LazyGetRequiredService<ObjectStorage>(), added, merchant.Id, 0)).Error != null)
                     return BadRequest<MerchantProfileRequestDto>("Không thể upload ảnh. Vui lòng thử lại.");
                 images = command.ImageUrls.Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x.Trim()).Distinct().ToList();
                 if (images.Count > UploadStorage.MaxImagesPerSubmission)

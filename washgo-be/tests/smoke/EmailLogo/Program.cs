@@ -48,3 +48,5 @@ try
     Console.WriteLine("PASS: OTP, Shipper, Merchant and Google-link emails reuse the CID logo and encode dynamic values.");
 }
 finally { Directory.Delete(directory, recursive: true); }
+
+await HostedProviderChecks.RunAsync();
