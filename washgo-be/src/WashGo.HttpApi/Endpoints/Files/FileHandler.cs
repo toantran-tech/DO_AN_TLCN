@@ -55,12 +55,19 @@ namespace WashGo.HttpApi.Endpoints.Files
             documents.MapPost("/cleanup", async (IPrivateDocumentAppService svc) => (await svc.CleanupExpiredAsync()).CustomResult())
                 .RequireAuthorization("AdminOnly").WithSummary("Admin dọn tối đa 100 bản nháp quá hạn; worker cũng chạy định kỳ.").WithOpenApi();
 
-            group.MapPost("/images", async (IFormFile file, IImageUploadAppService svc) =>
+            group.MapPost("/images", async (HttpContext context, IImageUploadAppService svc) =>
             {
+                if (!context.Request.HasFormContentType)
+                    return Results.BadRequest(new { message = "Cần multipart/form-data với file ảnh trong trường 'file'." });
+                var form = await context.Request.ReadFormAsync(context.RequestAborted);
+                var file = form.Files.GetFile("file");
+                if (file == null)
+                    return Results.BadRequest(new { message = "Thiếu file ảnh. Vui lòng chọn ảnh trong trường 'file'." });
                 await using var stream = file.OpenReadStream();
                 return (await svc.UploadAsync(stream, file.Length)).CustomResult();
             })
                 .DisableAntiforgery()
+                .Accepts<IFormFile>("multipart/form-data")
                 .WithName("Upload ảnh minh chứng")
                 .WithSummary("Upload một ảnh JPG/PNG/WEBP tối đa 5MB (form field 'file'); trả URL dùng cho đánh giá hoặc báo cáo sự cố.")
                 .WithOpenApi();
