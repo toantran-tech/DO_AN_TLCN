@@ -19,6 +19,8 @@ namespace WashGo.Application.Contracts.Features.FeedbackContracts.Results
         public Guid? ContentApprovedBy { get; set; }
         public bool CanPublish { get; set; }
         public bool CanPublishForCustomers { get; set; }
+        public bool CanPublishForGuests { get; set; }
+        public DateTime? GuestApprovedAt { get; set; }
         public DateTime? PublicApprovedAt { get; set; }
         public string? PublishReasonCode { get; set; }
         public Guid Id { get; set; }

@@ -37,6 +37,10 @@ public class CustomerCatalogAppService : WashGoAppService, ICustomerCatalogAppSe
     // Shared catalog: one price per service for every Merchant (Admin approves Merchant proposals).
     public async Task<PaginatedResult<CustomerServiceCatalogDto>> GetServicesAsync(CustomerServiceFilterQuery filter)
     {
+        if (filter.Keyword?.Length > 200 || (filter.ServiceTypes?.Length ?? 0) > 20 ||
+            (filter.PriceRanges?.Length ?? 0) > 20 || (filter.SortBy?.Length ?? 0) > 5)
+            return new PaginatedResult<CustomerServiceCatalogDto> { Succeeded = false, StatusCode = HttpStatusCode.BadRequest,
+                Message = "Keyword tối đa 200 ký tự; tối đa 20 loại, 20 khoảng giá và 5 tiêu chí sắp xếp." };
         var sorts = filter.SortBy ?? [];
         var serviceTypes = (filter.ServiceTypes ?? []).Distinct().ToArray();
         var ranges = filter.PriceRanges ?? [];
@@ -151,10 +155,15 @@ public class CustomerCatalogAppService : WashGoAppService, ICustomerCatalogAppSe
         string? city, string? district, string? keyword, int page, int take,
         double? latitude = null, double? longitude = null)
     {
+        if (keyword?.Length > 200 || city?.Length > 100 || district?.Length > 100)
+            return new PaginatedResult<CustomerLockerCatalogDto> { Succeeded = false, StatusCode = HttpStatusCode.BadRequest,
+                Message = "Keyword tối đa 200 ký tự; city/district tối đa 100 ký tự." };
         (page, take) = NormalizePaging(page, take);
         // UC 1.2.2: with the customer's position, show the distance and list the nearest lockers first.
         var hasPosition = latitude.HasValue && longitude.HasValue;
-        if (hasPosition && (latitude is < -90 or > 90 || longitude is < -180 or > 180))
+        if (latitude.HasValue != longitude.HasValue ||
+            hasPosition && (!double.IsFinite(latitude!.Value) || !double.IsFinite(longitude!.Value) ||
+                latitude is < -90 or > 90 || longitude is < -180 or > 180))
             return new PaginatedResult<CustomerLockerCatalogDto>
             {
                 Succeeded = false,

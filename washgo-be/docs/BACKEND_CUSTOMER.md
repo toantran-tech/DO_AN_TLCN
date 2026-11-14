@@ -1,4 +1,6 @@
-﻿# Customer — yêu cầu BE bổ sung
+> Phạm vi đọc Guest được bổ sung ngày 15/11/2026 tại [BACKEND_CUSTOMER (1).md](<BACKEND_CUSTOMER (1).md>) và [API bàn giao Guest](CUSTOMER_GUEST_ACCESS_API_REVIEW.md). Các mô tả Customer-only bên dưới là trạng thái trước đợt mở Guest; review vẫn cần duyệt Guest riêng, chưa tự public review cũ.
+
+# Customer — yêu cầu BE bổ sung
 
 Đối chiếu source14/11/2026. Không yêu cầu làm lại ảnh catalog/đơn hàng, quote khuyến mãi hoặc tìm locker theo tọa độ: các API đó đã có.
 
