@@ -40,7 +40,8 @@ function Assert-Status($Expected, $Method, $Path, $Body, $Token) {
     try { Call-Api $Method $Path $Body $Token | Out-Null }
     catch {
         if ([int]$_.Exception.Response.StatusCode -eq $Expected) { return }
-        throw
+        if ($null -eq $_.Exception.Response) { throw }
+        throw "Expected HTTP $Expected for $Method $Path; received HTTP $([int]$_.Exception.Response.StatusCode)."
     }
     throw "Expected HTTP $Expected for $Method $Path"
 }

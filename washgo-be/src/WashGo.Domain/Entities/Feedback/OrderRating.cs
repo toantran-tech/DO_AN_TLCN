@@ -34,6 +34,8 @@ namespace WashGo.Domain.Entities.Feedback
         public DateTime? ContentApprovedAt { get; set; }
         public Guid? ContentApprovedBy { get; set; }
         public Guid? PublicId { get; set; }
+        public DateTime? GuestApprovedAt { get; set; }
+        public Guid? GuestApprovedBy { get; set; }
         public DateTime? PublicApprovedAt { get; set; }
         public Guid? PublicApprovedBy { get; set; }
     }

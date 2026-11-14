@@ -39,8 +39,15 @@ try {
     if ($full.id -ne "$lockerId" -or @($full.slots).Count -ne 4 -or $full.availableSlotCount -ne 0 -or @($full.availableSlots).Count -ne 0) {
         throw 'A visible locker without free slots should return its detail, not 404.'
     }
-    Assert-Status 401 Get "/customer/lockers/$lockerId" $null $null
-    Assert-Status 403 Get "/customer/lockers/$lockerId" $null $admin
+    $guest = (Call-Api Get "/customer/lockers/$lockerId" $null $null).data
+    $staff = (Call-Api Get "/customer/lockers/$lockerId" $null $admin).data
+    if ($guest.id -ne "$lockerId" -or @($guest.slots).Count -ne 4 -or $staff.id -ne "$lockerId") { throw 'Public locker access failed.' }
+    Assert-Status 401 Get '/customer/me' $null $null
+    $guestList=Call-Api Get '/customer/lockers?page=1&take=2' $null $null
+    if (!$guestList.succeeded -or @($guestList.list).Count -gt 2) { throw 'Guest locker list/pagination failed.' }
+    foreach ($path in @('/customer/lockers?latitude=10','/customer/lockers?latitude=91&longitude=106',('/customer/lockers?keyword='+('x'*201)))) {
+        Assert-Status 400 Get $path $null $null
+    }
     Assert-Status 404 Get "/customer/lockers/$([Guid]::NewGuid())" $null $customer
     Sql "UPDATE washgo.lockers SET status=2 WHERE id='$lockerId';" | Out-Null
     Assert-Status 404 Get "/customer/lockers/$lockerId" $null $customer

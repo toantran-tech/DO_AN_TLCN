@@ -1,4 +1,3 @@
-using System.Net;
 using System.Data;
 using System.Text.RegularExpressions;
 using Volo.Abp.Domain.Repositories;
@@ -22,21 +21,21 @@ public class CustomerReviewAppService(IRepository<OrderRating, Guid> ratings,
     private async Task<IQueryable<OrderRating>> ReleasedAsync()
     {
         var validOrders = (await orders.GetQueryableAsync()).Where(x => !x.IsDeleted && x.Status == WashOrderStatus.Completed);
-        return (await ratings.GetQueryableAsync()).Where(x => !x.IsDeleted && !x.IsHidden &&
+        var query = (await ratings.GetQueryableAsync()).Where(x => !x.IsDeleted && !x.IsHidden &&
             x.ContentApprovedAt != null && x.PublicApprovedAt != null && x.PublicId != null &&
             x.OverallStars >= 1 && x.OverallStars <= 5 && validOrders.Any(o => o.Id == x.OrderId));
+        return CurrentUser.IsInRole("Customer") ? query : query.Where(x => x.GuestApprovedAt != null);
     }
 
     public async Task<BaseResponse<CustomerReviewPageDto>> GetAsync(int page, int take, int? stars)
     {
-        if (!CurrentUser.IsInRole("Customer")) return Forbidden<CustomerReviewPageDto>();
         if (page < 1 || take is < 1 or > 20 || stars is < 1 or > 5 || (long)(page - 1) * take > int.MaxValue)
             return BadRequest<CustomerReviewPageDto>("Page từ 1, take 1–20, stars 1–5.");
         using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true, isolationLevel: IsolationLevel.RepeatableRead);
         var query = await ReleasedAsync();
         if (stars.HasValue) query = query.Where(x => x.OverallStars == stars.Value);
         var total = await AsyncExecuter.CountAsync(query);
-        var rows = await AsyncExecuter.ToListAsync(query.OrderByDescending(x => x.PublicApprovedAt).ThenBy(x => x.PublicId)
+        var rows = await AsyncExecuter.ToListAsync(query.OrderByDescending(x => x.GuestApprovedAt ?? x.PublicApprovedAt).ThenBy(x => x.PublicId)
             .Skip((page - 1) * take).Take(take));
         var result = new CustomerReviewPageDto { Total = total, Page = page, Take = take };
         foreach (var row in rows)
@@ -48,7 +47,7 @@ public class CustomerReviewAppService(IRepository<OrderRating, Guid> ratings,
                 if (key != null && await objects.ExistsAsync(key)) images.Add($"/customer/reviews/{row.PublicId}/images/{index}");
             }
             result.Items.Add(new CustomerReviewDto { Id = row.PublicId!.Value, OverallStars = row.OverallStars,
-                Comment = row.Comment, PublishedAt = row.PublicApprovedAt!.Value, ImageUrls = images });
+                Comment = row.Comment, PublishedAt = row.GuestApprovedAt ?? row.PublicApprovedAt!.Value, ImageUrls = images });
         }
         await uow.CompleteAsync();
         return Success(result);
@@ -56,7 +55,6 @@ public class CustomerReviewAppService(IRepository<OrderRating, Guid> ratings,
 
     public async Task<BaseResponse<CustomerReviewSummaryDto>> SummaryAsync()
     {
-        if (!CurrentUser.IsInRole("Customer")) return Forbidden<CustomerReviewSummaryDto>();
         var groups = await AsyncExecuter.ToListAsync((await ReleasedAsync()).GroupBy(x => x.OverallStars)
             .Select(g => new { Stars = g.Key, Count = g.Count() }));
         var total = groups.Sum(x => x.Count);
@@ -74,7 +72,6 @@ public class CustomerReviewAppService(IRepository<OrderRating, Guid> ratings,
 
     public async Task<BaseResponse<PrivateDocumentDownloadDto>> GetImageAsync(Guid publicId, int index)
     {
-        if (!CurrentUser.IsInRole("Customer")) return Forbidden<PrivateDocumentDownloadDto>();
         var rating = await AsyncExecuter.FirstOrDefaultAsync((await ReleasedAsync()).Where(x => x.PublicId == publicId));
         var path = rating == null ? null : SafeImageKey(rating, index);
         if (path == null) return NotFound<PrivateDocumentDownloadDto>("Không tìm thấy ảnh đã phát hành.");
@@ -97,5 +94,4 @@ public class CustomerReviewAppService(IRepository<OrderRating, Guid> ratings,
         return match.Groups["owner"].Value + "/" + match.Groups["file"].Value;
     }
 
-    private static BaseResponse<T> Forbidden<T>() => new() { Succeeded = false, StatusCode = HttpStatusCode.Forbidden };
 }

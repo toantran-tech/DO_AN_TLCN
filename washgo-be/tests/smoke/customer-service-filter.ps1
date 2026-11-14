@@ -78,7 +78,14 @@ UPDATE washgo.services SET is_deleted=true WHERE id='$($ids[6])';" | Out-Null
     )) {
         Assert-Status 400 Post '/customer/services/filter' $invalid $session.accessToken
     }
-    Assert-Status 401 Post '/customer/services/filter' @{} $null
+    $guestCatalog = Call-Api Post '/customer/services/filter' @{keyword=$prefix;take=100} $null
+    if ($guestCatalog.total -ne 4) { throw 'Anonymous service catalog scope differs from Customer.' }
+    $guestUpper = Call-Api Post '/customer/services/filter' @{keyword=$prefix.ToUpperInvariant();take=100} $null
+    if ($guestUpper.total -ne 4) { throw 'Anonymous keyword lookup must be case insensitive.' }
+    foreach ($invalid in @(@{keyword=('x'*201)},@{priceRanges=@(1..21|ForEach-Object{@{minPrice=1}})},@{sortBy=@(1..6|ForEach-Object{@{field='Name'}})})) {
+        Assert-Status 400 Post '/customer/services/filter' $invalid $null
+    }
+    foreach ($id in @($ids[4],$ids[5],$ids[6])) { Assert-Status 404 Get "/customer/services/$id" $null $null }
     Assert-Status 404 Get '/customer/services' $null $session.accessToken
     $detail = (Call-Api Get "/customer/services/$($ids[0])" $null $session.accessToken).data
     if ($detail.id -ne $ids[0]) { throw 'Service detail route is broken.' }

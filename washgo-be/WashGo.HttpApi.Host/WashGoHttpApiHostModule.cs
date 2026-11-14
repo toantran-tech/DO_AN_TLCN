@@ -140,6 +140,15 @@ namespace WashGo.HttpApi.Host
             context.Services.AddRateLimiter(options =>
             {
                 options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+                options.AddPolicy("public-catalog", httpContext =>
+                    RateLimitPartition.GetFixedWindowLimiter(
+                        httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                        _ => new FixedWindowRateLimiterOptions
+                        {
+                            PermitLimit = Math.Clamp(configuration.GetValue("PublicCatalog:PermitLimit", 120), 1, 1000),
+                            Window = TimeSpan.FromMinutes(1),
+                            QueueLimit = 0, AutoReplenishment = true
+                        }));
                 options.AddPolicy("auth-sensitive", httpContext =>
                     RateLimitPartition.GetFixedWindowLimiter(
                         httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",

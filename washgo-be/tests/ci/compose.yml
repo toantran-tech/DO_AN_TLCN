@@ -31,6 +31,7 @@ services:
       Email__Smtp__SenderAddress: ""
       Chatbot__Gemini__ApiKey: ""
       Google__ClientId: ""
+      PublicCatalog__PermitLimit: "1000" # Full regression shares one loopback IP; normal runtime defaults to 120/min.
       Logging__LogLevel__Default: Warning
     ports:
       - "127.0.0.1:${WASHGO_CI_PORT:-5088}:8080"
