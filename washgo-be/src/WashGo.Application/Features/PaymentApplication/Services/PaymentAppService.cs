@@ -31,9 +31,8 @@ using WashGo.Domain.Entities.Partner;
 
 namespace WashGo.Application.Features.PaymentApplication.Services
 {
-    public class PaymentAppService : WashGoAppService, IPaymentAppService
+    public partial class PaymentAppService : WashGoAppService, IPaymentAppService
     {
-        private readonly IWashOrderAppService _orderService;
         private readonly IPaymentTransactionRepository _transactionRepo;
         private readonly IRepository<RefundRequest, Guid> _refundRequestRepo;
         private readonly IConfiguration _configuration;
@@ -43,7 +42,6 @@ namespace WashGo.Application.Features.PaymentApplication.Services
         private readonly MomoGateway _momo;
 
         public PaymentAppService(
-            IWashOrderAppService orderService,
             IPaymentTransactionRepository transactionRepo,
             IConfiguration configuration,
             IWashOrderRepository orders,
@@ -52,7 +50,6 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             SystemSettingProvider settings,
             MomoGateway momo)
         {
-            _orderService = orderService;
             _transactionRepo = transactionRepo;
             _configuration = configuration;
             _orders = orders;
@@ -62,296 +59,43 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             _momo = momo;
         }
 
-        public async Task<BaseResponse<PaymentResultDto>> CreatePaymentAsync(CreatePaymentCommand command)
-        {
-            var orderResponse = await _orderService.GetByIdAsync(command.OrderId);
-            if (!orderResponse.Succeeded || orderResponse.Data == null)
-                return NotFound<PaymentResultDto>("Không tìm thấy đơn hàng cần thanh toán.");
+        [UnitOfWork(IsDisabled = true)]
+        public Task<BaseResponse<PaymentResultDto>> CreatePaymentAsync(CreatePaymentCommand command) =>
+            CreateSessionAsync(command, PaymentPurpose.Order);
 
-            var order = orderResponse.Data;
-            if (order.PaymentStatus == PaymentStatus.Paid)
-                return BadRequest<PaymentResultDto>("Đơn hàng đã được thanh toán.");
-
-            // UC 1.2.4 7b: an order moved to storage for non-payment can still be paid, then picked up at the storage.
-            if (order.Status is not (WashOrderStatus.AwaitingPayment or WashOrderStatus.MovedToStorage))
-                return BadRequest<PaymentResultDto>("Đơn hàng chưa ở trạng thái chờ thanh toán.");
-            if (order.IncludedWeightKg > 0 && !order.ActualWeightKg.HasValue)
-                return BadRequest<PaymentResultDto>("Đơn chưa được Merchant cân thực tế và chốt giá.");
-
-            if (command.PaymentMethod == PaymentMethod.Cash)
-                return BadRequest<PaymentResultDto>("Payment URL chỉ áp dụng cho phương thức thanh toán trực tuyến.");
-
-            var transactionReference = NewReference("PAY", order.OrderCode, command.PaymentMethod);
-            var (paymentUrl, gatewayError) = await GatewayUrlAsync(order.Id, command.PaymentMethod, transactionReference,
-                order.OrderCode, order.FinalAmount, command.ClientIpAddress);
-            if (paymentUrl == null)
-                return BadRequest<PaymentResultDto>(gatewayError!);
-
-            await _transactionRepo.InsertAsync(new PaymentTransaction
+        [UnitOfWork(IsDisabled = true)]
+        public Task<BaseResponse<PaymentResultDto>> CreateOverdueFeePaymentAsync(CreateOverdueFeePaymentCommand command) =>
+            CreateSessionAsync(new CreatePaymentCommand
             {
-                MerchantIdSnapshot = order.MerchantId, CommissionRateSnapshot = order.CommissionRateApplied, FinancialSnapshotBasis = "payment-created",
-                OrderId = order.Id,
-                TransactionReference = transactionReference,
-                PaymentMethod = command.PaymentMethod,
-                Purpose = PaymentPurpose.Order,
-                Status = PaymentTransactionStatus.Pending,
-                Amount = order.FinalAmount,
-                PaymentUrl = paymentUrl
-            }, autoSave: true);
+                OrderId = command.OrderId, PaymentMethod = command.PaymentMethod, ClientIpAddress = command.ClientIpAddress
+            }, PaymentPurpose.OverdueStorageFee);
 
-            return Success(new PaymentResultDto
-            {
-                OrderId = order.Id,
-                OrderCode = order.OrderCode,
-                Amount = order.FinalAmount,
-                PaymentMethod = command.PaymentMethod,
-                PaymentStatus = order.PaymentStatus,
-                TransactionReference = transactionReference,
-                PaymentUrl = paymentUrl
-            }, UseLiveGateway ? $"Tạo URL thanh toán {GatewayName(command.PaymentMethod)} thành công." : "Tạo payment URL sandbox thành công.");
-        }
-
-        public async Task<BaseResponse<PaymentResultDto>> CreateOverdueFeePaymentAsync(CreateOverdueFeePaymentCommand command)
-        {
-            if (!CurrentUser.Id.HasValue)
-                return BadRequest<PaymentResultDto>("Không xác định được tài khoản khách hàng.");
-            using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
-            var order = await _orders.GetForUpdateAsync(command.OrderId);
-            if (order == null || order.CustomerId != CurrentUser.Id.Value)
-                return NotFound<PaymentResultDto>("Không tìm thấy đơn hàng của khách hàng.");
-            if (order.Status == WashOrderStatus.MovedToStorage && order.PaymentStatus != PaymentStatus.Paid)
-                return BadRequest<PaymentResultDto>("Vui lòng thanh toán tiền giặt trước khi thanh toán phí lưu kho.");
-            if (order.PaymentStatus != PaymentStatus.Paid ||
-                order.Status is not (WashOrderStatus.ReadyToReturn or WashOrderStatus.MovedToStorage or WashOrderStatus.TransferringToStorage or WashOrderStatus.ReturningFromStorage))
-                return BadRequest<PaymentResultDto>("Phí lưu kho chỉ thanh toán khi đồ đã được bỏ vào locker chờ nhận.");
-
-            var overdueTotal = OverdueFeeCalculator.GetTotalStorageDue(order, DateTime.UtcNow, await _settings.GetAsync());
-            order.OverdueFeeTotal = overdueTotal;
-            var outstanding = overdueTotal - order.StorageFeeTotal;
-            if (outstanding <= 0m)
-            {
-                await _orders.UpdateAsync(order, autoSave: true);
-                await uow.CompleteAsync();
-                return BadRequest<PaymentResultDto>("Đơn hàng hiện không có phí lưu kho cần thanh toán.");
-            }
-
-            var pending = await _transactionRepo.FirstOrDefaultAsync(x =>
-                x.OrderId == order.Id && x.Purpose == PaymentPurpose.OverdueStorageFee &&
-                x.Status == PaymentTransactionStatus.Pending);
-            if (pending != null)
-                return BadRequest<PaymentResultDto>("Đơn đã có giao dịch phí lưu kho đang chờ xác nhận. Vui lòng chờ kết quả trước khi tạo giao dịch mới.");
-
-            var reference = NewReference("FEE", order.OrderCode, command.PaymentMethod);
-            var (paymentUrl, gatewayError) = await GatewayUrlAsync(order.Id, command.PaymentMethod, reference,
-                order.OrderCode, outstanding, command.ClientIpAddress, $"Overdue storage fee {order.OrderCode}");
-            if (paymentUrl == null)
-                return BadRequest<PaymentResultDto>(gatewayError!);
-
-            await _orders.UpdateAsync(order, autoSave: true);
-            await _transactionRepo.InsertAsync(new PaymentTransaction
-            {
-                MerchantIdSnapshot = order.MerchantId, CommissionRateSnapshot = order.CommissionRateApplied, FinancialSnapshotBasis = "payment-created",
-                OrderId = order.Id,
-                TransactionReference = reference,
-                PaymentMethod = command.PaymentMethod,
-                Purpose = PaymentPurpose.OverdueStorageFee,
-                Status = PaymentTransactionStatus.Pending,
-                Amount = outstanding,
-                PaymentUrl = paymentUrl
-            }, autoSave: true);
-            await uow.CompleteAsync();
-
-            return Success(new PaymentResultDto
-            {
-                OrderId = order.Id,
-                OrderCode = order.OrderCode,
-                Amount = outstanding,
-                PaymentMethod = command.PaymentMethod,
-                PaymentStatus = order.PaymentStatus,
-                TransactionReference = reference,
-                PaymentUrl = paymentUrl
-            }, "Đã tạo giao dịch thanh toán phí lưu kho.");
-        }
-
-        public async Task<BaseResponse<PaymentResultDto>> CreateCancellationFeePaymentAsync(CreatePaymentCommand command)
-        {
-            if (!CurrentUser.Id.HasValue)
-                return BadRequest<PaymentResultDto>("Không xác định được tài khoản khách hàng.");
-            using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
-            var order = await _orders.GetForUpdateAsync(command.OrderId);
-            if (order == null || order.CustomerId != CurrentUser.Id.Value)
-                return NotFound<PaymentResultDto>("Không tìm thấy đơn hàng của khách hàng.");
-            if (order.Status != WashOrderStatus.Cancelled)
-                return BadRequest<PaymentResultDto>("Chỉ thanh toán phí hủy cho đơn đã hủy.");
-
-            var overdueTotal = order.CancelFeeAmount;
-
-            var outstanding = overdueTotal - order.CancelFeePaidAmount;
-            if (outstanding <= 0m)
-            {
-                await _orders.UpdateAsync(order, autoSave: true);
-                await uow.CompleteAsync();
-                return BadRequest<PaymentResultDto>("Đơn hàng hiện không có phí hủy cần thanh toán.");
-            }
-
-            var pending = await _transactionRepo.FirstOrDefaultAsync(x =>
-                x.OrderId == order.Id && x.Purpose == PaymentPurpose.CancellationFee &&
-                x.Status == PaymentTransactionStatus.Pending);
-            if (pending != null)
-                return BadRequest<PaymentResultDto>("Đơn đã có giao dịch phí hủy đang chờ xác nhận. Vui lòng chờ kết quả trước khi tạo giao dịch mới.");
-
-            var reference = NewReference("CANCEL", order.OrderCode, command.PaymentMethod);
-            var (paymentUrl, gatewayError) = await GatewayUrlAsync(order.Id, command.PaymentMethod, reference,
-                order.OrderCode, outstanding, command.ClientIpAddress, $"Cancellation fee {order.OrderCode}");
-            if (paymentUrl == null)
-                return BadRequest<PaymentResultDto>(gatewayError!);
-
-            await _orders.UpdateAsync(order, autoSave: true);
-            await _transactionRepo.InsertAsync(new PaymentTransaction
-            {
-                MerchantIdSnapshot = order.MerchantId, CommissionRateSnapshot = order.CommissionRateApplied, FinancialSnapshotBasis = "payment-created",
-                OrderId = order.Id,
-                TransactionReference = reference,
-                PaymentMethod = command.PaymentMethod,
-                Purpose = PaymentPurpose.CancellationFee,
-                Status = PaymentTransactionStatus.Pending,
-                Amount = outstanding,
-                PaymentUrl = paymentUrl
-            }, autoSave: true);
-            await uow.CompleteAsync();
-
-            return Success(new PaymentResultDto
-            {
-                OrderId = order.Id,
-                OrderCode = order.OrderCode,
-                Amount = outstanding,
-                PaymentMethod = command.PaymentMethod,
-                PaymentStatus = order.PaymentStatus,
-                Purpose = PaymentPurpose.CancellationFee,
-                TransactionReference = reference,
-                PaymentUrl = paymentUrl
-            }, "Đã tạo giao dịch thanh toán phí hủy.");
-        }
+        [UnitOfWork(IsDisabled = true)]
+        public Task<BaseResponse<PaymentResultDto>> CreateCancellationFeePaymentAsync(CreatePaymentCommand command) =>
+            CreateSessionAsync(command, PaymentPurpose.CancellationFee);
 
         public async Task<BaseResponse<PaymentResultDto>> HandleCallbackAsync(PaymentCallbackCommand command)
         {
             if (string.IsNullOrWhiteSpace(command.TransactionReference))
                 return BadRequest<PaymentResultDto>("Thiếu mã giao dịch thanh toán.");
-
             using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
             var transaction = await _transactionRepo.GetForUpdateByReferenceAsync(command.TransactionReference);
             if (transaction == null || transaction.OrderId != command.OrderId)
                 return BadRequest<PaymentResultDto>("Mã giao dịch không hợp lệ.");
             if (transaction.PaymentMethod is not (PaymentMethod.VnPay or PaymentMethod.Momo) || UseLiveGateway)
-                return BadRequest<PaymentResultDto>("Callback sandbox không được phép xác nhận giao dịch của cổng thanh toán thật.");
-
-            var order = await _orders.GetForUpdateAsync(command.OrderId);
-            if (order == null)
-                return NotFound<PaymentResultDto>("Không tìm thấy đơn hàng cần cập nhật thanh toán.");
-            if (!command.Success)
-            {
-                if (transaction.Status != PaymentTransactionStatus.Pending)
-                    return BadRequest<PaymentResultDto>("Giao dịch đã được xử lý trước đó.");
-                transaction.Status = PaymentTransactionStatus.Failed;
-                transaction.FailureReason = "Sandbox payment failed or was cancelled.";
-                transaction.CompletedAt = DateTime.UtcNow;
-                await _transactionRepo.UpdateAsync(transaction, autoSave: true);
-                await _notifications.PaymentFailedAsync(order);
-                await uow.CompleteAsync();
-                return BadRequest<PaymentResultDto>("Thanh toán thất bại hoặc bị hủy.");
-            }
-
-            if (transaction.Purpose == PaymentPurpose.CancellationFee)
-            {
-                if (transaction.Status != PaymentTransactionStatus.Succeeded)
-                {
-                    if (!await MarkCancellationFeePaidAsync(order, transaction, "Sandbox"))
-                        return BadRequest<PaymentResultDto>("Giao dịch hoặc số phí hủy không hợp lệ.");
-                    transaction.Status = PaymentTransactionStatus.Succeeded;
-                    transaction.CompletedAt = DateTime.UtcNow;
-                    await _transactionRepo.UpdateAsync(transaction, autoSave: true);
-                    await uow.CompleteAsync();
-                }
-                return Success(new PaymentResultDto
-                {
-                    OrderId = order.Id, OrderCode = order.OrderCode, Amount = transaction.Amount,
-                    PaymentMethod = transaction.PaymentMethod, PaymentStatus = order.PaymentStatus,
-                    TransactionReference = transaction.TransactionReference, Purpose = PaymentPurpose.CancellationFee
-                }, "Đã ghi nhận thanh toán phí hủy; đơn hàng vẫn ở trạng thái Đã hủy.");
-            }
-            if (transaction.Purpose == PaymentPurpose.OverdueStorageFee)
-            {
-                if (transaction.Status == PaymentTransactionStatus.Succeeded)
-                    return Success(new PaymentResultDto
-                    {
-                        OrderId = order.Id, OrderCode = order.OrderCode, Amount = transaction.Amount,
-                        PaymentMethod = transaction.PaymentMethod, PaymentStatus = order.PaymentStatus,
-                        TransactionReference = transaction.TransactionReference
-                    }, "Phí lưu kho đã được ghi nhận trước đó.");
-                if (transaction.Status != PaymentTransactionStatus.Pending)
-                    return BadRequest<PaymentResultDto>("Giao dịch đã được xử lý trước đó.");
-
-                var orderEntity = await _orders.GetForUpdateAsync(transaction.OrderId);
-                if (orderEntity == null)
-                    return NotFound<PaymentResultDto>("Không tìm thấy đơn hàng cần cập nhật phí.");
-                if (orderEntity.PaymentStatus != PaymentStatus.Paid ||
-                    orderEntity.Status is not (WashOrderStatus.ReadyToReturn or WashOrderStatus.MovedToStorage or WashOrderStatus.TransferringToStorage or WashOrderStatus.ReturningFromStorage))
-                    return BadRequest<PaymentResultDto>("Đơn không còn chờ khách nhận tại locker.");
-
-                var due = OverdueFeeCalculator.GetTotalStorageDue(orderEntity, DateTime.UtcNow, await _settings.GetAsync());
-                if (transaction.Amount > due - orderEntity.StorageFeeTotal)
-                    return BadRequest<PaymentResultDto>("Giao dịch phí lưu kho lớn hơn số tiền còn phải trả.");
-
-                orderEntity.OverdueFeeTotal = due;
-                orderEntity.StorageFeeTotal += transaction.Amount;
-                await _orders.UpdateAsync(orderEntity, autoSave: true);
-                transaction.Status = PaymentTransactionStatus.Succeeded;
-                transaction.CompletedAt = DateTime.UtcNow;
-                await _transactionRepo.UpdateAsync(transaction, autoSave: true);
-                await uow.CompleteAsync();
-                return Success(new PaymentResultDto
-                {
-                    OrderId = order.Id, OrderCode = order.OrderCode, Amount = transaction.Amount,
-                    PaymentMethod = transaction.PaymentMethod, PaymentStatus = order.PaymentStatus,
-                    TransactionReference = transaction.TransactionReference
-                }, "Thanh toán phí lưu kho thành công.");
-            }
-
-            if (transaction.Purpose != PaymentPurpose.Order)
-                return BadRequest<PaymentResultDto>("Mục đích giao dịch không hợp lệ.");
-            if (order.PaymentStatus == PaymentStatus.Paid)
-            {
-                if (transaction.Status != PaymentTransactionStatus.Succeeded)
-                    return BadRequest<PaymentResultDto>("Đơn đã được thanh toán bởi giao dịch khác.");
-
-                return Success(new PaymentResultDto
-                {
-                    OrderId = order.Id,
-                    OrderCode = order.OrderCode,
-                    Amount = order.FinalAmount,
-                    PaymentMethod = transaction.PaymentMethod,
-                    PaymentStatus = order.PaymentStatus,
-                    TransactionReference = command.TransactionReference
-                }, "Đơn hàng đã được ghi nhận thanh toán trước đó.");
-            }
-
-            if (!await MarkOrderPaidAsync(order, transaction, "WashGo Payment Sandbox"))
-                return BadRequest<PaymentResultDto>("Đơn hoặc số tiền không còn hợp lệ để xác nhận thanh toán.");
-
-            transaction.Status = PaymentTransactionStatus.Succeeded;
-            transaction.CompletedAt = DateTime.UtcNow;
-            await _transactionRepo.UpdateAsync(transaction, autoSave: true);
+                return BadRequest<PaymentResultDto>("Callback mô phỏng không được xác nhận giao dịch cổng thật.");
+            var outcome = await ApplyGatewayResultAsync(transaction, command.Success, transaction.TransactionReference,
+                "Sandbox payment failed or was cancelled.", "WashGo Payment Sandbox");
+            if (outcome != GatewayOutcome.Confirmed)
+                return BadRequest<PaymentResultDto>("Không thể ghi nhận giao dịch; cần xác minh.");
+            var order = await _orders.FindAsync(command.OrderId);
+            if (order == null) return NotFound<PaymentResultDto>("Không tìm thấy đơn hàng.");
             await uow.CompleteAsync();
-
-            return Success(new PaymentResultDto
-            {
-                OrderId = order.Id,
-                OrderCode = order.OrderCode,
-                Amount = order.FinalAmount,
-                PaymentMethod = transaction.PaymentMethod,
-                PaymentStatus = order.PaymentStatus,
-                TransactionReference = command.TransactionReference
-            }, "Thanh toán thành công.");
+            return command.Success
+                ? Success(PaymentView(order, transaction), transaction.RequiresReconciliation
+                    ? "Đã ghi nhận tiền nhận được; giao dịch cần đối soát/hoàn tiền, không ghi tăng tiền đơn."
+                    : "Đã ghi nhận kết quả thanh toán.")
+                : BadRequest<PaymentResultDto>("Thanh toán thất bại hoặc đã có kết quả trước đó.");
         }
 
         public async Task<VnPayIpnResultDto> HandleVnPayIpnAsync(IReadOnlyDictionary<string, string> parameters)
@@ -371,10 +115,6 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             var transaction = await _transactionRepo.GetForUpdateByReferenceAsync(reference);
             if (transaction == null || transaction.PaymentMethod != PaymentMethod.VnPay)
                 return Ip("01", "Order not found");
-            if (transaction.Status == PaymentTransactionStatus.Succeeded)
-                return Ip("02", "Order already confirmed");
-            if (transaction.Status != PaymentTransactionStatus.Pending)
-                return Ip("02", "Order already processed");
 
             if (!parameters.TryGetValue("vnp_Amount", out var amountText) ||
                 !long.TryParse(amountText, NumberStyles.None, CultureInfo.InvariantCulture, out var amount) ||
@@ -383,6 +123,14 @@ namespace WashGo.Application.Features.PaymentApplication.Services
 
             var responseCode = parameters.GetValueOrDefault("vnp_ResponseCode", "");
             var transactionStatus = parameters.GetValueOrDefault("vnp_TransactionStatus", "");
+            if (!(responseCode == "00" && transactionStatus == "00") &&
+                !PaymentGatewayStatusRules.IsVnPayFinalFailure(responseCode, transactionStatus))
+            {
+                await MarkPendingVerificationAsync(transaction, $"VNPay requires verification: response={responseCode}, status={transactionStatus}",
+                    parameters.GetValueOrDefault("vnp_TransactionNo"));
+                await uow.CompleteAsync();
+                return Ip("00", "Result recorded; awaiting verification");
+            }
             var outcome = await ApplyGatewayResultAsync(transaction, responseCode == "00" && transactionStatus == "00",
                 parameters.GetValueOrDefault("vnp_TransactionNo"),
                 $"VNPay response={responseCode}, status={transactionStatus}", "VNPay");
@@ -409,8 +157,7 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
             var transaction = await _transactionRepo.GetForUpdateByReferenceAsync(ipn.OrderId);
             // MoMo retries until it gets 204, so already-handled or unknown IPNs are acknowledged without changes.
-            if (transaction == null || transaction.PaymentMethod != PaymentMethod.Momo ||
-                transaction.Status != PaymentTransactionStatus.Pending)
+            if (transaction == null || transaction.PaymentMethod != PaymentMethod.Momo)
             {
                 Logger.LogInformation("MoMo IPN {OrderId} ignored: unknown or already processed.", ipn.OrderId);
                 return true;
@@ -422,6 +169,13 @@ namespace WashGo.Application.Features.PaymentApplication.Services
                 return true;
             }
 
+            if (ipn.ResultCode != 0 && !PaymentGatewayStatusRules.IsMomoFinalFailure(ipn.ResultCode))
+            {
+                await MarkPendingVerificationAsync(transaction, $"MoMo requires verification: resultCode={ipn.ResultCode}",
+                    ipn.TransId.ToString(CultureInfo.InvariantCulture));
+                await uow.CompleteAsync();
+                return true;
+            }
             var outcome = await ApplyGatewayResultAsync(transaction, ipn.ResultCode == 0,
                 ipn.TransId.ToString(CultureInfo.InvariantCulture), $"MoMo resultCode={ipn.ResultCode}: {ipn.Message}", "MoMo");
             if (outcome == GatewayOutcome.Confirmed)
@@ -440,53 +194,65 @@ namespace WashGo.Application.Features.PaymentApplication.Services
         private async Task<GatewayOutcome> ApplyGatewayResultAsync(PaymentTransaction transaction, bool success,
             string? providerTransactionId, string failureReason, string provider)
         {
+            // Caller holds the transaction lock. Never overwrite a receipt/refund with
+            // a later failure, nor apply a repeated success/notification a second time.
+            if (transaction.GatewayVerifiedAt.HasValue || transaction.Status is
+                PaymentTransactionStatus.Succeeded or PaymentTransactionStatus.Refunded or PaymentTransactionStatus.RequiresReview)
+                return GatewayOutcome.Confirmed;
+            var order = await _orders.GetForUpdateAsync(transaction.OrderId);
             if (!success)
             {
+                if (transaction.Status == PaymentTransactionStatus.Failed) return GatewayOutcome.Confirmed;
                 transaction.Status = PaymentTransactionStatus.Failed;
+                transaction.SessionState = PaymentSessionState.Closed;
+                transaction.IsActiveSession = false;
                 transaction.FailureReason = failureReason;
                 transaction.ProviderTransactionId = providerTransactionId;
                 transaction.CompletedAt = DateTime.UtcNow;
                 await _transactionRepo.UpdateAsync(transaction, autoSave: true);
-                if (await _orders.FindAsync(transaction.OrderId) is { } failedOrder)
-                    await _notifications.PaymentFailedAsync(failedOrder);
+                if (order != null) await _notifications.PaymentFailedAsync(order);
                 return GatewayOutcome.Confirmed;
             }
 
-            var order = await _orders.GetForUpdateAsync(transaction.OrderId);
-            if (order == null)
-                return GatewayOutcome.NotFound;
-
-            switch (transaction.Purpose)
+            string? reviewReason = null;
+            if (order == null) reviewReason = "OrderUnavailable";
+            else if (transaction.Status != PaymentTransactionStatus.Pending) reviewReason = "LateReceiptAfterClosedSession";
+            else switch (transaction.Purpose)
             {
                 case PaymentPurpose.CancellationFee:
-                    if (!await MarkCancellationFeePaidAsync(order, transaction, provider))
-                        return GatewayOutcome.InvalidAmount;
+                    if (!await MarkCancellationFeePaidAsync(order, transaction, provider)) reviewReason = "CancellationFeeNoLongerDue";
                     break;
                 case PaymentPurpose.OverdueStorageFee:
-                    if (order.PaymentStatus != PaymentStatus.Paid ||
-                        order.Status is not (WashOrderStatus.ReadyToReturn or WashOrderStatus.MovedToStorage or WashOrderStatus.TransferringToStorage or WashOrderStatus.ReturningFromStorage))
-                        return GatewayOutcome.InvalidState;
-                    var due = OverdueFeeCalculator.GetTotalStorageDue(order, DateTime.UtcNow, await _settings.GetAsync());
-                    if (transaction.Amount > due - order.StorageFeeTotal)
-                        return GatewayOutcome.InvalidAmount;
+                    if (order.PaymentStatus != PaymentStatus.Paid || order.Status is not
+                        (WashOrderStatus.ReadyToReturn or WashOrderStatus.MovedToStorage or WashOrderStatus.TransferringToStorage or WashOrderStatus.ReturningFromStorage))
+                    { reviewReason = "StoragePaymentStateChanged"; break; }
+                    var due = OverdueFeeCalculator.GetTotalStorageDue(order, DateTime.UtcNow, await _settings.ForOrderAsync(order));
+                    if (transaction.Amount <= 0 || transaction.Amount > due - order.StorageFeeTotal)
+                    { reviewReason = "StorageFeeAlreadyPaidOrAmountChanged"; break; }
                     order.OverdueFeeTotal = due;
                     order.StorageFeeTotal += transaction.Amount;
                     await _orders.UpdateAsync(order, autoSave: true);
                     break;
                 case PaymentPurpose.Order:
-                    if (order.PaymentStatus == PaymentStatus.Paid)
-                        return GatewayOutcome.AlreadyPaid;
                     if (!await MarkOrderPaidAsync(order, transaction, provider, providerTransactionId))
-                        return GatewayOutcome.InvalidState;
+                        reviewReason = order.PaymentStatus == PaymentStatus.Paid ? "OrderAlreadyPaid" : "OrderStateOrAmountChanged";
                     break;
-                default:
-                    return GatewayOutcome.InvalidState;
+                default: reviewReason = "UnsupportedPaymentPurpose"; break;
             }
-
-            transaction.Status = PaymentTransactionStatus.Succeeded;
+            transaction.GatewayVerifiedAt = DateTime.UtcNow;
+            transaction.FailureReason = null;
             transaction.ProviderTransactionId = providerTransactionId;
             transaction.CompletedAt = DateTime.UtcNow;
-            await _transactionRepo.UpdateAsync(transaction, autoSave: true);
+            transaction.SessionState = PaymentSessionState.Closed;
+            transaction.IsActiveSession = false;
+            if (reviewReason != null)
+                await RecordUnappliedReceiptAsync(transaction, order, reviewReason);
+            else
+            {
+                transaction.Status = PaymentTransactionStatus.Succeeded;
+                transaction.FailureReason = null;
+                await _transactionRepo.UpdateAsync(transaction, autoSave: true);
+            }
             return GatewayOutcome.Confirmed;
         }
 
@@ -553,18 +319,18 @@ namespace WashGo.Application.Features.PaymentApplication.Services
                 ? $"WG-{kind}-{orderCode}-{Guid.NewGuid():N}"[..(kind.Length + orderCode.Length + 21)]
                 : $"WG-{kind}-{orderCode}-{Guid.NewGuid():N}";
 
-        private async Task<(string? Url, string? Error)> GatewayUrlAsync(Guid orderId, PaymentMethod method, string reference,
+        private async Task<PaymentGatewayResult> GatewayUrlAsync(Guid orderId, PaymentMethod method, string reference,
             string orderCode, decimal amount, string clientIpAddress, string orderInfo = "")
         {
             if (method is not (PaymentMethod.VnPay or PaymentMethod.Momo))
-                return (null, "Hiện chỉ hỗ trợ thanh toán trực tuyến qua VNPay hoặc MoMo.");
+                return new(null, "Hiện chỉ hỗ trợ thanh toán trực tuyến qua VNPay hoặc MoMo.");
             if (!UseLiveGateway)
-                return ($"http://localhost:5000/payment/mock-checkout?orderId={orderId}&reference={reference}", null);
+                return new($"http://localhost:5000/payment/mock-checkout?orderId={orderId}&reference={reference}", null);
             if (method == PaymentMethod.Momo)
                 return await _momo.CreatePayUrlAsync(reference, amount,
                     string.IsNullOrWhiteSpace(orderInfo) ? $"Thanh toan don WashGo {orderCode}" : orderInfo);
             var url = BuildVnPayUrl(orderCode, reference, amount, clientIpAddress, orderInfo);
-            return url == null ? (null, "Chưa cấu hình đầy đủ thông tin kết nối VNPay.") : (url, null);
+            return url == null ? new(null, "Chưa cấu hình đầy đủ thông tin kết nối VNPay.") : new(url, null);
         }
 
         private string? BuildVnPayUrl(string orderCode, string reference, decimal amount, string clientIpAddress,
@@ -634,17 +400,17 @@ namespace WashGo.Application.Features.PaymentApplication.Services
                 return BadRequest<RefundRequestDto>("Chỉ tạo yêu cầu hoàn tiền cho đơn đã thanh toán.");
 
             var paymentTransactions = await _transactionRepo.GetListAsync(x => x.OrderId == order.Id);
-            var existing = await _refundRequestRepo.GetListAsync(x => x.OrderId == order.Id &&
+            var existing = await _refundRequestRepo.GetListAsync(x => x.OrderId == order.Id && !x.IsExcessPayment &&
                 (x.Status == RefundRequestStatus.Pending || x.Status == RefundRequestStatus.Approved));
             if (existing.Count > 0)
                 return BadRequest<RefundRequestDto>("Đơn hàng đã có yêu cầu hoàn tiền đang được xử lý.");
 
             var successfulPayment = paymentTransactions.FirstOrDefault(x =>
-                x.Purpose == PaymentPurpose.Order && x.Status == PaymentTransactionStatus.Succeeded);
+                x.Purpose == PaymentPurpose.Order && !x.RequiresReconciliation && x.Status == PaymentTransactionStatus.Succeeded);
             if (order.PaymentMethod != PaymentMethod.Cash && successfulPayment == null)
                 return BadRequest<RefundRequestDto>("Không tìm thấy giao dịch thanh toán thành công để đối chiếu.");
             var alreadyRefunded = await AsyncExecuter.SumAsync((await _refundRequestRepo.GetQueryableAsync())
-                .Where(x => x.OrderId == order.Id && !x.IsDeleted && x.Status == RefundRequestStatus.Refunded).Select(x => x.Amount));
+                .Where(x => x.OrderId == order.Id && !x.IsDeleted && !x.IsExcessPayment && x.Status == RefundRequestStatus.Refunded).Select(x => x.Amount));
             var remaining = (successfulPayment?.Amount ?? order.FinalAmount) - alreadyRefunded;
             var amount = command.Amount ?? remaining;
             if (amount <= 0 || amount > remaining || decimal.Round(amount, 2) != amount)
@@ -767,10 +533,14 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             if (rows.Count == 0) return;
             var ids = rows.Select(x => x.OrderId).Distinct().ToList();
             var orders = (await _orders.GetListAsync(x => ids.Contains(x.Id))).ToDictionary(x => x.Id);
-            var transactions = await _transactionRepo.GetListAsync(x => ids.Contains(x.OrderId) && x.Purpose == PaymentPurpose.Order &&
-                (x.Status == PaymentTransactionStatus.Succeeded || x.Status == PaymentTransactionStatus.Refunded));
-            var refunds = await AsyncExecuter.ToListAsync((await _refundRequestRepo.GetQueryableAsync()).Where(x => ids.Contains(x.OrderId) && !x.IsDeleted && x.Status == RefundRequestStatus.Refunded)
+            var transactions = await _transactionRepo.GetListAsync(x => ids.Contains(x.OrderId) &&
+                (x.Status == PaymentTransactionStatus.Succeeded || x.Status == PaymentTransactionStatus.Refunded || x.Status == PaymentTransactionStatus.RequiresReview));
+            var refunds = await AsyncExecuter.ToListAsync((await _refundRequestRepo.GetQueryableAsync()).Where(x => ids.Contains(x.OrderId) && !x.IsDeleted && !x.IsExcessPayment && x.Status == RefundRequestStatus.Refunded)
                 .GroupBy(x => x.OrderId).Select(g => new { Id = g.Key, Amount = g.Sum(x => x.Amount) }));
+            var excessRefunds = await AsyncExecuter.ToListAsync((await _refundRequestRepo.GetQueryableAsync())
+                .Where(r => ids.Contains(r.OrderId) && !r.IsDeleted && r.IsExcessPayment &&
+                    r.OriginalPaymentTransactionId.HasValue && r.Status == RefundRequestStatus.Refunded)
+                .GroupBy(r => r.OriginalPaymentTransactionId).Select(g => new { Id = g.Key, Amount = g.Sum(r => r.Amount) }));
             var users = new Dictionary<Guid, User>();
             if (CurrentUser.IsInRole("Admin"))
             {
@@ -780,13 +550,19 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             foreach (var dto in rows)
             {
                 if (!orders.TryGetValue(dto.OrderId, out var order)) continue;
-                var transaction = dto.OriginalPaymentTransactionId.HasValue ? transactions.FirstOrDefault(x => x.Id == dto.OriginalPaymentTransactionId) : transactions.Where(x => x.OrderId == dto.OrderId).OrderBy(x => x.CompletedAt).ThenBy(x => x.Id).FirstOrDefault();
+                var transaction = dto.OriginalPaymentTransactionId.HasValue ? transactions.FirstOrDefault(x => x.Id == dto.OriginalPaymentTransactionId) : transactions.Where(x => x.OrderId == dto.OrderId && x.Purpose == PaymentPurpose.Order && !x.RequiresReconciliation).OrderBy(x => x.CompletedAt).ThenBy(x => x.Id).FirstOrDefault();
                 dto.OrderCode = order.OrderCode; dto.CustomerName = order.CustomerName;
                 dto.MerchantId = transaction?.FinancialSnapshotBasis != null ? transaction.MerchantIdSnapshot : order.MerchantId;
                 dto.PaymentMethod = transaction?.PaymentMethod ?? order.PaymentMethod;
                 dto.OriginalAmount = transaction?.Amount ?? (order.PaymentMethod == PaymentMethod.Cash ? order.FinalAmount : null);
                 dto.RemainingRefundableAmount = dto.OriginalAmount.HasValue ? Math.Max(0, dto.OriginalAmount.Value - (refunds.FirstOrDefault(x => x.Id == order.Id)?.Amount ?? 0) -
                     (order.Status == WashOrderStatus.Cancelled ? order.CancelFeePaidAmount : 0)) : null;
+                if (dto.IsExcessPayment && transaction != null)
+                {
+                    var refundedExcess = excessRefunds.FirstOrDefault(x => x.Id == transaction.Id)?.Amount ?? 0m;
+                    dto.MerchantId = null;
+                    dto.RemainingRefundableAmount = Math.Max(0, transaction.Amount - refundedExcess);
+                }
                 if (users.TryGetValue(dto.CustomerId, out var customer)) { dto.CustomerEmail = customer.Email; dto.CustomerPhoneNumber = customer.Phone; dto.CustomerAvatarUrl = customer.Avatar; }
             }
             var merchantIds = rows.Where(x => x.MerchantId.HasValue).Select(x => x.MerchantId!.Value).Distinct().ToList();
@@ -848,9 +624,18 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             if (string.IsNullOrWhiteSpace(command.RefundReference) || command.RefundReference.Trim().Length > 120)
                 return BadRequest<RefundRequestDto>("Cần nhập mã tham chiếu giao dịch hoàn tiền.");
 
+            if (request.IsExcessPayment)
+            {
+                var excessResponse = await ConfirmExcessRefundAsync(request, command);
+                if (!excessResponse.Succeeded) return excessResponse;
+                await Writes.RecordAsync(command.OperationId, CurrentUser.Id!.Value, "Finance", "ConfirmRefund", id.ToString(), command, excessResponse);
+                await uow.CompleteAsync();
+                return excessResponse;
+            }
+
             // Match the payment callbacks' lock order: transaction, then order.
             var reference = await AsyncExecuter.FirstOrDefaultAsync((await _transactionRepo.GetQueryableAsync())
-                .Where(x => x.OrderId == request.OrderId && x.Purpose == PaymentPurpose.Order &&
+                .Where(x => x.OrderId == request.OrderId && (!request.OriginalPaymentTransactionId.HasValue || x.Id == request.OriginalPaymentTransactionId) && x.Purpose == PaymentPurpose.Order && !x.RequiresReconciliation &&
                     x.Status == PaymentTransactionStatus.Succeeded).Select(x => x.TransactionReference));
             var successful = reference == null ? null : await _transactionRepo.GetForUpdateByReferenceAsync(reference);
             var order = await _orders.GetForUpdateAsync(request.OrderId);
@@ -863,7 +648,7 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             var refundable = (successful?.Amount ?? order.FinalAmount) -
                 (order.Status == WashOrderStatus.Cancelled ? order.CancelFeePaidAmount : 0m);
             var alreadyRefunded = await AsyncExecuter.SumAsync((await _refundRequestRepo.GetQueryableAsync())
-                .Where(x => !x.IsDeleted && x.OrderId == order.Id && x.Status == RefundRequestStatus.Refunded).Select(x => x.Amount));
+                .Where(x => !x.IsDeleted && !x.IsExcessPayment && x.OrderId == order.Id && x.Status == RefundRequestStatus.Refunded).Select(x => x.Amount));
             refundable -= alreadyRefunded;
             if (request.Amount <= 0m || request.Amount > refundable || decimal.Round(request.Amount, 2) != request.Amount ||
                 (request.OriginalPaymentTransactionId.HasValue && request.OriginalPaymentTransactionId != successful?.Id))
@@ -899,6 +684,7 @@ namespace WashGo.Application.Features.PaymentApplication.Services
         {
             Version = AdministrativeWriteGuard.Version(new { request.Id, request.Status, request.Amount, request.ReviewNote, ReviewedAt = request.ReviewedAt?.Ticks / 10, request.RefundReference, RefundedAt = request.RefundedAt?.Ticks / 10, request.OriginalPaymentTransactionId }),
             OriginalPaymentTransactionId = request.OriginalPaymentTransactionId,
+            IsExcessPayment = request.IsExcessPayment,
             SettlementId = request.SettlementId,
             Id = request.Id,
             OrderId = request.OrderId,

@@ -13,5 +13,8 @@ namespace WashGo.Application.Contracts.Features.PaymentContracts.Results
         public PaymentStatus PaymentStatus { get; set; }
         public string TransactionReference { get; set; } = string.Empty;
         public string PaymentUrl { get; set; } = string.Empty;
+        public PaymentTransactionStatus TransactionStatus { get; set; }
+        public PaymentSessionState SessionState { get; set; }
+        public bool RequiresReconciliation { get; set; }
     }
 }

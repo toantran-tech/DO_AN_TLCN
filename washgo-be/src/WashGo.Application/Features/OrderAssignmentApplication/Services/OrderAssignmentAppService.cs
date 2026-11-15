@@ -1,3 +1,5 @@
+using System.Text.Json;
+using WashGo.Application.Features.WashOrderApplication.Services;
 using WashGo.Application.Features.AuditApplication.Services;
 using System;
 using System.Collections.Generic;
@@ -148,6 +150,7 @@ namespace WashGo.Application.Features.OrderAssignmentApplication.Services
             if (command.OperationId == Guid.Empty)
                 return BadRequest<AssignmentResultDto>("operationId không hợp lệ.");
             using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            await OrderOperationLocks.AcquireAsync(_orderRepo, command.OperationId);
             var pair = new List<(Guid OrderId, Guid MerchantId)> { (orderId, command.MerchantId) };
             if (command.OperationId is { } operationId)
             {
@@ -195,15 +198,20 @@ namespace WashGo.Application.Features.OrderAssignmentApplication.Services
             var stored = rows.Select(x => $"{x.OrderId}|{x.Request}").OrderBy(x => x).ToList();
             if (rows.Any(x => x.Operation != operation || x.ActorId != CurrentUser.Id) || !requested.SequenceEqual(stored))
                 return (null, new Failure(HttpStatusCode.Conflict, "OperationIdReused", "operationId này đã được dùng cho một thao tác khác."));
-            return (await ResultsAsync(rows), null);
+            var results = await ResultsAsync(rows);
+            if (results.Count != pairs.Count)
+                return (null, new Failure(HttpStatusCode.Conflict, "OperationResultUnavailable", "Kết quả cũ không còn đủ dữ liệu; vui lòng tải lại."));
+            return (pairs.Select(pair => results.Single(result => result.OrderId == pair.OrderId)).ToList(), null);
         }
 
         private async Task<List<AssignmentResultDto>> ResultsAsync(List<OrderOperation> rows)
         {
             var ids = rows.Select(x => x.OrderId).ToList();
             var orders = (await _orderRepo.GetListAsync(o => ids.Contains(o.Id))).ToDictionary(o => o.Id);
-            return rows.OrderBy(x => x.CreatedAt).ThenBy(x => x.Id).Where(x => orders.ContainsKey(x.OrderId)).Select(x =>
+            return rows.OrderBy(x => x.CreatedAt).ThenBy(x => x.Id).Where(x => x.ResultJson != null || orders.ContainsKey(x.OrderId)).Select(x =>
             {
+                if (x.ResultJson != null && JsonSerializer.Deserialize<AssignmentResultDto>(x.ResultJson) is { } stored)
+                    return stored;
                 var o = orders[x.OrderId];
                 return new AssignmentResultDto
                 {
@@ -227,7 +235,7 @@ namespace WashGo.Application.Features.OrderAssignmentApplication.Services
             {
                 GroupId = groupId, OrderId = result.OrderId, ActorId = CurrentUser.Id ?? Guid.Empty, Operation = operation,
                 Request = $"merchantId={result.MerchantId}", ResultStatus = WashOrderStatus.Deposited,
-                ResultRevision = result.ResultRevision, CreatedAt = DateTime.UtcNow
+                ResultRevision = result.ResultRevision, CreatedAt = DateTime.UtcNow, ResultJson = JsonSerializer.Serialize(result)
             }, autoSave: true);
         }
 
@@ -288,6 +296,14 @@ namespace WashGo.Application.Features.OrderAssignmentApplication.Services
                 return BadRequest<List<AssignmentResultDto>>("operationId không hợp lệ.");
             // All-or-nothing: any invalid pair rolls back the whole batch.
             using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            if (command.OperationId is { } lockId)
+            {
+                await OrderOperationLocks.AcquireManyAsync(_orderRepo,
+                    items.Select(x => ItemId(lockId, x.OrderId)).Append(lockId));
+                var itemIds = items.Select(x => ItemId(lockId, x.OrderId)).ToList();
+                if (await _operationRepo.AnyAsync(x => itemIds.Contains(x.Id) && x.GroupId != lockId))
+                    return Fail<List<AssignmentResultDto>>(new Failure(HttpStatusCode.Conflict, "OperationIdReused", "Mã thao tác con đã được sử dụng."));
+            }
             if (command.OperationId is { } operationId)
             {
                 var (replay, conflict) = await ReplayAsync(operationId, AutoAssignOperation,
@@ -304,13 +320,14 @@ namespace WashGo.Application.Features.OrderAssignmentApplication.Services
             foreach (var merchantId in items.Select(x => x.MerchantId).Distinct().OrderBy(x => x))
                 await _orderRepo.AcquireLockAsync(CapacityLock(merchantId));
             var results = new List<AssignmentResultDto>();
-            foreach (var item in items)
+            foreach (var item in items.OrderBy(x => x.OrderId))
             {
                 var (result, failure) = await AssignCoreAsync(item.OrderId, item.MerchantId, true, item.ExpectedRevision, item.ExpectedCommissionRate);
                 if (result == null)
                     return Fail<List<AssignmentResultDto>>(failure!);
                 results.Add(result);
             }
+            results = items.Select(item => results.Single(result => result.OrderId == item.OrderId)).ToList();
             if (command.OperationId is { } op)
                 foreach (var result in results)
                     await RecordAsync(ItemId(op, result.OrderId), op, AutoAssignOperation, result);

@@ -33,7 +33,14 @@ function Call-Api($Method, $Path, $Body, $Token) {
         $request.ContentType = 'application/json; charset=utf-8'
         $request.Body = [Text.Encoding]::UTF8.GetBytes(($Body | ConvertTo-Json -Depth 15))
     }
-    Invoke-RestMethod @request
+    try { Invoke-RestMethod @request }
+    catch {
+        if ($null -ne $_.Exception.Response -and [int]$_.Exception.Response.StatusCode -eq 429) {
+            $safePath = ($Path -split '\?', 2)[0]
+            $_.ErrorDetails = New-Object System.Management.Automation.ErrorDetails("HTTP 429 for $Method $safePath. Check the test environment rate-limit configuration.")
+        }
+        throw
+    }
 }
 
 function Assert-Status($Expected, $Method, $Path, $Body, $Token) {
@@ -47,8 +54,23 @@ function Assert-Status($Expected, $Method, $Path, $Body, $Token) {
 }
 
 function Sql($Statement) {
-    $result = $Statement | docker exec -i $PostgresContainer psql -U $PostgresUser -d $Database -v ON_ERROR_STOP=1 -At
-    if ($LASTEXITCODE -ne 0) { throw 'Development fixture SQL failed.' }
+    $previousPreference = $ErrorActionPreference
+    try {
+        # Windows PowerShell 5 turns native stderr into ErrorRecords. Capture it
+        # before restoring Stop so PostgreSQL's actual error is not lost.
+        $ErrorActionPreference = 'Continue'
+        $result = @($Statement | docker exec -i $PostgresContainer psql -U $PostgresUser -d $Database -v ON_ERROR_STOP=1 -At 2>&1)
+        $sqlExitCode = $LASTEXITCODE
+    }
+    finally { $ErrorActionPreference = $previousPreference }
+    if ($sqlExitCode -ne 0) {
+        $caller = @(Get-PSCallStack)[1]
+        # Exclude DETAIL (it can contain an entire failing row); retain the error
+        # and caller location without logging SQL, credentials or fixture bodies.
+        $detail = @($result | ForEach-Object { $_.ToString() } | Where-Object { $_ -match '^(ERROR:|FATAL:|HINT:)' }) -join ' '
+        if (!$detail) { $detail = "psql/docker exited with code $sqlExitCode" }
+        throw "Fixture SQL failed at $($caller.ScriptName):$($caller.ScriptLineNumber). $detail"
+    }
     $result
 }
 

@@ -20,6 +20,10 @@ namespace WashGo.EntityFrameworkCore.BuilderConfiguration
             builder.Property(x => x.CommissionRateSnapshot).HasPrecision(5, 2);
             builder.Property(x => x.FinancialSnapshotBasis).HasMaxLength(40);
             builder.HasIndex(x => x.OriginalPaymentTransactionId);
+            builder.Property(x => x.IsExcessPayment).HasDefaultValue(false);
+            builder.HasIndex(x => new { x.OriginalPaymentTransactionId, x.IsExcessPayment }).IsUnique()
+                .HasDatabaseName("ux_refund_excess_payment")
+                .HasFilter("is_excess_payment = true AND is_deleted = false");
             builder.Property(x => x.Reason).HasMaxLength(1000).IsRequired();
             builder.Property(x => x.ReviewNote).HasMaxLength(1000);
             builder.Property(x => x.RefundReference).HasMaxLength(120);

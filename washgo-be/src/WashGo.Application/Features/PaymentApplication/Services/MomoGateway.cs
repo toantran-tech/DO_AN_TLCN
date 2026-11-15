@@ -10,7 +10,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Volo.Abp.DependencyInjection;
 using WashGo.Application.Contracts.Features.PaymentContracts.Commands;
-using  System.Text.Json;
+using System.Text.Json;
 
 namespace WashGo.Application.Features.PaymentApplication.Services
 {
@@ -22,15 +22,17 @@ namespace WashGo.Application.Features.PaymentApplication.Services
     {
         public const string DefaultEndpoint = "https://test-payment.momo.vn/v2/gateway/api/create";
         public const int MaxOrderIdLength = 50;
-        private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(30) };
+        public const string HttpClientName = "WashGoMomo";
 
         private readonly IConfiguration _configuration;
         private readonly ILogger<MomoGateway> _logger;
+        private readonly IHttpClientFactory _httpClients;
 
-        public MomoGateway(IConfiguration configuration, ILogger<MomoGateway> logger)
+        public MomoGateway(IConfiguration configuration, ILogger<MomoGateway> logger, IHttpClientFactory httpClients)
         {
             _configuration = configuration;
             _logger = logger;
+            _httpClients = httpClients;
         }
 
         private string? Setting(string name) => _configuration[$"Payment:Momo:{name}"];
@@ -41,10 +43,10 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             !string.IsNullOrWhiteSpace(Setting("IpnUrl"));
 
         /// <summary>Creates the MoMo payment and returns its payUrl, or the reason it failed.</summary>
-        public async Task<(string? PayUrl, string? Error)> CreatePayUrlAsync(string reference, decimal amount, string orderInfo)
+        public async Task<PaymentGatewayResult> CreatePayUrlAsync(string reference, decimal amount, string orderInfo)
         {
             if (!IsConfigured)
-                return (null, "Chưa cấu hình đầy đủ thông tin kết nối MoMo.");
+                return new(null, "Chưa cấu hình đầy đủ thông tin kết nối MoMo.");
 
             var request = new MomoCreateRequest
             {
@@ -66,17 +68,19 @@ namespace WashGo.Application.Features.PaymentApplication.Services
 
             try
             {
-                using var response = await Http.PostAsJsonAsync(Setting("Endpoint") ?? DefaultEndpoint, request);
+                using var http = _httpClients.CreateClient(HttpClientName);
+                using var response = await http.PostAsJsonAsync(Setting("Endpoint") ?? DefaultEndpoint, request);
                 var body = await response.Content.ReadFromJsonAsync<MomoCreateResponse>();
                 if (body is { ResultCode: 0 } && !string.IsNullOrWhiteSpace(body.PayUrl))
-                    return (body.PayUrl, null);
+                    return new(body.PayUrl, null);
                 _logger.LogWarning("MoMo create payment {Reference} failed: {Code} {Message}", reference, body?.ResultCode, body?.Message);
-                return (null, $"MoMo từ chối tạo giao dịch: {body?.Message ?? response.StatusCode.ToString()}");
+                return new(null, $"MoMo chưa tạo được URL: {body?.Message ?? response.StatusCode.ToString()}",
+                    !PaymentGatewayStatusRules.IsMomoFinalFailure(body?.ResultCode));
             }
             catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
             {
                 _logger.LogWarning(ex, "MoMo create payment {Reference} failed", reference);
-                return (null, "Không kết nối được cổng thanh toán MoMo. Vui lòng thử lại.");
+                return new(null, "Chưa xác định kết quả tạo phiên MoMo; cần xác minh trước khi thử lại.", true);
             }
         }
 

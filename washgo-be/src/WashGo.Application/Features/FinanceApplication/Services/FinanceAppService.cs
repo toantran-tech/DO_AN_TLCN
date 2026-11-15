@@ -86,7 +86,7 @@ namespace WashGo.Application.Features.FinanceApplication.Services
             var orders = await _orderRepo.GetQueryableAsync();
             var query = from p in payments
                         join o in orders on p.OrderId equals o.Id
-                        where !p.IsDeleted && (p.Status == PaymentTransactionStatus.Succeeded || p.Status == PaymentTransactionStatus.Refunded)
+                        where !p.IsDeleted && (!p.RequiresReconciliation && (p.Status == PaymentTransactionStatus.Succeeded || p.Status == PaymentTransactionStatus.Refunded))
                               && p.CompletedAt != null && (unsettledOnly ? p.SettlementId == null : p.CompletedAt >= periodFrom) && p.CompletedAt <= periodTo
                               && (merchantId == null || (p.FinancialSnapshotBasis != null ? p.MerchantIdSnapshot : o.MerchantId) == merchantId)
                         select new PaymentRow(p.Id, o.Id, p.FinancialSnapshotBasis != null ? p.MerchantIdSnapshot : o.MerchantId, p.Purpose, p.Amount, p.CompletedAt!.Value,
@@ -102,7 +102,7 @@ namespace WashGo.Application.Features.FinanceApplication.Services
             var orders = await _orderRepo.GetQueryableAsync();
             var query = from r in refunds
                         join o in orders on r.OrderId equals o.Id
-                        where !r.IsDeleted && r.Status == RefundRequestStatus.Refunded && r.RefundedAt != null
+                        where !r.IsDeleted && !r.IsExcessPayment && r.Status == RefundRequestStatus.Refunded && r.RefundedAt != null
                               && (unsettledOnly ? r.SettlementId == null : r.RefundedAt >= periodFrom) && r.RefundedAt <= periodTo
                               && (merchantId == null || (r.FinancialSnapshotBasis != null ? r.MerchantIdSnapshot : o.MerchantId) == merchantId)
                         select new RefundRow(r.Id, o.Id, r.FinancialSnapshotBasis != null ? r.MerchantIdSnapshot : o.MerchantId, r.Amount, r.RefundedAt!.Value,

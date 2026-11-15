@@ -10,6 +10,7 @@ using WashGo.Domain;
 using WashGo.Application.Features.ChatbotApplication.Providers;
 using WashGo.Application.Features.ChatbotApplication.Services;
 using WashGo.Application.Mappings;
+using WashGo.Application.Features.PaymentApplication.Services;
 
 namespace WashGo.Application
 {
@@ -25,6 +26,8 @@ namespace WashGo.Application
         public override void ConfigureServices(ServiceConfigurationContext context)
         {
             context.Services.AddWashGoObjectMapping();
+            context.Services.AddHttpClient(MomoGateway.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(30))
+                .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
             context.Services.AddHttpClient(BrevoEmailClient.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(20))
                 .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
             context.Services.AddHttpClient(ObjectStorage.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(120))

@@ -50,6 +50,13 @@ namespace WashGo.HttpApi.Endpoints.Payment
                 .WithSummary("Customer tạo giao dịch phí hủy riêng; không thanh toán tiền giặt hoặc đổi đơn sang Paid.")
                 .WithOpenApi();
 
+            group.MapGet("/reconciliations", async (int? page, int? take, bool? includeResolved, IPaymentAppService service) =>
+                (await service.GetReconciliationsAsync(page ?? 1, take ?? 20, includeResolved ?? false)).CustomResult())
+                .RequireAuthorization("AdminOnly")
+                .WithName("Admin đối soát phiên thanh toán")
+                .WithSummary("Phân trang tiền đã thu chưa áp dụng, phiên tạo chưa rõ kết quả và Pending cũ trùng; không tự xác nhận đã thu/hoàn tiền.")
+                .WithOpenApi();
+
             group.MapPost("/callback", async (PaymentCallbackCommand command, IPaymentAppService service) =>
                 (await service.HandleCallbackAsync(command)).CustomResult())
                 .RequireAuthorization("AdminOnly")
