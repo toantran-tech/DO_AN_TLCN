@@ -25,6 +25,13 @@ namespace WashGo.Domain.Entities.Payment
         public string? PaymentUrl { get; set; }
         public string? FailureReason { get; set; }
         public DateTime? CompletedAt { get; set; }
+        public PaymentSessionState SessionState { get; set; }
+        public bool IsActiveSession { get; set; }
+        public DateTime? GatewayVerifiedAt { get; set; }
+        /// <summary>Permanent classification: never include unapplied receipts in Merchant revenue, even after refund.</summary>
+        public bool RequiresReconciliation { get; set; }
+        public string? ReconciliationReason { get; set; }
+        public DateTime? ReconciledAt { get; set; }
 
         public virtual WashOrderEntity? Order { get; set; }
     }

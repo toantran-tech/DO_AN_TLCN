@@ -918,3 +918,24 @@ docker compose down
 - **Bảo mật**: Mật khẩu mã hóa BCrypt, không trả password hash/token/OTP trong response API.
 
 > Sửa CI Guest 15/11/2026: test quyền upload ảnh ẩn danh đã đổi từ JSON sang multipart hợp lệ để kiểm tra HTTP 401, tránh router trả HTTP 415 do sai Content-Type. Assert-Status bổ sung method/path và mã HTTP thực tế khi sai kỳ vọng. Chỉ kiểm tra cú pháp PowerShell và git diff --check; chưa chạy HTTP/build Docker local, chờ PR CI xác nhận.
+
+> Kiểm thử tranh ô cuối 15/11/2026: locker-last-slot-race.ps1 đã chạy PASS 5/5 lượt HTTP trên Docker local (washgo_main), dùng hai Customer fixture khác nhau và một locker chỉ có một ô. Giữ khóa dòng locker fixture 4 giây để buộc hai request chồng lấn; mỗi lượt đúng một 201 + một 400, DB đúng một đơn Pending/ô Reserved/available_slots=0. Hủy bằng API khôi phục ô Available/available_slots=1. Fixture được dọn theo ID riêng, không sửa đơn/locker thật. Đã nối suite vào Run-ApiSmoke.ps1; chưa chạy lại toàn bộ CI hoặc build Docker. Kết quả này xác nhận tranh ô cuối, không thay thế kiểm thử các vấn đề thanh toán/phân công trong đợt rà soát.
+
+> Plan đồng thời thanh toán/phân công 15/11/2026: [ORDER_PAYMENT_CONCURRENCY_PLAN_20261115.md](docs/ORDER_PAYMENT_CONCURRENCY_PLAN_20261115.md). Giữ phạm vi một Admin; thứ tự A: phiên thanh toán duy nhất/lưu trước cổng, B: đối soát tiền dư, C: replay phân công, D: khóa batch theo OrderId. Đây là kế hoạch, chưa sửa nghiệp vụ hoặc áp migration; không đánh dấu các chặng đã hoàn thành.
+
+## Chống request đồng thời thanh toán/phân công — source 15/11/2026
+
+- [x] A — gom ba mục đích thanh toán vào quản lý phiên chung; lưu reference trước HTTP; reuse phiên, khóa đơn + unique index, giữ Unknown khi timeout/chưa có kết quả cuối.
+- [x] B — ghi receipt cần đối soát và yêu cầu hoàn tiền dư đúng transaction; không đổi Paid đơn khi hoàn khoản dư; loại thu/hoàn tiền dư khỏi doanh thu, hoa hồng, payout và số hoàn tiền giặt.
+- [x] C — khóa operationId trước replay/capacity/order, dùng chung các writer OrderOperation; lưu snapshot kết quả và phát hiện key dùng lại sai nội dung.
+- [x] D — batch khóa Merchant rồi Order theo ID ổn định; giữ thứ tự response và rollback trọn batch khi xung đột.
+- [x] Viết migration PaymentSessionConcurrency + snapshot/Designer; thêm API Admin /payment/reconciliations; viết/nối gateway unit checks và HTTP concurrency suite vào CI.
+- [ ] Chạy test/build Docker, áp migration và nghiệm thu sandbox: chưa chạy theo yêu cầu người dùng. Các dấu tick phía trên chỉ xác nhận đã có source, không phải test PASS.
+
+Bàn giao/hướng dẫn chạy: [PAYMENT_CONCURRENCY_API_REVIEW.md](docs/PAYMENT_CONCURRENCY_API_REVIEW.md). Plan và giới hạn: [ORDER_PAYMENT_CONCURRENCY_PLAN_20261115.md](docs/ORDER_PAYMENT_CONCURRENCY_PLAN_20261115.md). Chưa commit/push. Không tự đổi phí hoặc thêm nghiệp vụ nhiều Admin; chưa thêm adapter query/cancel cổng hoặc tự động hoàn qua gateway.
+
+> Sửa lỗi compile từ lần chạy local của người dùng: thêm using Volo.Abp.Domain.Repositories cho AnyAsync và Volo.Abp.Uow cho overload Begin(isTransactional) trong hai partial PaymentAppService mới. Lần chạy trước dừng ở compile, chưa chạy regression thành công. Chưa chạy lại test/build sau sửa.
+
+> Sửa HTTP 429 trong regression local: limiter auth-sensitive dùng chung IP giữa các suite và mặc định 10/phút. Đã thêm Testing:AuthPermitLimit chỉ có hiệu lực khi ASPNETCORE_ENVIRONMENT=Development; compose test cô lập đặt 1000/phút. Staging/Production vẫn 10/phút, Development bình thường vẫn 10 nếu không cấu hình. Không retry mù request ghi; Call-Api bổ sung method/path (không query/token) khi 429. Chưa chạy lại test/build sau sửa.
+
+> Sửa fixture SQL từ log regression người dùng: PostgreSQL báo column actor_role does not exist trong test callback lặp. Đã đổi truy vấn timeline sang changed_by_type theo WashOrderTimelineEntityTypeConfiguration. Helper Sql bắt stderr trên Windows PowerShell, giữ mã lỗi/caller và không in toàn bộ SQL/DETAIL chứa row. Chưa chạy lại test/build sau sửa.

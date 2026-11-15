@@ -1,4 +1,4 @@
-﻿using WashGo.Application.Features.AuditApplication.Services;
+using WashGo.Application.Features.AuditApplication.Services;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -675,7 +675,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
         {
             if (order.PaymentStatus != PaymentStatus.Paid) return 0m;
             var payments = await _payments.GetListAsync(x => x.OrderId == order.Id &&
-                x.Purpose == PaymentPurpose.Order && x.Status == PaymentTransactionStatus.Succeeded);
+                x.Purpose == PaymentPurpose.Order && !x.RequiresReconciliation && x.Status == PaymentTransactionStatus.Succeeded);
             return payments.Count > 0 ? payments.Sum(x => x.Amount)
                 : order.PaymentMethod == PaymentMethod.Cash ? order.FinalAmount : 0m;
         }
@@ -728,7 +728,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 block = new OrderActionRules.Block("NotPending", "Đơn không đủ điều kiện hủy.");
             if (block == null && order.PaymentStatus == PaymentStatus.Paid && paid <= 0m)
                 block = new OrderActionRules.Block("NoVerifiedPayment", "Không có giao dịch thanh toán gốc hợp lệ để đối chiếu hoàn tiền.");
-            if (block == null && await _refunds.AnyAsync(x => x.OrderId == order.Id && x.Status != RefundRequestStatus.Rejected))
+            if (block == null && await _refunds.AnyAsync(x => x.OrderId == order.Id && !x.IsExcessPayment && x.Status != RefundRequestStatus.Rejected))
                 block = new OrderActionRules.Block("RefundInProgress", "Đơn đã có yêu cầu hoàn tiền; vui lòng xử lý yêu cầu đó trước.");
             return new AdminCancellationQuoteDto
             {
@@ -751,6 +751,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
 
             // Same row lock as the deposit flow: either the customer deposits or the Admin cancels, never both.
             using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            await OrderOperationLocks.AcquireAsync(_orderRepo, command.OperationId);
             await _orderRepo.GetForUpdateAsync(orderId);
             var order = await _orderRepo.GetWithDetailsAsync(orderId);
             if (order == null || order.IsDeleted)
@@ -858,7 +859,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             var paid = await GetVerifiedPaidAmountAsync(order);
             if (order.PaymentStatus == PaymentStatus.Paid && paid <= 0m)
                 return BadRequest<WashOrderDetailDto>("Không có giao dịch thanh toán gốc hợp lệ để đối chiếu hoàn tiền.");
-            if (await _refunds.AnyAsync(x => x.OrderId == order.Id && x.Status != RefundRequestStatus.Rejected))
+            if (await _refunds.AnyAsync(x => x.OrderId == order.Id && !x.IsExcessPayment && x.Status != RefundRequestStatus.Rejected))
                 return BadRequest<WashOrderDetailDto>("Đơn đã có yêu cầu hoàn tiền; vui lòng xử lý yêu cầu đó trước khi hủy.");
 
             var previous = order.Status;
@@ -944,6 +945,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
 
             var scope = await GetOrderScopeAsync();
             using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            await OrderOperationLocks.AcquireAsync(_orderRepo, command.OperationId);
             await _orderRepo.GetForUpdateAsync(orderId);
             var order = await _orderRepo.GetWithDetailsAsync(orderId);
             if (order == null || scope.Role != "Merchant" || !CanAccess(order, scope))
@@ -999,6 +1001,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
 
             var scope = await GetOrderScopeAsync();
             using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            await OrderOperationLocks.AcquireAsync(_orderRepo, command.OperationId);
             await _orderRepo.GetForUpdateAsync(command.OrderId);
             var order = await _orderRepo.GetWithDetailsAsync(command.OrderId);
             if (order == null || !CanAccess(order, scope) || scope.Role == "Customer")
@@ -1050,6 +1053,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 return BadRequest<WashOrderDetailDto>("Ghi chú chuyển kho tối đa 140 ký tự.");
 
             using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            await OrderOperationLocks.AcquireAsync(_orderRepo, command.OperationId);
             await _orderRepo.GetForUpdateAsync(command.OrderId);
             var order = await _orderRepo.GetWithDetailsAsync(command.OrderId);
             if (order == null || !CanAccess(order, scope) || scope.Role is not ("Shipper" or "Admin"))
@@ -1104,6 +1108,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
         {
             var scope = await GetOrderScopeAsync();
             using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            await OrderOperationLocks.AcquireAsync(_orderRepo, command.OperationId);
             await _orderRepo.GetForUpdateAsync(command.OrderId);
             var order = await _orderRepo.GetWithDetailsAsync(command.OrderId);
             if (order == null || scope.Role is not ("Admin" or "Merchant") || !CanAccess(order, scope))
@@ -1356,6 +1361,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 return BadRequest<WashOrderDetailDto>("Chỉ Shipper được phân công hoặc Admin mới có quyền lấy đồ.");
 
             using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            await OrderOperationLocks.AcquireAsync(_orderRepo, command.OperationId);
             await _orderRepo.GetForUpdateAsync(orderId);
             var order = await _orderRepo.GetWithDetailsAsync(orderId);
             if (order != null)
@@ -1455,6 +1461,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 return BadRequest<WashOrderDetailDto>("Chỉ Shipper được phân công hoặc Admin mới có quyền trả đồ.");
 
             using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            await OrderOperationLocks.AcquireAsync(_orderRepo, command.OperationId);
             await _orderRepo.GetForUpdateAsync(orderId);
             var order = await _orderRepo.GetWithDetailsAsync(orderId);
             if (order != null)

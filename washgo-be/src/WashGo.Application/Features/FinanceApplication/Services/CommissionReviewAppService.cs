@@ -48,7 +48,7 @@ namespace WashGo.Application.Features.FinanceApplication.Services
             var q = (await _orderRepo.GetQueryableAsync()).Where(o => !o.IsDeleted && o.MerchantId != null &&
                 (o.CommissionSnapshotSource == "LegacyUnverified" ||
                  o.CommissionRateApplied == null && payments.Any(p => p.OrderId == o.Id && p.Purpose == PaymentPurpose.Order && p.CompletedAt != null &&
-                     (p.Status == PaymentTransactionStatus.Succeeded || p.Status == PaymentTransactionStatus.Refunded))));
+                     (!p.RequiresReconciliation && (p.Status == PaymentTransactionStatus.Succeeded || p.Status == PaymentTransactionStatus.Refunded)))));
             if (merchantId.HasValue) q = q.Where(o => o.MerchantId == merchantId);
             return q;
         }
@@ -74,7 +74,7 @@ namespace WashGo.Application.Features.FinanceApplication.Services
             var rates = (await _merchantRepo.GetListAsync(m => merchantIds.Contains(m.Id))).ToDictionary(m => m.Id, m => m.CommissionRate);
             var pays = await AsyncExecuter.ToListAsync((await _paymentRepo.GetQueryableAsync())
                 .Where(p => ids.Contains(p.OrderId) && p.Purpose == PaymentPurpose.Order && p.CompletedAt != null &&
-                            (p.Status == PaymentTransactionStatus.Succeeded || p.Status == PaymentTransactionStatus.Refunded))
+                            (!p.RequiresReconciliation && (p.Status == PaymentTransactionStatus.Succeeded || p.Status == PaymentTransactionStatus.Refunded)))
                 .Select(p => new { p.OrderId, p.Amount, p.SettlementId }));
             var refundSettled = (await AsyncExecuter.ToListAsync((await _refundRepo.GetQueryableAsync())
                 .Where(r => ids.Contains(r.OrderId) && r.SettlementId != null).Select(r => r.OrderId))).ToHashSet();
@@ -109,8 +109,8 @@ namespace WashGo.Application.Features.FinanceApplication.Services
                 return NotFound<CommissionReviewItemDto>("Không tìm thấy đơn đã phân công Merchant.");
             if (command.ExpectedMissing ? order.CommissionRateApplied != null : order.CommissionRateApplied != command.ExpectedRate)
                 return AdministrativeWriteGuard.Error<CommissionReviewItemDto>(HttpStatusCode.Conflict, "RateChanged", "Tỷ lệ của đơn đã thay đổi kể từ lúc bạn xem; hãy tải lại.");
-            var payments = await _paymentRepo.GetListAsync(p => p.OrderId == orderId && p.Purpose == PaymentPurpose.Order);
-            var refunds = await _refundRepo.GetListAsync(r => r.OrderId == orderId);
+            var payments = await _paymentRepo.GetListAsync(p => p.OrderId == orderId && p.Purpose == PaymentPurpose.Order && !p.RequiresReconciliation);
+            var refunds = await _refundRepo.GetListAsync(r => r.OrderId == orderId && !r.IsExcessPayment);
             // Closed periods keep their numbers: a settled order is corrected through a later adjustment, not here.
             if (payments.Any(p => p.SettlementId != null) || refunds.Any(r => r.SettlementId != null))
                 return AdministrativeWriteGuard.Error<CommissionReviewItemDto>(HttpStatusCode.Conflict, "AlreadySettled", "Đơn đã có khoản nằm trong kỳ đối soát; không sửa tỷ lệ tại đây.");

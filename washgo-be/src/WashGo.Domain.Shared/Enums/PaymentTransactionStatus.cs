@@ -1,4 +1,4 @@
 namespace WashGo.Domain.Shared.Enums
 {
-    public enum PaymentTransactionStatus { Pending = 1, Succeeded = 2, Failed = 3, Refunded = 4 }
+    public enum PaymentTransactionStatus { Pending = 1, Succeeded = 2, Failed = 3, Refunded = 4, RequiresReview = 5 }
 }

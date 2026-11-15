@@ -118,11 +118,11 @@ namespace WashGo.Application.Features.AdminApplication.Services
             async Task<(decimal Laundry, decimal Storage, decimal Cancel, decimal Refunded)> Money(Window w)
             {
                 var sums = await AsyncExecuter.ToListAsync((await _paymentRepo.GetQueryableAsync())
-                    .Where(p => (p.Status == PaymentTransactionStatus.Succeeded || p.Status == PaymentTransactionStatus.Refunded) &&
+                    .Where(p => (!p.RequiresReconciliation && (p.Status == PaymentTransactionStatus.Succeeded || p.Status == PaymentTransactionStatus.Refunded)) &&
                                 p.CompletedAt != null && (w.From == null || p.CompletedAt >= w.From) && (w.To == null || p.CompletedAt <= w.To))
                     .GroupBy(p => p.Purpose).Select(g => new { g.Key, Sum = g.Sum(x => x.Amount) }));
                 var refunded = await AsyncExecuter.SumAsync((await _refundRepo.GetQueryableAsync())
-                    .Where(r => r.Status == RefundRequestStatus.Refunded && r.RefundedAt != null &&
+                    .Where(r => !r.IsExcessPayment && r.Status == RefundRequestStatus.Refunded && r.RefundedAt != null &&
                                 (w.From == null || r.RefundedAt >= w.From) && (w.To == null || r.RefundedAt <= w.To)),
                     r => (decimal?)r.Amount) ?? 0m;
                 decimal Of(PaymentPurpose p) => sums.Where(x => x.Key == p).Sum(x => x.Sum);
@@ -257,7 +257,7 @@ namespace WashGo.Application.Features.AdminApplication.Services
                     (from p in await _paymentRepo.GetQueryableAsync()
                      join o in orders on p.OrderId equals o.Id
                      where o.MerchantId != null && ids.Contains(o.MerchantId.Value) && p.Purpose == PaymentPurpose.Order &&
-                           (p.Status == PaymentTransactionStatus.Succeeded || p.Status == PaymentTransactionStatus.Refunded) &&
+                           (!p.RequiresReconciliation && (p.Status == PaymentTransactionStatus.Succeeded || p.Status == PaymentTransactionStatus.Refunded)) &&
                            p.CompletedAt != null && (w.From == null || p.CompletedAt >= w.From) && (w.To == null || p.CompletedAt <= w.To)
                      select new { MerchantId = o.MerchantId!.Value, p.Amount })
                     .GroupBy(x => x.MerchantId).Select(g => new { g.Key, Sum = g.Sum(x => x.Amount) })))
