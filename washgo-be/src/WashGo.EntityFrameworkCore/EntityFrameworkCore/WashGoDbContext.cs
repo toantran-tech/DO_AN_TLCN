@@ -2,6 +2,7 @@
 using Volo.Abp.Data;
 using Volo.Abp.EntityFrameworkCore;
 using WashGo.Domain.Entities.Policy;
+using WashGo.Domain.Entities.Loyalty;
 using WashGo.Domain.Entities.Identity;
 using WashGo.Domain.Entities.Locker;
 using WashGo.Domain.Entities.Feedback;
@@ -25,6 +26,8 @@ namespace WashGo.EntityFrameworkCore.EntityFrameworkCore
     [ConnectionStringName("Default")]
     public class WashGoDbContext : AbpDbContext<WashGoDbContext>
     {
+        public DbSet<LoyaltyWallet> LoyaltyWallets { get; set; } = null!;
+        public DbSet<LoyaltyEntry> LoyaltyEntries { get; set; } = null!;
         public DbSet<OrderStorageCycle> StorageCycles { get; set; } = null!;
         public DbSet<StorageReturnRequest> StorageReturnRequests { get; set; } = null!;
         public DbSet<ChatConversation> ChatConversations { get; set; } = null!;
@@ -80,6 +83,8 @@ namespace WashGo.EntityFrameworkCore.EntityFrameworkCore
             base.OnModelCreating(builder);
 
             builder.HasDefaultSchema(WashGoDbProperties.Schema);
+            builder.ApplyConfiguration(new LoyaltyWalletEntityTypeConfiguration());
+            builder.ApplyConfiguration(new LoyaltyEntryEntityTypeConfiguration());
             builder.ApplyConfiguration(new ChatConversationEntityTypeConfiguration());
             builder.ApplyConfiguration(new ChatMessageEntityTypeConfiguration());
 

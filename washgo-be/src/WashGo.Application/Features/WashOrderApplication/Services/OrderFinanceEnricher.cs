@@ -53,12 +53,12 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             var txs = await _executer.ToListAsync((await _paymentRepo.GetQueryableAsync())
                 .Where(p => ids.Contains(p.OrderId) && !p.IsDeleted && p.Purpose == PaymentPurpose.Order && p.CompletedAt != null &&
                             (!p.RequiresReconciliation && (p.Status == PaymentTransactionStatus.Succeeded || p.Status == PaymentTransactionStatus.Refunded)))
-                .Select(p => new Tx { OrderId = p.OrderId, Amount = p.Amount, SettlementId = p.SettlementId,
+                .Select(p => new Tx { OrderId = p.OrderId, Amount = p.Amount + (p.LoyaltyApplied ? p.PointsToRedeem : 0), SettlementId = p.SettlementId,
                     Rate = p.FinancialSnapshotBasis != null ? p.CommissionRateSnapshot : null,
                     MerchantId = p.FinancialSnapshotBasis != null ? p.MerchantIdSnapshot : null }));
             txs.AddRange(await _executer.ToListAsync((await _refundRepo.GetQueryableAsync())
                 .Where(r => ids.Contains(r.OrderId) && !r.IsDeleted && !r.IsExcessPayment && r.Status == RefundRequestStatus.Refunded)
-                .Select(r => new Tx { OrderId = r.OrderId, Amount = r.Amount, SettlementId = r.SettlementId, Refund = true,
+                .Select(r => new Tx { OrderId = r.OrderId, Amount = r.Amount + r.PointsAmount, SettlementId = r.SettlementId, Refund = true,
                     Rate = r.FinancialSnapshotBasis != null ? r.CommissionRateSnapshot : null,
                     MerchantId = r.FinancialSnapshotBasis != null ? r.MerchantIdSnapshot : null })));
             var settlementIds = txs.Where(x => x.SettlementId.HasValue).Select(x => x.SettlementId!.Value).Distinct().ToList();

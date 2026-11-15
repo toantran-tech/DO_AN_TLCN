@@ -25,6 +25,7 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Results
         public decimal DiscountAmount { get; set; }
         /// <summary>Tiền giặt sau giảm giá (đã gồm phụ phí vượt cân).</summary>
         public decimal LaundryAmount { get; set; }
+        public long RedeemedPoints { get; set; }
         /// <summary>Các khoản phí đã thu thêm: phí lưu kho/quá hạn, phí hủy.</summary>
         public List<ReceiptLineDto> Fees { get; set; } = [];
         public decimal TotalPaid { get; set; }

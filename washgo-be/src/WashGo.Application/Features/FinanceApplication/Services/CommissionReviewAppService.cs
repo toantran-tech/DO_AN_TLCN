@@ -75,7 +75,7 @@ namespace WashGo.Application.Features.FinanceApplication.Services
             var pays = await AsyncExecuter.ToListAsync((await _paymentRepo.GetQueryableAsync())
                 .Where(p => ids.Contains(p.OrderId) && p.Purpose == PaymentPurpose.Order && p.CompletedAt != null &&
                             (!p.RequiresReconciliation && (p.Status == PaymentTransactionStatus.Succeeded || p.Status == PaymentTransactionStatus.Refunded)))
-                .Select(p => new { p.OrderId, p.Amount, p.SettlementId }));
+                .Select(p => new { p.OrderId, Amount = p.Amount + (p.LoyaltyApplied ? p.PointsToRedeem : 0), p.SettlementId }));
             var refundSettled = (await AsyncExecuter.ToListAsync((await _refundRepo.GetQueryableAsync())
                 .Where(r => ids.Contains(r.OrderId) && r.SettlementId != null).Select(r => r.OrderId))).ToHashSet();
             var assigned = (await AsyncExecuter.ToListAsync((await _timelineRepo.GetQueryableAsync())

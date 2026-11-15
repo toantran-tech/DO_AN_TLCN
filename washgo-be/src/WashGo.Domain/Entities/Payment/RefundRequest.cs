@@ -19,6 +19,9 @@ namespace WashGo.Domain.Entities.Payment
         public decimal? CommissionRateSnapshot { get; set; }
         public string? FinancialSnapshotBasis { get; set; }
         public decimal Amount { get; set; }
+        /// <summary>Cash Amount remains bank refund; these are returned points, never cash.</summary>
+        public long PointsAmount { get; set; }
+        public long RewardPointsReversed { get; set; }
         public string Reason { get; set; } = string.Empty;
         public RefundRequestStatus Status { get; set; } = RefundRequestStatus.Pending;
         public string? ReviewNote { get; set; }

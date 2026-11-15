@@ -17,5 +17,6 @@ namespace WashGo.Application.Contracts.Features.SystemSettingContracts.Services
         Task<BaseResponse<SystemSettingDto>> UpdateSlaAsync(UpdateSlaSettingsCommand command);
         Task<BaseResponse<SystemSettingDto>> UpdateCommissionAsync(UpdateCommissionSettingsCommand command);
         Task<BaseResponse<SystemSettingDto>> UpdatePenaltyAsync(UpdatePenaltySettingsCommand command);
+        Task<BaseResponse<SystemSettingDto>> UpdateLoyaltyAsync(UpdateLoyaltySettingsCommand command);
     }
 }

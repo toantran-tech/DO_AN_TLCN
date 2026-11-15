@@ -19,6 +19,8 @@ $succeeded = $false
 try {
     & dotnet run --project (Join-Path $PSScriptRoot '../smoke/Payments/Payments.csproj') --configuration Release
     if ($LASTEXITCODE -ne 0) { throw 'Payment gateway outcome regression failed.' }
+    & dotnet run --project (Join-Path $PSScriptRoot '../smoke/Loyalty/Loyalty.csproj') --configuration Release
+    if ($LASTEXITCODE -ne 0) { throw 'Loyalty calculation regression failed.' }
     & docker @compose up -d --build --wait --wait-timeout 180
     if ($LASTEXITCODE -ne 0) { throw 'CI Compose failed to start.' }
     $postgres = (& docker @compose ps -q postgres).Trim()
@@ -32,6 +34,12 @@ try {
         Start-Sleep -Seconds 2
     }
     if (!$ready) { throw 'CI Backend did not become ready.' }
+    $loyaltySwagger = Invoke-RestMethod "$baseUrl/swagger/v1/swagger.json" -TimeoutSec 15
+    foreach ($route in @('/customer/loyalty/balance', '/customer/loyalty/history', '/customer/loyalty/quote/{orderId}', '/system-setting/loyalty')) {
+        if (!$loyaltySwagger.paths.PSObject.Properties[$route]) {
+            throw "Loyalty endpoint not registered in Swagger: $route"
+        }
+    }
     # Swagger must send an actual multipart file, not just a Content-Type header.
     $openApi = Invoke-RestMethod "$baseUrl/swagger/v1/swagger.json"
     $openApi | ConvertTo-Json -Depth 100 | Set-Content (Join-Path $results 'swagger.json')
@@ -67,6 +75,8 @@ try {
     }
     & (Join-Path $PSScriptRoot '../smoke/payment-assignment-concurrency.ps1') -BaseUrl $baseUrl -PostgresContainer $postgres -Database washgo_ci
     if (!$?) { throw 'Payment/assignment concurrency regression failed.' }
+    & (Join-Path $PSScriptRoot '../smoke/loyalty-points.ps1') -BaseUrl $baseUrl -PostgresContainer $postgres -Database washgo_ci
+    if (!$?) { throw 'Loyalty wallet/payment/refund regression failed.' }
     $fixtures = & docker exec $postgres psql -U postgres -d washgo_ci -At -c "SELECT count(*) FROM washgo.services WHERE code LIKE 'CATALOG_%';"
     if ($LASTEXITCODE -ne 0 -or "$fixtures".Trim() -ne '0') { throw 'API smoke left fixture services behind.' }
     Write-Output 'PASS: isolated PostgreSQL migrations/seed, real Backend HTTP, catalog visibility, multi-select filters, sorting, validation, pagination and fixture cleanup.'

@@ -349,6 +349,7 @@ namespace WashGo.Application.Features.MerchantReportApplication.Services
             return Success(new MerchantLifetimeFinanceDto
             {
                 GrossLaundryRevenue = totals.Gross, Refunds = totals.Refunds, NetRevenue = totals.Net,
+                PointsFunding = totals.PointsFunding,
                 Commission = totals.Commission, MerchantPayout = totals.Payout, FeesCollected = totals.Fees,
                 PaidOrderCount = totals.PaidOrders, CommissionComplete = totals.CommissionComplete,
                 OrdersWithoutCommissionSnapshot = totals.UncoveredOrders, UncoveredNetAmount = totals.UncoveredAmount,

@@ -38,6 +38,7 @@ namespace WashGo.Application.Features.MerchantReportApplication.Services
         public sealed record Totals(decimal Gross, decimal Refunds, decimal Commission, decimal Fees, int PaidOrders,
             int UncoveredOrders, decimal UncoveredAmount)
         {
+            public decimal PointsFunding { get; init; }
             public decimal Net => Gross - Refunds;
             public decimal Payout => Net - Commission;
             /// <summary>Hoa hồng đã tính đủ: mọi khoản thu/hoàn tiền giặt trong phạm vi đều có tỷ lệ chốt.</summary>
@@ -54,6 +55,7 @@ namespace WashGo.Application.Features.MerchantReportApplication.Services
             public decimal Amount { get; init; }
             public DateTime At { get; init; }
             public decimal? Rate { get; init; }
+            public decimal PointsFunding { get; init; }
         }
 
         private async Task<IQueryable<PayRow>> PaymentsAsync(Guid merchantId, DateTime? from, DateTime? to)
@@ -63,7 +65,7 @@ namespace WashGo.Application.Features.MerchantReportApplication.Services
                     join o in orders on p.OrderId equals o.Id
                     where (!p.RequiresReconciliation && (p.Status == PaymentTransactionStatus.Succeeded || p.Status == PaymentTransactionStatus.Refunded)) &&
                           p.CompletedAt != null && (p.FinancialSnapshotBasis != null ? p.MerchantIdSnapshot : o.MerchantId) == merchantId
-                    select new PayRow { OrderId = o.Id, Purpose = p.Purpose, Amount = p.Amount, At = p.CompletedAt!.Value,
+                    select new PayRow { OrderId = o.Id, Purpose = p.Purpose, Amount = p.Amount + (p.LoyaltyApplied ? p.PointsToRedeem : 0), PointsFunding = p.LoyaltyApplied ? p.PointsToRedeem : 0, At = p.CompletedAt!.Value,
                         Rate = p.FinancialSnapshotBasis != null ? p.CommissionRateSnapshot : o.CommissionRateApplied };
             if (from.HasValue) q = q.Where(x => x.At >= from.Value);
             if (to.HasValue) q = q.Where(x => x.At < to.Value);
@@ -77,7 +79,7 @@ namespace WashGo.Application.Features.MerchantReportApplication.Services
                     join o in orders on r.OrderId equals o.Id
                     where !r.IsExcessPayment && r.Status == RefundRequestStatus.Refunded && r.RefundedAt != null &&
                         (r.FinancialSnapshotBasis != null ? r.MerchantIdSnapshot : o.MerchantId) == merchantId
-                    select new PayRow { OrderId = o.Id, Purpose = PaymentPurpose.Order, Amount = r.Amount, At = r.RefundedAt!.Value,
+                    select new PayRow { OrderId = o.Id, Purpose = PaymentPurpose.Order, Amount = r.Amount + r.PointsAmount, PointsFunding = r.PointsAmount, At = r.RefundedAt!.Value,
                         Rate = r.FinancialSnapshotBasis != null ? r.CommissionRateSnapshot : o.CommissionRateApplied };
             if (from.HasValue) q = q.Where(x => x.At >= from.Value);
             if (to.HasValue) q = q.Where(x => x.At < to.Value);
@@ -101,7 +103,9 @@ namespace WashGo.Application.Features.MerchantReportApplication.Services
                 .Union(refunds.Where(x => x.Rate == null).Select(x => x.OrderId)));
             var uncoveredAmount = (await _executer.SumAsync(laundry.Where(x => x.Rate == null), x => (decimal?)x.Amount) ?? 0m)
                                   - (await _executer.SumAsync(refunds.Where(x => x.Rate == null), x => (decimal?)x.Amount) ?? 0m);
-            return new Totals(gross, refunded, commission, fees, paidOrders, uncoveredIds, uncoveredAmount);
+            var funding = (await _executer.SumAsync(laundry.Select(x => (decimal?)x.PointsFunding)) ?? 0m)
+                - (await _executer.SumAsync(refunds.Select(x => (decimal?)x.PointsFunding)) ?? 0m);
+            return new Totals(gross, refunded, commission, fees, paidOrders, uncoveredIds, uncoveredAmount) { PointsFunding = funding };
         }
 
         /// <summary>Per local (UTC+7) day or hour, grouped in SQL; empty periods are absent.</summary>

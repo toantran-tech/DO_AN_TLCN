@@ -22,6 +22,17 @@ namespace WashGo.Domain.Entities.Payment
         public PaymentPurpose Purpose { get; set; } = PaymentPurpose.Order;
         public PaymentTransactionStatus Status { get; set; } = PaymentTransactionStatus.Pending;
         public decimal Amount { get; set; }
+        /// <summary>Zero for legacy receipts; only version 1 earns/redeems points.</summary>
+        public int LoyaltyVersion { get; set; }
+        public long PointsToRedeem { get; set; }
+        public bool PointsHeld { get; set; }
+        public bool LoyaltyApplied { get; set; }
+        public long PointsEarned { get; set; }
+        public long PointsReturned { get; set; }
+        public long RewardPointsReversed { get; set; }
+        public decimal LoyaltyEarnPercent { get; set; }
+        public decimal LoyaltyMaxUsePercent { get; set; }
+        public decimal LaundryAmount { get; set; }
         public string? PaymentUrl { get; set; }
         public string? FailureReason { get; set; }
         public DateTime? CompletedAt { get; set; }

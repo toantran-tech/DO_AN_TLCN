@@ -14,6 +14,8 @@ namespace WashGo.Application.Contracts.Features.SystemSettingContracts.Results
         public int MerchantReturnSlaHours { get; set; }
         public int FreePickupHours { get; set; }
         public decimal DefaultCommissionRate { get; set; }
+        public decimal LoyaltyEarnPercent { get; set; }
+        public decimal LoyaltyMaxUsePercent { get; set; }
         public decimal OverdueFeeDay1 { get; set; }
         public decimal OverdueFeeDay2 { get; set; }
         public decimal OverdueFeeDay3 { get; set; }

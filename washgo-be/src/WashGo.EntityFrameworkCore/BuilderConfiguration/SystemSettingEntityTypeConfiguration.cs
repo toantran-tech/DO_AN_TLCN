@@ -13,6 +13,8 @@ namespace WashGo.EntityFrameworkCore.BuilderConfiguration
             builder.HasKey(x => x.Id);
             builder.Property(x => x.Id).ValueGeneratedNever();
             builder.Property(x => x.DefaultCommissionRate).HasPrecision(5, 2);
+            builder.Property(x => x.LoyaltyEarnPercent).HasPrecision(5, 2);
+            builder.Property(x => x.LoyaltyMaxUsePercent).HasPrecision(5, 2);
             builder.Property(x => x.OverdueFeeDay1).HasPrecision(18, 2);
             builder.Property(x => x.OverdueFeeDay2).HasPrecision(18, 2);
             builder.Property(x => x.OverdueFeeDay3).HasPrecision(18, 2);

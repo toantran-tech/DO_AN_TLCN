@@ -6,6 +6,7 @@ namespace WashGo.Application.Contracts.Features.MerchantReportContracts.Results
     /// <summary>Báo cáo kinh doanh của Merchant đang đăng nhập; mọi số liệu đọc trong cùng một snapshot.</summary>
     public class MerchantReportDto
     {
+        public string FundingBasis => "Merchant revenue includes WashGo-funded points; not gateway cash receipts.";
         public string Timezone { get; set; } = "Asia/Ho_Chi_Minh";
         public string Currency { get; set; } = "VND";
         public string Period { get; set; } = "month";
@@ -60,6 +61,8 @@ namespace WashGo.Application.Contracts.Features.MerchantReportContracts.Results
     /// <summary>Tổng tài chính toàn lịch sử của Merchant (theo ngày giao dịch), cho hồ sơ cửa hàng.</summary>
     public class MerchantLifetimeFinanceDto
     {
+        public decimal PointsFunding { get; set; }
+        public decimal NetGatewayCash => NetRevenue - PointsFunding;
         public string Currency { get; set; } = "VND";
         public decimal GrossLaundryRevenue { get; set; }
         public decimal Refunds { get; set; }

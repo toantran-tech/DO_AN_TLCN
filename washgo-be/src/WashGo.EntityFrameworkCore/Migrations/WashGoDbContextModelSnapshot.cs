@@ -2407,6 +2407,49 @@ namespace WashGo.EntityFrameworkCore.Migrations
 
             modelBuilder.Entity("WashGo.Domain.Entities.Payment.PaymentTransaction", b =>
                 {
+                    b.Property<int>("LoyaltyVersion")
+                        .HasColumnType("integer")
+                        .HasColumnName("loyalty_version");
+
+                    b.Property<long>("PointsToRedeem")
+                        .HasColumnType("bigint")
+                        .HasColumnName("points_to_redeem");
+
+                    b.Property<bool>("PointsHeld")
+                        .HasColumnType("boolean")
+                        .HasColumnName("points_held");
+
+                    b.Property<bool>("LoyaltyApplied")
+                        .HasColumnType("boolean")
+                        .HasColumnName("loyalty_applied");
+
+                    b.Property<long>("PointsEarned")
+                        .HasColumnType("bigint")
+                        .HasColumnName("points_earned");
+
+                    b.Property<long>("PointsReturned")
+                        .HasColumnType("bigint")
+                        .HasColumnName("points_returned");
+
+                    b.Property<long>("RewardPointsReversed")
+                        .HasColumnType("bigint")
+                        .HasColumnName("reward_points_reversed");
+
+                    b.Property<decimal>("LoyaltyEarnPercent")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)")
+                        .HasColumnName("loyalty_earn_percent");
+
+                    b.Property<decimal>("LoyaltyMaxUsePercent")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)")
+                        .HasColumnName("loyalty_max_use_percent");
+
+                    b.Property<decimal>("LaundryAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("laundry_amount");
+
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid")
                         .HasColumnName("id");
@@ -2568,6 +2611,14 @@ namespace WashGo.EntityFrameworkCore.Migrations
 
             modelBuilder.Entity("WashGo.Domain.Entities.Payment.RefundRequest", b =>
                 {
+                    b.Property<long>("PointsAmount")
+                        .HasColumnType("bigint")
+                        .HasColumnName("points_amount");
+
+                    b.Property<long>("RewardPointsReversed")
+                        .HasColumnType("bigint")
+                        .HasColumnName("reward_points_reversed");
+
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid")
                         .HasColumnName("id");
@@ -3000,6 +3051,16 @@ namespace WashGo.EntityFrameworkCore.Migrations
 
             modelBuilder.Entity("WashGo.Domain.Entities.SystemConfig.SystemSetting", b =>
                 {
+                    b.Property<decimal>("LoyaltyEarnPercent")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)")
+                        .HasColumnName("loyalty_earn_percent");
+
+                    b.Property<decimal>("LoyaltyMaxUsePercent")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)")
+                        .HasColumnName("loyalty_max_use_percent");
+
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid")
                         .HasColumnName("id");
@@ -3097,6 +3158,8 @@ namespace WashGo.EntityFrameworkCore.Migrations
                             CompensationMediumPercent = 70,
                             CompensationSeverePercent = 100,
                             DefaultCommissionRate = 20m,
+                            LoyaltyEarnPercent = 1m,
+                            LoyaltyMaxUsePercent = 20m,
                             DepositWindowMinutes = 30,
                             FreePickupHours = 24,
                             MerchantCollectSlaHours = 4,
@@ -4689,6 +4752,87 @@ namespace WashGo.EntityFrameworkCore.Migrations
                     b.Navigation("Items");
 
                     b.Navigation("Timeline");
+                });
+            modelBuilder.Entity("WashGo.Domain.Entities.Loyalty.LoyaltyWallet", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<long>("NetPoints")
+                        .HasColumnType("bigint")
+                        .HasColumnName("net_points");
+
+                    b.Property<long>("HeldPoints")
+                        .HasColumnType("bigint")
+                        .HasColumnName("held_points");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+                    b.ToTable("loyalty_wallets", "washgo", t => t.HasCheckConstraint("ck_loyalty_held", "held_points >= 0"));
+                });
+
+            modelBuilder.Entity("WashGo.Domain.Entities.Loyalty.LoyaltyEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("customer_id");
+
+                    b.Property<Guid?>("OrderId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("order_id");
+
+                    b.Property<Guid?>("PaymentTransactionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("payment_transaction_id");
+
+                    b.Property<Guid?>("RefundRequestId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("refund_request_id");
+
+                    b.Property<long>("PointsDelta")
+                        .HasColumnType("bigint")
+                        .HasColumnName("points_delta");
+
+                    b.Property<long>("HeldDelta")
+                        .HasColumnType("bigint")
+                        .HasColumnName("held_delta");
+
+                    b.Property<long>("BalanceAfter")
+                        .HasColumnType("bigint")
+                        .HasColumnName("balance_after");
+
+                    b.Property<long>("HeldAfter")
+                        .HasColumnType("bigint")
+                        .HasColumnName("held_after");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("EventKey").IsRequired().HasMaxLength(120).HasColumnType("character varying(120)").HasColumnName("event_key");
+                    b.Property<string>("Kind").IsRequired().HasMaxLength(32).HasColumnType("character varying(32)").HasColumnName("kind");
+                    b.HasKey("Id");
+                    b.HasIndex("EventKey").IsUnique();
+                    b.HasIndex("CustomerId", "CreatedAt", "Id");
+                    b.ToTable("loyalty_entries", "washgo");
+                });
+
+            modelBuilder.Entity("WashGo.Domain.Entities.Loyalty.LoyaltyWallet", b =>
+                {
+                    b.HasOne("WashGo.Domain.Entities.Partner.Customer", null).WithOne().HasForeignKey("WashGo.Domain.Entities.Loyalty.LoyaltyWallet", "Id").OnDelete(DeleteBehavior.Restrict).IsRequired();
+                });
+
+            modelBuilder.Entity("WashGo.Domain.Entities.Loyalty.LoyaltyEntry", b =>
+                {
+                    b.HasOne("WashGo.Domain.Entities.Loyalty.LoyaltyWallet", null).WithMany().HasForeignKey("CustomerId").OnDelete(DeleteBehavior.Restrict).IsRequired();
                 });
 #pragma warning restore 612, 618
         }
