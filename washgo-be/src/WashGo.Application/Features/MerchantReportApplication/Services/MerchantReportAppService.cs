@@ -220,7 +220,7 @@ namespace WashGo.Application.Features.MerchantReportApplication.Services
                 (from p in await _paymentRepo.GetQueryableAsync()
                  join o in allOrders on p.OrderId equals o.Id
                  where p.Purpose == PaymentPurpose.Order && p.CompletedAt != null && p.CompletedAt >= r.From && p.CompletedAt < r.To &&
-                       (p.Status == PaymentTransactionStatus.Succeeded || p.Status == PaymentTransactionStatus.Refunded) &&
+                       (!p.RequiresReconciliation && (p.Status == PaymentTransactionStatus.Succeeded || p.Status == PaymentTransactionStatus.Refunded)) &&
                        (p.FinancialSnapshotBasis != null ? p.MerchantIdSnapshot : o.MerchantId) == merchantId
                  select o.Id).Distinct();
             var items = await _itemRepo.GetQueryableAsync();

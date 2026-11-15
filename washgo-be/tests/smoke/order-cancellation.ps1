@@ -31,7 +31,8 @@ function Pay-CancelFee($Id,$Expected) {
     $payment=(Call-Api Post '/payment/cancellation-fee/create-url' @{orderId="$Id";paymentMethod=2;amount=1} $customer).data
     if($payment.amount -ne $Expected -or $payment.purpose -ne 3){throw 'Cancellation fee trusted client amount or wrong purpose.'}
     if($payment.paymentUrl -notmatch '/payment/mock-checkout'){throw 'Local sandbox required.'}
-    Assert-Status 400 Post '/payment/cancellation-fee/create-url' @{orderId="$Id";paymentMethod=2} $customer
+    $reused=(Call-Api Post '/payment/cancellation-fee/create-url' @{orderId="$Id";paymentMethod=2} $customer).data
+    if($reused.transactionReference -ne $payment.transactionReference){throw 'Cancellation fee retry created a second transaction.'}
     $callback=@{orderId="$Id";transactionReference=$payment.transactionReference;success=$true}
     Assert-Status 403 Post '/payment/callback' $callback $customer
     Call-Api Post '/payment/callback' $callback $admin | Out-Null

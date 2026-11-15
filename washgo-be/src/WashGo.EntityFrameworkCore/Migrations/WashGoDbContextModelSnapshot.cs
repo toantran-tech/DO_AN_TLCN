@@ -2517,6 +2517,38 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("character varying(120)")
                         .HasColumnName("transaction_reference");
 
+                    b.Property<DateTime?>("GatewayVerifiedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("gateway_verified_at");
+
+                    b.Property<bool>("IsActiveSession")
+                        .ValueGeneratedOnAdd()
+                        .HasDefaultValue(false)
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active_session");
+
+                    b.Property<DateTime?>("ReconciledAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("reconciled_at");
+
+                    b.Property<string>("ReconciliationReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("reconciliation_reason");
+
+                    b.Property<bool>("RequiresReconciliation")
+                        .ValueGeneratedOnAdd()
+                        .HasDefaultValue(false)
+                        .HasColumnType("boolean")
+                        .HasColumnName("requires_reconciliation");
+
+                    b.Property<int>("SessionState")
+                        .ValueGeneratedOnAdd()
+                        .HasDefaultValue(0)
+                        .HasColumnType("integer")
+                        .HasColumnName("session_state");
+
+
                     b.HasKey("Id");
 
                     b.HasIndex("OrderId");
@@ -2525,6 +2557,11 @@ namespace WashGo.EntityFrameworkCore.Migrations
 
                     b.HasIndex("TransactionReference")
                         .IsUnique();
+
+                    b.HasIndex("OrderId", "Purpose")
+                        .IsUnique()
+                        .HasDatabaseName("ux_payment_active_session")
+                        .HasFilter("is_active_session = true AND is_deleted = false");
 
                     b.ToTable("payment_transactions", "washgo");
                 });
@@ -2642,6 +2679,13 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("status");
 
+                    b.Property<bool>("IsExcessPayment")
+                        .ValueGeneratedOnAdd()
+                        .HasDefaultValue(false)
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_excess_payment");
+
+
                     b.HasKey("Id");
 
                     b.HasIndex("CustomerId");
@@ -2653,6 +2697,11 @@ namespace WashGo.EntityFrameworkCore.Migrations
                     b.HasIndex("SettlementId");
 
                     b.HasIndex("Status");
+
+                    b.HasIndex("OriginalPaymentTransactionId", "IsExcessPayment")
+                        .IsUnique()
+                        .HasDatabaseName("ux_refund_excess_payment")
+                        .HasFilter("is_excess_payment = true AND is_deleted = false");
 
                     b.ToTable("refund_requests", "washgo");
                 });

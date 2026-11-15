@@ -23,6 +23,7 @@ namespace WashGo.Application.Contracts.Features.PaymentContracts.Services
         Task<BaseResponse<List<RefundRequestDto>>> GetRefundRequestsAsync(bool mineOnly, RefundRequestStatus? status = null);
         Task<BaseResponse<RefundRequestDto>> GetRefundRequestAsync(Guid id);
         Task<PaginatedResult<RefundRequestDto>> FilterRefundRequestsAsync(RefundFilterQuery query);
+        Task<PaginatedResult<PaymentReconciliationDto>> GetReconciliationsAsync(int page, int take, bool includeResolved);
         Task<BaseResponse<RefundRequestDto>> ReviewRefundRequestAsync(Guid id, ReviewRefundRequestCommand command);
         Task<BaseResponse<RefundRequestDto>> ConfirmRefundedAsync(Guid id, ConfirmRefundCommand command);
     }

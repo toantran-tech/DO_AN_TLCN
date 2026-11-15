@@ -17,6 +17,8 @@ $succeeded = $false
 'RUNNING' | Set-Content (Join-Path $results 'api-result.txt')
 
 try {
+    & dotnet run --project (Join-Path $PSScriptRoot '../smoke/Payments/Payments.csproj') --configuration Release
+    if ($LASTEXITCODE -ne 0) { throw 'Payment gateway outcome regression failed.' }
     & docker @compose up -d --build --wait --wait-timeout 180
     if ($LASTEXITCODE -ne 0) { throw 'CI Compose failed to start.' }
     $postgres = (& docker @compose ps -q postgres).Trim()
@@ -57,10 +59,14 @@ try {
     if (!$?) { throw 'Customer service filter smoke failed.' }
     & (Join-Path $PSScriptRoot '../smoke/actual-weight.ps1') -BaseUrl $baseUrl -PostgresContainer $postgres -Database washgo_ci
     if (!$?) { throw 'Order lifecycle/actual-weight smoke failed.' }
+    & (Join-Path $PSScriptRoot '../smoke/locker-last-slot-race.ps1') -BaseUrl $baseUrl -PostgresContainer $postgres -Database washgo_ci
+    if (!$?) { throw 'Last-slot concurrent reservation smoke failed.' }
     foreach ($suite in @('rating-keyword-privacy.ps1', 'review-publishing.ps1', 'storage-lifecycle.ps1', 'customer-locker-slots.ps1', 'customer-public-reviews-notifications.ps1')) {
         & (Join-Path $PSScriptRoot "../smoke/$suite") -BaseUrl $baseUrl -PostgresContainer $postgres -Database washgo_ci
         if (!$?) { throw "API regression failed: $suite" }
     }
+    & (Join-Path $PSScriptRoot '../smoke/payment-assignment-concurrency.ps1') -BaseUrl $baseUrl -PostgresContainer $postgres -Database washgo_ci
+    if (!$?) { throw 'Payment/assignment concurrency regression failed.' }
     $fixtures = & docker exec $postgres psql -U postgres -d washgo_ci -At -c "SELECT count(*) FROM washgo.services WHERE code LIKE 'CATALOG_%';"
     if ($LASTEXITCODE -ne 0 -or "$fixtures".Trim() -ne '0') { throw 'API smoke left fixture services behind.' }
     Write-Output 'PASS: isolated PostgreSQL migrations/seed, real Backend HTTP, catalog visibility, multi-select filters, sorting, validation, pagination and fixture cleanup.'

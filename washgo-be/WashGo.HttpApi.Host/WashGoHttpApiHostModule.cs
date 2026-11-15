@@ -154,7 +154,11 @@ namespace WashGo.HttpApi.Host
                         httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
                         _ => new FixedWindowRateLimiterOptions
                         {
-                            PermitLimit = 10,
+                            // Isolated regression logs in many seed users from one IP.
+                            // Only Development may opt in; Staging/Production stay at 10/min.
+                            PermitLimit = string.Equals(configuration["ASPNETCORE_ENVIRONMENT"], "Development", StringComparison.OrdinalIgnoreCase)
+                                ? Math.Clamp(configuration.GetValue("Testing:AuthPermitLimit", 10), 10, 1000)
+                                : 10,
                             Window = TimeSpan.FromMinutes(1),
                             QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
                             QueueLimit = 0,

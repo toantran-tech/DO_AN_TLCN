@@ -20,6 +20,13 @@ namespace WashGo.EntityFrameworkCore.BuilderConfiguration
             builder.Property<NpgsqlTsVector>("SearchVector");
             builder.Property(x => x.TransactionReference).HasMaxLength(120).IsRequired();
             builder.HasIndex(x => x.TransactionReference).IsUnique();
+            builder.Property(x => x.SessionState).HasDefaultValue(PaymentSessionState.Legacy);
+            builder.Property(x => x.IsActiveSession).HasDefaultValue(false);
+            builder.Property(x => x.RequiresReconciliation).HasDefaultValue(false);
+            builder.Property(x => x.ReconciliationReason).HasMaxLength(500);
+            builder.HasIndex(x => new { x.OrderId, x.Purpose }).IsUnique()
+                .HasDatabaseName("ux_payment_active_session")
+                .HasFilter("is_active_session = true AND is_deleted = false");
             builder.Property(x => x.ProviderTransactionId).HasMaxLength(120);
             builder.Property(x => x.Amount).HasPrecision(18, 2);
             builder.Property(x => x.CommissionRateSnapshot).HasPrecision(5, 2);

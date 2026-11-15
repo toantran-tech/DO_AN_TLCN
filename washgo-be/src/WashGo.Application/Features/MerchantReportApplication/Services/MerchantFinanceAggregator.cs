@@ -61,7 +61,7 @@ namespace WashGo.Application.Features.MerchantReportApplication.Services
             var orders = await _orderRepo.GetQueryableAsync();
             var q = from p in await _paymentRepo.GetQueryableAsync()
                     join o in orders on p.OrderId equals o.Id
-                    where (p.Status == PaymentTransactionStatus.Succeeded || p.Status == PaymentTransactionStatus.Refunded) &&
+                    where (!p.RequiresReconciliation && (p.Status == PaymentTransactionStatus.Succeeded || p.Status == PaymentTransactionStatus.Refunded)) &&
                           p.CompletedAt != null && (p.FinancialSnapshotBasis != null ? p.MerchantIdSnapshot : o.MerchantId) == merchantId
                     select new PayRow { OrderId = o.Id, Purpose = p.Purpose, Amount = p.Amount, At = p.CompletedAt!.Value,
                         Rate = p.FinancialSnapshotBasis != null ? p.CommissionRateSnapshot : o.CommissionRateApplied };
@@ -75,7 +75,7 @@ namespace WashGo.Application.Features.MerchantReportApplication.Services
             var orders = await _orderRepo.GetQueryableAsync();
             var q = from r in await _refundRepo.GetQueryableAsync()
                     join o in orders on r.OrderId equals o.Id
-                    where r.Status == RefundRequestStatus.Refunded && r.RefundedAt != null &&
+                    where !r.IsExcessPayment && r.Status == RefundRequestStatus.Refunded && r.RefundedAt != null &&
                         (r.FinancialSnapshotBasis != null ? r.MerchantIdSnapshot : o.MerchantId) == merchantId
                     select new PayRow { OrderId = o.Id, Purpose = PaymentPurpose.Order, Amount = r.Amount, At = r.RefundedAt!.Value,
                         Rate = r.FinancialSnapshotBasis != null ? r.CommissionRateSnapshot : o.CommissionRateApplied };
