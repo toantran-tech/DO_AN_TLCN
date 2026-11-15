@@ -64,8 +64,8 @@ namespace WashGo.Application.Features.FinanceApplication.Services
             _notifications = notifications;
         }
 
-        private sealed record PaymentRow(Guid Id, Guid OrderId, Guid? MerchantId, PaymentPurpose Purpose, decimal Amount, DateTime CompletedAt, decimal? CommissionRateApplied);
-        private sealed record RefundRow(Guid Id, Guid OrderId, Guid? MerchantId, decimal Amount, DateTime RefundedAt, decimal? CommissionRateApplied);
+        private sealed record PaymentRow(Guid Id, Guid OrderId, Guid? MerchantId, PaymentPurpose Purpose, decimal Amount, DateTime CompletedAt, decimal? CommissionRateApplied) { public decimal PointsFunding { get; init; } }
+        private sealed record RefundRow(Guid Id, Guid OrderId, Guid? MerchantId, decimal Amount, DateTime RefundedAt, decimal? CommissionRateApplied) { public decimal PointsFunding { get; init; } }
 
         private static (DateTime From, DateTime To, string? Error) Period(long? fromDate, long? toDate)
         {
@@ -80,7 +80,7 @@ namespace WashGo.Application.Features.FinanceApplication.Services
             return (from, to, null);
         }
 
-        private async Task<List<PaymentRow>> PaymentsAsync(DateTime periodFrom, DateTime periodTo, Guid? merchantId, bool unsettledOnly = false)
+        private async Task<List<PaymentRow>> PaymentsAsync(DateTime periodFrom, DateTime periodTo, Guid? merchantId, bool unsettledOnly = false, bool cashOnly = false)
         {
             var payments = await _paymentRepo.GetQueryableAsync();
             var orders = await _orderRepo.GetQueryableAsync();
@@ -89,14 +89,14 @@ namespace WashGo.Application.Features.FinanceApplication.Services
                         where !p.IsDeleted && (!p.RequiresReconciliation && (p.Status == PaymentTransactionStatus.Succeeded || p.Status == PaymentTransactionStatus.Refunded))
                               && p.CompletedAt != null && (unsettledOnly ? p.SettlementId == null : p.CompletedAt >= periodFrom) && p.CompletedAt <= periodTo
                               && (merchantId == null || (p.FinancialSnapshotBasis != null ? p.MerchantIdSnapshot : o.MerchantId) == merchantId)
-                        select new PaymentRow(p.Id, o.Id, p.FinancialSnapshotBasis != null ? p.MerchantIdSnapshot : o.MerchantId, p.Purpose, p.Amount, p.CompletedAt!.Value,
-                            p.FinancialSnapshotBasis != null ? p.CommissionRateSnapshot : o.CommissionRateApplied);
+                        select new PaymentRow(p.Id, o.Id, p.FinancialSnapshotBasis != null ? p.MerchantIdSnapshot : o.MerchantId, p.Purpose, p.Amount + (cashOnly || !p.LoyaltyApplied ? 0 : p.PointsToRedeem), p.CompletedAt!.Value,
+                            p.FinancialSnapshotBasis != null ? p.CommissionRateSnapshot : o.CommissionRateApplied) { PointsFunding = p.LoyaltyApplied ? p.PointsToRedeem : 0 };
             var rows = await AsyncExecuter.ToListAsync(query.Take(FinancialReportLimitException.MaximumSourceRows + 1));
             if (rows.Count > FinancialReportLimitException.MaximumSourceRows) throw new FinancialReportLimitException();
             return rows;
         }
 
-        private async Task<List<RefundRow>> RefundsAsync(DateTime periodFrom, DateTime periodTo, Guid? merchantId, bool unsettledOnly = false)
+        private async Task<List<RefundRow>> RefundsAsync(DateTime periodFrom, DateTime periodTo, Guid? merchantId, bool unsettledOnly = false, bool cashOnly = false)
         {
             var refunds = await _refundRepo.GetQueryableAsync();
             var orders = await _orderRepo.GetQueryableAsync();
@@ -105,8 +105,8 @@ namespace WashGo.Application.Features.FinanceApplication.Services
                         where !r.IsDeleted && !r.IsExcessPayment && r.Status == RefundRequestStatus.Refunded && r.RefundedAt != null
                               && (unsettledOnly ? r.SettlementId == null : r.RefundedAt >= periodFrom) && r.RefundedAt <= periodTo
                               && (merchantId == null || (r.FinancialSnapshotBasis != null ? r.MerchantIdSnapshot : o.MerchantId) == merchantId)
-                        select new RefundRow(r.Id, o.Id, r.FinancialSnapshotBasis != null ? r.MerchantIdSnapshot : o.MerchantId, r.Amount, r.RefundedAt!.Value,
-                            r.FinancialSnapshotBasis != null ? r.CommissionRateSnapshot : o.CommissionRateApplied);
+                        select new RefundRow(r.Id, o.Id, r.FinancialSnapshotBasis != null ? r.MerchantIdSnapshot : o.MerchantId, r.Amount + (cashOnly ? 0 : r.PointsAmount), r.RefundedAt!.Value,
+                            r.FinancialSnapshotBasis != null ? r.CommissionRateSnapshot : o.CommissionRateApplied) { PointsFunding = r.PointsAmount };
             var rows = await AsyncExecuter.ToListAsync(query.Take(FinancialReportLimitException.MaximumSourceRows + 1));
             if (rows.Count > FinancialReportLimitException.MaximumSourceRows) throw new FinancialReportLimitException();
             return rows;
@@ -132,8 +132,8 @@ namespace WashGo.Application.Features.FinanceApplication.Services
             if (query.AsOf is < 0 or > 253402300799) return BadRequest<RevenueReportDto>("asOf không hợp lệ.");
             if (query.AsOf is > 0 && DateTimeOffset.FromUnixTimeSeconds(query.AsOf.Value).UtcDateTime < to)
                 to = DateTimeOffset.FromUnixTimeSeconds(query.AsOf.Value).UtcDateTime;
-            var payments = await PaymentsAsync(from, to, query.MerchantId);
-            var refunds = await RefundsAsync(from, to, query.MerchantId);
+            var payments = await PaymentsAsync(from, to, query.MerchantId, cashOnly: true);
+            var refunds = await RefundsAsync(from, to, query.MerchantId, cashOnly: true);
             var merchants = await MerchantsAsync(payments.Select(x => x.MerchantId).Concat(refunds.Select(x => x.MerchantId)));
 
             var laundryOrderIds = payments.Where(x => x.Purpose == PaymentPurpose.Order).Select(x => x.OrderId).Distinct().ToList();
@@ -145,6 +145,7 @@ namespace WashGo.Application.Features.FinanceApplication.Services
                 GeneratedAt = DateTime.UtcNow,
                 FromDate = from,
                 ToDate = to,
+                PointsFunding = payments.Sum(x => x.PointsFunding) - refunds.Sum(x => x.PointsFunding),
                 LaundryRevenue = payments.Where(x => x.Purpose == PaymentPurpose.Order).Sum(x => x.Amount),
                 StorageFeeRevenue = payments.Where(x => x.Purpose == PaymentPurpose.OverdueStorageFee).Sum(x => x.Amount),
                 CancellationFeeRevenue = payments.Where(x => x.Purpose == PaymentPurpose.CancellationFee).Sum(x => x.Amount),
@@ -273,6 +274,7 @@ namespace WashGo.Application.Features.FinanceApplication.Services
                 return new MerchantCommissionDto
                 {
                     MerchantId = merchant.Id,
+                    PointsFunding = mPayments.Sum(x => x.PointsFunding) - mRefunds.Sum(x => x.PointsFunding),
                     MerchantName = merchant.BusinessName,
                     PaidOrderCount = mPayments.Select(x => x.OrderId).Distinct().Count(),
                     GrossRevenue = gross,
@@ -303,6 +305,7 @@ namespace WashGo.Application.Features.FinanceApplication.Services
                 Items = rows.Skip((page - 1) * take).Take(take).ToList(),
                 GrossRevenue = rows.Sum(x => x.GrossRevenue), RefundedAmount = rows.Sum(x => x.RefundedAmount), NetRevenue = rows.Sum(x => x.NetRevenue),
                 CommissionAmount = rows.Sum(x => x.CommissionAmount), PayoutAmount = rows.Sum(x => x.PayoutAmount),
+                PointsFunding = rows.Sum(x => x.PointsFunding),
                 OrdersWithoutCommissionSnapshot = rows.Sum(x => x.OrdersWithoutCommissionSnapshot),
                 CommissionComplete = rows.All(x => x.CommissionComplete)
             });
@@ -345,6 +348,7 @@ namespace WashGo.Application.Features.FinanceApplication.Services
                 CommissionAmount = summary.CommissionAmount, PayoutAmount = summary.PayoutAmount
             }, true);
             // Derive the payable totals from the exact source IDs frozen in the breakdown, never a second live query.
+            summary.PointsFunding = breakdown.Lines.Sum(x => x.PointsFunding);
             summary.GrossRevenue = breakdown.Lines.Sum(x => x.Collected);
             summary.RefundedAmount = breakdown.Lines.Sum(x => x.Refunded);
             summary.NetRevenue = summary.GrossRevenue - summary.RefundedAmount;
@@ -548,6 +552,7 @@ namespace WashGo.Application.Features.FinanceApplication.Services
                 return new SettlementOrderLineDto
                 {
                     OrderId = oid, OrderCode = codes.GetValueOrDefault(oid, string.Empty), Collected = collected, Refunded = refunded,
+                    PointsFunding = oPays.Sum(x => x.PointsFunding) - oRefs.Sum(x => x.PointsFunding),
                     PaymentTransactionIds = payments.Where(x => x.OrderId == oid).Select(x => x.Id).OrderBy(x => x).ToList(),
                     RefundRequestIds = refunds.Where(x => x.OrderId == oid).Select(x => x.Id).OrderBy(x => x).ToList(),
                     CommissionRate = rate, Commission = commission, Payout = commission.HasValue ? collected - refunded - commission.Value : null

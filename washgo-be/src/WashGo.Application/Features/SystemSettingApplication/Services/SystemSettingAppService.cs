@@ -96,6 +96,19 @@ namespace WashGo.Application.Features.SystemSettingApplication.Services
             }, "Cấu hình thành công!", c, "Penalty");
         }
 
+        public Task<BaseResponse<SystemSettingDto>> UpdateLoyaltyAsync(UpdateLoyaltySettingsCommand command)
+        {
+            // Keep a positive gateway payable amount; full points checkout is outside this release.
+            if (command.EarnPercent is < 0 or > 100 || command.MaxUsePercent is < 0 or > 99 ||
+                decimal.Round(command.EarnPercent, 2) != command.EarnPercent || decimal.Round(command.MaxUsePercent, 2) != command.MaxUsePercent)
+                return Task.FromResult(Invalid(command, "Tỷ lệ tích từ 0–100%, dùng tối đa từ 0–99%, tối đa hai chữ số lẻ."));
+            return SaveAsync(s =>
+            {
+                s.LoyaltyEarnPercent = command.EarnPercent;
+                s.LoyaltyMaxUsePercent = command.MaxUsePercent;
+            }, "Đã cập nhật chính sách điểm cho phiên thanh toán mới.", command, "Loyalty");
+        }
+
         private async Task<BaseResponse<SystemSettingDto>> SaveAsync(Action<SystemSetting> apply, string message, SettingWriteCommand command, string group)
         {
             using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
@@ -152,6 +165,8 @@ namespace WashGo.Application.Features.SystemSettingApplication.Services
             MerchantReturnSlaHours = s.MerchantReturnSlaHours,
             FreePickupHours = s.FreePickupHours,
             DefaultCommissionRate = s.DefaultCommissionRate,
+            LoyaltyEarnPercent = s.LoyaltyEarnPercent,
+            LoyaltyMaxUsePercent = s.LoyaltyMaxUsePercent,
             OverdueFeeDay1 = s.OverdueFeeDay1,
             OverdueFeeDay2 = s.OverdueFeeDay2,
             OverdueFeeDay3 = s.OverdueFeeDay3,

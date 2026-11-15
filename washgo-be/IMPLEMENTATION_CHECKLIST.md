@@ -13,6 +13,19 @@
 
 # Checklist hoàn thiện Backend WashGo
 
+## Điểm thưởng Customer — 15/11/2026
+
+- [x] Quy tắc được duyệt: tích 1%, 1 điểm=1đ, dùng tối đa 20%, voucher trước; WashGo chịu giảm điểm, hoàn theo tỷ lệ sau phí hủy.
+- [x] Source ví/sổ điểm và giữ/tiêu/cộng/hoàn/thu hồi/nợ điểm; unique event và khóa ví trong transaction payment/refund.
+- [x] API balance/history/quote, pointsToRedeem trên tạo URL; cấu hình Admin có version/operationId, snapshot theo phiên.
+- [x] Báo cáo/đối soát Merchant gồm tài trợ điểm; báo cáo tiền cổng giữ tiền thật, hoàn dư không có điểm; biên lai có dòng điểm riêng.
+- [x] Migration 20261115210000_AddLoyaltyPoints + Designer/snapshot, bảo toàn điểm legacy; viết test công thức/HTTP và nối Run-ApiSmoke.
+- [x] Kiểm tra biên dịch source; [tài liệu bàn giao/quy tắc](docs/LOYALTY_POINTS_API_REVIEW.md), [plan](docs/ADMIN_CATALOG_AND_LOYALTY_PLAN_20261115.md) cập nhật.
+- [ ] Chạy CI nghiệm thu, backup/áp migration, build Docker/deploy và kiểm tra sandbox. Chưa chạy tests hoặc thao tác DB đợt này.
+- [ ] Đồng bộ bản Word ngoài repo sau khi duyệt tài liệu bổ sung; đợt này cập nhật đặc tả dạng Markdown trong repo.
+
+API danh mục Admin: tạm hoãn theo yêu cầu người dùng, không nằm trong phạm vi điểm thưởng.
+
 ## Staging Render/Neon — chuyển DB 14/11/2026
 
 - [x] Restore backup_toan_new.sql (custom archive) do người dùng cung cấp vào Neon neondb đã xác nhận trống; transaction, no-owner/no-privileges, có backup đích trước restore. Không sửa DB local.

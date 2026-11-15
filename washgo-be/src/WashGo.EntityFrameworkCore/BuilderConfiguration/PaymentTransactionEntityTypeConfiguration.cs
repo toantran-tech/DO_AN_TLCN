@@ -29,6 +29,9 @@ namespace WashGo.EntityFrameworkCore.BuilderConfiguration
                 .HasFilter("is_active_session = true AND is_deleted = false");
             builder.Property(x => x.ProviderTransactionId).HasMaxLength(120);
             builder.Property(x => x.Amount).HasPrecision(18, 2);
+            builder.Property(x => x.LaundryAmount).HasPrecision(18, 2);
+            builder.Property(x => x.LoyaltyEarnPercent).HasPrecision(5, 2);
+            builder.Property(x => x.LoyaltyMaxUsePercent).HasPrecision(5, 2);
             builder.Property(x => x.CommissionRateSnapshot).HasPrecision(5, 2);
             builder.Property(x => x.FinancialSnapshotBasis).HasMaxLength(40);
             builder.Property(x => x.Purpose)

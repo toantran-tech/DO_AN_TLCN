@@ -13,6 +13,7 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Results
         public int FeePercent { get; set; }
         public decimal FeeAmount { get; set; }
         public decimal RefundAmount { get; set; }
+        public long RefundPoints { get; set; }
         public decimal FeeOutstanding { get; set; }
     }
 }

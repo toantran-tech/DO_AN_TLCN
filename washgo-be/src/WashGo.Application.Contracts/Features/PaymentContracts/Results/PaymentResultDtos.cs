@@ -9,6 +9,10 @@ namespace WashGo.Application.Contracts.Features.PaymentContracts.Results
         public Guid OrderId { get; set; }
         public string OrderCode { get; set; } = string.Empty;
         public decimal Amount { get; set; }
+        public decimal LaundryAmount { get; set; }
+        public long PointsToRedeem { get; set; }
+        public long PointsEarned { get; set; }
+        public bool PointsHeld { get; set; }
         public PaymentMethod PaymentMethod { get; set; }
         public PaymentStatus PaymentStatus { get; set; }
         public string TransactionReference { get; set; } = string.Empty;

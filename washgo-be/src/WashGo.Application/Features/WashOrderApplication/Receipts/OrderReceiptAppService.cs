@@ -126,6 +126,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Receipts
                 PromotionCode = order.PromotionCode,
                 DiscountAmount = order.DiscountAmount,
                 LaundryAmount = laundryPaid,
+                RedeemedPoints = payments.Where(x => x.Purpose == PaymentPurpose.Order && x.LoyaltyApplied).Sum(x => x.PointsToRedeem),
                 Note = ReceiptNote,
                 Payments = payments.Select(x => new ReceiptPaymentDto
                 {

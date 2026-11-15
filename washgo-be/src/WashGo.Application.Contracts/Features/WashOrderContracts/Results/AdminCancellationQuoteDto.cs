@@ -22,6 +22,7 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Results
         /// <summary>Tiền đã thu được xác minh qua giao dịch.</summary>
         public decimal PaidAmount { get; set; }
         public decimal RefundAmount { get; set; }
+        public long RefundPoints { get; set; }
         public decimal FeeOutstanding { get; set; }
     }
 }

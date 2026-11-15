@@ -40,7 +40,7 @@ using System.Net;
 
 namespace WashGo.Application.Features.WashOrderApplication.Services
 {
-    public class WashOrderAppService : WashGoAppService, IWashOrderAppService
+    public partial class WashOrderAppService : WashGoAppService, IWashOrderAppService
     {
         private readonly IWashOrderRepository _orderRepo;
         private readonly ILockerRepository _lockerRepo;
@@ -676,7 +676,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             if (order.PaymentStatus != PaymentStatus.Paid) return 0m;
             var payments = await _payments.GetListAsync(x => x.OrderId == order.Id &&
                 x.Purpose == PaymentPurpose.Order && !x.RequiresReconciliation && x.Status == PaymentTransactionStatus.Succeeded);
-            return payments.Count > 0 ? payments.Sum(x => x.Amount)
+            return payments.Count > 0 ? payments.Sum(x => x.Amount + (x.LoyaltyApplied ? x.PointsToRedeem : 0))
                 : order.PaymentMethod == PaymentMethod.Cash ? order.FinalAmount : 0m;
         }
 
@@ -696,13 +696,15 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 // Show the percentage actually charged, even if the configured rates changed later.
                 percent = basis > 0m ? (int)decimal.Round(order.CancelFeeAmount * 100m / basis, 0, MidpointRounding.AwayFromZero) : 0;
             }
+            var allocation = await CancellationAllocationAsync(order, order.Status == WashOrderStatus.Cancelled ? order.CancelFeeAmount : fee);
             return Success(new CancellationQuoteDto
             {
                 OrderId = order.Id, Status = order.Status, CanCancel = allowed,
                 Reason = allowed ? null : order.Status == WashOrderStatus.Cancelled ? "Đơn đã được hủy; hiển thị phí đã chốt." : "Đơn không đủ điều kiện hủy hoặc không có thanh toán gốc hợp lệ để đối chiếu.",
                 BasisAmount = basis, FeePercent = percent,
                 FeeAmount = order.Status == WashOrderStatus.Cancelled ? order.CancelFeeAmount : fee,
-                RefundAmount = order.Status == WashOrderStatus.Cancelled ? order.CancellationRefundAmount : Math.Max(0m, paid - fee),
+                RefundAmount = order.Status == WashOrderStatus.Cancelled ? order.CancellationRefundAmount : allocation.Cash,
+                RefundPoints = allocation.Points,
                 FeeOutstanding = order.Status == WashOrderStatus.Cancelled
                     ? Math.Max(0m, order.CancelFeeAmount - order.CancelFeePaidAmount) : Math.Max(0m, fee - paid)
             }, "Báo phí chỉ là ước tính tại thời điểm xem; hệ thống tính lại khi xác nhận hủy.");
@@ -730,13 +732,14 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 block = new OrderActionRules.Block("NoVerifiedPayment", "Không có giao dịch thanh toán gốc hợp lệ để đối chiếu hoàn tiền.");
             if (block == null && await _refunds.AnyAsync(x => x.OrderId == order.Id && !x.IsExcessPayment && x.Status != RefundRequestStatus.Rejected))
                 block = new OrderActionRules.Block("RefundInProgress", "Đơn đã có yêu cầu hoàn tiền; vui lòng xử lý yêu cầu đó trước.");
+            var allocation = await CancellationAllocationAsync(order, fee);
             return new AdminCancellationQuoteDto
             {
                 OrderId = order.Id, Status = order.Status, Revision = order.Revision,
                 CanCancel = block == null, ReasonCode = block?.Code, Reason = block?.Message,
                 DepositDeadline = OrderDepositRules.DeadlineOf(order, settings.DepositWindowMinutes), ServerNow = now,
                 BasisAmount = basis, FeePercent = percent, FeeAmount = fee, PaidAmount = paid,
-                RefundAmount = Math.Max(0m, paid - fee), FeeOutstanding = Math.Max(0m, fee - paid)
+                RefundAmount = allocation.Cash, RefundPoints = allocation.Points, FeeOutstanding = Math.Max(0m, fee - paid)
             };
         }
 
@@ -796,11 +799,14 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             order.CancelFeeAmount = quote.FeeAmount;
             order.CancelFeePaidAmount = Math.Min(quote.FeeAmount, quote.PaidAmount);
             order.CancellationRefundAmount = quote.RefundAmount;
-            if (order.CancellationRefundAmount > 0m)
+            var adminRefund = await CancellationAllocationAsync(order, quote.FeeAmount);
+            order.CancellationRefundAmount = adminRefund.Cash;
+            if (order.CancellationRefundAmount > 0m || adminRefund.Points > 0)
             {
                 await _refunds.InsertAsync(new RefundRequest
                 {
                     OrderId = order.Id, CustomerId = order.CustomerId, Amount = order.CancellationRefundAmount,
+                    PointsAmount = adminRefund.Points, OriginalPaymentTransactionId = adminRefund.PaymentId,
                     Reason = $"Hoàn tiền sau khi Admin hủy đơn quá hạn gửi đồ; phí {quote.FeePercent}%. {reason}",
                     Status = RefundRequestStatus.Pending
                 }, autoSave: true);
@@ -893,6 +899,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             order.CancelFeeAmount = fee;
             order.CancelFeePaidAmount = Math.Min(fee, paid);
             order.CancellationRefundAmount = Math.Max(0m, paid - fee);
+            var cancellationRefund = await CancellationAllocationAsync(order, fee);
+            order.CancellationRefundAmount = cancellationRefund.Cash;
             order.AssignedTaskType = null;
             order.ShipperTaskPinCode = null;
             order.ShipperTaskQrString = null;
@@ -900,12 +908,13 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             order.TaskPinLockoutUntil = null;
             order.PickupSessionTokenHash = null;
             order.PickupSessionExpiresAt = null;
-            if (order.CancellationRefundAmount > 0m)
+            if (order.CancellationRefundAmount > 0m || cancellationRefund.Points > 0)
             {
                 await _refunds.InsertAsync(new RefundRequest
                 {
                     OrderId = order.Id, CustomerId = order.CustomerId,
                     Amount = order.CancellationRefundAmount,
+                    PointsAmount = cancellationRefund.Points, OriginalPaymentTransactionId = cancellationRefund.PaymentId,
                     Reason = $"Hoàn tiền sau hủy đơn; phí {percent}%. {reason}",
                     Status = RefundRequestStatus.Pending
                 }, autoSave: true);

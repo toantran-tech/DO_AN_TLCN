@@ -18,6 +18,8 @@ namespace WashGo.Application.Contracts.Features.FinanceContracts.Results
     }
     public class RevenueReportDto
     {
+        /// <summary>Giảm bằng điểm ròng do WashGo tài trợ; không thuộc TotalRevenue tiền thật.</summary>
+        public decimal PointsFunding { get; set; }
         public DateTime GeneratedAt { get; set; }
         public string TimeZone => "Asia/Ho_Chi_Minh";
         public string Currency => "VND";
@@ -68,6 +70,9 @@ namespace WashGo.Application.Contracts.Features.FinanceContracts.Results
 
     public class MerchantCommissionDto
     {
+        public decimal PointsFunding { get; set; }
+        public decimal PlatformCommissionAfterPoints => CommissionAmount - PointsFunding;
+        public string FundingBasis => "Merchant gross includes WashGo-funded points; gateway cash is reported separately in revenue.";
         public string CommissionBasis => "Per transaction at its own locked rate, rounded to whole VND half away from zero (CommissionMath); refunds reverse commission in their own period.";
         public string DisplayRateBasis => "commissionRate is the current Merchant rate; line snapshots determine money.";
         public Guid MerchantId { get; set; }
@@ -92,6 +97,8 @@ namespace WashGo.Application.Contracts.Features.FinanceContracts.Results
     /// <summary>Chi tiết một kỳ đối soát theo đơn: thu, hoàn, tỷ lệ chốt, hoa hồng, thực nhận.</summary>
     public class SettlementOrderLineDto
     {
+        public decimal PointsFunding { get; set; }
+        public decimal NetCash => Net - PointsFunding;
         public List<Guid> PaymentTransactionIds { get; set; } = [];
         public List<Guid> RefundRequestIds { get; set; } = [];
         public Guid OrderId { get; set; }
@@ -132,6 +139,7 @@ namespace WashGo.Application.Contracts.Features.FinanceContracts.Results
 
     public class SettlementDto
     {
+        public string FundingBasis => "GrossRevenue/RefundedAmount include WashGo-funded points; see frozen breakdown lines for PointsFunding and NetCash.";
         public bool CanConfirmPaid => Status == SettlementStatus.Pending && PayoutAmount > 0;
         public string Version { get; set; } = string.Empty;
         public Guid Id { get; set; }
@@ -164,6 +172,8 @@ namespace WashGo.Application.Contracts.Features.FinanceContracts.Results
     /// <summary>Hoa hồng phân trang: totals luôn là tổng toàn phạm vi kỳ, không phụ thuộc trang.</summary>
     public class CommissionPageDto
     {
+        public decimal PointsFunding { get; set; }
+        public decimal PlatformCommissionAfterPoints => CommissionAmount - PointsFunding;
         public int Page { get; set; }
         public int Take { get; set; }
         public int Total { get; set; }
