@@ -23,6 +23,8 @@ public class RefundRequestDto
     public decimal? OriginalAmount { get; set; }
     public decimal? RemainingRefundableAmount { get; set; }
     public decimal Amount { get; set; }
+    public long PointsAmount { get; set; }
+    public long RewardPointsReversed { get; set; }
     public string Reason { get; set; } = string.Empty;
     public RefundRequestStatus Status { get; set; }
     public string? ReviewNote { get; set; }

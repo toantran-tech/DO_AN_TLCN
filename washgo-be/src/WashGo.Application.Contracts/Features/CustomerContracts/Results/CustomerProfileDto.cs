@@ -10,6 +10,9 @@ public class CustomerProfileDto
     public string? Address { get; set; }
     public string? City { get; set; }
     public int LoyaltyPoints { get; set; }
+    public long LoyaltyAvailablePoints { get; set; }
+    public long LoyaltyHeldPoints { get; set; }
+    public long LoyaltyDebtPoints { get; set; }
     /// <summary>Số đơn không bị hủy, tính từ đơn hàng thực tế.</summary>
     public int TotalOrders { get; set; }
     /// <summary>Tổng tiền các đơn đã thanh toán.</summary>

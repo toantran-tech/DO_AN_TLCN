@@ -28,6 +28,8 @@ using WashGo.Application.Features.SystemSettingApplication.Services;
 using WashGo.Application.Contracts.Features.PaymentContracts.Queries;
 using WashGo.Domain.Entities.Identity;
 using WashGo.Domain.Entities.Partner;
+using WashGo.Application.Features.LoyaltyApplication.Services;
+using WashGo.Domain.Entities.Loyalty;
 
 namespace WashGo.Application.Features.PaymentApplication.Services
 {
@@ -40,6 +42,7 @@ namespace WashGo.Application.Features.PaymentApplication.Services
         private readonly NotificationPublisher _notifications;
         private readonly SystemSettingProvider _settings;
         private readonly MomoGateway _momo;
+        private LoyaltyLedger Loyalty => LazyServiceProvider.LazyGetRequiredService<LoyaltyLedger>();
 
         public PaymentAppService(
             IPaymentTransactionRepository transactionRepo,
@@ -209,6 +212,7 @@ namespace WashGo.Application.Features.PaymentApplication.Services
                 transaction.FailureReason = failureReason;
                 transaction.ProviderTransactionId = providerTransactionId;
                 transaction.CompletedAt = DateTime.UtcNow;
+                if (order != null) await Loyalty.ReleaseAsync(transaction, order.CustomerId);
                 await _transactionRepo.UpdateAsync(transaction, autoSave: true);
                 if (order != null) await _notifications.PaymentFailedAsync(order);
                 return GatewayOutcome.Confirmed;
@@ -246,7 +250,10 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             transaction.SessionState = PaymentSessionState.Closed;
             transaction.IsActiveSession = false;
             if (reviewReason != null)
+            {
+                if (order != null) await Loyalty.ReleaseAsync(transaction, order.CustomerId);
                 await RecordUnappliedReceiptAsync(transaction, order, reviewReason);
+            }
             else
             {
                 transaction.Status = PaymentTransactionStatus.Succeeded;
@@ -279,7 +286,8 @@ namespace WashGo.Application.Features.PaymentApplication.Services
         {
             if (transaction.OrderId != order.Id || transaction.Purpose != PaymentPurpose.Order ||
                 transaction.Status != PaymentTransactionStatus.Pending ||
-                transaction.Amount != order.FinalAmount ||
+                transaction.Amount + transaction.PointsToRedeem != order.FinalAmount ||
+                transaction.PointsToRedeem > 0 && (!transaction.PointsHeld || transaction.LoyaltyVersion != 1) ||
                 order.Status is not (WashOrderStatus.AwaitingPayment or WashOrderStatus.MovedToStorage) ||
                 order.PaymentStatus != PaymentStatus.Unpaid ||
                 order.IncludedWeightKg > 0 && !order.ActualWeightKg.HasValue)
@@ -290,6 +298,8 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             if (fromStatus == WashOrderStatus.AwaitingPayment)
                 order.Status = WashOrderStatus.Paid;
             order.PaymentStatus = PaymentStatus.Paid;
+            order.PaymentMethod = transaction.PaymentMethod;
+            await Loyalty.SettleAsync(transaction, order.CustomerId);
             order.PaidAt = DateTime.UtcNow;
             order.Timeline.Add(new WashOrderTimeline
             {
@@ -425,6 +435,12 @@ namespace WashGo.Application.Features.PaymentApplication.Services
                 Reason = command.Reason.Trim(),
                 Status = RefundRequestStatus.Pending
             };
+            if (successfulPayment?.LoyaltyApplied == true)
+            {
+                var cumulative = alreadyRefunded + amount;
+                request.PointsAmount = LoyaltyMath.ReturnedPoints(successfulPayment.PointsToRedeem, cumulative, successfulPayment.Amount)
+                    - successfulPayment.PointsReturned;
+            }
             await _refundRequestRepo.InsertAsync(request, autoSave: true);
             await _notifications.RefundRequestedAsync(order, request.Amount);
             var response = Success(ToDto(request), "Đã gửi yêu cầu hoàn tiền, chờ Admin duyệt.");
@@ -556,7 +572,7 @@ namespace WashGo.Application.Features.PaymentApplication.Services
                 dto.PaymentMethod = transaction?.PaymentMethod ?? order.PaymentMethod;
                 dto.OriginalAmount = transaction?.Amount ?? (order.PaymentMethod == PaymentMethod.Cash ? order.FinalAmount : null);
                 dto.RemainingRefundableAmount = dto.OriginalAmount.HasValue ? Math.Max(0, dto.OriginalAmount.Value - (refunds.FirstOrDefault(x => x.Id == order.Id)?.Amount ?? 0) -
-                    (order.Status == WashOrderStatus.Cancelled ? order.CancelFeePaidAmount : 0)) : null;
+                    (order.Status == WashOrderStatus.Cancelled ? CashCancellationFee(order, transaction) : 0)) : null;
                 if (dto.IsExcessPayment && transaction != null)
                 {
                     var refundedExcess = excessRefunds.FirstOrDefault(x => x.Id == transaction.Id)?.Amount ?? 0m;
@@ -646,15 +662,16 @@ namespace WashGo.Application.Features.PaymentApplication.Services
                 return BadRequest<RefundRequestDto>("Không tìm thấy giao dịch thanh toán gốc thành công.");
 
             var refundable = (successful?.Amount ?? order.FinalAmount) -
-                (order.Status == WashOrderStatus.Cancelled ? order.CancelFeePaidAmount : 0m);
+                (order.Status == WashOrderStatus.Cancelled ? CashCancellationFee(order, successful) : 0m);
             var alreadyRefunded = await AsyncExecuter.SumAsync((await _refundRequestRepo.GetQueryableAsync())
                 .Where(x => !x.IsDeleted && !x.IsExcessPayment && x.OrderId == order.Id && x.Status == RefundRequestStatus.Refunded).Select(x => x.Amount));
             refundable -= alreadyRefunded;
-            if (request.Amount <= 0m || request.Amount > refundable || decimal.Round(request.Amount, 2) != request.Amount ||
+            if (request.Amount < 0m || request.Amount == 0m && request.PointsAmount <= 0 || request.Amount > refundable || decimal.Round(request.Amount, 2) != request.Amount ||
                 (request.OriginalPaymentTransactionId.HasValue && request.OriginalPaymentTransactionId != successful?.Id))
                 return BadRequest<RefundRequestDto>("Số tiền hoàn vượt quá phần còn lại sau khi trừ phí hủy.");
             if (successful != null)
             {
+                await Loyalty.RefundAsync(successful, request, alreadyRefunded + request.Amount);
                 successful.Status = request.Amount == refundable ? PaymentTransactionStatus.Refunded : PaymentTransactionStatus.Succeeded;
                 successful.FailureReason = null;
                 await _transactionRepo.UpdateAsync(successful, autoSave: true);
@@ -674,7 +691,7 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             {
                 Details = new { orderId = order.Id, request.Amount, refundReference = request.RefundReference }
             });
-            await _notifications.SendAsync([request.CustomerId], NotificationType.RefundConfirmed, "Đã hoàn tiền", $"Yêu cầu #{request.Id}: đã hoàn {request.Amount:N0}đ, mã {request.RefundReference}.", "refund-request", request.Id);
+            await _notifications.SendAsync([request.CustomerId], NotificationType.RefundConfirmed, "Đã hoàn tiền", $"Yêu cầu #{request.Id}: đã hoàn {request.Amount:N0}đ và {request.PointsAmount:N0} điểm; thu hồi {request.RewardPointsReversed:N0} điểm thưởng, mã {request.RefundReference}.", "refund-request", request.Id);
             var response = Success(ToDto(request), "Đã ghi nhận Admin xác nhận hoàn tiền.");
             await Writes.RecordAsync(command.OperationId, CurrentUser.Id.Value, "Finance", "ConfirmRefund", id.ToString(), command, response);
             await uow.CompleteAsync(); return response;
@@ -682,8 +699,10 @@ namespace WashGo.Application.Features.PaymentApplication.Services
 
         private static RefundRequestDto ToDto(RefundRequest request) => new()
         {
-            Version = AdministrativeWriteGuard.Version(new { request.Id, request.Status, request.Amount, request.ReviewNote, ReviewedAt = request.ReviewedAt?.Ticks / 10, request.RefundReference, RefundedAt = request.RefundedAt?.Ticks / 10, request.OriginalPaymentTransactionId }),
+            Version = AdministrativeWriteGuard.Version(new { request.Id, request.Status, request.Amount, request.PointsAmount, request.RewardPointsReversed, request.ReviewNote, ReviewedAt = request.ReviewedAt?.Ticks / 10, request.RefundReference, RefundedAt = request.RefundedAt?.Ticks / 10, request.OriginalPaymentTransactionId }),
             OriginalPaymentTransactionId = request.OriginalPaymentTransactionId,
+            PointsAmount = request.PointsAmount,
+            RewardPointsReversed = request.RewardPointsReversed,
             IsExcessPayment = request.IsExcessPayment,
             SettlementId = request.SettlementId,
             Id = request.Id,

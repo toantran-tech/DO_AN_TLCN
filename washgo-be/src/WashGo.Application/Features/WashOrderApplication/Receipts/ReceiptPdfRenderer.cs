@@ -126,6 +126,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Receipts
                         if (r.WeightSurchargeAmount > 0) Row("Phụ phí vượt cân", Money(r.WeightSurchargeAmount));
                         if (r.DiscountAmount > 0) Row($"Giảm giá{(r.PromotionCode != null ? $" ({r.PromotionCode})" : "")}", "-" + Money(r.DiscountAmount));
                         Row("Tiền giặt", Money(r.LaundryAmount));
+                        if (r.RedeemedPoints > 0) Row("Điểm đã dùng (WashGo tài trợ)", r.RedeemedPoints.ToString("N0") + " điểm");
                         foreach (var fee in r.Fees) Row(fee.Description, Money(fee.Amount));
                         Row("TỔNG ĐÃ THANH TOÁN", Money(r.TotalPaid), true);
                     });

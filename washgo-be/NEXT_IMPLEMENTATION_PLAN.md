@@ -27,6 +27,8 @@
 
 # Tiến độ WashGo theo Đặc tả usecase (Backend trước)
 
+> Điểm thưởng 15/11/2026: đã có source tích 1% tiền giặt thực trả, 1 điểm=1đ, dùng tối đa 20%; giữ điểm theo phiên, chống trùng, hoàn/thu hồi/nợ điểm, WashGo tài trợ và đối soát Merchant riêng với tiền cổng. Có migration AddLoyaltyPoints, test công thức/HTTP nối CI. Đã kiểm tra biên dịch; chưa chạy tests/build Docker/áp migration/deploy. Bàn giao: [LOYALTY_POINTS_API_REVIEW.md](docs/LOYALTY_POINTS_API_REVIEW.md). [Plan](docs/ADMIN_CATALOG_AND_LOYALTY_PLAN_20261115.md) đã cập nhật; API danh mục Admin vẫn tạm hoãn.
+
 ## CI và mapper ngày 13/11/2026
 
 - CI đợt 1 ở PR #106: theo log người dùng, GitHub Build/Analyze/Regression PASS; Security chặn dependency High như thiết kế.

@@ -14,6 +14,7 @@ using WashGo.Domain.Entities.Partner;
 using WashGo.Domain.Entities.WashOrder.Interfaces;
 using WashGo.Domain.Shared.Enums;
 using WashGo.Domain.Shared.Validation;
+using WashGo.Domain.Entities.Loyalty;
 
 namespace WashGo.Application.Features.CustomerApplication.Services;
 
@@ -106,6 +107,11 @@ public class CustomerAppService : WashGoAppService, ICustomerAppService
     {
         var orders = (await _orders.GetQueryableAsync()).Where(x => x.CustomerId == user.Id && !x.IsDeleted);
         var dto = ToDto(user, customer);
+        var wallet = await LazyServiceProvider.LazyGetRequiredService<IRepository<LoyaltyWallet, Guid>>().FindAsync(user.Id);
+        dto.LoyaltyPoints = wallet == null ? customer.LoyaltyPoints : (int)Math.Clamp(wallet.NetPoints, 0, int.MaxValue);
+        dto.LoyaltyHeldPoints = wallet?.HeldPoints ?? 0;
+        dto.LoyaltyDebtPoints = Math.Max(0, -(wallet?.NetPoints ?? 0));
+        dto.LoyaltyAvailablePoints = wallet == null ? Math.Max(0, customer.LoyaltyPoints) : LoyaltyMath.Available(wallet.NetPoints, wallet.HeldPoints);
         dto.TotalOrders = await AsyncExecuter.CountAsync(orders.Where(x => x.Status != WashOrderStatus.Cancelled));
         dto.TotalSpent = await AsyncExecuter.SumAsync(orders.Where(x => x.PaymentStatus == PaymentStatus.Paid), x => x.FinalAmount);
         return dto;

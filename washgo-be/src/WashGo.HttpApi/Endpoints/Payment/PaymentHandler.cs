@@ -37,7 +37,7 @@ namespace WashGo.HttpApi.Endpoints.Payment
             })
                 .RequireAuthorization("CustomerOnly")
                 .WithName("Tạo URL thanh toán")
-                .WithSummary("Customer tạo giao dịch và URL thanh toán tiền giặt cho đơn hàng của mình.")
+                .WithSummary("Customer tạo URL tiền giặt, pointsToRedeem tùy chọn (mặc định 0). BE giữ điểm và tính tiền cổng sau giảm điểm; retry cùng phiên phải giữ nguyên phương thức/số điểm. 409 nếu phiên đang cần xác minh.")
                 .WithOpenApi();
 
             group.MapPost("/cancellation-fee/create-url", async (CreatePaymentCommand command, HttpContext context, IPaymentAppService service) =>

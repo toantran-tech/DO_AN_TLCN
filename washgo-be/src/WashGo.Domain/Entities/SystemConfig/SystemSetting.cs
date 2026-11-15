@@ -31,6 +31,8 @@ namespace WashGo.Domain.Entities.SystemConfig
 
         // Commission (UC 3.9.2)
         public decimal DefaultCommissionRate { get; set; } = 20;
+        public decimal LoyaltyEarnPercent { get; set; } = 1;
+        public decimal LoyaltyMaxUsePercent { get; set; } = 20;
 
         // Overdue locker / storage fees (UC 3.9.4)
         public decimal OverdueFeeDay1 { get; set; } = 10000;

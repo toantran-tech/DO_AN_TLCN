@@ -9,6 +9,7 @@ using WashGo.Core.Domain.Shared.Bases;
 using WashGo.Domain.Entities.Payment;
 using WashGo.Domain.Entities.WashOrder;
 using WashGo.Domain.Shared.Enums;
+using WashGo.Domain.Entities.Loyalty;
 
 namespace WashGo.Application.Features.PaymentApplication.Services;
 
@@ -18,6 +19,10 @@ public partial class PaymentAppService
     {
         if (!CurrentUser.Id.HasValue)
             return BadRequest<PaymentResultDto>("Không xác định được tài khoản khách hàng.");
+        if (!CurrentUser.IsInRole("Customer"))
+            return new() { Succeeded = false, StatusCode = HttpStatusCode.Forbidden, Message = "Chỉ Customer được tạo phiên thanh toán." };
+        if (command.PointsToRedeem < 0 || purpose != PaymentPurpose.Order && command.PointsToRedeem != 0)
+            return BadRequest<PaymentResultDto>("Điểm chỉ dùng cho tiền giặt; số điểm không được âm.");
         if (command.PaymentMethod is not (PaymentMethod.VnPay or PaymentMethod.Momo))
             return BadRequest<PaymentResultDto>("Chỉ hỗ trợ thanh toán trực tuyến qua VNPay hoặc MoMo.");
 
@@ -42,9 +47,11 @@ public partial class PaymentAppService
             if (pending.Count == 1)
             {
                 var existing = pending[0];
+                if (existing.PointsToRedeem != command.PointsToRedeem)
+                    return SessionConflict("PaymentPointsConflict", "Phiên hiện tại đang dùng số điểm khác; không tạo phiên thay thế khi chưa xác minh.");
                 if (existing.PaymentMethod != command.PaymentMethod)
                     return SessionConflict("PaymentMethodConflict", "Đã có phiên thanh toán bằng phương thức khác. Vui lòng dùng phiên hiện tại hoặc chờ xác minh.");
-                if (existing.Amount != amount)
+                if (existing.Amount + existing.PointsToRedeem != amount)
                     return SessionConflict("PaymentAmountChanged", "Số tiền phải trả đã thay đổi; cần xác minh phiên trước khi tạo giao dịch mới.");
                 if (existing.SessionState == PaymentSessionState.Unknown)
                     return SessionConflict("PaymentVerificationRequired", "Kết quả tạo phiên chưa xác định. Không tạo thêm giao dịch; vui lòng chờ xác minh.");
@@ -68,14 +75,35 @@ public partial class PaymentAppService
             {
                 PaymentPurpose.OverdueStorageFee => "FEE", PaymentPurpose.CancellationFee => "CANCEL", _ => "PAY"
             }, order.OrderCode, command.PaymentMethod);
-            await _transactionRepo.InsertAsync(new PaymentTransaction
+            var policy = await _settings.GetAsync();
+            if (purpose == PaymentPurpose.Order)
+            {
+                var maximum = LoyaltyMath.MaximumUse(amount, policy.LoyaltyMaxUsePercent, long.MaxValue);
+                if (command.PointsToRedeem > maximum)
+                    return BadRequest<PaymentResultDto>($"Chỉ được dùng tối đa {maximum} điểm cho đơn này.");
+            }
+            var transactionToCreate = new PaymentTransaction
             {
                 OrderId = order.Id, TransactionReference = reference, PaymentMethod = command.PaymentMethod,
                 Purpose = purpose, Amount = amount, Status = PaymentTransactionStatus.Pending,
                 SessionState = PaymentSessionState.Creating, IsActiveSession = true,
                 MerchantIdSnapshot = order.MerchantId, CommissionRateSnapshot = order.CommissionRateApplied,
-                FinancialSnapshotBasis = "payment-created"
-            }, autoSave: true);
+                FinancialSnapshotBasis = "payment-created",
+                LoyaltyVersion = purpose == PaymentPurpose.Order ? 1 : 0,
+                PointsToRedeem = command.PointsToRedeem,
+                LaundryAmount = purpose == PaymentPurpose.Order ? amount : 0,
+                LoyaltyEarnPercent = policy.LoyaltyEarnPercent,
+                LoyaltyMaxUsePercent = policy.LoyaltyMaxUsePercent
+            };
+            transactionToCreate.AssignIdIfEmptyForBulkInsert();
+            transactionToCreate.Amount = amount - command.PointsToRedeem;
+            if (!await Loyalty.HoldAsync(transactionToCreate, order.CustomerId))
+            {
+                await prepare.RollbackAsync();
+                return SessionConflict("InsufficientPoints", "Điểm khả dụng đã thay đổi; vui lòng tải lại báo giá.");
+            }
+            amount = transactionToCreate.Amount;
+            await _transactionRepo.InsertAsync(transactionToCreate, autoSave: true);
             await prepare.CompleteAsync();
         }
 
@@ -100,6 +128,7 @@ public partial class PaymentAppService
             transaction.IsActiveSession = result.IsUncertain;
             transaction.FailureReason = result.Error == null ? null : result.Error[..Math.Min(result.Error.Length, 500)];
             if (!result.IsUncertain) transaction.CompletedAt = DateTime.UtcNow;
+            if (!result.IsUncertain) await Loyalty.ReleaseAsync(transaction, current.CustomerId);
             await _transactionRepo.UpdateAsync(transaction, autoSave: true);
             await finalize.CompleteAsync();
             return result.IsUncertain
@@ -111,7 +140,7 @@ public partial class PaymentAppService
         await _transactionRepo.UpdateAsync(transaction, autoSave: true);
         var latestDue = await PaymentDueAsync(current, purpose);
         await finalize.CompleteAsync();
-        if (latestDue.Error != null || latestDue.Amount != amount)
+        if (latestDue.Error != null || latestDue.Amount != amount + transaction.PointsToRedeem)
             return SessionConflict("PaymentStateChanged", "Đơn đã thay đổi trong lúc tạo phiên; giao dịch được giữ lại để xác minh, không mở URL mới.");
         return Success(PaymentView(current, transaction), "Đã tạo phiên thanh toán.");
     }
@@ -152,6 +181,8 @@ public partial class PaymentAppService
         Purpose = transaction.Purpose, PaymentMethod = transaction.PaymentMethod, PaymentStatus = order.PaymentStatus,
         TransactionReference = transaction.TransactionReference, PaymentUrl = transaction.PaymentUrl ?? string.Empty,
         TransactionStatus = transaction.Status, SessionState = transaction.SessionState,
-        RequiresReconciliation = transaction.RequiresReconciliation
+        RequiresReconciliation = transaction.RequiresReconciliation,
+        LaundryAmount = transaction.LaundryAmount, PointsToRedeem = transaction.PointsToRedeem,
+        PointsHeld = transaction.PointsHeld, PointsEarned = transaction.PointsEarned
     };
 }
