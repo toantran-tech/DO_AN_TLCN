@@ -10,6 +10,9 @@ namespace WashGo.Domain.Entities.Notification
     public class Notification : BaseEntity
     {
         public Guid UserId { get; set; }
+        public Guid? EventId { get; set; }
+        public DateTime? DueAt { get; set; }
+        public DateTime? DetectedAt { get; set; }
         public NotificationType Type { get; set; }
         public string Title { get; set; } = string.Empty;
         public string Content { get; set; } = string.Empty;

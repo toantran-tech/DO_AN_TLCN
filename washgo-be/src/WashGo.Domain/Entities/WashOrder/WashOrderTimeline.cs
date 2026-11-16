@@ -13,6 +13,21 @@ namespace WashGo.Domain.Entities.WashOrder
         public WashOrderTimeline() { }
         public WashOrderTimeline(Guid id) : base(id) { }
         public Guid WashOrderId { get; set; }
+        public string EventType { get; set; } = "Legacy";
+        public long? Sequence { get; set; }
+        public string Basis { get; set; } = "Captured";
+        public Guid? MerchantId { get; set; }
+        public string? MerchantName { get; set; }
+        public string? AssignmentMode { get; set; }
+        public Guid? ShipperId { get; set; }
+        public string? ShipperName { get; set; }
+        public Guid? PreviousShipperId { get; set; }
+        public Guid? TaskId { get; set; }
+        public DeliveryTaskType? TaskType { get; set; }
+        public Guid? StorageCycleId { get; set; }
+        public Guid? ReturnRequestId { get; set; }
+        public PaymentPurpose? PaymentPurpose { get; set; }
+        public decimal? Amount { get; set; }
         public WashOrderStatus? FromStatus { get; set; }
         public WashOrderStatus Status { get; set; }
         public Guid? ActorId { get; set; }

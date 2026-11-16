@@ -10,6 +10,8 @@ namespace WashGo.Domain.Entities.WashService
     [SevagoTable(WashGoDbProperties.Services, Schema = WashGoDbProperties.Schema)]
     public class WashService : BaseEntity, IHasAuditLog
     {
+        public Guid CategoryId { get; set; }
+        public virtual ServiceCategoryEntity Category { get; set; } = null!;
         public WashService() { }
         public WashService(Guid id) : base(id) { }
 

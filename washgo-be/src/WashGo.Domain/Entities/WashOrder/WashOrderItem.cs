@@ -11,6 +11,10 @@ namespace WashGo.Domain.Entities.WashOrder
     {
         public Guid WashOrderId { get; set; }
         public Guid ServiceId { get; set; }
+        public Guid? CategoryIdSnapshot { get; set; }
+        public string? CategoryCodeSnapshot { get; set; }
+        public string? CategoryNameSnapshot { get; set; }
+        public WashServiceType? ProcessingTypeSnapshot { get; set; }
         public string ServiceName { get; set; } = string.Empty;
         public int Quantity { get; set; }
         public decimal? WeightKg { get; set; }

@@ -17,6 +17,7 @@ namespace WashGo.EntityFrameworkCore.BuilderConfiguration
             builder.ToTable(WashGoDbProperties.Services, WashGoDbProperties.Schema);
             builder.Property(x => x.Code).HasMaxLength(50).IsRequired();
             builder.HasIndex(x => x.Code).IsUnique();
+            builder.Navigation(x => x.Category).AutoInclude();
             builder.Property(x => x.Name).HasMaxLength(200).IsRequired();
             builder.Property(x => x.UnitPrice).HasColumnName("base_price").HasPrecision(18, 2);
             builder.Property(x => x.PricePerKg).HasPrecision(18, 2);

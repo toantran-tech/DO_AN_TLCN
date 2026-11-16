@@ -45,6 +45,7 @@ namespace WashGo.Domain.Shared.Enums
         ServiceProposalSubmitted = 46,
         MerchantProfileUpdateRequested = 47,
         RefundReviewed = 48,
-        RefundConfirmed = 49
+        RefundConfirmed = 49,
+        OrderEvent = 50
     }
 }

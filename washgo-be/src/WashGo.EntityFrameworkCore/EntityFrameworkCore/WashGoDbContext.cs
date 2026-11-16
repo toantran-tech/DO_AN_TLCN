@@ -24,8 +24,11 @@ using WashGo.Domain.Shared.Validation;
 namespace WashGo.EntityFrameworkCore.EntityFrameworkCore
 {
     [ConnectionStringName("Default")]
-    public class WashGoDbContext : AbpDbContext<WashGoDbContext>
+    public partial class WashGoDbContext : AbpDbContext<WashGoDbContext>
     {
+        public DbSet<ServiceCategoryEntity> ServiceCategories { get; set; } = null!;
+        public DbSet<NotificationDelivery> NotificationDeliveries { get; set; } = null!;
+        public DbSet<StorageReferenceClaim> StorageReferenceClaims { get; set; } = null!;
         public DbSet<LoyaltyWallet> LoyaltyWallets { get; set; } = null!;
         public DbSet<LoyaltyEntry> LoyaltyEntries { get; set; } = null!;
         public DbSet<OrderStorageCycle> StorageCycles { get; set; } = null!;
@@ -133,6 +136,16 @@ namespace WashGo.EntityFrameworkCore.EntityFrameworkCore
             builder.ApplyConfiguration(new MerchantProfileRequestEntityTypeConfiguration());
             builder.ApplyConfiguration(new LockerMerchantEntityTypeConfiguration());
 
+            builder.ApplyConfiguration(new ServiceCategoryEntityTypeConfiguration());
+            builder.ApplyConfiguration(new NotificationDeliveryEntityTypeConfiguration());
+            builder.ApplyConfiguration(new StorageReferenceClaimEntityTypeConfiguration());
+            builder.Entity<WashService>().HasOne(x => x.Category).WithMany().HasForeignKey(x => x.CategoryId).OnDelete(DeleteBehavior.Restrict);
+            builder.Entity<WashOrderTimeline>().Property(x => x.EventType).HasMaxLength(64);
+            builder.Entity<WashOrderTimeline>().Property(x => x.Basis).HasMaxLength(40);
+            builder.Entity<WashOrderTimeline>().HasIndex(x => new { x.WashOrderId, x.Sequence }).IsUnique().HasFilter("sequence IS NOT NULL");
+            builder.Entity<OrderStorageCycle>().Property(x => x.StorageReference).HasMaxLength(20);
+            builder.Entity<OrderStorageCycle>().HasIndex(x => x.StorageReference).IsUnique().HasFilter("storage_reference IS NOT NULL");
+            builder.Entity<Notification>().HasIndex(x => new { x.EventId, x.UserId }).IsUnique().HasFilter("event_id IS NOT NULL");
             builder.UseWashGoSnakeCaseColumns();
         }
 
@@ -140,6 +153,16 @@ namespace WashGo.EntityFrameworkCore.EntityFrameworkCore
         private static readonly HashSet<string> AssetOwners = ["User", "Merchant", "MerchantImage", "Locker", "WashService", "ServiceChangeRequest", "MerchantProfileRequest", "OrderRating", "Incident", "IncidentMessage", "Shipper"];
         public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
         {
+            if (Database.CurrentTransaction != null) return await SaveBusinessAsync(acceptAllChangesOnSuccess, cancellationToken);
+            await using var transaction = await Database.BeginTransactionAsync(cancellationToken);
+            var result = await SaveBusinessAsync(acceptAllChangesOnSuccess, cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return result;
+        }
+
+        private async Task<int> SaveBusinessAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken)
+        {
+            await PrepareBusinessChangesAsync(cancellationToken);
             // Reference retention is part of the SAME DB transaction as the attaching record. Cleanup uses the same lock.
             var urls = ChangeTracker.Entries().Where(x => (x.State is EntityState.Added or EntityState.Modified) && AssetOwners.Contains(x.Metadata.ClrType.Name))
                 .SelectMany(x => x.Properties.SelectMany(p => p.CurrentValue switch
