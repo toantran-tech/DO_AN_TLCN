@@ -35,7 +35,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Mappings
             config.NewConfig<WashOrder, WashOrderDetailDto>()
                 .Inherits<WashOrder, WashOrderResultDto>()
                 .Map(dest => dest.Items, src => src.Items ?? new List<WashOrderItem>())
-                .Map(dest => dest.Timeline, src => src.Timeline ?? new List<WashOrderTimeline>())
+                .Map(dest => dest.Timeline, src => (src.Timeline ?? new List<WashOrderTimeline>()).OrderBy(x => x.Sequence.HasValue ? 1 : 0).ThenBy(x => x.Sequence ?? x.Timestamp).ThenBy(x => x.Id).ToList())
                 .Ignore(dest => dest.TaskLockerName)
                 .Ignore(dest => dest.TaskLockerAddress)
                 .Ignore(dest => dest.TaskBoxNumber)

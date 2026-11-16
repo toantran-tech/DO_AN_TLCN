@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using WashGo.Domain.Entities.SystemConfig;
 using WashGo.Application.Features.SystemSettingApplication.Services;
 using WashGo.Application.Contracts.Features.WashOrderContracts.Results;
@@ -291,8 +291,7 @@ public class StorageAppService(IWashOrderRepository orders, IRepository<OrderSto
             ValidateStep(order, cycle, task, action);
             if (action == "collect" && order.PickupSessionExpiresAt > DateTime.UtcNow)
                 throw Rule("PickupInProgress", "Khách đang có phiên mở tủ; chờ hoàn tất hoặc hết hạn.", 409);
-            if (action == "handover" && (string.IsNullOrWhiteSpace(command.ReceiptReference) || command.ReceiptReference.Trim().Length > 120))
-                throw Rule("ReceiptRequired", "Cần mã biên nhận 1–120 ký tự.");
+            if (command.ReceiptReference?.Length > 120) throw Rule("ReceiptTooLong", "Receipt reference: maximum 120 characters.");
             if (!VerifyCredential(order, command)) throw Rule("TaskCredentialInvalid", "Mã nhiệm vụ sai hoặc đang khóa.");
             var now = DateTime.UtcNow;
             if (action == "collect")
@@ -307,9 +306,9 @@ public class StorageAppService(IWashOrderRepository orders, IRepository<OrderSto
             else if (action == "handover")
             {
                 cycle.ExceptionNote = null;
-                cycle.State = StorageCycleState.Stored; cycle.IntakeAt = now; cycle.IntakeReceipt = command.ReceiptReference!.Trim();
+                cycle.State = StorageCycleState.Stored; cycle.IntakeAt = now; cycle.IntakeReceipt = string.IsNullOrWhiteSpace(command.ReceiptReference) ? null : command.ReceiptReference.Trim();
                 cycle.IntakeActorId = CurrentUser.Id; order.Status = WashOrderStatus.MovedToStorage; order.MovedToStorageAt = now;
-                order.StorageLocation = cycle.ShopAddress; order.StorageReference = cycle.IntakeReceipt;
+                order.StorageLocation = cycle.ShopAddress; order.StorageReference = cycle.StorageReference;
                 await CompleteTaskAsync(order, cycle, task, now);
                 await notifications.MovedToStorageAsync(order);
             }
@@ -322,6 +321,7 @@ public class StorageAppService(IWashOrderRepository orders, IRepository<OrderSto
                 if (order.PaymentStatus != PaymentStatus.Paid || order.StorageFeeTotal < total) throw Rule("PaymentRequired", "Cần thanh toán đủ tiền giặt và phí kho trước khi xuất kho.", 409);
                 cycle.WarehouseFee = OverdueFeeCalculator.CalculateStorageFee(cycle.IntakeAt, now, await settings.ForOrderAsync(order));
                 order.AccumulatedStorageFee += cycle.WarehouseFee; cycle.DispatchedAt = now; cycle.State = StorageCycleState.OutboundTransit;
+                order.StorageLocation = null; order.StorageReference = null;
                 request.State = StorageReturnState.InTransit; await requests.UpdateAsync(request);
                 task.GoodsCollectedAt = now; order.Status = WashOrderStatus.ReturningFromStorage;
             }
@@ -374,12 +374,19 @@ public class StorageAppService(IWashOrderRepository orders, IRepository<OrderSto
         try
         {
             var from = order.Status;
+            var previousShipperId = order.ShipperId; var previousShipperName = order.ShipperName;
             var pendingTask = order.ActiveStorageCycleId.HasValue ? await ActiveTaskAsync(order.ActiveStorageCycleId.Value) : null;
+            var pendingRequest = order.ActiveStorageCycleId.HasValue ? await ActiveRequestAsync(order.ActiveStorageCycleId.Value) : null;
             var cycle = await change(order);
             order.OverdueFeeTotal = await DueAsync(order);
             await orders.UpdateAsync(order, autoSave: true); await cycles.UpdateAsync(cycle, autoSave: true);
             var late = pendingTask?.Deadline < DateTime.UtcNow;
-            await timeline.InsertAsync(new WashOrderTimeline(pendingTask?.Status == DeliveryTaskStatus.Completed ? pendingTask.CompletionEventId!.Value : Guid.NewGuid()) { WashOrderId = order.Id, FromStatus = from, Status = order.Status,
+            var eventTask = action == "Assign" ? await ActiveTaskAsync(cycle.Id) : pendingTask;
+            await timeline.InsertAsync(new WashOrderTimeline(pendingTask?.Status == DeliveryTaskStatus.Completed ? pendingTask.CompletionEventId!.Value : Guid.NewGuid()) { EventType = "Storage." + action, StorageCycleId = cycle.Id, TaskId = eventTask?.Id, TaskType = eventTask?.TaskType,
+                PreviousShipperId = action == "Assign" ? previousShipperId : null, AssignmentMode = action == "Assign" ? "Manual" : null,
+                ReturnRequestId = (await ActiveRequestAsync(cycle.Id) ?? pendingRequest)?.Id, MerchantId = cycle.MerchantId, MerchantName = cycle.MerchantName,
+                ShipperId = eventTask?.ShipperId, ShipperName = order.ShipperName ?? previousShipperName,
+                WashOrderId = order.Id, FromStatus = from, Status = order.Status,
                 ActorId = CurrentUser.Id, ActorName = CurrentUser.UserName ?? ActorRole, ActorRole = ActorRole,
                 Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds(), Note = $"Storage {action}" + (late ? " (Trễ SLA; vẫn cho phép giao nhận)." : ".") });
             await Audit.LogAsync(new AuditEntry(Module, action, "Order", order.Id.ToString(), order.OrderCode)
@@ -489,6 +496,10 @@ public class StorageAppService(IWashOrderRepository orders, IRepository<OrderSto
         return new StorageCycleDto
         {
             Id = cycle?.Id ?? Guid.Empty, OrderId = order.Id, OrderCode = order.OrderCode, OrderRevision = order.Revision, State = state,
+            StorageReference = customer ? null : cycle?.StorageReference, ReferenceIssuedAt = customer ? null : cycle?.ReferenceIssuedAt,
+            ReferenceBasis = customer ? null : cycle?.ReferenceBasis, MerchantName = customer ? null : cycle?.MerchantName,
+            CurrentLocation = state == StorageCycleState.Stored ? "AtShop" : state is StorageCycleState.InboundTransit or StorageCycleState.OutboundTransit ? "InTransit" : "OutsideShop",
+            IsCurrent = isCurrent,
             Basis = cycle?.Basis ?? "LegacyNotAdopted", ShopAddress = customer ? null : cycle?.ShopAddress,
             CollectedAt = cycle?.CollectedAt, IntakeAt = cycle?.IntakeAt, DispatchedAt = cycle?.DispatchedAt,
             ReceiptReference = customer ? null : cycle?.IntakeReceipt, ExceptionNote = customer ? null : cycle?.ExceptionNote,

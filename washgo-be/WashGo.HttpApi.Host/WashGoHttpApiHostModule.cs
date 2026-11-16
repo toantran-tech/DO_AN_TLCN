@@ -195,6 +195,7 @@ namespace WashGo.HttpApi.Host
             context.Services.AddSignalR();
             context.Services.AddHostedService<ReminderWorker>();
             context.Services.AddHostedService<PaymentVerificationWorker>();
+            context.Services.AddHostedService<NotificationDeliveryWorker>();
             context.Services.AddHostedService<PrivateDocumentCleanupWorker>();
             context.Services.AddHostedService<ChatbotCleanupWorker>();
             context.Services.AddEndpointsApiExplorer();
@@ -260,6 +261,11 @@ namespace WashGo.HttpApi.Host
             app.Use(async (http, next) =>
             {
                 try { await next(http); }
+                catch (CatalogRuleException ex) when (!http.Response.HasStarted)
+                {
+                    http.Response.StatusCode = 409;
+                    await http.Response.WriteAsJsonAsync(new { succeeded = false, statusCode = 409, message = ex.Message, meta = new { code = ex.Code } });
+                }
                 catch (FinancialReportLimitException) when (!http.Response.HasStarted)
                 {
                     http.Response.StatusCode = 413;

@@ -50,12 +50,18 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             order.Status = WashOrderStatus.MovedToStorage;
             order.MovedToStorageAt = now;
             order.StorageLocation = $"Kho tiệm {order.MerchantName ?? "Merchant"}";
-            order.StorageReference = order.MerchantOrderCode ?? order.OrderCode;
+            order.StorageReference = null;
             // The laundry never sat in a return locker, so only the warehouse fee applies from now on.
             order.LockerOverdueFeeAtStorageTransfer = 0m;
             order.OverdueFeeTotal = 0m;
+            var cycle = await _storage.StartAsync(order, StorageCycleState.Stored, now, "SystemUnpaidAtShop");
+            if (cycle == null) { await uow.RollbackAsync(); return false; }
+            cycle.IntakeAt = now;
+            order.StorageLocation = cycle.ShopAddress; order.StorageReference = cycle.StorageReference;
             order.Timeline.Add(new WashOrderTimeline
             {
+                EventType = "Storage.SystemUnpaidAtShop",
+                StorageCycleId = cycle.Id,
                 WashOrderId = order.Id,
                 FromStatus = WashOrderStatus.AwaitingPayment,
                 Status = WashOrderStatus.MovedToStorage,
@@ -65,12 +71,6 @@ namespace WashGo.Application.Features.PaymentApplication.Services
                 Note = $"Quá hạn thanh toán {StorageAfterDays} ngày; đồ được chuyển sang lưu kho tại {order.StorageLocation}, mã lưu kho {order.StorageReference}."
             });
 
-            if (order.StorageWorkflowVersion >= 1)
-            {
-                var cycle = await _storage.StartAsync(order, StorageCycleState.Stored, now, "SystemUnpaidAtShop");
-                if (cycle == null) { await uow.RollbackAsync(); return false; }
-                cycle.IntakeAt = now;
-            }
             await _orders.UpdateAsync(order, autoSave: true);
             await _notifications.UnpaidMovedToStorageAsync(order);
             await uow.CompleteAsync();

@@ -19,6 +19,9 @@ namespace WashGo.HttpApi.Endpoints.Notification
             .WithTags("Notification - Thông báo")
             .RequireAuthorization();
 
+            group.MapGet("/outbox/summary", async (INotificationAppService svc) => (await svc.GetDeliverySummaryAsync()).CustomResult())
+                .RequireAuthorization("AdminOnly").WithSummary("Giám sát outbox: pending/sending/dead-letter và mốc chờ cũ nhất; không ghi dữ liệu.").WithOpenApi();
+
             group.MapGet("/", async (int? page, int? take, bool? unreadOnly, INotificationAppService svc) =>
                 (await svc.GetMineAsync(page ?? 1, take ?? 20, unreadOnly ?? false)).CustomResult())
                 .WithName("Xem thông báo của tôi")

@@ -18,6 +18,8 @@ public class AdministrativeBatchTotalsDto
 }
 public class AdministrativeBatchItemResultDto
 {
+    public int? AffectedServiceCount { get; set; }
+    public Dictionary<string, int>? DependencyCounts { get; set; }
     public Guid Id { get; set; }
     public bool Succeeded { get; set; }
     public int StatusCode { get; set; }

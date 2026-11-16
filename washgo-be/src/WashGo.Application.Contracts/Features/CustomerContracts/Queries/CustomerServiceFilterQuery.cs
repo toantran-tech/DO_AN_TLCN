@@ -7,6 +7,7 @@ namespace WashGo.Application.Contracts.Features.CustomerContracts.Queries;
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public class CustomerServiceFilterQuery : BaseFilterQuery
 {
+        public Guid[]? CategoryIds { get; set; }
     public CustomerServiceFilterQuery()
     {
         Page = 1;

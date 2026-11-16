@@ -1,3 +1,4 @@
+using System.Net;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -41,7 +42,7 @@ namespace WashGo.Application.Features.NotificationApplication.Services
         {
             page = Math.Max(1, page);
             take = Math.Clamp(take, 1, 100);
-            var queryable = (await _notificationRepo.GetQueryableAsync()).Where(x => x.UserId == CurrentUser.Id);
+            var queryable = (await _notificationRepo.GetQueryableAsync()).Where(x => x.UserId == CurrentUser.Id && (x.EventId == null || CurrentUser.IsInRole("Admin")));
             if (unreadOnly)
                 queryable = queryable.Where(x => !x.IsRead);
             var total = await AsyncExecuter.CountAsync(queryable);
@@ -50,6 +51,17 @@ namespace WashGo.Application.Features.NotificationApplication.Services
                 .Skip((page - 1) * take).Take(take));
             return Success(items.Select(ToCurrentUserDto).ToList(), total, page, take,
                 total == 0 ? "Bạn chưa có thông báo nào." : null);
+        }
+
+        public async Task<BaseResponse<NotificationDeliverySummaryDto>> GetDeliverySummaryAsync()
+        {
+            if (!CurrentUser.IsInRole("Admin")) return new() { StatusCode = HttpStatusCode.Forbidden, Message = "Chỉ Admin được xem vận hành outbox." };
+            var repo = LazyServiceProvider.LazyGetRequiredService<IRepository<NotificationDelivery, Guid>>();
+            var query = await repo.GetQueryableAsync();
+            var groups = await AsyncExecuter.ToListAsync(query.GroupBy(x => x.State).Select(g => new { State = g.Key, Count = g.Count() }));
+            return Success(new NotificationDeliverySummaryDto { Pending = groups.Where(x => x.State == "Pending").Sum(x => x.Count),
+                Sending = groups.Where(x => x.State == "Sending").Sum(x => x.Count), DeadLetter = groups.Where(x => x.State == "DeadLetter").Sum(x => x.Count),
+                OldestPendingAt = await AsyncExecuter.MinAsync(query.Where(x => x.State == "Pending").Select(x => (DateTime?)x.NextAttemptAt)), ServerNow = DateTime.UtcNow });
         }
 
         public async Task<BaseResponse<NotificationPageDto>> FilterAsync(NotificationFilterQuery query)
@@ -70,7 +82,7 @@ namespace WashGo.Application.Features.NotificationApplication.Services
             if (sort is not ("newest" or "oldest" or "unreadfirst"))
                 return BadRequest<NotificationPageDto>("Kiểu sắp xếp không hợp lệ (newest, oldest, unreadFirst).");
 
-            var mine = (await _notificationRepo.GetQueryableAsync()).Where(x => x.UserId == CurrentUser.Id);
+            var mine = (await _notificationRepo.GetQueryableAsync()).Where(x => x.UserId == CurrentUser.Id && (x.EventId == null || CurrentUser.IsInRole("Admin")));
             var filtered = mine;
             if (!string.IsNullOrEmpty(keyword))
             {
@@ -128,12 +140,12 @@ namespace WashGo.Application.Features.NotificationApplication.Services
         }
 
         public async Task<BaseResponse<int>> GetUnreadCountAsync() =>
-            Success(await _notificationRepo.CountAsync(x => x.UserId == CurrentUser.Id && !x.IsRead));
+            Success(await _notificationRepo.CountAsync(x => x.UserId == CurrentUser.Id && !x.IsRead && (x.EventId == null || CurrentUser.IsInRole("Admin"))));
 
         public async Task<BaseResponse<NotificationDto>> MarkReadAsync(Guid id)
         {
             var notification = await _notificationRepo.FirstOrDefaultAsync(x => x.Id == id && x.UserId == CurrentUser.Id);
-            if (notification == null)
+            if (notification == null || notification.EventId.HasValue && !CurrentUser.IsInRole("Admin"))
                 return NotFound<NotificationDto>("Không tìm thấy thông báo!");
             // An already-read notification keeps its original read time.
             if (!notification.IsRead)
@@ -157,7 +169,7 @@ namespace WashGo.Application.Features.NotificationApplication.Services
         public async Task<BaseResponse<bool>> DeleteAsync(Guid id)
         {
             var notification = await _notificationRepo.FirstOrDefaultAsync(x => x.Id == id && x.UserId == CurrentUser.Id);
-            if (notification == null)
+            if (notification == null || notification.EventId.HasValue && !CurrentUser.IsInRole("Admin"))
                 return NotFound<bool>("Không tìm thấy thông báo!");
             await _notificationRepo.DeleteAsync(notification, autoSave: true);
             await PushStateAsync("deleted", [id]);
@@ -181,7 +193,7 @@ namespace WashGo.Application.Features.NotificationApplication.Services
             {
                 Action = action,
                 Ids = ids,
-                UnreadCount = await _notificationRepo.CountAsync(x => x.UserId == userId && !x.IsRead),
+                UnreadCount = await _notificationRepo.CountAsync(x => x.UserId == userId && !x.IsRead && (x.EventId == null || CurrentUser.IsInRole("Admin"))),
                 At = DateTime.UtcNow
             };
             async Task SendAsync()
@@ -208,7 +220,7 @@ namespace WashGo.Application.Features.NotificationApplication.Services
 
         public static NotificationDto ToDto(Notification x) => new()
         {
-            Id = x.Id,
+            Id = x.Id, EventId = x.EventId, DueAt = x.DueAt, DetectedAt = x.DetectedAt,
             Type = x.Type,
             Title = x.Title,
             Content = x.Content,

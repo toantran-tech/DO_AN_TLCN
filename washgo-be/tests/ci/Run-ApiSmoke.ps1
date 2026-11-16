@@ -23,6 +23,8 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Payment query/limit regression failed.' }
     & dotnet run --project (Join-Path $PSScriptRoot '../smoke/Loyalty/Loyalty.csproj') --configuration Release
     if ($LASTEXITCODE -ne 0) { throw 'Loyalty calculation regression failed.' }
+    & dotnet run --project (Join-Path $PSScriptRoot '../smoke/WorkflowMetadata/WorkflowMetadata.csproj') --configuration Release
+    if ($LASTEXITCODE -ne 0) { throw 'Workflow metadata regression failed.' }
     & docker @compose up -d --build --wait --wait-timeout 180
     if ($LASTEXITCODE -ne 0) { throw 'CI Compose failed to start.' }
     $postgres = (& docker @compose ps -q postgres).Trim()
@@ -44,7 +46,7 @@ try {
     }
     # Swagger must send an actual multipart file, not just a Content-Type header.
     $openApi = Invoke-RestMethod "$baseUrl/swagger/v1/swagger.json"
-    foreach ($route in @('/payment/orders/{orderId}/active-session', '/payment/orders/{orderId}/quote', '/payment/orders/{orderId}/verify-session', '/payment/verification-operations/{operationId}')) {
+    foreach ($route in @('/payment/orders/{orderId}/active-session', '/payment/orders/{orderId}/quote', '/payment/orders/{orderId}/verify-session', '/payment/verification-operations/{operationId}', '/admin/service-categories/filter', '/customer/service-categories', '/notification/outbox/summary')) {
         if (!$openApi.paths.PSObject.Properties[$route]) { throw "Missing payment recovery route: $route" }
     }
     $openApi | ConvertTo-Json -Depth 100 | Set-Content (Join-Path $results 'swagger.json')
@@ -74,7 +76,7 @@ try {
     if (!$?) { throw 'Order lifecycle/actual-weight smoke failed.' }
     & (Join-Path $PSScriptRoot '../smoke/locker-last-slot-race.ps1') -BaseUrl $baseUrl -PostgresContainer $postgres -Database washgo_ci
     if (!$?) { throw 'Last-slot concurrent reservation smoke failed.' }
-    foreach ($suite in @('rating-keyword-privacy.ps1', 'review-publishing.ps1', 'storage-lifecycle.ps1', 'customer-locker-slots.ps1', 'customer-public-reviews-notifications.ps1')) {
+    foreach ($suite in @('rating-keyword-privacy.ps1', 'review-publishing.ps1', 'storage-lifecycle.ps1', 'customer-locker-slots.ps1', 'customer-public-reviews-notifications.ps1', 'service-categories-workflow.ps1')) {
         & (Join-Path $PSScriptRoot "../smoke/$suite") -BaseUrl $baseUrl -PostgresContainer $postgres -Database washgo_ci
         if (!$?) { throw "API regression failed: $suite" }
     }
@@ -87,7 +89,7 @@ try {
     $fixtures = & docker exec $postgres psql -U postgres -d washgo_ci -At -c "SELECT count(*) FROM washgo.services WHERE code LIKE 'CATALOG_%';"
     if ($LASTEXITCODE -ne 0 -or "$fixtures".Trim() -ne '0') { throw 'API smoke left fixture services behind.' }
     Write-Output 'PASS: isolated PostgreSQL migrations/seed, real Backend HTTP, catalog visibility, multi-select filters, sorting, validation, pagination and fixture cleanup.'
-    'PASS: ABP mapper/JWT, catalog, order lifecycle/weight, review publication, storage/redelivery and role privacy; isolated database initialization/cleanup.' | Set-Content (Join-Path $results 'api-result.txt')
+    'PASS: ABP mapper/JWT, catalog, order lifecycle/weight, review publication, storage/redelivery/LK, dynamic categories, structured events/outbox, payment recovery, loyalty and role privacy; isolated database initialization/cleanup.' | Set-Content (Join-Path $results 'api-result.txt')
     $succeeded = $true
 }
 finally {

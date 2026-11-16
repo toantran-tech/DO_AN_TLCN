@@ -1,3 +1,5 @@
+using WashGo.Application.Features.ServiceCategoryApplication.Services;
+using WashGo.Domain.Shared.Validation;
 using WashGo.Application.Features.AuditApplication.Services;
 using System;
 using System.Collections.Generic;
@@ -65,6 +67,8 @@ namespace WashGo.Application.Features.ServiceProposalApplication.Services
 
         public async Task<PaginatedResult<WashServiceResultDto>> GetMyServicesAsync(WashServiceFilterQuery query)
         {
+            if ((query.CategoryIds?.Length ?? 0) > 100 || query.CategoryIds?.Contains(Guid.Empty) == true)
+                return new() { StatusCode = HttpStatusCode.BadRequest, Message = "Invalid categoryIds: maximum 100 nonempty UUIDs." };
             var sorts = query.SortBy ?? [];
             if (sorts.Length > 1 || sorts.Any(x => !SortFields.Contains(x.Field, StringComparer.OrdinalIgnoreCase)))
                 return new PaginatedResult<WashServiceResultDto>
@@ -75,6 +79,7 @@ namespace WashGo.Application.Features.ServiceProposalApplication.Services
             // The catalog is shared: every Merchant processes the same approved services at the same prices.
             var queryable = (await _serviceRepo.GetQueryableAsync())
                 .Where(x => !x.IsDeleted && x.ApprovalStatus == ServiceApprovalStatus.Approved);
+            if ((query.CategoryIds?.Length ?? 0) > 0) queryable = queryable.Where(x => query.CategoryIds!.Contains(x.CategoryId));
             if (query.ServiceType.HasValue)
                 queryable = queryable.Where(x => x.ServiceType == query.ServiceType.Value);
             if (query.IsActive.HasValue)
@@ -162,6 +167,7 @@ namespace WashGo.Application.Features.ServiceProposalApplication.Services
                     : ((string?)null, (string?)null);
                 dto.CanProposeUpdate = dto.ProposeBlockedCode == null;
             }
+            await LazyServiceProvider.LazyGetRequiredService<ServiceCategoryProjection>().FillAsync(dtos);
             return dtos;
         }
 
@@ -222,6 +228,7 @@ namespace WashGo.Application.Features.ServiceProposalApplication.Services
                     return Fail<ServiceProposalDto>(HttpStatusCode.Conflict, "StaleVersion",
                         "Dịch vụ đã được thay đổi sau khi bạn mở; vui lòng tải lại trước khi đề xuất.");
                 // Edits keep the service's category and unit; only name, description, prices, duration and images change.
+                command.CategoryId ??= service.CategoryId;
                 command.ServiceType = service.ServiceType;
                 command.Unit = service.Unit;
             }
@@ -266,6 +273,7 @@ namespace WashGo.Application.Features.ServiceProposalApplication.Services
                 PricePerKg = command.PricePerKg,
                 PricePerItem = command.PricePerItem,
                 EstimatedDurationHours = command.EstimatedDurationHours,
+                CategoryId = command.CategoryId ?? ServiceCategoryRules.LegacyId((int)command.ServiceType),
                 ServiceType = command.ServiceType,
                 Unit = command.Unit.Trim(),
                 ImageUrls = images
@@ -361,6 +369,9 @@ namespace WashGo.Application.Features.ServiceProposalApplication.Services
             var data = Read(request.ProposedData);
             if (data == null)
                 return BadRequest<ServiceProposalDto>("Có lỗi xảy ra. Vui lòng thử lại.");
+            var category = data.CategoryId.HasValue ? await LazyServiceProvider.LazyGetRequiredService<IRepository<ServiceCategoryEntity, Guid>>().FindAsync(data.CategoryId.Value) : null;
+            if (category == null || category.IsDeleted || !category.IsActive)
+                return Fail<ServiceProposalDto>(HttpStatusCode.Conflict, "CategoryInactive", "Danh mục đã khóa hoặc xóa; cần chỉnh đề xuất trước khi duyệt.");
             var merchant = await _merchantRepo.FindAsync(request.MerchantId);
             if (merchant == null)
                 return BadRequest<ServiceProposalDto>("Merchant của đề xuất không còn tồn tại.");
@@ -474,6 +485,7 @@ namespace WashGo.Application.Features.ServiceProposalApplication.Services
             service.PricePerKg = data.PricePerKg;
             service.PricePerItem = data.PricePerItem;
             service.EstimatedDurationHours = data.EstimatedDurationHours;
+            service.CategoryId = data.CategoryId ?? ServiceCategoryRules.LegacyId((int)data.ServiceType);
             service.ServiceType = data.ServiceType;
             service.Unit = data.Unit;
             service.Images = data.ImageUrls.Count == 0 ? null : JsonSerializer.Serialize(data.ImageUrls);
@@ -487,6 +499,7 @@ namespace WashGo.Application.Features.ServiceProposalApplication.Services
             PricePerKg = s.PricePerKg,
             PricePerItem = s.PricePerItem,
             EstimatedDurationHours = s.EstimatedDurationHours,
+            CategoryId = s.CategoryId,
             ServiceType = s.ServiceType,
             Unit = s.Unit,
             ImageUrls = ReadImages(s.Images)
@@ -502,7 +515,14 @@ namespace WashGo.Application.Features.ServiceProposalApplication.Services
         private static ServiceProposalDataDto? Read(string? json)
         {
             if (string.IsNullOrWhiteSpace(json)) return null;
-            try { return JsonSerializer.Deserialize<ServiceProposalDataDto>(json, Json); }
+            try {
+                var data = JsonSerializer.Deserialize<ServiceProposalDataDto>(json, Json);
+                if (data != null && !data.CategoryId.HasValue) {
+                    if (!Enum.IsDefined(data.ServiceType)) return null;
+                    data.CategoryId = ServiceCategoryRules.LegacyId((int)data.ServiceType);
+                }
+                return data;
+            }
             catch (JsonException) { return null; }
         }
 
@@ -515,6 +535,7 @@ namespace WashGo.Application.Features.ServiceProposalApplication.Services
             ServiceId = x.ServiceId,
             RequestType = x.RequestType,
             Status = x.Status,
+            CategoryMappingBasis = x.ProposedData.Contains("\"categoryId\"") ? "Captured" : Read(x.ProposedData) == null ? "LegacyInvalid" : "LegacyServiceTypeMapping",
             Proposed = Read(x.ProposedData) ?? new ServiceProposalDataDto(),
             Current = Read(x.CurrentData),
             Reason = x.Reason,

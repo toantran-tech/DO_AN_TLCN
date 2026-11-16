@@ -44,6 +44,8 @@ public class CustomerCatalogAppService : WashGoAppService, ICustomerCatalogAppSe
         var sorts = filter.SortBy ?? [];
         var serviceTypes = (filter.ServiceTypes ?? []).Distinct().ToArray();
         var ranges = filter.PriceRanges ?? [];
+        var categoryIds = (filter.CategoryIds ?? []).Distinct().ToArray();
+        if (categoryIds.Length > 100 || categoryIds.Contains(Guid.Empty)) return new() { StatusCode = HttpStatusCode.BadRequest, Message = "Invalid categoryIds (maximum 100 UUIDs)." };
         string? error = sorts.Any(sort => sort == null ||
             sort.Field?.Trim().ToLowerInvariant() is not ("name" or "unitprice" or "price"))
             ? "SortBy.Field chỉ chấp nhận Name hoặc UnitPrice (price)."
@@ -66,8 +68,9 @@ public class CustomerCatalogAppService : WashGoAppService, ICustomerCatalogAppSe
         var (page, take) = NormalizePaging(filter.Page, filter.Take);
         var services = await _services.GetQueryableAsync();
         var query = services.Where(service => !service.IsDeleted && service.IsActive
-            && service.ApprovalStatus == ServiceApprovalStatus.Approved && service.UnitPrice > 0);
+            && service.ApprovalStatus == ServiceApprovalStatus.Approved && service.UnitPrice > 0 && service.Category.IsActive && !service.Category.IsDeleted);
 
+        if (categoryIds.Length > 0) query = query.Where(x => categoryIds.Contains(x.CategoryId));
         if (serviceTypes.Length > 0)
             query = query.Where(x => serviceTypes.Contains(x.ServiceType));
         if (ranges.Length > 0)
@@ -112,7 +115,7 @@ public class CustomerCatalogAppService : WashGoAppService, ICustomerCatalogAppSe
             .Skip((page - 1) * take).Take(take)
             .Select(x => new CustomerServiceCatalogDto
             {
-                Id = x.Id,
+                Id = x.Id, CategoryId = x.CategoryId, CategoryName = x.Category.Name, CategoryCode = x.Category.Code, CategoryIsActive = x.Category.IsActive, EffectiveIsActive = true,
                 Code = x.Code,
                 Name = x.Name,
                 Description = x.Description,
@@ -132,10 +135,10 @@ public class CustomerCatalogAppService : WashGoAppService, ICustomerCatalogAppSe
         var services = await _services.GetQueryableAsync();
         var query = from service in services
                     where service.Id == id && !service.IsDeleted && service.IsActive
-                        && service.ApprovalStatus == ServiceApprovalStatus.Approved && service.UnitPrice > 0
+                        && service.ApprovalStatus == ServiceApprovalStatus.Approved && service.UnitPrice > 0 && service.Category.IsActive && !service.Category.IsDeleted
                     select new CustomerServiceCatalogDto
                     {
-                        Id = service.Id,
+                        Id = service.Id, CategoryId = service.CategoryId, CategoryName = service.Category.Name, CategoryCode = service.Category.Code, CategoryIsActive = service.Category.IsActive, EffectiveIsActive = true,
                         Code = service.Code,
                         Name = service.Name,
                         Description = service.Description,

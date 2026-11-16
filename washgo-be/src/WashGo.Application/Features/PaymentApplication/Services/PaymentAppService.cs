@@ -237,6 +237,10 @@ namespace WashGo.Application.Features.PaymentApplication.Services
                     { reviewReason = "StorageFeeAlreadyPaidOrAmountChanged"; break; }
                     order.OverdueFeeTotal = due;
                     order.StorageFeeTotal += transaction.Amount;
+                    order.Timeline.Add(new WashOrderTimeline(Guid.NewGuid()) { EventType = "StorageFeePaid", PaymentPurpose = transaction.Purpose,
+                        Amount = transaction.Amount, WashOrderId = order.Id, FromStatus = order.Status, Status = order.Status,
+                        ActorRole = "System", ActorName = provider, Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                        Note = "Storage fee payment verified." });
                     await _orders.UpdateAsync(order, autoSave: true);
                     break;
                 case PaymentPurpose.Order:
@@ -275,6 +279,7 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             order.CancelFeePaidAmount += transaction.Amount;
             order.Timeline.Add(new WashOrderTimeline
             {
+                EventType = "CancellationFeePaid", PaymentPurpose = transaction.Purpose, Amount = transaction.Amount,
                 WashOrderId = order.Id, FromStatus = order.Status, Status = order.Status,
                 ActorRole = "System", ActorName = provider,
                 Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
@@ -305,6 +310,7 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             order.PaidAt = DateTime.UtcNow;
             order.Timeline.Add(new WashOrderTimeline
             {
+                EventType = "LaundryPaid", PaymentPurpose = transaction.Purpose, Amount = transaction.Amount,
                 WashOrderId = order.Id,
                 FromStatus = fromStatus,
                 Status = order.Status,
