@@ -19,6 +19,8 @@ $succeeded = $false
 try {
     & dotnet run --project (Join-Path $PSScriptRoot '../smoke/Payments/Payments.csproj') --configuration Release
     if ($LASTEXITCODE -ne 0) { throw 'Payment gateway outcome regression failed.' }
+    & dotnet run --project (Join-Path $PSScriptRoot '../smoke/PaymentRecovery/PaymentRecovery.csproj') --configuration Release
+    if ($LASTEXITCODE -ne 0) { throw 'Payment query/limit regression failed.' }
     & dotnet run --project (Join-Path $PSScriptRoot '../smoke/Loyalty/Loyalty.csproj') --configuration Release
     if ($LASTEXITCODE -ne 0) { throw 'Loyalty calculation regression failed.' }
     & docker @compose up -d --build --wait --wait-timeout 180
@@ -42,6 +44,9 @@ try {
     }
     # Swagger must send an actual multipart file, not just a Content-Type header.
     $openApi = Invoke-RestMethod "$baseUrl/swagger/v1/swagger.json"
+    foreach ($route in @('/payment/orders/{orderId}/active-session', '/payment/orders/{orderId}/quote', '/payment/orders/{orderId}/verify-session', '/payment/verification-operations/{operationId}')) {
+        if (!$openApi.paths.PSObject.Properties[$route]) { throw "Missing payment recovery route: $route" }
+    }
     $openApi | ConvertTo-Json -Depth 100 | Set-Content (Join-Path $results 'swagger.json')
     foreach ($route in @('/files/images', '/files/videos', '/files/documents/')) {
         $path = @($openApi.paths.PSObject.Properties | Where-Object { $_.Name.TrimEnd('/') -eq $route.TrimEnd('/') })
@@ -77,6 +82,8 @@ try {
     if (!$?) { throw 'Payment/assignment concurrency regression failed.' }
     & (Join-Path $PSScriptRoot '../smoke/loyalty-points.ps1') -BaseUrl $baseUrl -PostgresContainer $postgres -Database washgo_ci
     if (!$?) { throw 'Loyalty wallet/payment/refund regression failed.' }
+    & (Join-Path $PSScriptRoot '../smoke/payment-session-recovery.ps1') -BaseUrl $baseUrl -PostgresContainer $postgres -Database washgo_ci
+    if (!$?) { throw 'Payment recovery HTTP regression failed.' }
     $fixtures = & docker exec $postgres psql -U postgres -d washgo_ci -At -c "SELECT count(*) FROM washgo.services WHERE code LIKE 'CATALOG_%';"
     if ($LASTEXITCODE -ne 0 -or "$fixtures".Trim() -ne '0') { throw 'API smoke left fixture services behind.' }
     Write-Output 'PASS: isolated PostgreSQL migrations/seed, real Backend HTTP, catalog visibility, multi-select filters, sorting, validation, pagination and fixture cleanup.'

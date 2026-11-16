@@ -1,3 +1,5 @@
+> Bổ sung 16/11/2026: FE dùng thêm [Payment session recovery](PAYMENT_SESSION_RECOVERY_API_REVIEW.md) cho GET phiên/quote, giới hạn tiền gửi cổng, verify và xác nhận tạo phiên thay thế. Giữ nguyên concurrency/điểm đã chốt; test/deploy mới chưa chạy.
+
 # Thanh toán và phân công đồng thời — bàn giao 15/11/2026
 
 ## Trạng thái

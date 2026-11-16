@@ -140,6 +140,15 @@ namespace WashGo.HttpApi.Host
             context.Services.AddRateLimiter(options =>
             {
                 options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+                options.AddPolicy("payment-verification", httpContext =>
+                    RateLimitPartition.GetFixedWindowLimiter(
+                        httpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                            ?? httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                        _ => new FixedWindowRateLimiterOptions
+                        {
+                            PermitLimit = 10, Window = TimeSpan.FromMinutes(1),
+                            QueueLimit = 0, AutoReplenishment = true
+                        }));
                 options.AddPolicy("public-catalog", httpContext =>
                     RateLimitPartition.GetFixedWindowLimiter(
                         httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
@@ -185,6 +194,7 @@ namespace WashGo.HttpApi.Host
 
             context.Services.AddSignalR();
             context.Services.AddHostedService<ReminderWorker>();
+            context.Services.AddHostedService<PaymentVerificationWorker>();
             context.Services.AddHostedService<PrivateDocumentCleanupWorker>();
             context.Services.AddHostedService<ChatbotCleanupWorker>();
             context.Services.AddEndpointsApiExplorer();
@@ -266,10 +276,10 @@ namespace WashGo.HttpApi.Host
                     await http.Response.WriteAsJsonAsync(new { succeeded = false, statusCode = 400, message = "Ảnh/video bản nháp đã hết hạn; vui lòng upload lại.", meta = new { code = "UploadExpired" } });
                 }
             });
-            app.UseRateLimiter();
             app.UseCors();
 
             app.UseAuthentication();
+            app.UseRateLimiter();
             app.UseAuthorization();
 
             app.UseSwagger();

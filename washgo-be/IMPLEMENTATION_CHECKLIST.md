@@ -1,4 +1,19 @@
-﻿> Customer Guest 15/11/2026: đã triển khai yêu cầu docs/BACKEND_CUSTOMER (1).md: mở đúng 7 API đọc, giữ API cá nhân/ghi có JWT; phê duyệt publishForGuests riêng không tự public review cũ, ảnh kiểm tra phạm vi/Hide mỗi lần, rate limit + input bounds. Có migration AddGuestReviewApproval. Ba smoke suite hiện có đã cập nhật/nối CI; mới kiểm tra cú pháp PowerShell và whitespace, chưa chạy tests/build/Docker local hoặc áp DB/deploy. Bàn giao: [CUSTOMER_GUEST_ACCESS_API_REVIEW.md](docs/CUSTOMER_GUEST_ACCESS_API_REVIEW.md).
+> Customer Guest 15/11/2026: đã triển khai yêu cầu docs/BACKEND_CUSTOMER (1).md: mở đúng 7 API đọc, giữ API cá nhân/ghi có JWT; phê duyệt publishForGuests riêng không tự public review cũ, ảnh kiểm tra phạm vi/Hide mỗi lần, rate limit + input bounds. Có migration AddGuestReviewApproval. Ba smoke suite hiện có đã cập nhật/nối CI; mới kiểm tra cú pháp PowerShell và whitespace, chưa chạy tests/build/Docker local hoặc áp DB/deploy. Bàn giao: [CUSTOMER_GUEST_ACCESS_API_REVIEW.md](docs/CUSTOMER_GUEST_ACCESS_API_REVIEW.md).
+
+## Phiên thanh toán và khôi phục — 16/11/2026
+
+- [x] Source GET session/quote riêng tư, no-store, mục đích độc lập, không mở ví/giữ điểm từ GET.
+- [x] Hạn mức tiền thực trả, MoMo wallet cho dưới 10k, chặn trước tạo reference/hold; không làm tròn/tăng tiền.
+- [x] Operation có ownership/idempotency/cooldown/rate limit, worker lease/retry/cảnh báo Admin; query ngoài transaction.
+- [x] Kết quả cổng chung đường IPN; chỉ đóng khi xác minh thất bại cuối, quote mới trước tạo lại; late receipt giữ bằng chứng/thu dư.
+- [x] Migration + snapshot/Designer; viết và nối fake HTTP + smoke recovery vào CI; cập nhật tài liệu FE.
+- [x] Kiểm tra biên dịch source (còn warning cũ ngoài phần thanh toán).
+- [ ] Chạy test/CI mới; backup và áp migration, build Docker/deploy (người dùng thực hiện).
+- [ ] Kiểm chứng quyền query/status cuối và hạn mức sandbox VNPay/MoMo của merchant; chưa coi fake HTTP là nghiệm thu cổng.
+- [ ] Cụm mới timeline/notification/outbox/storage handover/category chưa làm. Xem [plan](docs/BACKEND_REQUIREMENTS_PLAN_20261116.md).
+
+Bàn giao: [API payment recovery](docs/PAYMENT_SESSION_RECOVERY_API_REVIEW.md).
+
 
 > Theo yêu cầu người dùng: đã bỏ công cụ chuyển dữ liệu Python và test Python khỏi repo/CI. Giữ bản sửa C# nhận diện NoSuchKey, provider contract tests .NET và kết quả 36 file đã chuyển lên cloud; thay đổi này không xóa file cloud/local.
 

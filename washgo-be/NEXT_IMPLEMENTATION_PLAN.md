@@ -1,4 +1,6 @@
-﻿> Customer Guest 15/11/2026: đã triển khai yêu cầu docs/BACKEND_CUSTOMER (1).md: mở đúng 7 API đọc, giữ API cá nhân/ghi có JWT; phê duyệt publishForGuests riêng không tự public review cũ, ảnh kiểm tra phạm vi/Hide mỗi lần, rate limit + input bounds. Có migration AddGuestReviewApproval. Ba smoke suite hiện có đã cập nhật/nối CI; mới kiểm tra cú pháp PowerShell và whitespace, chưa chạy tests/build/Docker local hoặc áp DB/deploy. Bàn giao: [CUSTOMER_GUEST_ACCESS_API_REVIEW.md](docs/CUSTOMER_GUEST_ACCESS_API_REVIEW.md).
+> Thanh toán 16/11/2026: đã bổ sung source active-session/quote/capabilities, xác minh VNPay/MoMo qua operation bền vững và worker, xác nhận quote trước thay phiên; giữ nguyên settle/IPN/loyalty. Có migration `20261116120000_AddPaymentVerification`. Test mới đã nối CI nhưng **chưa chạy**; Docker/áp DB/deploy do người dùng thực hiện. Bàn giao FE: [PAYMENT_SESSION_RECOVERY_API_REVIEW.md](docs/PAYMENT_SESSION_RECOVERY_API_REVIEW.md). Chỉ cụm payment 1–2; yêu cầu mới về timeline/notification/category còn trong plan.
+
+> Customer Guest 15/11/2026: đã triển khai yêu cầu docs/BACKEND_CUSTOMER (1).md: mở đúng 7 API đọc, giữ API cá nhân/ghi có JWT; phê duyệt publishForGuests riêng không tự public review cũ, ảnh kiểm tra phạm vi/Hide mỗi lần, rate limit + input bounds. Có migration AddGuestReviewApproval. Ba smoke suite hiện có đã cập nhật/nối CI; mới kiểm tra cú pháp PowerShell và whitespace, chưa chạy tests/build/Docker local hoặc áp DB/deploy. Bàn giao: [CUSTOMER_GUEST_ACCESS_API_REVIEW.md](docs/CUSTOMER_GUEST_ACCESS_API_REVIEW.md).
 
 > Theo yêu cầu người dùng: đã bỏ công cụ chuyển dữ liệu Python và test Python khỏi repo/CI. Giữ bản sửa C# nhận diện NoSuchKey, provider contract tests .NET và kết quả 36 file đã chuyển lên cloud; thay đổi này không xóa file cloud/local.
 
@@ -26,6 +28,8 @@
 > Cập nhật 09/11/2026: xem kết quả tại [IMPLEMENTATION_CHECKLIST.md](IMPLEMENTATION_CHECKLIST.md) và hợp đồng API mới tại [docs/ADMIN_COMPLETION_REVIEW.md](docs/ADMIN_COMPLETION_REVIEW.md). Các mục cũ phía dưới là lịch sử. Đã chia commit thành 4 nhánh, chưa push; xem docs/GIT_PUSH_PLAN.md.
 
 # Tiến độ WashGo theo Đặc tả usecase (Backend trước)
+
+> Plan 16/11/2026: đã đọc 4 yêu cầu mới trong `TLCN/cần làm` (PAYMENT, ORDER, NOTIFICATION, CATEGORY), đối chiếu source và chia 8 cụm ưu tiên. Xem [BACKEND_REQUIREMENTS_PLAN_20261116.md](docs/BACKEND_REQUIREMENTS_PLAN_20261116.md). Đề xuất payment read/quote/capability → gateway recovery → event/timeline → mã LK → notification/outbox → category. ServiceType đang dùng cho ETA/progress nên giữ riêng với category động. Chỉ lập plan, chưa sửa business code/test/DB/Docker đợt này.
 
 > Điểm thưởng 15/11/2026: đã có source tích 1% tiền giặt thực trả, 1 điểm=1đ, dùng tối đa 20%; giữ điểm theo phiên, chống trùng, hoàn/thu hồi/nợ điểm, WashGo tài trợ và đối soát Merchant riêng với tiền cổng. Có migration AddLoyaltyPoints, test công thức/HTTP nối CI. Đã kiểm tra biên dịch; chưa chạy tests/build Docker/áp migration/deploy. Bàn giao: [LOYALTY_POINTS_API_REVIEW.md](docs/LOYALTY_POINTS_API_REVIEW.md). [Plan](docs/ADMIN_CATALOG_AND_LOYALTY_PLAN_20261115.md) đã cập nhật; API danh mục Admin vẫn tạm hoãn.
 
