@@ -56,7 +56,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
         {
             var now = DateTime.UtcNow;
             order.PredictionUpdatedAt = now;
-            var reached = order.Timeline.GroupBy(x => x.Status).ToDictionary(g => g.Key, g => g.Min(x => x.Timestamp));
+            var reached = order.Timeline.Where(x => x.FromStatus != x.Status).GroupBy(x => x.Status).ToDictionary(g => g.Key, g => g.Min(x => x.Timestamp));
             if (order.Status is WashOrderStatus.Cancelled)
             {
                 order.PredictionStatus = "notApplicable";
@@ -120,10 +120,10 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
 
         private async Task<WashServiceType> PrimaryTypeAsync(Guid orderId)
         {
-            var serviceId = await _executer.FirstOrDefaultAsync((await _itemRepo.GetQueryableAsync())
-                .Where(x => x.WashOrderId == orderId).OrderByDescending(x => x.SubTotal).Select(x => (Guid?)x.ServiceId));
-            if (!serviceId.HasValue) return WashServiceType.StandardWash;
-            return (await _serviceRepo.FindAsync(serviceId.Value))?.ServiceType ?? WashServiceType.StandardWash;
+            var item = await _executer.FirstOrDefaultAsync((await _itemRepo.GetQueryableAsync())
+                .Where(x => x.WashOrderId == orderId).OrderByDescending(x => x.SubTotal).Select(x => new { x.ServiceId, x.ProcessingTypeSnapshot }));
+            if (item == null) return WashServiceType.StandardWash;
+            return item.ProcessingTypeSnapshot ?? (await _serviceRepo.FindAsync(item.ServiceId))?.ServiceType ?? WashServiceType.StandardWash;
         }
 
         private sealed record Sample(Guid? MerchantId, WashServiceType Type, double ProcessingHours, double? CollectWaitHours);
@@ -133,7 +133,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
         {
             var since = new DateTimeOffset(now.AddDays(-HistoryDays)).ToUnixTimeSeconds();
             var rows = await _executer.ToListAsync((await _timelineRepo.GetQueryableAsync())
-                .Where(x => x.Timestamp >= since - 7 * 86400 && (x.Status == WashOrderStatus.Deposited ||
+                .Where(x => x.FromStatus != x.Status && x.Timestamp >= since - 7 * 86400 && (x.Status == WashOrderStatus.Deposited ||
                     x.Status == WashOrderStatus.Collected || x.Status == WashOrderStatus.AwaitingPayment))
                 .Select(x => new { x.WashOrderId, x.Status, x.Timestamp }));
             var perOrder = rows.GroupBy(x => x.WashOrderId)
@@ -153,9 +153,9 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                     .Where(x => ids.Contains(x.Id) && !x.IsDeleted).Select(x => new { x.Id, x.MerchantId })))
                 .ToDictionary(x => x.Id, x => x.MerchantId);
             var mainService = (await _executer.ToListAsync((await _itemRepo.GetQueryableAsync())
-                    .Where(x => ids.Contains(x.WashOrderId)).Select(x => new { x.WashOrderId, x.ServiceId, x.SubTotal })))
-                .GroupBy(x => x.WashOrderId).ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.SubTotal).First().ServiceId);
-            var serviceIds = mainService.Values.Distinct().ToList();
+                    .Where(x => ids.Contains(x.WashOrderId)).Select(x => new { x.WashOrderId, x.ServiceId, x.SubTotal, x.ProcessingTypeSnapshot })))
+                .GroupBy(x => x.WashOrderId).ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.SubTotal).First());
+            var serviceIds = mainService.Values.Select(x => x.ServiceId).Distinct().ToList();
             var types = (await _executer.ToListAsync((await _serviceRepo.GetQueryableAsync())
                     .Where(x => serviceIds.Contains(x.Id)).Select(x => new { x.Id, x.ServiceType })))
                 .ToDictionary(x => x.Id, x => x.ServiceType);
@@ -163,7 +163,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             return perOrder.Where(x => merchants.ContainsKey(x.OrderId))
                 .Select(x => new Sample(
                     merchants[x.OrderId],
-                    mainService.TryGetValue(x.OrderId, out var sid) && types.TryGetValue(sid, out var t) ? t : WashServiceType.StandardWash,
+                    mainService.TryGetValue(x.OrderId, out var primary) ? primary.ProcessingTypeSnapshot ?? types.GetValueOrDefault(primary.ServiceId, WashServiceType.StandardWash) : WashServiceType.StandardWash,
                     (x.Done!.Value - x.Collected!.Value) / 3600.0,
                     x.Deposited.HasValue && x.Collected > x.Deposited ? (x.Collected.Value - x.Deposited.Value) / 3600.0 : null))
                 .ToList();

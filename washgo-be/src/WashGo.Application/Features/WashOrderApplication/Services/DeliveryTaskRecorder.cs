@@ -24,7 +24,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             _settings = settings;
         }
 
-        public async Task AssignedAsync(WashOrder order, Guid shipperId, DeliveryTaskType type, Guid? assignedBy, DateTime at)
+        public async Task<Guid> AssignedAsync(WashOrder order, Guid shipperId, DeliveryTaskType type, Guid? assignedBy, DateTime at)
         {
             await EndOpenAsync(order.Id, DeliveryTaskStatus.Reassigned, at);
             var task = new DeliveryTask(Guid.NewGuid())
@@ -36,6 +36,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             await CaptureLocationAsync(task, order);
             task.SnapshotSource = "CapturedAtAssignment";
             await _tasks.InsertAsync(task, autoSave: true);
+            return task.Id;
         }
 
         /// <summary>Closes the open task of this type; an assignment from before the table existed gets a row with no assignment time.</summary>
@@ -58,6 +59,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             await CaptureLocationAsync(open, order);
             open.Status = DeliveryTaskStatus.Completed;
             open.CompletedAt = DateTimeOffset.FromUnixTimeSeconds(entry.Timestamp).UtcDateTime;
+            entry.TaskId = open.Id; entry.TaskType = type; entry.ShipperId = shipperId; entry.ShipperName = order.ShipperName;
             open.CompletionEventId = entry.Id;
             open.CompletedBy = entry.ActorId;
             open.CompletedByRole = entry.ActorRole;

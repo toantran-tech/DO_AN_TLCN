@@ -9,6 +9,12 @@ namespace WashGo.Application.Contracts.Features.WashServiceContracts.Results
 {
     public class WashServiceResultDto
     {
+        public Guid CategoryId { get; set; }
+        public string? CategoryCode { get; set; }
+        public string? CategoryName { get; set; }
+        public bool CategoryIsActive { get; set; }
+        public bool EffectiveIsActive { get; set; }
+        public string? BlockedReason { get; set; }
         public Guid Id { get; set; }
         public Guid? MerchantId { get; set; }
         public string Code { get; set; } = string.Empty;

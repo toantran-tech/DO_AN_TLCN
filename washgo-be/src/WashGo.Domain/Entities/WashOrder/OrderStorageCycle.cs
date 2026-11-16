@@ -22,5 +22,9 @@ public class OrderStorageCycle : Entity<Guid>
     public decimal WarehouseFee { get; set; }
     public Guid? IntakeActorId { get; set; }
     public string? IntakeReceipt { get; set; }
+    public string? StorageReference { get; set; }
+    public DateTime? ReferenceIssuedAt { get; set; }
+    public string? ReferenceBasis { get; set; }
+    public string? MerchantName { get; set; }
     public string? ExceptionNote { get; set; }
 }

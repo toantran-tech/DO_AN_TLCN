@@ -1,3 +1,5 @@
+> Update 16/11/2026: server-generated LK reference and optional receipt supersede the old mandatory-receipt contract. See [current storage/event contract](ORDER_EVENTS_STORAGE_NOTIFICATION_API_REVIEW.md). New migration and regression execution are still pending.
+
 # Bàn giao BE: trạng thái Shipper và lưu kho tại tiệm
 
 Ngày 14/11/2026. Kho là khu lưu đồ của Merchant xử lý đơn, dùng địa chỉ tiệm snapshot; không có registry/CRUD kho. API chỉ mô phỏng giao nhận, không xác nhận cảm biến hay cửa tủ thật.

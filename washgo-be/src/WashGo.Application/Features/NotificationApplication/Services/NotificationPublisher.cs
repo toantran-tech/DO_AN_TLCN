@@ -59,13 +59,15 @@ namespace WashGo.Application.Features.NotificationApplication.Services
         }
 
         public async Task SendAsync(IEnumerable<Guid?> userIds, NotificationType type, string title, string content,
-            string? linkType = null, Guid? linkId = null, NotificationMessage? message = null)
+            string? linkType = null, Guid? linkId = null, NotificationMessage? message = null,
+            Guid? eventId = null, DateTime? dueAt = null, DateTime? detectedAt = null)
         {
             var args = message?.Args is { Count: > 0 } a ? JsonSerializer.Serialize(a) : null;
             var notifications = userIds.Where(x => x.HasValue && x.Value != Guid.Empty).Select(x => x!.Value).Distinct()
                 .Select(userId => new Notification
                 {
                     UserId = userId,
+                    EventId = eventId, DueAt = dueAt, DetectedAt = detectedAt,
                     Type = type,
                     Title = title,
                     Content = content,
@@ -97,29 +99,13 @@ namespace WashGo.Application.Features.NotificationApplication.Services
             }
             await _notificationRepo.InsertManyAsync(notifications, autoSave: true);
 
-            var uow = _unitOfWorkManager.Current;
-            if (uow == null) await PushAsync(notifications);
-            else uow.OnCompleted(() => PushAsync(notifications));
-        }
-
-        private async Task PushAsync(List<Notification> notifications)
-        {
-            foreach (var notification in notifications)
-            {
-                try
-                {
-                    await _realtime.SendAsync(notification.UserId, NotificationAppService.ToDto(notification));
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Không đẩy được thông báo real-time {NotificationId} tới {UserId}.",
-                        notification.Id, notification.UserId);
-                }
-            }
+            // Durable outbox rows are created atomically by the persistence boundary.
+            // SignalR delivery is retried by NotificationDeliveryWorker after commit.
         }
 
         public async Task SendToAdminsAsync(NotificationType type, string title, string content,
-            string? linkType = null, Guid? linkId = null, NotificationMessage? message = null)
+            string? linkType = null, Guid? linkId = null, NotificationMessage? message = null,
+            Guid? eventId = null, DateTime? dueAt = null, DateTime? detectedAt = null)
         {
             var roles = await _roleRepo.GetQueryableAsync();
             var users = await _userRepo.GetQueryableAsync();
@@ -128,7 +114,7 @@ namespace WashGo.Application.Features.NotificationApplication.Services
                 join role in roles on user.RoleId equals role.Id
                 where role.Name == "Admin" && user.IsActive
                 select (Guid?)user.Id);
-            await SendAsync(admins, type, title, content, linkType, linkId, message);
+            await SendAsync(admins, type, title, content, linkType, linkId, message, eventId, dueAt, detectedAt);
         }
 
         public async Task<Guid?> ShipperUserIdAsync(Guid? shipperId) =>
@@ -182,10 +168,7 @@ namespace WashGo.Application.Features.NotificationApplication.Services
             await SendAsync([o.MerchantId], NotificationType.CustomerDeposited, "Khách hàng đã gửi đồ",
                 $"Khách hàng đã gửi đồ #{o.OrderCode} vào {o.LockerName}, ô số {o.BoxNumber}. Vui lòng phân công Shipper.", "order", o.Id, Msg("deposited.merchant", o));
             // Orders get their Merchant from the Admin after deposit (UC 3.3).
-            await SendToAdminsAsync(NotificationType.CustomerDeposited, "Đơn mới chờ phân công",
-                o.MerchantId == null
-                    ? $"Khách hàng đã gửi đồ #{o.OrderCode} vào {o.LockerName}, ô số {o.BoxNumber}. Vui lòng phân công Merchant."
-                    : $"Khách hàng đã gửi đồ #{o.OrderCode} vào {o.LockerName}, ô số {o.BoxNumber}.", "order", o.Id, Msg(o.MerchantId == null ? "deposited.admin.assignMerchant" : "deposited.admin", o));
+
         }
 
         public async Task ShipperAssignedAsync(WashOrder o, DeliveryTaskType task)
@@ -265,8 +248,7 @@ namespace WashGo.Application.Features.NotificationApplication.Services
         {
             await SendAsync([o.CustomerId], NotificationType.PickedUp, "Lấy đồ thành công",
                 $"Bạn đã lấy đồ đơn #{o.OrderCode} thành công! Cảm ơn bạn đã sử dụng dịch vụ.", "order", o.Id, Msg("pickedUp.customer", o));
-            await SendToAdminsAsync(NotificationType.CustomerPickedUp, "Khách hàng đã lấy đồ",
-                $"Khách hàng đã lấy đồ #{o.OrderCode}. Hoàn tất.", "order", o.Id, Msg("pickedUp.admin", o));
+
         }
 
         public async Task CancelledAsync(WashOrder o, Guid? voidedTaskShipperId)
@@ -292,14 +274,14 @@ namespace WashGo.Application.Features.NotificationApplication.Services
         public async Task UnpaidMovedToStorageAsync(WashOrder o)
         {
             await SendAsync([o.CustomerId], NotificationType.MovedToStorage, "Thông báo chuyển kho",
-                $"Đơn #{o.OrderCode} đã quá hạn thanh toán 7 ngày nên đồ được chuyển sang lưu kho tại {o.StorageLocation}. Vui lòng thanh toán tiền giặt và phí lưu kho để nhận đồ.", "order", o.Id, Msg("unpaidMovedToStorage.customer", o));
+                $"Đơn #{o.OrderCode} quá hạn thanh toán và đang được lưu giữ tại tiệm phụ trách. Vui lòng thanh toán các khoản còn thiếu rồi yêu cầu giao lại locker.", "order", o.Id, Msg("unpaidMovedToStorage.customer", o));
             await SendAsync([o.MerchantId], NotificationType.MovedToStorage, "Đơn chuyển lưu kho",
-                $"Đơn #{o.OrderCode} quá hạn thanh toán đã chuyển sang lưu kho (mã {o.StorageReference}). Vui lòng giữ đồ đến khi khách thanh toán và đến nhận.", "order", o.Id, Msg("unpaidMovedToStorage.merchant", o));
+                $"Đơn #{o.OrderCode} đang lưu giữ tại tiệm (mã {o.StorageReference}). Giữ đồ và phân công giao lại locker sau khi khách yêu cầu, thanh toán đủ.", "order", o.Id, Msg("unpaidMovedToStorage.merchant", o));
         }
 
         public Task MovedToStorageAsync(WashOrder o) =>
             SendAsync([o.CustomerId], NotificationType.MovedToStorage, "Thông báo chuyển kho",
-                $"Đồ của đơn #{o.OrderCode} đã được chuyển về kho lưu trữ. Vui lòng liên hệ để nhận.", "order", o.Id, Msg("movedToStorage.customer", o));
+                $"Đồ của đơn #{o.OrderCode} đang lưu giữ tại tiệm phụ trách. Vui lòng thanh toán đủ rồi yêu cầu giao lại locker để nhận đồ.", "order", o.Id, Msg("movedToStorage.customer", o));
 
         // ---- Feedback & finance ----
 

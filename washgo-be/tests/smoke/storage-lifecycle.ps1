@@ -16,7 +16,7 @@ function Assign-Storage($Id) {
 function Storage-Step($Id,$Cycle,$Step,$Expected=200) {
     $codes=(Call-Api Get "/shipper-tasks/$($Cycle.taskId)/credentials" $null $shipper).data
     $body=Storage-Body $Id;$body.taskId=$Cycle.taskId;$body.pinCode=$codes.pinCode
-    if($Step -eq 'handover'){$body.receiptReference="RCPT-$run"}
+    # Receipt is optional; the server issues the immutable LK reference.
     if($Expected -ne 200){Assert-Status $Expected Post "/storage/$Id/$Step" $body $shipper;return}
     $first=(Call-Api Post "/storage/$Id/$Step" $body $shipper).data
     $replay=(Call-Api Post "/storage/$Id/$Step" $body $shipper).data
@@ -92,6 +92,11 @@ FROM washgo.services s WHERE is_active=true AND NOT is_deleted LIMIT 1;
         Assert-Status 400 Post "/storage/$id/handover" $missing $shipper
         $stored=Storage-Step $id $assigned handover
         if($stored.state -ne 3 -or !$stored.intakeAt){throw 'Handover did not begin storage.'}
+        if($stored.storageReference -notmatch '^LK[0-9]{18}$'){throw 'Missing server LK reference.'}
+        if($round -eq 2 -and $stored.storageReference -eq $previousStorageReference){throw 'New storage cycle reused LK reference.'}
+        $previousStorageReference=$stored.storageReference
+        $projection=(Call-Api Get "/wash-order/$id" $null $admin).data
+        if($projection.storageReference -ne $stored.storageReference){throw 'Order and cycle storage references disagree.'}
         Set-Work 3
         Set-Work 1
         Assert-Status 400 Post "/wash-order/$id/pickup-storage" @{pinCode=$old.pickupPinCode} $customer
@@ -133,6 +138,12 @@ FROM washgo.services s WHERE is_active=true AND NOT is_deleted LIMIT 1;
         $fresh=(Call-Api Get "/wash-order/$id" $null $customer).data
         if($fresh.status -ne 10 -or $fresh.pickupPinCode -eq $old.pickupPinCode -or $fresh.accumulatedStorageFee -ne (280000*$round) -or
             ([DateTime]$fresh.pickupDeadline) -lt [DateTime]::UtcNow.AddHours(23.9)){throw 'Redelivery did not reset credentials/deadline or lost old fees.'}
+        # The cycle keeps historical custody evidence; the order no longer points to the shop after departure.
+        $projection=(Call-Api Get "/wash-order/$id" $null $admin).data
+        if($projection.storageReference -or $projection.storageLocation){throw 'Redelivered order still points to storage at the shop.'}
+        $cycleHistory=Call-Api Get "/storage/$id/cycles?page=1&take=100" $null $admin
+        $closedCycle=@($cycleHistory.list | Where-Object {$_.id -eq $stored.id})
+        if($closedCycle.Count -ne 1 -or $closedCycle[0].storageReference -ne $stored.storageReference){throw 'Closed cycle lost its historical LK reference.'}
         Set-Work 3
         Set-Work 1
     }

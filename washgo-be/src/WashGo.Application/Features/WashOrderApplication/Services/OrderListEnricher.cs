@@ -47,7 +47,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             var boxIds = orders.Select(x => x.BoxId).Distinct().ToList();
             var items = await _executer.ToListAsync((await _itemRepo.GetQueryableAsync())
                 .Where(x => orderIds.Contains(x.WashOrderId))
-                .Select(x => new { x.WashOrderId, x.ServiceId, x.ServiceName }));
+                .Select(x => new { x.WashOrderId, x.ServiceId, x.ServiceName, x.ProcessingTypeSnapshot }));
             var services = items.GroupBy(x => x.WashOrderId)
                 .ToDictionary(g => g.Key, g => g.Select(x => x.ServiceName).Distinct().ToList());
             var serviceIds = items.Select(x => x.ServiceId).Distinct().ToList();
@@ -55,7 +55,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                     .Where(x => serviceIds.Contains(x.Id)).Select(x => new { x.Id, x.ServiceType })))
                 .ToDictionary(x => x.Id, x => x.ServiceType);
             var history = (await _executer.ToListAsync((await _timelineRepo.GetQueryableAsync())
-                    .Where(x => orderIds.Contains(x.WashOrderId)).Select(x => new { x.WashOrderId, x.Status, x.Timestamp })))
+                    .Where(x => orderIds.Contains(x.WashOrderId) && x.FromStatus != x.Status).Select(x => new { x.WashOrderId, x.Status, x.Timestamp })))
                 .ToLookup(x => x.WashOrderId);
             var sizes = (await _executer.ToListAsync((await _boxRepo.GetQueryableAsync())
                     .Where(x => boxIds.Contains(x.Id))
@@ -67,8 +67,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 order.ServiceNames = services.GetValueOrDefault(order.Id) ?? [];
                 order.BoxSize = sizes.TryGetValue(order.BoxId, out var size) ? size : null;
                 order.IsNew = IsNew(order, role);
-                var types = items.Where(x => x.WashOrderId == order.Id && serviceTypes.ContainsKey(x.ServiceId))
-                    .Select(x => serviceTypes[x.ServiceId]);
+                var types = items.Where(x => x.WashOrderId == order.Id)
+                    .Select(x => x.ProcessingTypeSnapshot ?? serviceTypes.GetValueOrDefault(x.ServiceId, WashServiceType.StandardWash));
                 (order.ProgressPercent, order.WorkflowSteps) = OrderProgressCalculator.Build(order.Status, types,
                     history[order.Id].Select(x => (x.Status, x.Timestamp)));
             }

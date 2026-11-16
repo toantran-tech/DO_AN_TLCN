@@ -16,7 +16,7 @@ public class StorageCycleCoordinator(IRepository<OrderStorageCycle, Guid> cycles
         if (merchant == null || string.IsNullOrWhiteSpace(merchant.Address) || string.IsNullOrWhiteSpace(merchant.City)) return null;
         var row = new OrderStorageCycle(Guid.NewGuid())
         {
-            OrderId = order.Id, MerchantId = merchant.Id, State = state, CreatedAt = now, Basis = basis,
+            OrderId = order.Id, MerchantId = merchant.Id, MerchantName = merchant.BusinessName, State = state, CreatedAt = now, Basis = basis,
             ShopAddress = string.Join(", ", new[] { merchant.Address, merchant.District, merchant.City }.Where(x => !string.IsNullOrWhiteSpace(x))),
             SourceLockerId = state == StorageCycleState.AwaitingCollection ? order.ReturnLockerId ?? order.LockerId : null,
             SourceBoxId = state == StorageCycleState.AwaitingCollection ? order.ReturnBoxId ?? order.BoxId : null,
