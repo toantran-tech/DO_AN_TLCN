@@ -1,3 +1,4 @@
+using WashGo.Application.Features.ServiceCategoryApplication.Services;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -81,6 +82,8 @@ namespace WashGo.Application.Features.WashServiceApplication.Services
 
         public async Task<PaginatedResult<WashServiceResultDto>> GetListAsync(WashServiceFilterQuery query)
         {
+            if ((query.CategoryIds?.Length ?? 0) > 100 || query.CategoryIds?.Contains(Guid.Empty) == true)
+                return new() { StatusCode = HttpStatusCode.BadRequest, Message = "Invalid categoryIds: maximum 100 nonempty UUIDs." };
             var (data, total) = await _serviceRepo.FilterProjectedDataAsync<WashServiceResultDto>(
                 filterFunc: q =>
                 {
@@ -89,7 +92,8 @@ namespace WashGo.Application.Features.WashServiceApplication.Services
                         q = q.Where(x => x.MerchantId == query.MerchantId.Value);
                     if (query.ApprovalStatus.HasValue)
                         q = q.Where(x => x.ApprovalStatus == query.ApprovalStatus.Value);
-                    if (query.ServiceType.HasValue)
+                    if ((query.CategoryIds?.Length ?? 0) > 0) q = q.Where(x => query.CategoryIds!.Contains(x.CategoryId));
+            if (query.ServiceType.HasValue)
                         q = q.Where(x => x.ServiceType == query.ServiceType.Value);
                     if (query.IsActive.HasValue)
                         q = q.Where(x => x.IsActive == query.IsActive.Value);
@@ -107,6 +111,7 @@ namespace WashGo.Application.Features.WashServiceApplication.Services
             var ids = data.Select(x => x.Id).ToList();
             var entities = await _serviceRepo.GetListAsync(x => ids.Contains(x.Id));
             foreach (var dto in data) Fill(dto, entities.First(x => x.Id == dto.Id));
+            await LazyServiceProvider.LazyGetRequiredService<ServiceCategoryProjection>().FillAsync(data);
             await FillActionsAsync(data.ToList());
             return Success(data, total, query.Page, query.Take, total == 0 ? "Chưa có dịch vụ nào." : null);
         }
@@ -121,6 +126,7 @@ namespace WashGo.Application.Features.WashServiceApplication.Services
 
             var dto = ObjectMapper.Map<WashService, WashServiceResultDto>(entity);
             Fill(dto, entity);
+            await LazyServiceProvider.LazyGetRequiredService<ServiceCategoryProjection>().FillAsync([dto]);
             await FillActionsAsync([dto]);
             return Success(dto);
         }
@@ -196,6 +202,7 @@ namespace WashGo.Application.Features.WashServiceApplication.Services
             await _serviceRepo.InsertAsync(entity, autoSave: true);
             var dto = ObjectMapper.Map<WashService, WashServiceResultDto>(entity);
             Fill(dto, entity);
+            await LazyServiceProvider.LazyGetRequiredService<ServiceCategoryProjection>().FillAsync([dto]);
             var response = Created(dto, "Thêm Dịch vụ thành công!");
             await Audit.LogAsync(new AuditEntry("Service", "Create", "WashService", entity.Id.ToString(), entity.Code));
             await Writes.RecordAsync(command.OperationId, CurrentUser.Id!.Value, "Service", "Create", "new", command, response);
@@ -219,12 +226,14 @@ namespace WashGo.Application.Features.WashServiceApplication.Services
             if (error != null)
                 return BadRequest<WashServiceResultDto>(error);
 
+            command.CategoryId ??= entity.CategoryId;
             ObjectMapper.Map(command, entity);
             var imageError = await ApplyImagesAsync(entity, command.ImageUrls);
             if (imageError != null) return BadRequest<WashServiceResultDto>(imageError);
             await _serviceRepo.UpdateAsync(entity, autoSave: true);
             var dto = ObjectMapper.Map<WashService, WashServiceResultDto>(entity);
             Fill(dto, entity);
+            await LazyServiceProvider.LazyGetRequiredService<ServiceCategoryProjection>().FillAsync([dto]);
             var response = Success(dto, "Cập nhật Dịch vụ thành công!");
             await Audit.LogAsync(new AuditEntry("Service", "Update", "WashService", entity.Id.ToString(), entity.Code));
             await Writes.RecordAsync(command.OperationId, CurrentUser.Id!.Value, "Service", "Update", command.Id.ToString(), command, response);
@@ -253,6 +262,7 @@ namespace WashGo.Application.Features.WashServiceApplication.Services
             await _serviceRepo.UpdateAsync(entity, autoSave: true);
             var dto = ObjectMapper.Map<WashService, WashServiceResultDto>(entity);
             Fill(dto, entity);
+            await LazyServiceProvider.LazyGetRequiredService<ServiceCategoryProjection>().FillAsync([dto]);
             var response = Success(dto, "Cập nhật trạng thái dịch vụ thành công!");
             if (unchanged) AdministrativeBatchExecutor.Unchanged(response);
             await Audit.LogAsync(new AuditEntry("Service", "Status", "WashService", entity.Id.ToString(), entity.Code));
@@ -280,7 +290,7 @@ namespace WashGo.Application.Features.WashServiceApplication.Services
             });
         private static List<string> ReadImages(string? json)
         { try { return json == null ? [] : JsonSerializer.Deserialize<List<string>>(json) ?? []; } catch (JsonException) { return []; } }
-        private static string Version(WashService x) => AdministrativeWriteGuard.Version(new { x.Id, x.Name, x.Code, x.Description, x.UnitPrice, x.PricePerKg, x.PricePerItem, x.Unit, x.ServiceType, x.EstimatedDurationHours, Images = ReadImages(x.Images), x.IsActive, x.ApprovalStatus, x.MerchantId, x.IsDeleted });
+        private static string Version(WashService x) => AdministrativeWriteGuard.Version(new { x.Id, x.Name, x.Code, x.Description, x.UnitPrice, x.PricePerKg, x.PricePerItem, x.Unit, x.CategoryId, x.ServiceType, x.EstimatedDurationHours, Images = ReadImages(x.Images), x.IsActive, x.ApprovalStatus, x.MerchantId, x.IsDeleted });
         private static void Fill(WashServiceResultDto dto, WashService entity) { dto.Version = Version(entity); dto.ImageUrls = ReadImages(entity.Images); }
 
         public async Task<BaseResponse<List<ColumnFilterDistinctValueDto>>> GetColumnDistinctValuesAsync(string fieldName, WashServiceFilterQuery query)

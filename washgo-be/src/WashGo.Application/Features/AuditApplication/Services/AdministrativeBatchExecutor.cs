@@ -36,7 +36,7 @@ public class AdministrativeBatchExecutor(IUnitOfWorkManager units, Administrativ
                 return AdministrativeWriteGuard.Error<AdministrativeBatchResultDto>(HttpStatusCode.Conflict, "OperationIdReused", "operationId đã dùng cho yêu cầu khác.");
             if (existing == null)
                 await operations.InsertAsync(new AdministrativeOperation(command.OperationId) { ActorId = user.Id.Value, Module = module, Action = "Batch", ResourceId = "batch", PayloadHash = hash,
-                    ResponseJson = JsonSerializer.Serialize(new BaseResponse<AdministrativeBatchResultDto> { Succeeded = true, StatusCode = HttpStatusCode.Accepted, Data = new() { OperationId = command.OperationId, State = "Processing" } }, Json), CompletedAt = DateTime.UtcNow }, autoSave: true);
+                    ResponseJson = JsonSerializer.Serialize(new BaseResponse<AdministrativeBatchResultDto> { Succeeded = true, StatusCode = HttpStatusCode.Accepted, Data = new() { OperationId = command.OperationId, State = "Processing", Items = command.Items.Select(x => new AdministrativeBatchItemResultDto { Id = x.Id, Version = x.ExpectedVersion, Outcome = "Pending", StatusCode = 202 }).ToList() } }, Json), CompletedAt = DateTime.UtcNow }, autoSave: true);
             await reserve.CompleteAsync();
         }
         using var finish = units.Begin(requiresNew: true, isTransactional: true);

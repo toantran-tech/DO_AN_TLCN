@@ -4,6 +4,12 @@ namespace WashGo.Application.Contracts.Features.CustomerContracts.Results;
 
 public class CustomerServiceCatalogDto
 {
+        public Guid CategoryId { get; set; }
+        public string? CategoryCode { get; set; }
+        public string? CategoryName { get; set; }
+        public bool CategoryIsActive { get; set; }
+        public bool EffectiveIsActive { get; set; }
+        public string? BlockedReason { get; set; }
     public Guid Id { get; set; }
     public string Code { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;

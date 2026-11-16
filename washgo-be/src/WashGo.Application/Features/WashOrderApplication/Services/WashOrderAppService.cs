@@ -331,6 +331,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             // Every reveal is recorded on the order history (who and when, never the codes themselves).
             await _timelineRepo.InsertAsync(new WashOrderTimeline
             {
+                EventType = "AccessCodesRevealed",
                 WashOrderId = order.Id, FromStatus = order.Status, Status = order.Status,
                 ActorId = CurrentUser.Id, ActorName = CurrentUser.UserName ?? "Admin", ActorRole = "Admin",
                 Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
@@ -367,7 +368,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             var baseProcessingHours = 0;
             foreach (var item in items)
             {
-                var service = await _serviceRepo.FindAsync(item.ServiceId);
+                var service = await AsyncExecuter.FirstOrDefaultAsync((await _serviceRepo.GetQueryableAsync()).Where(x => x.Id == item.ServiceId && x.Category.IsActive && !x.Category.IsDeleted));
                 if (service == null || service.IsDeleted || !service.IsActive ||
                     service.ApprovalStatus != ServiceApprovalStatus.Approved)
                     return (null, "Dịch vụ đã chọn không còn được cung cấp.");
@@ -624,6 +625,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
 
             order.Timeline.Add(new WashOrderTimeline
             {
+                EventType = "OrderCreated",
                 Status = WashOrderStatus.Pending,
                 ActorId = customerId,
                 ActorName = customerName,
@@ -824,6 +826,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             }
             order.Timeline.Add(new WashOrderTimeline
             {
+                EventType = "Cancelled",
                 WashOrderId = order.Id, FromStatus = WashOrderStatus.Pending, Status = WashOrderStatus.Cancelled,
                 ActorId = CurrentUser.Id, ActorName = CurrentUser.UserName ?? "Admin", ActorRole = "Admin",
                 Timestamp = new DateTimeOffset(now).ToUnixTimeSeconds(),
@@ -933,6 +936,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             }
             order.Timeline.Add(new WashOrderTimeline
             {
+                EventType = "Cancelled",
                 WashOrderId = order.Id, FromStatus = previous, Status = WashOrderStatus.Cancelled,
                 ActorId = scope.Id, ActorName = CurrentUser.UserName ?? order.CustomerName, ActorRole = "Customer",
                 Timestamp = new DateTimeOffset(now).ToUnixTimeSeconds(),
@@ -986,6 +990,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             order.ExpectedDeliveryTime = new DateTimeOffset(order.EstimatedFinishAt.Value).ToUnixTimeSeconds();
             order.Timeline.Add(new WashOrderTimeline
             {
+                EventType = "ActualWeightConfirmed",
                 WashOrderId = order.Id, FromStatus = order.Status, Status = order.Status,
                 ActorId = CurrentUser.Id, ActorName = CurrentUser.UserName ?? "Merchant", ActorRole = "Merchant",
                 Timestamp = new DateTimeOffset(now).ToUnixTimeSeconds(),
@@ -1033,6 +1038,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 order.PaymentDeadline = UnpaidOrderStorageMover.DeadlineFrom(DateTime.UtcNow); // UC 1.2.4 7b
             order.Timeline.Add(new WashOrderTimeline
             {
+                EventType = "StatusChanged",
                 WashOrderId = order.Id,
                 FromStatus = previousStatus,
                 Status = command.NewStatus,
@@ -1094,6 +1100,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             order.OverdueFeeTotal = order.LockerOverdueFeeAtStorageTransfer.Value;
             order.Timeline.Add(new WashOrderTimeline
             {
+                EventType = "Storage.LegacyMoved", StorageCycleId = order.ActiveStorageCycleId,
                 WashOrderId = order.Id,
                 FromStatus = previousStatus,
                 Status = WashOrderStatus.MovedToStorage,
@@ -1173,11 +1180,13 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                     "Shipper đã được phân công cho nhiệm vụ này.");
             }
 
+            var previousShipperId = order.ShipperId;
+            var previousTaskType = order.AssignedTaskType;
             order.ShipperId = shipper.Id;
             order.ShipperName = user.FullName;
             order.AssignedTaskType = task;
             order.ShipperAssignedAt = DateTime.UtcNow;
-            await _taskRecorder.AssignedAsync(order, shipper.Id, task!.Value, CurrentUser.Id, order.ShipperAssignedAt.Value);
+            var assignedTaskId = await _taskRecorder.AssignedAsync(order, shipper.Id, task!.Value, CurrentUser.Id, order.ShipperAssignedAt.Value);
             order.ShipperNote = note;
             order.ShipperTaskPinCode = taskPin;
             order.ShipperTaskQrString = taskQr;
@@ -1186,6 +1195,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
 
             order.Timeline.Add(new WashOrderTimeline
             {
+                EventType = previousShipperId.HasValue && previousTaskType == task ? "ShipperReassigned" : "ShipperAssigned",
+                TaskId = assignedTaskId, PreviousShipperId = previousTaskType == task ? previousShipperId : null, FromStatus = order.Status, ShipperId = order.ShipperId, ShipperName = order.ShipperName, TaskType = order.AssignedTaskType,
                 WashOrderId = order.Id,
                 Status = order.Status,
                 ActorId = CurrentUser.Id,
@@ -1345,6 +1356,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
 
             order.Timeline.Add(new WashOrderTimeline
             {
+                EventType = "Deposited",
                 WashOrderId = order.Id,
                 FromStatus = previousStatus,
                 Status = WashOrderStatus.Deposited,
@@ -1441,6 +1453,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
 
             var completion = new WashOrderTimeline(Guid.NewGuid())
             {
+                EventType = "ShipperCollected", ShipperId = order.ShipperId, ShipperName = order.ShipperName, TaskType = order.AssignedTaskType,
                 WashOrderId = order.Id,
                 FromStatus = previousStatus,
                 Status = WashOrderStatus.Collected,
@@ -1587,6 +1600,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
 
             var completion = new WashOrderTimeline(Guid.NewGuid())
             {
+                EventType = "ShipperReturned", ShipperId = order.ShipperId, ShipperName = order.ShipperName, TaskType = order.AssignedTaskType,
                 WashOrderId = order.Id,
                 FromStatus = previousStatus,
                 Status = order.Status,
@@ -1758,6 +1772,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 order.CancelledGoodsReturnedAt = DateTime.UtcNow;
                 order.Timeline.Add(new WashOrderTimeline
                 {
+                EventType = "CancelledGoodsReturned",
                     WashOrderId = order.Id, FromStatus = order.Status, Status = order.Status,
                     ActorId = CurrentUser.Id, ActorName = CurrentUser.UserName ?? order.CustomerName,
                     ActorRole = "Customer", Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
@@ -1771,6 +1786,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             var nowTs = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             order.Timeline.Add(new WashOrderTimeline
             {
+                EventType = "Returned",
                 WashOrderId = order.Id,
                 FromStatus = WashOrderStatus.ReadyToReturn,
                 Status = WashOrderStatus.Returned,
@@ -1783,6 +1799,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
 
             order.Timeline.Add(new WashOrderTimeline
             {
+                EventType = "Completed",
                 WashOrderId = order.Id,
                 FromStatus = WashOrderStatus.Returned,
                 Status = WashOrderStatus.Completed,
@@ -1859,6 +1876,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             var nowTs = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             order.Timeline.Add(new WashOrderTimeline
             {
+                EventType = "Returned",
                 WashOrderId = order.Id,
                 FromStatus = WashOrderStatus.MovedToStorage,
                 Status = WashOrderStatus.Returned,
@@ -1873,6 +1891,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
 
             order.Timeline.Add(new WashOrderTimeline
             {
+                EventType = "Completed",
                 WashOrderId = order.Id,
                 FromStatus = WashOrderStatus.Returned,
                 Status = WashOrderStatus.Completed,

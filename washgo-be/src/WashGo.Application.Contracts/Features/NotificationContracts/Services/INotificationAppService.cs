@@ -9,6 +9,7 @@ namespace WashGo.Application.Contracts.Features.NotificationContracts.Services
 {
     public interface INotificationAppService : IApplicationService
     {
+        Task<BaseResponse<NotificationDeliverySummaryDto>> GetDeliverySummaryAsync();
         Task<PaginatedResult<NotificationDto>> GetMineAsync(int page, int take, bool unreadOnly);
         Task<BaseResponse<NotificationPageDto>> FilterAsync(NotificationFilterQuery query);
         Task<BaseResponse<int>> GetUnreadCountAsync();

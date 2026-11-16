@@ -6,6 +6,7 @@ namespace WashGo.Application.Contracts.Features.ServiceProposalContracts.Results
 {
     public class ServiceProposalDataDto
     {
+        public Guid? CategoryId { get; set; }
         public string Name { get; set; } = string.Empty;
         public string? Description { get; set; }
         public decimal UnitPrice { get; set; }
@@ -19,6 +20,7 @@ namespace WashGo.Application.Contracts.Features.ServiceProposalContracts.Results
 
     public class ServiceProposalDto
     {
+        public string CategoryMappingBasis { get; set; } = "Captured";
         public string Version { get; set; } = string.Empty;
         public Guid Id { get; set; }
         public Guid MerchantId { get; set; }

@@ -1,8 +1,8 @@
 # Plan Backend — thanh toán, lịch sử đơn, thông báo và danh mục
 
-Ngày rà soát: **16/11/2026**. Trạng thái: **đã triển khai source cụm 1–2 thanh toán; cụm 3–8 chưa triển khai**. Test mới chưa chạy; migration, Docker và deploy do người dùng thực hiện.
+Ngày rà soát: **16/11/2026**. Trạng thái: **đã triển khai source cả 8 cụm**. Cụm thanh toán 1–2 đã được người dùng báo test PASS và build Docker trước đợt này; test mới cho cụm 3–8 đã nối CI nhưng chưa chạy. Migration, Docker và deploy bản mới do người dùng thực hiện.
 
-Bàn giao FE: [PAYMENT_SESSION_RECOVERY_API_REVIEW.md](PAYMENT_SESSION_RECOVERY_API_REVIEW.md). Đối chiếu hiện trạng bên dưới ghi nhận trước khi sửa; kết quả mới xem checklist cuối file.
+Bàn giao FE: [payment](PAYMENT_SESSION_RECOVERY_API_REVIEW.md), [timeline/storage/notification](ORDER_EVENTS_STORAGE_NOTIFICATION_API_REVIEW.md), [danh mục dịch vụ](SERVICE_CATEGORIES_API_REVIEW.md). Đối chiếu hiện trạng bên dưới ghi nhận trước khi sửa; kết quả mới xem checklist cuối file.
 
 ## 1. Nguồn và phạm vi
 
@@ -234,4 +234,19 @@ Các lựa chọn kỹ thuật như tên enum, route cuối và outbox schema s�
 - [x] Migration AddPaymentVerification + Designer/snapshot, viết fake HTTP/smoke recovery và nối CI, tài liệu FE/config.
 - [x] Kiểm tra biên dịch source; chưa chạy bộ test mới.
 - [ ] Người dùng chạy CI/test, backup/áp migration/build/deploy và xác minh sandbox merchant.
-- [ ] Cụm 3–8 (timeline, notification/outbox, storage handover, category): chưa triển khai trong đợt payment này.
+- [x] Cụm 3: eventType/fromStatus/sequence/basis và snapshot phân công/task/cycle/payment; privacy; ETA/progress bỏ event không chuyển trạng thái.
+- [x] Cụm 4: mã LK cấp nguyên tử khi Stored, UTC+7/unique/retry, biên nhận tùy chọn, projection thống nhất và lịch sử giữ nguyên sau xuất tiệm.
+- [x] Cụm 5: Admin event fanout, deadline claim theo vòng/hạn/revision, inbox/outbox cùng transaction, worker lease/retry/dead-letter và API summary.
+- [x] Cụm 6: danh mục động, FK/backfill 5 nhóm đúng WashServiceType, preflight dừng dữ liệu legacy không ánh xạ được; giữ raw proposal JSON và snapshot cũ null.
+- [x] Cụm 7: Admin CRUD/status/soft-delete có version/operation/audit/dependency guard, batch từng item và phục hồi operation; lookup đúng role.
+- [x] Cụm 8: CategoryIds multi-filter, hiệu lực cha/con trên catalog/direct-order/proposal; DTO staff và chatbot; snapshot category/processing type cho đơn mới.
+- [x] Viết WorkflowMetadata, service-categories-workflow và mở rộng storage-lifecycle; nối Run-ApiSmoke. Có migration/Designer/model snapshot mới và tài liệu FE.
+- [ ] Người dùng chạy bộ regression mới, kiểm tra cạnh tranh/rollback và migration trên DB cô lập; chưa ghi nhận PASS cho cụm 3–8.
+- [ ] Backup DB đích, áp migration mới, build Docker/deploy, kiểm chứng worker/SignalR và nghiệp vụ trên staging.
+
+### Chi tiết triển khai khác đề xuất ban đầu
+
+- Dùng khóa transaction chung `service-catalog` theo cơ chế đang có để tuần tự hóa attach/approve/delete/create, thay cho nhiều category lock rời; đổi lại các write catalog bị tuần tự hóa.
+- Name VI duy nhất sau NFC/case/space; code bất biến. Client cũ thiếu categoryId còn fallback nhóm seed khi tạo và giữ category hiện tại khi sửa.
+- Outbox at-least-once, không có xác nhận client đã nhận. FE dedupe bằng notification.id và tải lại inbox khi reconnect; chưa có dịch vụ alert bên ngoài hoặc API replay dead-letter.
+- Kiểm tra biên dịch chỉ xác nhận source hợp lệ; không thay thế kiểm thử HTTP, migration hay sandbox thực tế.

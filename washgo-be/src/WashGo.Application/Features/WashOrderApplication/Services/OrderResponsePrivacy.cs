@@ -69,6 +69,11 @@ public static class OrderResponsePrivacy
             {
                 // Any free text may contain identity, regardless of the recorded actor role.
                 entry.Note = null;
+                if (role == "Customer")
+                {
+                    entry.MerchantId = null; entry.MerchantName = null; entry.ShipperId = null; entry.ShipperName = null;
+                    entry.PreviousShipperId = null; entry.TaskId = null; entry.TaskType = null; entry.StorageCycleId = null; entry.ReturnRequestId = null;
+                }
                 if (role == "Customer" && entry.ActorRole != "Customer" ||
                     role != "Customer" && entry.ActorRole == "Customer")
                 {

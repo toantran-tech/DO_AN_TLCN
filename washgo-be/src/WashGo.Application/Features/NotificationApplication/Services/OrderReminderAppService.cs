@@ -38,6 +38,7 @@ namespace WashGo.Application.Features.NotificationApplication.Services
         private readonly SystemSettingProvider _settings;
         private readonly UnpaidOrderStorageMover _unpaidStorage;
         private readonly Dictionary<string, int> _sent = [];
+        private readonly Dictionary<Guid, long> _observed = [];
 
         public OrderReminderAppService(
             IWashOrderRepository orderRepo,
@@ -60,6 +61,9 @@ namespace WashGo.Application.Features.NotificationApplication.Services
             var now = DateTime.UtcNow;
             var settings = await _settings.GetAsync();
             _sent.Clear();
+            _observed.Clear();
+            // All scanners share this transaction-scoped lock; inbox/claim/outbox commit together.
+            await _orderRepo.AcquireLockAsync("reminder-scan");
 
             await RemindDepositAsync(now, settings);
             await RemindCollectionAsync(now, settings);
@@ -94,6 +98,30 @@ namespace WashGo.Application.Features.NotificationApplication.Services
         /// <summary>Ghi khóa trước khi gửi; khóa đã tồn tại nghĩa là lời nhắc này đã gửi ở lần quét trước.</summary>
         private async Task<bool> ClaimAsync(string kind, string key, Guid? orderId, DateTime now)
         {
+            if (orderId.HasValue)
+            {
+                await _orderRepo.GetForUpdateAsync(orderId.Value);
+                // Scalar projection bypasses tracked instances loaded earlier in this scan.
+                var current = await AsyncExecuter.FirstOrDefaultAsync((await _orderRepo.GetQueryableAsync()).Where(x => x.Id == orderId.Value && !x.IsDeleted)
+                    .Select(x => new { x.Id, x.Status, x.PaymentStatus, x.Revision, x.DepositDeadline, x.PaymentDeadline, x.PickupDeadline, x.ActiveStorageCycleId }));
+                if (current == null || _observed.TryGetValue(current.Id, out var revision) && revision != current.Revision) return false;
+                if ((kind.StartsWith("deposit") && current.Status != WashOrderStatus.Pending) ||
+                    ((kind.StartsWith("pickup") || kind is "overdue-fee" or "storage-due") && current.Status != WashOrderStatus.ReadyToReturn) ||
+                    (kind.StartsWith("payment") && (current.Status != WashOrderStatus.AwaitingPayment || current.PaymentStatus != PaymentStatus.Unpaid))) return false;
+                // A fresh deadline/cycle gets fresh claims; a later return cycle cannot lose its reminders.
+                var due = kind.StartsWith("deposit") ? current.DepositDeadline : kind.StartsWith("payment") ? current.PaymentDeadline : current.PickupDeadline;
+                if ((kind.Contains("expired") || kind.Contains("overdue")) && due > now) return false;
+                if (kind == "storage-sla")
+                {
+                    var parts = key.Split(':');
+                    if (parts.Length != 2 || !Guid.TryParse(parts[1], out var resource)) return false;
+                    var valid = parts[0] == "storage-in"
+                        ? await LazyServiceProvider.LazyGetRequiredService<IRepository<OrderStorageCycle, Guid>>().AnyAsync(x => x.Id == resource && x.Id == current.ActiveStorageCycleId && x.TransferDeadline < now && (x.State == StorageCycleState.AwaitingCollection || x.State == StorageCycleState.InboundTransit))
+                        : await LazyServiceProvider.LazyGetRequiredService<IRepository<StorageReturnRequest, Guid>>().AnyAsync(x => x.Id == resource && x.CycleId == current.ActiveStorageCycleId && x.Deadline < now && (x.State == StorageReturnState.Requested || x.State == StorageReturnState.Assigned || x.State == StorageReturnState.InTransit));
+                    if (!valid) return false;
+                }
+                key += $":{due?.Ticks}:{current.ActiveStorageCycleId}";
+            }
             if (await _logRepo.AnyAsync(x => x.Key == key))
                 return false;
             await _logRepo.InsertAsync(new ReminderLog { Key = key, OrderId = orderId, SentAt = now }, autoSave: true);
@@ -101,8 +129,20 @@ namespace WashGo.Application.Features.NotificationApplication.Services
             return true;
         }
 
-        private async Task<List<WashOrder>> OrdersAsync(Func<IQueryable<WashOrder>, IQueryable<WashOrder>> filter) =>
-            await AsyncExecuter.ToListAsync(filter((await _orderRepo.GetQueryableAsync()).Where(x => !x.IsDeleted)));
+        private async Task DeadlineAdminAsync(WashOrder order, string kind, NotificationType type, string title, string content, DateTime dueAt, DateTime detectedAt)
+        {
+            if (!await ClaimAsync(kind, $"admin-{kind}:{order.Id}", order.Id, detectedAt)) return;
+            await _notifications.SendToAdminsAsync(type, title, content, "order", order.Id,
+                NotificationPublisher.Message($"deadline.{kind}.admin", ("orderCode", order.OrderCode), ("dueAt", dueAt.ToString("O")), ("detectedAt", detectedAt.ToString("O"))),
+                eventId: Guid.NewGuid(), dueAt: dueAt, detectedAt: detectedAt);
+        }
+
+        private async Task<List<WashOrder>> OrdersAsync(Func<IQueryable<WashOrder>, IQueryable<WashOrder>> filter)
+        {
+            var rows = await AsyncExecuter.ToListAsync(filter((await _orderRepo.GetQueryableAsync()).Where(x => !x.IsDeleted)).OrderBy(x => x.Id));
+            foreach (var row in rows) _observed[row.Id] = row.Revision;
+            return rows;
+        }
 
         private static string Hours(double hours) => $"{Math.Max(1, (int)Math.Round(hours))} giờ";
 
@@ -117,6 +157,8 @@ namespace WashGo.Application.Features.NotificationApplication.Services
                 var deadline = OrderDepositRules.DeadlineOf(o, OrderOperationalPolicy.Resolve(o, s).DepositWindowMinutes);
                 if (now >= deadline)
                 {
+                    await DeadlineAdminAsync(o, "deposit-expired-admin", NotificationType.DepositExpired, "Đơn quá hạn gửi đồ",
+                        $"Đơn #{o.OrderCode} quá hạn gửi đồ; cần theo dõi ô đang giữ và hướng dẫn khách hủy đơn.", deadline, now);
                     if (await ClaimAsync("deposit-expired", $"deposit-expired:{o.Id}", o.Id, now))
                         await _notifications.SendAsync([o.CustomerId], NotificationType.DepositExpired, "Đơn đã quá hạn gửi đồ",
                             $"Đơn #{o.OrderCode} đã quá hạn gửi đồ vào {o.LockerName}, ô số {o.BoxNumber}. " +
@@ -222,6 +264,8 @@ namespace WashGo.Application.Features.NotificationApplication.Services
                 {
                     if (await _unpaidStorage.MoveAsync(o.Id, now))
                         _sent["payment-storage"] = _sent.GetValueOrDefault("payment-storage") + 1;
+                    else await DeadlineAdminAsync(o, "payment-overdue-admin", NotificationType.SlaWarning, "Quá hạn thanh toán cần điều phối",
+                        $"Đơn #{o.OrderCode} quá hạn trả tiền nhưng chưa xác nhận được lưu giữ tại tiệm. Kiểm tra địa chỉ/dữ liệu và điều phối; chưa coi là đã nhập tiệm.", o.PaymentDeadline.Value, now);
                     continue;
                 }
                 if (await ClaimAsync("payment-remind", $"payment-remind:{o.Id}", o.Id, now))
@@ -261,6 +305,8 @@ namespace WashGo.Application.Features.NotificationApplication.Services
                 }
 
                 overdueCount++;
+                await DeadlineAdminAsync(o, "pickup-overdue-admin", NotificationType.OverdueFeeApplied, "Đơn quá hạn nhận đồ",
+                    $"Đơn #{o.OrderCode} đã hết thời gian nhận miễn phí tại locker; theo dõi phí và điều phối theo hạn chuyển tiệm.", deadline, now);
                 var fee = OverdueFeeCalculator.Calculate(deadline, now, policy);
                 var chargedDays = (int)Math.Ceiling((now - deadline).TotalHours / 24d);
                 // One message per started overdue day (the first one also announces the overdue status).

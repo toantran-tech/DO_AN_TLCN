@@ -54,7 +54,7 @@ public class ChatbotContextBuilder(ICustomerCatalogAppService catalog, IPolicyAp
                 if (!found.Succeeded) throw new ChatbotException("ChatDataUnavailable");
                 foreach (var service in found.List)
                     cards.Add(Card("Service", service.Id, service.Name, new { service.Code, service.Name, description = Short(service.Description, 500),
-                        service.Unit, service.UnitPrice, service.PricePerKg, service.PricePerItem, service.EstimatedDurationHours, service.ServiceType }));
+                        service.CategoryId, service.CategoryName, service.CategoryCode, service.Unit, service.UnitPrice, service.PricePerKg, service.PricePerItem, service.EstimatedDurationHours, service.ServiceType }));
                 sources.Add(Source("service-catalog", "Danh mục dịch vụ đang bán"));
                 data = new { services = cards, noResults = cards.Count == 0, note = "Giá niêm yết, không phải giá cuối của đơn sau cân/giảm giá/phụ phí. Tối đa 5 kết quả." };
                 break;

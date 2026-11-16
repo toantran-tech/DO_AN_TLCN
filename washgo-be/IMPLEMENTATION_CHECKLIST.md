@@ -10,7 +10,21 @@
 - [x] Kiểm tra biên dịch source (còn warning cũ ngoài phần thanh toán).
 - [ ] Chạy test/CI mới; backup và áp migration, build Docker/deploy (người dùng thực hiện).
 - [ ] Kiểm chứng quyền query/status cuối và hạn mức sandbox VNPay/MoMo của merchant; chưa coi fake HTTP là nghiệm thu cổng.
-- [ ] Cụm mới timeline/notification/outbox/storage handover/category chưa làm. Xem [plan](docs/BACKEND_REQUIREMENTS_PLAN_20261116.md).
+- [x] Source cụm 3–8 timeline/notification/outbox/storage handover/category đã bổ sung. Xem [plan](docs/BACKEND_REQUIREMENTS_PLAN_20261116.md).
+
+### Cụm 3–8 — source ngày 16/11/2026, chờ người dùng kiểm thử
+
+- [x] Timeline sự kiện cấu trúc, sequence, snapshot theo tác nhân/nhiệm vụ/vòng lưu giữ/purpose; bảo vệ dữ liệu Customer và tách event khỏi tiến độ/ETA.
+- [x] LK tự sinh khi Stored, unique claim/UTC+7/replay, biên nhận tùy chọn; projection order/cycle thống nhất, xóa vị trí hiện tại khi xuất tiệm.
+- [x] Inbox/outbox transaction, Admin fanout theo event, lease/retry/dead-letter, summary và kiểm tra quyền/trạng thái đọc/xóa trước gửi.
+- [x] Danh mục động: migration preflight/backfill, CRUD/version/operation/audit, dependency guard, batch/recovery và lookup theo role.
+- [x] CategoryIds multi-select, hiệu lực cha/con, Merchant proposal legacy, DTO catalog/staff/chatbot và snapshot category/processing type trên đơn mới.
+- [x] Viết/nối WorkflowMetadata, service-categories-workflow và kiểm tra LK trong storage-lifecycle vào CI; chưa chạy các test mới.
+- [ ] Người dùng chạy regression/CI mới và kiểm tra migration trên DB cô lập.
+- Sửa kỳ vọng test storage-lifecycle sau lần chạy của người dùng: chỉ so order/cycle LK khi Stored; sau xuất tiệm/đưa lại locker, order phải xóa vị trí và lịch sử cycle giữ mã. Đã bỏ đoạn kiểm tra lặp sai mốc thời gian; chưa chạy lại suite.
+- [ ] Backup/áp migration `20261116120715_AddOrderEventsStorageReferencesAndCategories`, build Docker/deploy và xác minh staging.
+
+Bàn giao mới: [timeline/storage/notification](docs/ORDER_EVENTS_STORAGE_NOTIFICATION_API_REVIEW.md), [danh mục](docs/SERVICE_CATEGORIES_API_REVIEW.md). Không coi source complete là đã nghiệm thu runtime.
 
 Bàn giao: [API payment recovery](docs/PAYMENT_SESSION_RECOVERY_API_REVIEW.md).
 

@@ -375,6 +375,7 @@ namespace WashGo.Application.Features.OrderAssignmentApplication.Services
             await _orderRepo.UpdateAsync(order, autoSave: true);
             await _timelineRepo.InsertAsync(new WashOrderTimeline
             {
+                EventType = "MerchantAssigned", MerchantId = target.MerchantId, MerchantName = target.BusinessName, AssignmentMode = auto ? "Automatic" : "Manual",
                 WashOrderId = order.Id,
                 FromStatus = order.Status,
                 Status = order.Status,

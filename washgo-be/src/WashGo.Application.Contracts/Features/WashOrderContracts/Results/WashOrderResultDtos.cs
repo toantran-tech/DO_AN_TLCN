@@ -259,6 +259,10 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Results
 
     public class WashOrderItemDto
     {
+        public Guid? CategoryIdSnapshot { get; set; }
+        public string? CategoryCodeSnapshot { get; set; }
+        public string? CategoryNameSnapshot { get; set; }
+        public WashServiceType? ProcessingTypeSnapshot { get; set; }
         public Guid Id { get; set; }
         public Guid ServiceId { get; set; }
         public string ServiceName { get; set; } = string.Empty;
@@ -275,6 +279,22 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Results
 
     public class WashOrderTimelineDto
     {
+        public string EventType { get; set; } = "Legacy";
+        public long? Sequence { get; set; }
+        public string Basis { get; set; } = "Legacy";
+        public WashOrderStatus? FromStatus { get; set; }
+        public Guid? MerchantId { get; set; }
+        public string? MerchantName { get; set; }
+        public string? AssignmentMode { get; set; }
+        public Guid? ShipperId { get; set; }
+        public string? ShipperName { get; set; }
+        public Guid? PreviousShipperId { get; set; }
+        public Guid? TaskId { get; set; }
+        public DeliveryTaskType? TaskType { get; set; }
+        public Guid? StorageCycleId { get; set; }
+        public Guid? ReturnRequestId { get; set; }
+        public PaymentPurpose? PaymentPurpose { get; set; }
+        public decimal? Amount { get; set; }
         public Guid Id { get; set; }
         public WashOrderStatus Status { get; set; }
         public Guid? ActorId { get; set; }

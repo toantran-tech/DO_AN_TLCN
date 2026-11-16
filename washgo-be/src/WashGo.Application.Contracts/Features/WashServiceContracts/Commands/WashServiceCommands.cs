@@ -9,6 +9,7 @@ namespace WashGo.Application.Contracts.Features.WashServiceContracts.Commands
 {
     public class CreateWashServiceCommand
     {
+        public Guid? CategoryId { get; set; }
         public Guid? OperationId { get; set; }
         public List<string>? ImageUrls { get; set; }
         /// <summary>Tùy chọn: Merchant đề xuất dịch vụ. Dịch vụ thuộc bảng giá chung của nền tảng.</summary>

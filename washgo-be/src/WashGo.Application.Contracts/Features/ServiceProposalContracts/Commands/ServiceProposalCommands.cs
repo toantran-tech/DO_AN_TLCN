@@ -7,6 +7,7 @@ namespace WashGo.Application.Contracts.Features.ServiceProposalContracts.Command
     /// <summary>Nội dung Merchant đề xuất (thêm mới hoặc chỉnh sửa dịch vụ), cũng là dữ liệu lưu trong đề xuất.</summary>
     public class ServiceProposalCommand
     {
+        public Guid? CategoryId { get; set; }
         public string Name { get; set; } = string.Empty;
         public string? Description { get; set; }
         /// <summary>Giá cơ bản (gói theo kg: giá gói; theo chiếc/đôi: đơn giá).</summary>

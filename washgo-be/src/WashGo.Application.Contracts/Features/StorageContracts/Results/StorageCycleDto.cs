@@ -1,4 +1,4 @@
-﻿using WashGo.Domain.Shared.Enums;
+using WashGo.Domain.Shared.Enums;
 namespace WashGo.Application.Contracts.Features.StorageContracts.Results;
 public class StorageCycleDto
 {
@@ -13,6 +13,12 @@ public class StorageCycleDto
     public DateTime? IntakeAt { get; set; }
     public DateTime? DispatchedAt { get; set; }
     public string? ReceiptReference { get; set; }
+    public string? StorageReference { get; set; }
+    public DateTime? ReferenceIssuedAt { get; set; }
+    public string? ReferenceBasis { get; set; }
+    public string? MerchantName { get; set; }
+    public string CurrentLocation { get; set; } = "Unknown";
+    public bool IsCurrent { get; set; }
     public string? ExceptionNote { get; set; }
     public DateTime? TransferDeadline { get; set; }
     public Guid? ReturnRequestId { get; set; }
