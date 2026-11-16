@@ -31,6 +31,7 @@ namespace WashGo.Application.Contracts.Features.PaymentContracts.Commands
 
     public class CreateOverdueFeePaymentCommand
     {
+        public string? ExpectedQuoteToken { get; set; }
         public Guid OrderId { get; set; }
         public PaymentMethod PaymentMethod { get; set; } = PaymentMethod.VnPay;
         [JsonIgnore]

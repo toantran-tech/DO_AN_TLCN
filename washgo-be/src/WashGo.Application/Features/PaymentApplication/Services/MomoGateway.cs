@@ -47,17 +47,19 @@ namespace WashGo.Application.Features.PaymentApplication.Services
         {
             if (!IsConfigured)
                 return new(null, "Chưa cấu hình đầy đủ thông tin kết nối MoMo.");
+            if (amount <= 0 || decimal.Truncate(amount) != amount || amount > long.MaxValue)
+                return new(null, "Số tiền MoMo phải là số nguyên VND dương; không tự làm tròn.");
 
             var request = new MomoCreateRequest
             {
                 PartnerCode = Setting("PartnerCode")!,
                 RequestId = reference,
                 OrderId = reference,
-                Amount = decimal.ToInt64(decimal.Round(amount, 0, MidpointRounding.AwayFromZero)),
+                Amount = decimal.ToInt64(amount),
                 OrderInfo = orderInfo,
                 RedirectUrl = Setting("RedirectUrl")!,
                 IpnUrl = Setting("IpnUrl")!,
-                RequestType = Setting("RequestType") is { Length: > 0 } type ? type : "payWithMethod",
+                RequestType = amount < 10000m ? "captureWallet" : Setting("RequestType") is { Length: > 0 } type ? type : "payWithMethod",
                 ExtraData = ""
             };
             request.Signature = Sign(

@@ -3,13 +3,13 @@ using System.Linq;
 using System.Net;
 using System.Threading.Tasks;
 using Volo.Abp.Uow;
+using Volo.Abp.Domain.Repositories;
 using WashGo.Application.Contracts.Features.PaymentContracts.Commands;
 using WashGo.Application.Contracts.Features.PaymentContracts.Results;
 using WashGo.Core.Domain.Shared.Bases;
 using WashGo.Domain.Entities.Payment;
 using WashGo.Domain.Entities.WashOrder;
 using WashGo.Domain.Shared.Enums;
-using WashGo.Domain.Entities.Loyalty;
 
 namespace WashGo.Application.Features.PaymentApplication.Services;
 
@@ -29,6 +29,7 @@ public partial class PaymentAppService
         string reference;
         string orderCode;
         decimal amount;
+        DateTime gatewayCreatedAt;
         using (var prepare = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true))
         {
             var order = await _orders.GetForUpdateAsync(command.OrderId);
@@ -40,29 +41,32 @@ public partial class PaymentAppService
             orderCode = order.OrderCode;
             // Do not take transaction locks after the order lock. All creators hold
             // this order lock; callbacks/finalizers consistently lock transaction -> order.
-            var pending = await _transactionRepo.GetListAsync(x => x.OrderId == order.Id &&
-                x.Purpose == purpose && x.Status == PaymentTransactionStatus.Pending && !x.IsDeleted);
+            var blockers = await BlockersAsync(order.Id, purpose);
+            var view = blockers.Count == 0 ? null : PaymentSessionRules.View(order.Id, purpose, blockers, DateTime.UtcNow, UseLiveGateway);
+            if (blockers.Any(x => x.RequiresReconciliation))
+                return SessionConflict("PaymentRequiresReview", "Có khoản tiền cần đối soát; chưa tạo giao dịch mới.", view!);
+            var pending = blockers.Where(x => x.Status == PaymentTransactionStatus.Pending).ToList();
             if (pending.Count > 1)
-                return SessionConflict("LegacyPaymentsRequireReview", "Đơn có nhiều giao dịch cũ đang chờ; cần đối soát trước khi tạo URL mới.");
+                return SessionConflict("LegacyPaymentsRequireReview", "Đơn có nhiều giao dịch cũ đang chờ; cần đối soát trước khi tạo URL mới.", view!);
             if (pending.Count == 1)
             {
                 var existing = pending[0];
                 if (existing.PointsToRedeem != command.PointsToRedeem)
-                    return SessionConflict("PaymentPointsConflict", "Phiên hiện tại đang dùng số điểm khác; không tạo phiên thay thế khi chưa xác minh.");
+                    return SessionConflict("PaymentPointsConflict", "Phiên hiện tại đang dùng số điểm khác; không tạo phiên thay thế khi chưa xác minh.", view!);
                 if (existing.PaymentMethod != command.PaymentMethod)
-                    return SessionConflict("PaymentMethodConflict", "Đã có phiên thanh toán bằng phương thức khác. Vui lòng dùng phiên hiện tại hoặc chờ xác minh.");
+                    return SessionConflict("PaymentMethodConflict", "Đã có phiên thanh toán bằng phương thức khác. Vui lòng dùng phiên hiện tại hoặc chờ xác minh.", view!);
                 if (existing.Amount + existing.PointsToRedeem != amount)
-                    return SessionConflict("PaymentAmountChanged", "Số tiền phải trả đã thay đổi; cần xác minh phiên trước khi tạo giao dịch mới.");
+                    return SessionConflict("PaymentAmountChanged", "Số tiền phải trả đã thay đổi; cần xác minh phiên trước khi tạo giao dịch mới.", view!);
                 if (existing.SessionState == PaymentSessionState.Unknown)
-                    return SessionConflict("PaymentVerificationRequired", "Kết quả tạo phiên chưa xác định. Không tạo thêm giao dịch; vui lòng chờ xác minh.");
+                    return SessionConflict("PaymentVerificationRequired", "Kết quả tạo phiên chưa xác định. Không tạo thêm giao dịch; vui lòng chờ xác minh.", view!);
                 if (string.IsNullOrWhiteSpace(existing.PaymentUrl))
                     return SessionConflict(existing.CreatedOn < DateTimeOffset.UtcNow.AddMinutes(-2).ToUnixTimeSeconds()
-                        ? "PaymentVerificationRequired" : "PaymentInitializing", "Phiên đang khởi tạo hoặc cần xác minh. Vui lòng tải lại sau.");
+                        ? "PaymentVerificationRequired" : "PaymentInitializing", "Phiên đang khởi tạo hoặc cần xác minh. Vui lòng tải lại sau.", view!);
                 // VNPay URLs explicitly include this expiry. Expired locally does not
                 // prove no money was received; retain the reference for reconciliation.
                 if (existing.PaymentMethod == PaymentMethod.VnPay && UseLiveGateway &&
-                    existing.CreatedOn < DateTimeOffset.UtcNow.AddMinutes(-15).ToUnixTimeSeconds())
-                    return SessionConflict("PaymentVerificationRequired", "URL VNPay đã quá thời hạn; cần xác minh giao dịch trước khi tạo phiên thay thế.");
+                    (view!.ExpiresAt.HasValue ? view.ExpiresAt <= DateTime.UtcNow : existing.CreatedOn < DateTimeOffset.UtcNow.AddMinutes(-15).ToUnixTimeSeconds()))
+                    return SessionConflict("PaymentVerificationRequired", "URL VNPay đã quá thời hạn; cần xác minh giao dịch trước khi tạo phiên thay thế.", view!);
                 return new BaseResponse<PaymentResultDto>
                 {
                     Succeeded = true, StatusCode = HttpStatusCode.OK,
@@ -71,17 +75,21 @@ public partial class PaymentAppService
                 };
             }
 
+            var quote = await BuildQuoteAsync(order, purpose, command.PointsToRedeem, []);
+            if (!quote.CanCreate)
+                return QuoteError(quote.ReasonCode ?? "PaymentNotEligible", quote,
+                    quote.ReasonCode == "InsufficientPoints" ? HttpStatusCode.Conflict : HttpStatusCode.BadRequest);
+            var selected = quote.Methods.Single(x => x.PaymentMethod == command.PaymentMethod);
+            if (!selected.Enabled) return QuoteError(selected.ReasonCode ?? "PaymentMethodUnavailable", quote, HttpStatusCode.BadRequest);
+            if (command.ExpectedQuoteToken != null && command.ExpectedQuoteToken != quote.QuoteToken)
+                return QuoteError("QuoteChanged", quote, HttpStatusCode.Conflict);
+            if (string.IsNullOrWhiteSpace(command.ExpectedQuoteToken) && await _transactionRepo.AnyAsync(x =>
+                x.OrderId == order.Id && x.Purpose == purpose && x.VerifiedClosedAt != null && !x.IsDeleted))
+                return QuoteError("QuoteConfirmationRequired", quote, HttpStatusCode.Conflict);
             reference = NewReference(purpose switch
             {
                 PaymentPurpose.OverdueStorageFee => "FEE", PaymentPurpose.CancellationFee => "CANCEL", _ => "PAY"
             }, order.OrderCode, command.PaymentMethod);
-            var policy = await _settings.GetAsync();
-            if (purpose == PaymentPurpose.Order)
-            {
-                var maximum = LoyaltyMath.MaximumUse(amount, policy.LoyaltyMaxUsePercent, long.MaxValue);
-                if (command.PointsToRedeem > maximum)
-                    return BadRequest<PaymentResultDto>($"Chỉ được dùng tối đa {maximum} điểm cho đơn này.");
-            }
             var transactionToCreate = new PaymentTransaction
             {
                 OrderId = order.Id, TransactionReference = reference, PaymentMethod = command.PaymentMethod,
@@ -92,9 +100,12 @@ public partial class PaymentAppService
                 LoyaltyVersion = purpose == PaymentPurpose.Order ? 1 : 0,
                 PointsToRedeem = command.PointsToRedeem,
                 LaundryAmount = purpose == PaymentPurpose.Order ? amount : 0,
-                LoyaltyEarnPercent = policy.LoyaltyEarnPercent,
-                LoyaltyMaxUsePercent = policy.LoyaltyMaxUsePercent
+                LoyaltyEarnPercent = quote.EarnPercent,
+                LoyaltyMaxUsePercent = quote.MaxUsePercent
             };
+            gatewayCreatedAt = DateTime.UtcNow;
+            transactionToCreate.GatewayCreatedAt = gatewayCreatedAt;
+            if (command.PaymentMethod == PaymentMethod.VnPay) transactionToCreate.GatewayExpiresAt = transactionToCreate.GatewayCreatedAt.Value.AddMinutes(15);
             transactionToCreate.AssignIdIfEmptyForBulkInsert();
             transactionToCreate.Amount = amount - command.PointsToRedeem;
             if (!await Loyalty.HoldAsync(transactionToCreate, order.CustomerId))
@@ -110,7 +121,7 @@ public partial class PaymentAppService
         // The reference is durable before HTTP. Never retry a gateway POST under a new
         // reference after a timeout; a crash leaves Creating and blocks another session.
         var result = await GatewayUrlAsync(command.OrderId, command.PaymentMethod, reference,
-            orderCode, amount, command.ClientIpAddress);
+            orderCode, amount, command.ClientIpAddress, gatewayCreatedAt);
         using var finalize = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
         var transaction = await _transactionRepo.GetForUpdateByReferenceAsync(reference);
         var current = await _orders.GetForUpdateAsync(command.OrderId);

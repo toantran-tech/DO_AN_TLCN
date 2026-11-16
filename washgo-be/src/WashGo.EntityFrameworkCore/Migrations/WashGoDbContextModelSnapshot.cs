@@ -2407,6 +2407,9 @@ namespace WashGo.EntityFrameworkCore.Migrations
 
             modelBuilder.Entity("WashGo.Domain.Entities.Payment.PaymentTransaction", b =>
                 {
+                    b.Property<DateTime?>("GatewayCreatedAt").HasColumnType("timestamp with time zone").HasColumnName("gateway_created_at");
+                    b.Property<DateTime?>("GatewayExpiresAt").HasColumnType("timestamp with time zone").HasColumnName("gateway_expires_at");
+                    b.Property<DateTime?>("VerifiedClosedAt").HasColumnType("timestamp with time zone").HasColumnName("verified_closed_at");
                     b.Property<int>("LoyaltyVersion")
                         .HasColumnType("integer")
                         .HasColumnName("loyalty_version");
@@ -4833,6 +4836,29 @@ namespace WashGo.EntityFrameworkCore.Migrations
             modelBuilder.Entity("WashGo.Domain.Entities.Loyalty.LoyaltyEntry", b =>
                 {
                     b.HasOne("WashGo.Domain.Entities.Loyalty.LoyaltyWallet", null).WithMany().HasForeignKey("CustomerId").OnDelete(DeleteBehavior.Restrict).IsRequired();
+                });
+            modelBuilder.Entity("WashGo.Domain.Entities.Payment.PaymentVerification", b =>
+                {
+                    b.Property<Guid>("Id").HasColumnType("uuid").HasColumnName("id");
+                    b.Property<Guid>("CustomerId").HasColumnType("uuid").HasColumnName("customer_id");
+                    b.Property<Guid>("OrderId").HasColumnType("uuid").HasColumnName("order_id");
+                    b.Property<Guid?>("TransactionId").HasColumnType("uuid").HasColumnName("transaction_id");
+                    b.Property<Guid?>("ParentOperationId").HasColumnType("uuid").HasColumnName("parent_operation_id");
+                    b.Property<Guid?>("LeaseToken").HasColumnType("uuid").HasColumnName("lease_token");
+                    b.Property<int>("Purpose").HasColumnType("integer").HasColumnName("purpose");
+                    b.Property<int>("Attempts").HasColumnType("integer").HasColumnName("attempts");
+                    b.Property<bool>("IsActive").HasColumnType("boolean").HasColumnName("is_active");
+                    b.Property<DateTime>("CreatedAt").HasColumnType("timestamp with time zone").HasColumnName("created_at");
+                    b.Property<DateTime>("UpdatedAt").HasColumnType("timestamp with time zone").HasColumnName("updated_at");
+                    b.Property<DateTime>("NextAttemptAt").HasColumnType("timestamp with time zone").HasColumnName("next_attempt_at");
+                    b.Property<DateTime?>("LeaseUntil").HasColumnType("timestamp with time zone").HasColumnName("lease_until");
+                    b.Property<string>("State").IsRequired().HasMaxLength(24).HasColumnType("character varying(24)").HasColumnName("state");
+                    b.Property<string>("ReasonCode").HasMaxLength(80).HasColumnType("character varying(80)").HasColumnName("reason_code");
+                    b.HasKey("Id");
+                    b.HasIndex("IsActive", "NextAttemptAt");
+                    b.HasIndex("TransactionId", "CreatedAt");
+                    b.HasIndex("TransactionId").IsUnique().HasDatabaseName("ux_payment_verification_active").HasFilter("is_active = true AND transaction_id IS NOT NULL");
+                    b.ToTable("payment_verifications", "washgo");
                 });
 #pragma warning restore 612, 618
         }

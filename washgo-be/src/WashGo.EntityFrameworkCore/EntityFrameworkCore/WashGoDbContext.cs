@@ -55,6 +55,7 @@ namespace WashGo.EntityFrameworkCore.EntityFrameworkCore
         public DbSet<LockerMerchant> LockerMerchants { get; set; } = null!;
         public DbSet<WashService> WashServices { get; set; } = null!;
         public DbSet<PaymentTransaction> PaymentTransactions { get; set; } = null!;
+        public DbSet<PaymentVerification> PaymentVerifications { get; set; } = null!;
         public DbSet<RefundRequest> RefundRequests { get; set; } = null!;
         public DbSet<Promotion> Promotions { get; set; } = null!;
         public DbSet<PromotionUsage> PromotionUsages { get; set; } = null!;
@@ -110,6 +111,7 @@ namespace WashGo.EntityFrameworkCore.EntityFrameworkCore
             builder.ApplyConfiguration(new LockerBoxEntityTypeConfiguration());
             builder.ApplyConfiguration(new WashServiceEntityTypeConfiguration());
             builder.ApplyConfiguration(new PaymentTransactionEntityTypeConfiguration());
+            builder.ApplyConfiguration(new PaymentVerificationEntityTypeConfiguration());
             builder.ApplyConfiguration(new RefundRequestEntityTypeConfiguration());
             builder.ApplyConfiguration(new PromotionEntityTypeConfiguration());
             builder.ApplyConfiguration(new PromotionUsageEntityTypeConfiguration());

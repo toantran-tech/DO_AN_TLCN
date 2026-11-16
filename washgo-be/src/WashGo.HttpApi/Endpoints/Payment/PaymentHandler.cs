@@ -22,7 +22,44 @@ namespace WashGo.HttpApi.Endpoints.Payment
             var group = app.MapGroup(Endpoint)
                 .WithTags("Payment - Thanh toán");
 
-            // Browser redirect is informational. Only verified IPN may settle the transaction.
+            group.MapGet("/orders/{orderId:guid}/active-session", async (Guid orderId, PaymentPurpose purpose,
+                HttpContext context, IPaymentAppService service) =>
+            {
+                context.Response.Headers.CacheControl = "no-store";
+                return (await service.GetActiveSessionAsync(orderId, purpose)).CustomResult();
+            }).RequireAuthorization("CustomerOnly").WithName("CustomerPaymentActiveSession")
+                .WithSummary("Đọc phiên thanh toán hiện có của chính Customer; purpose=1 tiền giặt, 2 phí quá hạn, 3 phí hủy. Không gọi cổng hoặc thay đổi điểm.")
+                .WithOpenApi();
+
+            group.MapGet("/orders/{orderId:guid}/quote", async (Guid orderId, PaymentPurpose purpose,
+                long? pointsToRedeem, HttpContext context, IPaymentAppService service) =>
+            {
+                context.Response.Headers.CacheControl = "no-store";
+                return (await service.QuotePaymentAsync(orderId, purpose, pointsToRedeem ?? 0)).CustomResult();
+            }).RequireAuthorization("CustomerOnly").WithName("CustomerPaymentQuote")
+                .WithSummary("Báo phí chỉ đọc: tiền phải trả, điểm, giới hạn VNPay/MoMo và quoteToken. Không tạo giao dịch/giữ điểm.")
+                .WithOpenApi();
+
+            group.MapPost("/orders/{orderId:guid}/verify-session", async (Guid orderId,
+                VerifyPaymentSessionCommand command, HttpContext context, IPaymentAppService service) =>
+            {
+                context.Response.Headers.CacheControl = "no-store";
+                return (await service.VerifySessionAsync(orderId, command)).CustomResult();
+            }).RequireAuthorization("CustomerOnly").RequireRateLimiting("payment-verification")
+                .WithName("CustomerVerifyPaymentSession")
+                .WithSummary("Yêu cầu xác minh với operationId UUID do FE sinh; worker truy vấn cổng. Hết hạn cục bộ không tự đóng phiên hoặc nhả điểm.")
+                .WithOpenApi();
+
+            group.MapGet("/verification-operations/{operationId:guid}", async (Guid operationId,
+                HttpContext context, IPaymentAppService service) =>
+            {
+                context.Response.Headers.CacheControl = "no-store";
+                return (await service.GetVerificationAsync(operationId)).CustomResult();
+            }).RequireAuthorization("CustomerOnly").WithName("CustomerPaymentVerificationOperation")
+                .WithSummary("Đọc tiến độ xác minh của chính Customer; dùng retryAfterSeconds để thăm dò, không truy vấn cổng từ GET.")
+                .WithOpenApi();
+
+            // Browser redirect is informational. Only verified IPN/query may settle the transaction.
             group.MapGet("/return", (HttpContext context) =>
             {
                 context.Response.Headers.CacheControl = "no-store";

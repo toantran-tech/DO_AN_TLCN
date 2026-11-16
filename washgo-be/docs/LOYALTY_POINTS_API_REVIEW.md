@@ -1,3 +1,5 @@
+> Bổ sung 16/11/2026: FE dùng thêm [Payment session recovery](PAYMENT_SESSION_RECOVERY_API_REVIEW.md) cho GET phiên/quote, giới hạn tiền gửi cổng, verify và xác nhận tạo phiên thay thế. Giữ nguyên concurrency/điểm đã chốt; test/deploy mới chưa chạy.
+
 # Điểm thưởng WashGo — bàn giao Backend
 
 Ngày: 15/11/2026. Đã triển khai source; **chưa chạy HTTP/smoke, chưa áp migration hoặc build Docker/deploy trong đợt này**. Không coi tài liệu này là bằng chứng kiểm thử đã PASS.
