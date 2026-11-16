@@ -26,6 +26,12 @@ namespace WashGo.Application
         public override void ConfigureServices(ServiceConfigurationContext context)
         {
             context.Services.AddWashGoObjectMapping();
+            context.Services.AddTransient<IPaymentVerificationRunner, PaymentAppService>();
+            context.Services.AddHttpClient(PaymentQueryGateway.ClientName, client =>
+            {
+                client.Timeout = TimeSpan.FromSeconds(35);
+                client.MaxResponseContentBufferSize = 65536;
+            }).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
             context.Services.AddHttpClient(MomoGateway.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(30))
                 .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
             context.Services.AddHttpClient(BrevoEmailClient.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(20))

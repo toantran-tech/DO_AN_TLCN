@@ -12,6 +12,10 @@ namespace WashGo.Application.Contracts.Features.PaymentContracts.Services
 {
     public interface IPaymentAppService : IApplicationService
     {
+        Task<BaseResponse<PaymentSessionDto?>> GetActiveSessionAsync(Guid orderId, PaymentPurpose purpose);
+        Task<BaseResponse<PaymentQuoteDto>> QuotePaymentAsync(Guid orderId, PaymentPurpose purpose, long pointsToRedeem);
+        Task<BaseResponse<PaymentVerificationDto>> VerifySessionAsync(Guid orderId, VerifyPaymentSessionCommand command);
+        Task<BaseResponse<PaymentVerificationDto>> GetVerificationAsync(Guid operationId);
         Task<BaseResponse<PaymentResultDto>> CreatePaymentAsync(CreatePaymentCommand command);
         Task<BaseResponse<PaymentResultDto>> CreateCancellationFeePaymentAsync(CreatePaymentCommand command);
         Task<BaseResponse<PaymentResultDto>> CreateOverdueFeePaymentAsync(CreateOverdueFeePaymentCommand command);

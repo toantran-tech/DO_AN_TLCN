@@ -70,7 +70,8 @@ namespace WashGo.Application.Features.PaymentApplication.Services
         public Task<BaseResponse<PaymentResultDto>> CreateOverdueFeePaymentAsync(CreateOverdueFeePaymentCommand command) =>
             CreateSessionAsync(new CreatePaymentCommand
             {
-                OrderId = command.OrderId, PaymentMethod = command.PaymentMethod, ClientIpAddress = command.ClientIpAddress
+                OrderId = command.OrderId, PaymentMethod = command.PaymentMethod, ClientIpAddress = command.ClientIpAddress,
+                ExpectedQuoteToken = command.ExpectedQuoteToken
             }, PaymentPurpose.OverdueStorageFee);
 
         [UnitOfWork(IsDisabled = true)]
@@ -212,6 +213,7 @@ namespace WashGo.Application.Features.PaymentApplication.Services
                 transaction.FailureReason = failureReason;
                 transaction.ProviderTransactionId = providerTransactionId;
                 transaction.CompletedAt = DateTime.UtcNow;
+                transaction.VerifiedClosedAt = DateTime.UtcNow;
                 if (order != null) await Loyalty.ReleaseAsync(transaction, order.CustomerId);
                 await _transactionRepo.UpdateAsync(transaction, autoSave: true);
                 if (order != null) await _notifications.PaymentFailedAsync(order);
@@ -330,7 +332,7 @@ namespace WashGo.Application.Features.PaymentApplication.Services
                 : $"WG-{kind}-{orderCode}-{Guid.NewGuid():N}";
 
         private async Task<PaymentGatewayResult> GatewayUrlAsync(Guid orderId, PaymentMethod method, string reference,
-            string orderCode, decimal amount, string clientIpAddress, string orderInfo = "")
+            string orderCode, decimal amount, string clientIpAddress, DateTime? gatewayCreatedAt = null, string orderInfo = "")
         {
             if (method is not (PaymentMethod.VnPay or PaymentMethod.Momo))
                 return new(null, "Hiện chỉ hỗ trợ thanh toán trực tuyến qua VNPay hoặc MoMo.");
@@ -339,12 +341,12 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             if (method == PaymentMethod.Momo)
                 return await _momo.CreatePayUrlAsync(reference, amount,
                     string.IsNullOrWhiteSpace(orderInfo) ? $"Thanh toan don WashGo {orderCode}" : orderInfo);
-            var url = BuildVnPayUrl(orderCode, reference, amount, clientIpAddress, orderInfo);
+            var url = BuildVnPayUrl(orderCode, reference, amount, clientIpAddress, orderInfo, gatewayCreatedAt);
             return url == null ? new(null, "Chưa cấu hình đầy đủ thông tin kết nối VNPay.") : new(url, null);
         }
 
         private string? BuildVnPayUrl(string orderCode, string reference, decimal amount, string clientIpAddress,
-            string orderInfo = "")
+            string orderInfo = "", DateTime? gatewayCreatedAt = null)
         {
             var tmnCode = _configuration["Payment:VnPay:TmnCode"];
             var secret = _configuration["Payment:VnPay:HashSecret"];
@@ -352,7 +354,7 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             if (string.IsNullOrWhiteSpace(tmnCode) || string.IsNullOrWhiteSpace(secret) || string.IsNullOrWhiteSpace(returnUrl))
                 return null;
 
-            var now = DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours(7));
+            var now = new DateTimeOffset(gatewayCreatedAt ?? DateTime.UtcNow).ToOffset(TimeSpan.FromHours(7));
             var ip = string.IsNullOrWhiteSpace(clientIpAddress) ? "127.0.0.1" : clientIpAddress;
             var fields = new SortedDictionary<string, string>(StringComparer.Ordinal)
             {

@@ -9,6 +9,7 @@ namespace WashGo.Application.Contracts.Features.PaymentContracts.Commands
         public Guid OrderId { get; set; }
         public PaymentMethod PaymentMethod { get; set; }
         public long PointsToRedeem { get; set; }
+        public string? ExpectedQuoteToken { get; set; }
         [JsonIgnore]
         public string ClientIpAddress { get; set; } = "127.0.0.1";
     }

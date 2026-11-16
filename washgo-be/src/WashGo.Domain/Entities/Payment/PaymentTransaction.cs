@@ -43,6 +43,9 @@ namespace WashGo.Domain.Entities.Payment
         public bool RequiresReconciliation { get; set; }
         public string? ReconciliationReason { get; set; }
         public DateTime? ReconciledAt { get; set; }
+        public DateTime? GatewayCreatedAt { get; set; }
+        public DateTime? GatewayExpiresAt { get; set; }
+        public DateTime? VerifiedClosedAt { get; set; }
 
         public virtual WashOrderEntity? Order { get; set; }
     }
