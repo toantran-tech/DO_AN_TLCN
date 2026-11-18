@@ -10,9 +10,9 @@ public static class ServiceCategoryRules
         : throw new ArgumentOutOfRangeException(nameof(serviceType), "Unknown legacy processing type.");
     public static string Name(string value) => Regex.Replace(value.Normalize(NormalizationForm.FormC).Trim(), @"\s+", " ");
     public static string Key(string value) => Name(value).ToUpperInvariant();
-    public static string? Validate(string? code, string? name, string? description, int sortOrder)
+    /// <summary>Kiểm tra tên/mô tả/thứ tự; mã danh mục do hệ thống cấp nên không còn là dữ liệu nhập.</summary>
+    public static string? Validate(string? name, string? description, int sortOrder)
     {
-        if (!Regex.IsMatch(code ?? "", "^[A-Za-z0-9_-]{2,30}$")) return "Code cần 2–30 chữ Latin, số, - hoặc _.";
         if (string.IsNullOrWhiteSpace(name) || Name(name).Length > 100 || name.Contains('<') || name.Contains('>')) return "Tên cần 1–100 ký tự, không dùng HTML.";
         if (description?.Length > 500 || description?.Contains('<') == true || description?.Contains('>') == true) return "Mô tả tối đa 500 ký tự, không dùng HTML.";
         return sortOrder is < 0 or > 100000 ? "sortOrder phải từ 0 đến 100000." : null;

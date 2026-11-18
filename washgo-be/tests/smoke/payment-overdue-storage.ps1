@@ -81,9 +81,9 @@ INSERT INTO washgo.shippers SELECT (jsonb_populate_record(NULL::washgo.shippers,
     Pay $paid.id | Out-Null
     $scan=Run-Scan
     if($scan.sent.'payment-storage' -lt 1){throw 'Scan did not report the move to storage.'}
-    # Storage location and LK storage reference are staff data: the Customer view hides them, the Admin view shows them.
+    # Storage location and storage reference (STdddd) are staff data: the Customer view hides them, the Admin view shows them.
     $v=(Call-Api Get "/wash-order/$($o.id)" $null $admin).data
-    if($v.status -ne 13 -or $v.paymentStatus -ne 1 -or !$v.storageLocation -or $v.storageReference -notmatch '^LK\d{18}$'){throw "Order not moved to storage: status=$($v.status) location=$($v.storageLocation) ref=$($v.storageReference)"}
+    if($v.status -ne 13 -or $v.paymentStatus -ne 1 -or !$v.storageLocation -or $v.storageReference -notmatch '^ST\d{4}$'){throw "Order not moved to storage: status=$($v.status) location=$($v.storageLocation) ref=$($v.storageReference)"}
     $cv=Order $o.id
     if($cv.storageLocation -or $cv.storageReference){throw 'Customer sees the storage location/reference.'}
     if(@($v.timeline | Where-Object { $_.status -eq 13 }).Count -ne 1){throw 'Storage timeline missing.'}

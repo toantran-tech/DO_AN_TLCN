@@ -21,6 +21,8 @@ using WashGo.Domain.Entities.Partner;
 using WashGo.Domain.Entities.WashOrder;
 using WashGo.Domain.Entities.WashOrder.Interfaces;
 using WashGo.Domain.Shared.Enums;
+using WashGo.Domain.Shared.Validation;
+using WashGo.Domain.Entities.SystemConfig;
 using System.Data;
 using WashGo.Application.Contracts.Features.AuditContracts.Commands;
 using WashGo.Application.Contracts.Features.AuditContracts.Results;
@@ -169,17 +171,13 @@ namespace WashGo.Application.Features.WashServiceApplication.Services
 
         private async Task<string?> ValidateAsync(CreateWashServiceCommand command, Guid? currentId)
         {
-            if (string.IsNullOrWhiteSpace(command.Code))
-                return "Mã dịch vụ không được để trống.";
-            if (command.Code.Trim().Length > 50 || command.Description?.Length > 2000) return "Mã tối đa 50, mô tả 2000 ký tự.";
+            if (command.Description?.Length > 2000) return "Mô tả tối đa 2000 ký tự.";
             var error = WashServiceRules.Validate(command.Name, command.UnitPrice, command.PricePerKg, command.PricePerItem,
                 command.EstimatedDurationHours, command.ServiceType, command.Unit);
             if (error != null)
                 return error;
             if (command.MerchantId.HasValue && await _merchantRepo.FindAsync(command.MerchantId.Value) == null)
                 return "Merchant đề xuất không tồn tại.";
-            if (await _serviceRepo.AnyAsync(x => x.Code == command.Code && x.Id != currentId))
-                return $"Mã dịch vụ '{command.Code}' đã tồn tại.";
             if (await WashServiceRules.NameTakenAsync(_serviceRepo, command.Name, currentId))
                 return WashServiceRules.DuplicateName;
             return null;
@@ -194,11 +192,14 @@ namespace WashGo.Application.Features.WashServiceApplication.Services
             if (error != null)
                 return BadRequest<WashServiceResultDto>(error);
 
-            var entity = ObjectMapper.Map<CreateWashServiceCommand, WashService>(command);
+            var entity = new WashService(GuidGenerator.Create());
+            ObjectMapper.Map(command, entity);
             var imageError = await ApplyImagesAsync(entity, command.ImageUrls);
             if (imageError != null) return BadRequest<WashServiceResultDto>(imageError);
             entity.ApprovalStatus = ServiceApprovalStatus.Approved;
             entity.IsActive = true;
+            // Any code sent by an older client is ignored; Admin and Merchant proposals share the SV allocator.
+            entity.Code = await LazyServiceProvider.LazyGetRequiredService<IBusinessCodeAllocator>().AllocateAsync(BusinessCodeRules.Service, entity.Id);
             await _serviceRepo.InsertAsync(entity, autoSave: true);
             var dto = ObjectMapper.Map<WashService, WashServiceResultDto>(entity);
             Fill(dto, entity);
@@ -222,6 +223,8 @@ namespace WashGo.Application.Features.WashServiceApplication.Services
             if (string.IsNullOrWhiteSpace(command.ExpectedVersion)) return AdministrativeWriteGuard.Error<WashServiceResultDto>(HttpStatusCode.BadRequest, "ExpectedVersionRequired", "Thiếu expectedVersion.");
             if (command.ExpectedVersion != Version(entity)) return AdministrativeWriteGuard.Error<WashServiceResultDto>(HttpStatusCode.Conflict, "VersionMismatch", "Dịch vụ đã thay đổi.");
 
+            if (!BusinessCodeRules.AcceptsOnUpdate(command.Code, entity.Code))
+                return AdministrativeWriteGuard.Error<WashServiceResultDto>(HttpStatusCode.BadRequest, BusinessCodeRules.ImmutableCode, BusinessCodeRules.ImmutableMessage);
             var error = await ValidateAsync(command, command.Id);
             if (error != null)
                 return BadRequest<WashServiceResultDto>(error);

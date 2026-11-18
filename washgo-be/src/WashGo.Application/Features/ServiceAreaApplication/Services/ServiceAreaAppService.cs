@@ -1,3 +1,5 @@
+using WashGo.Domain.Entities.SystemConfig;
+using WashGo.Domain.Shared.Validation;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -176,13 +178,10 @@ namespace WashGo.Application.Features.ServiceAreaApplication.Services
 
         public async Task<BaseResponse<ServiceAreaResultDto>> CreateAsync(CreateServiceAreaCommand command)
         {
-            var existingCode = await _serviceAreaRepo.FirstOrDefaultAsync(x => x.Code == command.Code);
-            if (existingCode != null)
-            {
-                return BadRequest<ServiceAreaResultDto>($"Mã vùng phục vụ '{command.Code}' đã tồn tại.");
-            }
-
-            var entity = ObjectMapper.Map<CreateServiceAreaCommand, ServiceArea>(command);
+            // A code sent by an older client is ignored; the server issues KVdddd.
+            var entity = new ServiceArea(GuidGenerator.Create());
+            ObjectMapper.Map(command, entity);
+            entity.Code = await LazyServiceProvider.LazyGetRequiredService<IBusinessCodeAllocator>().AllocateAsync(BusinessCodeRules.ServiceArea, entity.Id);
             entity.CreatedAt = DateTime.UtcNow;
             entity.UpdatedAt = DateTime.UtcNow;
 
@@ -198,6 +197,12 @@ namespace WashGo.Application.Features.ServiceAreaApplication.Services
             {
                 return NotFound<ServiceAreaResultDto>("Không tìm thấy Vùng phục vụ để cập nhật!");
             }
+            if (!BusinessCodeRules.AcceptsOnUpdate(command.Code, entity.Code))
+                return new BaseResponse<ServiceAreaResultDto>
+                {
+                    Succeeded = false, StatusCode = HttpStatusCode.BadRequest, Message = BusinessCodeRules.ImmutableMessage,
+                    Meta = new { code = BusinessCodeRules.ImmutableCode }
+                };
 
             ObjectMapper.Map(command, entity);
             entity.UpdatedAt = DateTime.UtcNow;

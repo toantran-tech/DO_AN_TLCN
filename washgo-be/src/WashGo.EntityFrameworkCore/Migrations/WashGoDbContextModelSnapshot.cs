@@ -3299,6 +3299,37 @@ namespace WashGo.EntityFrameworkCore.Migrations
                     b.ToTable("promotion_usages", "washgo");
                 });
 
+            modelBuilder.Entity("WashGo.Domain.Entities.SystemConfig.BusinessCodeClaim", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(6)
+                        .HasColumnType("character varying(6)")
+                        .HasColumnName("code");
+
+                    b.Property<DateTime>("IssuedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("issued_at");
+
+                    b.Property<string>("Prefix")
+                        .IsRequired()
+                        .HasMaxLength(2)
+                        .HasColumnType("character varying(2)")
+                        .HasColumnName("prefix");
+
+                    b.Property<Guid>("ResourceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("resource_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Prefix");
+
+                    b.HasIndex("ResourceId")
+                        .IsUnique();
+
+                    b.ToTable("business_code_claims", "washgo");
+                });
+
             modelBuilder.Entity("WashGo.Domain.Entities.SystemConfig.SystemSetting", b =>
                 {
                     b.Property<Guid>("Id")

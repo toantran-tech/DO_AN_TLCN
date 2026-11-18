@@ -16,6 +16,8 @@ using WashGo.Domain.Entities.Partner;
 using WashGo.Domain.Entities.WashOrder;
 using WashGo.Domain.Entities.WashOrder.Interfaces;
 using WashGo.Domain.Shared.Enums;
+using WashGo.Domain.Shared.Validation;
+using WashGo.Domain.Entities.SystemConfig;
 using Volo.Abp.Domain.Repositories;
 using Volo.Abp.Uow;
 using WashGo.Application.Features.AuditApplication.Services;
@@ -121,9 +123,8 @@ namespace WashGo.Application.Features.LockerApplication.Services
             using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
             if (await Writes.ReplayAsync<LockerResultDto>(command.OperationId, CurrentUser.Id!.Value, "Locker", "Create", "new", command) is { } replay) return replay;
             await Writes.LockAsync("locker-admin-names");
-            var error = await ValidateAsync(command, null);
-            if (error != null)
-                return BadRequest<LockerResultDto>(error);
+            if (await ValidateAsync(command, null) is { } invalid)
+                return invalid;
             var (imageError, images) = await UploadStorage.ValidateOwnedImagesAsync(LazyServiceProvider.LazyGetRequiredService<ObjectStorage>(), command.ImageUrls, CurrentUser.Id!.Value, 0);
             if (imageError != null)
                 return BadRequest<LockerResultDto>(imageError);
@@ -140,29 +141,23 @@ namespace WashGo.Application.Features.LockerApplication.Services
             if (boxes.Select(b => int.Parse(b.BoxNumber)).Distinct().Count() != boxes.Count)
                 return BadRequest<LockerResultDto>("Số ô bị trùng.");
 
-            var code = string.IsNullOrWhiteSpace(command.Code) ? $"LK_{Guid.NewGuid():N}"[..11].ToUpperInvariant() : command.Code.Trim();
-            // The unique index on code also covers deleted lockers.
-            if (await _lockerRepo.AnyAsync(x => x.Code == code))
-                return BadRequest<LockerResultDto>("Mã locker này đã được sử dụng.");
-
-            var locker = new Locker
-            {
-                ServiceAreaId = command.ServiceAreaId,
-                Code = code,
-                Name = command.Name.Trim(),
-                Address = command.Address.Trim(),
-                Ward = command.Ward,
-                District = command.District?.Trim() ?? string.Empty,
-                City = command.City?.Trim() ?? string.Empty,
-                Latitude = command.Latitude,
-                Longitude = command.Longitude,
-                Status = LockerStatus.Active,
-                TotalBoxes = boxes.Count,
-                AvailableBoxes = boxes.Count,
-                LockerType = command.LockerType,
-                Description = command.Description,
-                Images = images.Count == 0 ? null : JsonSerializer.Serialize(images)
-            };
+            // A code sent by an older client is ignored; the claim keeps codes of deleted lockers in use.
+            var locker = new Locker(GuidGenerator.Create());
+            locker.Code = await LazyServiceProvider.LazyGetRequiredService<IBusinessCodeAllocator>().AllocateAsync(BusinessCodeRules.Locker, locker.Id);
+            locker.ServiceAreaId = command.ServiceAreaId;
+            locker.Name = command.Name.Trim();
+            locker.Address = command.Address.Trim();
+            locker.Ward = string.IsNullOrWhiteSpace(command.Ward) ? null : command.Ward.Trim();
+            locker.District = command.District?.Trim() ?? string.Empty;
+            locker.City = command.City?.Trim() ?? string.Empty;
+            locker.Latitude = command.Latitude;
+            locker.Longitude = command.Longitude;
+            locker.Status = LockerStatus.Active;
+            locker.TotalBoxes = boxes.Count;
+            locker.AvailableBoxes = boxes.Count;
+            locker.LockerType = command.LockerType;
+            locker.Description = command.Description;
+            locker.Images = images.Count == 0 ? null : JsonSerializer.Serialize(images);
 
             foreach (var b in boxes)
             {
@@ -203,9 +198,10 @@ namespace WashGo.Application.Features.LockerApplication.Services
             var version = await VersionAsync(locker);
             if (string.IsNullOrWhiteSpace(command.ExpectedVersion)) return AdministrativeWriteGuard.Error<LockerResultDto>(HttpStatusCode.BadRequest, "ExpectedVersionRequired", "Thiếu expectedVersion.");
             if (command.ExpectedVersion != version) return AdministrativeWriteGuard.Error<LockerResultDto>(HttpStatusCode.Conflict, "VersionMismatch", "Locker đã thay đổi; hãy tải lại.");
-            var error = await ValidateAsync(command, locker.Id);
-            if (error != null)
-                return BadRequest<LockerResultDto>(error);
+            if (!BusinessCodeRules.AcceptsOnUpdate(command.Code, locker.Code))
+                return Invalid(nameof(command.Code), BusinessCodeRules.ImmutableMessage, BusinessCodeRules.ImmutableCode);
+            if (await ValidateAsync(command, locker.Id) is { } invalid)
+                return invalid;
             var images = ReadImages(locker.Images);
             if (command.ImageUrls != null)
             {
@@ -222,8 +218,9 @@ namespace WashGo.Application.Features.LockerApplication.Services
             var expectedStatus = locker.Status;
             locker.Name = command.Name.Trim();
             locker.Address = command.Address.Trim();
-            locker.Ward = command.Ward;
-            locker.District = command.District?.Trim() ?? string.Empty;
+            // Ward/District are optional now: a form that does not send them keeps the stored (legacy) values.
+            if (command.Ward != null) locker.Ward = string.IsNullOrWhiteSpace(command.Ward) ? null : command.Ward.Trim();
+            if (command.District != null) locker.District = command.District.Trim();
             locker.City = command.City?.Trim() ?? string.Empty;
             locker.Latitude = command.Latitude;
             locker.Longitude = command.Longitude;
@@ -334,40 +331,64 @@ namespace WashGo.Application.Features.LockerApplication.Services
             await uow.CompleteAsync(); return response;
         }
 
-        private async Task<string?> ValidateAsync(CreateLockerCommand command, Guid? currentId)
+        /// <summary>One field error: message, errors[field] and meta.code (ValidationFailed unless given).</summary>
+        private static BaseResponse<LockerResultDto> Invalid(string field, string message, string code = "ValidationFailed") =>
+            Invalid(new Dictionary<string, string[]> { [Camel(field)] = [message] }, code);
+
+        private static BaseResponse<LockerResultDto> Invalid(Dictionary<string, string[]> errors, string code = "ValidationFailed") => new()
         {
+            Succeeded = false, StatusCode = HttpStatusCode.BadRequest, Message = errors.First().Value[0],
+            Errors = errors, Meta = new { code, fields = errors.Keys.ToArray() }
+        };
+
+        private static string Camel(string name) => char.ToLowerInvariant(name[0]) + name[1..];
+
+        /// <summary>
+        /// Field-by-field validation: every invalid input field is reported under its own key (name, address, city,
+        /// district, ward, description, latitude/longitude, lockerType, merchantIds, serviceAreaId). Code, Ward and
+        /// District are not required.
+        /// </summary>
+        private async Task<BaseResponse<LockerResultDto>?> ValidateAsync(CreateLockerCommand command, Guid? currentId)
+        {
+            var errors = new Dictionary<string, string[]>();
+            void Add(string field, string message) => errors.TryAdd(Camel(field), [message]);
             var name = command.Name?.Trim() ?? string.Empty;
             if (name.Length is 0 or > 200)
-                return "Tên locker phải có từ 1 đến 200 ký tự.";
+                Add(nameof(command.Name), "Tên locker phải có từ 1 đến 200 ký tự.");
             if (string.IsNullOrWhiteSpace(command.Address) || command.Address.Trim().Length > 500)
-                return "Địa chỉ không được để trống (tối đa 500 ký tự).";
-            if (command.City?.Trim().Length is not (> 0 and <= 100) || command.District?.Length > 100 || command.Ward?.Length > 100 || command.Description?.Length > 2000 || command.Code?.Trim().Length is not (> 0 and <= 50))
-                return "Mã/tỉnh thành bắt buộc; mã tối đa 50, tỉnh/quận/phường 100, mô tả 2000 ký tự.";
-            if (double.IsNaN(command.Latitude) || double.IsNaN(command.Longitude) ||
-                command.Latitude is < -90 or > 90 || command.Longitude is < -180 or > 180 ||
-                (command.Latitude == 0 && command.Longitude == 0))
-                return "Tọa độ không hợp lệ.";
+                Add(nameof(command.Address), "Địa chỉ không được để trống (tối đa 500 ký tự).");
+            if (string.IsNullOrWhiteSpace(command.City) || command.City.Trim().Length > 100)
+                Add(nameof(command.City), "Tỉnh/thành không được để trống (tối đa 100 ký tự).");
+            if (command.District?.Trim().Length > 100)
+                Add(nameof(command.District), "Quận/huyện tối đa 100 ký tự.");
+            if (command.Ward?.Trim().Length > 100)
+                Add(nameof(command.Ward), "Phường/xã tối đa 100 ký tự.");
+            if (command.Description?.Length > 2000)
+                Add(nameof(command.Description), "Mô tả tối đa 2000 ký tự.");
+            if (double.IsNaN(command.Latitude) || command.Latitude is < -90 or > 90 || command.Latitude == 0 && command.Longitude == 0)
+                Add(nameof(command.Latitude), "Vĩ độ không hợp lệ; vui lòng xác nhận vị trí trên bản đồ.");
+            if (double.IsNaN(command.Longitude) || command.Longitude is < -180 or > 180 || command.Latitude == 0 && command.Longitude == 0)
+                Add(nameof(command.Longitude), "Kinh độ không hợp lệ; vui lòng xác nhận vị trí trên bản đồ.");
             if (!Enum.IsDefined(command.LockerType))
-                return "Loại locker không hợp lệ.";
+                Add(nameof(command.LockerType), "Loại locker không hợp lệ.");
             // Several Merchants may share a locker; the Admin picks one per order (UC 3.3).
             var merchantIds = MerchantIdsOf(command);
             if (currentId == null || merchantIds.Count > 0 || command.MerchantIds != null)
             {
                 if (merchantIds.Count == 0)
-                    return "Vui lòng chọn ít nhất một Merchant phụ trách locker.";
-                if (merchantIds.Distinct().Count() != merchantIds.Count)
-                    return "Mỗi Merchant chỉ được chọn một lần.";
-                var active = await AsyncExecuter.CountAsync((await _merchantRepo.GetQueryableAsync())
-                    .Where(x => merchantIds.Contains(x.Id) && x.Status == MerchantStatus.Active));
-                if (active != merchantIds.Count)
-                    return "Merchant phụ trách không tồn tại hoặc không hoạt động.";
+                    Add(nameof(command.MerchantIds), "Vui lòng chọn ít nhất một Merchant phụ trách locker.");
+                else if (merchantIds.Distinct().Count() != merchantIds.Count)
+                    Add(nameof(command.MerchantIds), "Mỗi Merchant chỉ được chọn một lần.");
+                else if (await AsyncExecuter.CountAsync((await _merchantRepo.GetQueryableAsync())
+                    .Where(x => merchantIds.Contains(x.Id) && x.Status == MerchantStatus.Active)) != merchantIds.Count)
+                    Add(nameof(command.MerchantIds), "Merchant phụ trách không tồn tại hoặc không hoạt động.");
             }
             if (command.ServiceAreaId.HasValue && !await _areaRepo.AnyAsync(x => x.Id == command.ServiceAreaId.Value && x.IsActive))
-                return "Khu vực không tồn tại hoặc đã ngừng hoạt động.";
+                Add(nameof(command.ServiceAreaId), "Khu vực không tồn tại hoặc đã ngừng hoạt động.");
             var normalized = name.ToLower();
-            if (await _lockerRepo.AnyAsync(x => !x.IsDeleted && x.Id != currentId && x.Name.ToLower() == normalized))
-                return "Tên locker này đã được sử dụng.";
-            return null;
+            if (name.Length > 0 && await _lockerRepo.AnyAsync(x => !x.IsDeleted && x.Id != currentId && x.Name.ToLower() == normalized))
+                Add(nameof(command.Name), "Tên locker này đã được sử dụng.");
+            return errors.Count == 0 ? null : Invalid(errors);
         }
         public async Task<BaseResponse<LockerResultDto>> SetStatusAsync(Guid id, SetLockerStatusCommand command)
         {
