@@ -26,7 +26,8 @@ function Upload-Image($Token) {
     } finally {$client.Dispose()}
 }
 function Locker-Body([hashtable]$Extra=@{}) {
-    $b=@{merchantId="$seedMerchantId";serviceAreaId="$area";code="LA_$run";name="Admin Locker $run";address='Private development fixture'
+    # No code: the server issues it on create and keeps it on edit.
+    $b=@{merchantId="$seedMerchantId";serviceAreaId="$area";name="Admin Locker $run";address='Private development fixture'
          district='Locker District';city='Test';latitude=10.78;longitude=106.70;lockerType=1;description='Smoke';boxCount=3;defaultBoxSize=3}
     foreach($k in $Extra.Keys){$b[$k]=$Extra[$k]}
     return $b
@@ -68,7 +69,10 @@ try {
     $d=Detail
     if($d.boxes.Count -ne 3 -or @($d.boxes | Where-Object { $_.size -ne 3 }).Count -ne 0 -or (@($d.boxes | ForEach-Object { $_.boxNumber }) -join ',') -ne '1,2,3'){throw 'Generated boxes wrong.'}
     if((@($d.imageUrls) -join ',') -ne $img -or $d.merchants[0].businessName -ne $merchantName -or $d.merchants[0].priority -ne 1 -or $d.serviceAreaName -ne "Locker Area $run"){throw 'Detail fields wrong.'}
-    Assert-Status 400 Post '/locker/' (Locker-Body @{name="Other $run"}) $admin
+    # The code is issued by the server: the same client code again is ignored and gets its own LKdddd code.
+    $second=(Call-Api Post '/locker/' (Locker-Body @{name="Other $run";serviceAreaId=$null;code="LA_$run"}) $admin).data
+    Sql "UPDATE washgo.lockers SET is_deleted=true,status=3 WHERE id='$($second.id)'; UPDATE washgo.locker_slots SET is_deleted=true WHERE locker_id='$($second.id)';" | Out-Null
+    if($second.code -cnotmatch '^LK[0-9]{4}$' -or $second.code -eq $created.data.code -or $created.data.code -cnotmatch '^LK[0-9]{4}$'){throw "Locker codes not issued by the server: $($created.data.code) / $($second.code)"}
     $list=Call-Api Post '/locker/filter' @{serviceAreaId="$area"} $admin
     if($list.total -ne 1 -or $list.list[0].serviceAreaName -ne "Locker Area $run" -or $list.list[0].emptyBoxesCount -ne 3){throw "Area filter wrong: $($list.total) $($list.list[0].serviceAreaName) $($list.list[0].emptyBoxesCount)"}
 

@@ -104,10 +104,12 @@ INSERT INTO washgo.shippers SELECT (jsonb_populate_record(NULL::washgo.shippers,
     Assert-Status 400 Post "/wash-order/$($o.id)/pickup-storage" @{} $customer
     $fee=Pay $o.id '/payment/overdue-fee/create-url'
     if($fee.amount -le 0){throw 'Storage fee not charged.'}
-    $done=(Call-Api Post "/wash-order/$($o.id)/pickup-storage" @{} $customer).data
-    if($done.status -ne 12){throw 'Storage pickup did not complete the order.'}
+    # The unpaid order went into a storage cycle (v1): the goods come back through a locker redelivery request
+    # (covered by storage-lifecycle.ps1), never by a self-confirmed pickup at the shop.
+    Assert-Status 400 Post "/wash-order/$($o.id)/pickup-storage" @{} $customer
+    if((Order $o.id).status -ne 13){throw 'Paid storage order left storage without a redelivery.'}
 
-    Write-Output 'PASS: 7-day payment deadline, reminder 24h before (once), unpaid order moved to storage at the Merchant shop with timeline and notifications (once), paid orders untouched, laundry payment by MoMo keeps the order in storage and notifies Customer/Merchant, storage fee required before pickup, pickup completes the order.'
+    Write-Output 'PASS: 7-day payment deadline, reminder 24h before (once), unpaid order moved to storage at the Merchant shop with timeline and notifications (once), paid orders untouched, laundry payment by MoMo keeps the order in storage and notifies Customer/Merchant, storage fee required before redelivery, no self-confirmed pickup at the shop for a storage cycle.'
 }
 finally {
     foreach($session in $sessions.Values){try{Call-Api Post '/auth/logout' @{refreshToken=$session.refreshToken} $session.accessToken|Out-Null}catch{Write-Warning 'Smoke session logout failed.'}}

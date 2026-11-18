@@ -18,7 +18,10 @@ function Raw($Method,$Path,$Body,$Token){
     try { $r=Invoke-WebRequest @request; return @{Status=[int]$r.StatusCode;Json=($r.Content | ConvertFrom-Json)} }
     catch {
         if($null -eq $_.Exception.Response){throw}
-        $json=if($_.ErrorDetails.Message){ try { $_.ErrorDetails.Message | ConvertFrom-Json } catch { $null } } else { $null }
+        # Windows PowerShell may leave ErrorDetails empty; read the body from the response stream then.
+        $text=$_.ErrorDetails.Message
+        if(!$text){ try { $text=(New-Object IO.StreamReader($_.Exception.Response.GetResponseStream())).ReadToEnd() } catch { } }
+        $json=if($text){ try { $text | ConvertFrom-Json } catch { $null } } else { $null }
         return @{Status=[int]$_.Exception.Response.StatusCode;Json=$json}
     }
 }
