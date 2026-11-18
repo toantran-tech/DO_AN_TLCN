@@ -26,7 +26,7 @@ try {
     $n=0
     function New-Order($Rate,$MerchantId){
         $script:n++; $id=[Guid]::NewGuid(); $code="DS$run$($script:n)"
-        Sql "INSERT INTO washgo.orders SELECT (jsonb_populate_record(NULL::washgo.orders,to_jsonb(o)||jsonb_build_object('id','$id','order_code','$code','merchant_order_code',NULL,'receipt_number',NULL,'merchant_id','$MerchantId','commission_rate_applied',$Rate,'commission_snapshot_source','Assignment','status',12,'payment_status',2,'is_deleted',false))).* FROM washgo.orders o WHERE id='$base';" | Out-Null
+        Sql "INSERT INTO washgo.orders SELECT (jsonb_populate_record(NULL::washgo.orders,to_jsonb(o)||jsonb_build_object('id','$id','order_code','$code','merchant_order_code','MC$code','receipt_number',NULL,'merchant_id','$MerchantId','commission_rate_applied',$Rate,'commission_snapshot_source','Assignment','status',12,'payment_status',2,'is_deleted',false))).* FROM washgo.orders o WHERE id='$base';" | Out-Null
         $script:orders+=$id; "$id"
     }
     function Pay($Order,$Amount,$Rate,$DaysAgo,$Settlement='NULL'){

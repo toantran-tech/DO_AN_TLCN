@@ -201,7 +201,11 @@ INSERT INTO washgo.services SELECT (jsonb_populate_record(NULL::washgo.services,
     if(!$hidden.isHidden){throw 'Hide failed.'}
     if(@((Call-Api Post '/rating/partner/filter' @{stars=4;take=100} $merchant).list | Where-Object { $_.id -eq $rating.id }).Count -ne 0){throw 'Merchant sees hidden rating.'}
     Assert-MerchantRating
-    Call-Api Patch "/rating/$($rating.id)/visibility" @{isHidden=$false;expectedVersion=$hidden.version} $admin | Out-Null
+    $shown=(Call-Api Patch "/rating/$($rating.id)/visibility" @{isHidden=$false;expectedVersion=$hidden.version} $admin).data
+    # Showing the rating again does not release its free text: the Merchant sees it only after the Admin publishes it.
+    $pending=@((Call-Api Post '/rating/partner/filter' @{stars=4;take=100} $merchant).list | Where-Object { $_.id -eq $rating.id })
+    if($pending.Count -ne 1 -or $pending[0].contentReleased -or $pending[0].comment){throw 'Unpublished comment shown to the Merchant.'}
+    Call-Api Post "/rating/$($rating.id)/publish" @{expectedVersion=$shown.version;reason='Da kiem tra noi dung'} $admin | Out-Null
     $released=@((Call-Api Post '/rating/partner/filter' @{stars=4;take=100} $merchant).list | Where-Object { $_.id -eq $rating.id })
     if($released.Count -ne 1 -or -not $released[0].contentReleased -or $released[0].comment -ne 'Giat sach, giao hoi cham' -or $released[0].PSObject.Properties['customerName']){throw 'Reviewed content not released correctly.'}
     Assert-MerchantRating
