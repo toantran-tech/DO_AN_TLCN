@@ -8,6 +8,7 @@ using WashGo.Domain.Entities.Locker;
 using WashGo.Domain.Entities.Partner;
 using WashGo.Domain.Entities.WashService;
 using WashGo.Domain.Shared.Enums;
+using WashGo.Domain.Shared.Validation;
 using System.Net;
 
 namespace WashGo.Application.Features.CustomerApplication.Services;
@@ -72,7 +73,11 @@ public class CustomerCatalogAppService : WashGoAppService, ICustomerCatalogAppSe
 
         if (categoryIds.Length > 0) query = query.Where(x => categoryIds.Contains(x.CategoryId));
         if (serviceTypes.Length > 0)
-            query = query.Where(x => serviceTypes.Contains(x.ServiceType));
+        {
+            // Legacy filter: the seed categories of these types (classification is by category only).
+            var legacyCategories = serviceTypes.Select(x => ServiceCategoryRules.LegacyId((int)x)).ToArray();
+            query = query.Where(x => legacyCategories.Contains(x.CategoryId));
+        }
         if (ranges.Length > 0)
         {
             // Build one SQL predicate: OR within price ranges, AND with other criteria.

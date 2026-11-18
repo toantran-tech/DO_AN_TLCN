@@ -10,6 +10,7 @@ using WashGo.Application.Features.SystemSettingApplication.Services;
 using WashGo.Domain.Entities.WashOrder;
 using WashGo.Domain.Entities.WashOrder.Interfaces;
 using WashGo.Domain.Shared.Enums;
+using WashGo.Domain.Shared.Validation;
 using WashServiceEntity = WashGo.Domain.Entities.WashService.WashService;
 
 namespace WashGo.Application.Features.WashOrderApplication.Services
@@ -75,13 +76,15 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 return;
             }
 
-            var type = await PrimaryTypeAsync(order.Id);
-            var samples = await HistoryAsync(now);
-            var merchantSamples = samples.Where(x => x.MerchantId == order.MerchantId && x.Type == type).ToList();
-            var typeSamples = samples.Where(x => x.Type == type).ToList();
+            // History is grouped by service category; a category without enough history uses the rule ETA,
+            // never the history of another category.
+            var category = await PrimaryCategoryAsync(order.Id);
+            var samples = category.HasValue ? await HistoryAsync(now) : [];
+            var merchantSamples = samples.Where(x => x.MerchantId == order.MerchantId && x.Category == category).ToList();
+            var categorySamples = samples.Where(x => x.Category == category).ToList();
             var (source, used) = merchantSamples.Count >= MinSamples && order.MerchantId.HasValue
                 ? ("history-merchant", merchantSamples)
-                : typeSamples.Count >= MinSamples ? ("history-service", typeSamples) : ("rule", []);
+                : categorySamples.Count >= MinSamples ? ("history-service", categorySamples) : ("rule", []);
 
             if (source == "rule")
             {
@@ -119,15 +122,20 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             order.PredictedFinishAt = predicted < now ? now : predicted;
         }
 
-        private async Task<WashServiceType> PrimaryTypeAsync(Guid orderId)
+        /// <summary>Category of the order's main item: its snapshot, else the explicit seed mapping of a legacy type, else the service's category.</summary>
+        private async Task<Guid?> PrimaryCategoryAsync(Guid orderId)
         {
             var item = await _executer.FirstOrDefaultAsync((await _itemRepo.GetQueryableAsync())
-                .Where(x => x.WashOrderId == orderId).OrderByDescending(x => x.SubTotal).Select(x => new { x.ServiceId, x.ProcessingTypeSnapshot }));
-            if (item == null) return WashServiceType.StandardWash;
-            return item.ProcessingTypeSnapshot ?? (await _serviceRepo.FindAsync(item.ServiceId))?.ServiceType ?? WashServiceType.StandardWash;
+                .Where(x => x.WashOrderId == orderId).OrderByDescending(x => x.SubTotal)
+                .Select(x => new { x.ServiceId, x.CategoryIdSnapshot, x.ProcessingTypeSnapshot }));
+            if (item == null) return null;
+            return CategoryOf(item.CategoryIdSnapshot, item.ProcessingTypeSnapshot) ?? (await _serviceRepo.FindAsync(item.ServiceId))?.CategoryId;
         }
 
-        private sealed record Sample(Guid? MerchantId, WashServiceType Type, double ProcessingHours, double? CollectWaitHours);
+        private static Guid? CategoryOf(Guid? snapshot, WashServiceType? legacyType) =>
+            snapshot ?? (legacyType is { } t && Enum.IsDefined(t) ? ServiceCategoryRules.LegacyId((int)t) : null);
+
+        private sealed record Sample(Guid? MerchantId, Guid? Category, double ProcessingHours, double? CollectWaitHours);
 
         /// <summary>Orders finished at the shop in the last 90 days: processing time Collected → AwaitingPayment.</summary>
         private async Task<List<Sample>> HistoryAsync(DateTime now)
@@ -154,17 +162,19 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                     .Where(x => ids.Contains(x.Id) && !x.IsDeleted).Select(x => new { x.Id, x.MerchantId })))
                 .ToDictionary(x => x.Id, x => x.MerchantId);
             var mainService = (await _executer.ToListAsync((await _itemRepo.GetQueryableAsync())
-                    .Where(x => ids.Contains(x.WashOrderId)).Select(x => new { x.WashOrderId, x.ServiceId, x.SubTotal, x.ProcessingTypeSnapshot })))
+                    .Where(x => ids.Contains(x.WashOrderId)).Select(x => new { x.WashOrderId, x.ServiceId, x.SubTotal, x.CategoryIdSnapshot, x.ProcessingTypeSnapshot })))
                 .GroupBy(x => x.WashOrderId).ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.SubTotal).First());
             var serviceIds = mainService.Values.Select(x => x.ServiceId).Distinct().ToList();
-            var types = (await _executer.ToListAsync((await _serviceRepo.GetQueryableAsync())
-                    .Where(x => serviceIds.Contains(x.Id)).Select(x => new { x.Id, x.ServiceType })))
-                .ToDictionary(x => x.Id, x => x.ServiceType);
+            var categories = (await _executer.ToListAsync((await _serviceRepo.GetQueryableAsync())
+                    .Where(x => serviceIds.Contains(x.Id)).Select(x => new { x.Id, x.CategoryId })))
+                .ToDictionary(x => x.Id, x => x.CategoryId);
 
             return perOrder.Where(x => merchants.ContainsKey(x.OrderId))
                 .Select(x => new Sample(
                     merchants[x.OrderId],
-                    mainService.TryGetValue(x.OrderId, out var primary) ? primary.ProcessingTypeSnapshot ?? types.GetValueOrDefault(primary.ServiceId, WashServiceType.StandardWash) : WashServiceType.StandardWash,
+                    mainService.TryGetValue(x.OrderId, out var primary)
+                        ? CategoryOf(primary.CategoryIdSnapshot, primary.ProcessingTypeSnapshot) ?? (categories.TryGetValue(primary.ServiceId, out var c) ? c : null)
+                        : null,
                     (x.Done!.Value - x.Collected!.Value) / 3600.0,
                     x.Deposited.HasValue && x.Collected > x.Deposited ? (x.Collected.Value - x.Deposited.Value) / 3600.0 : null))
                 .ToList();

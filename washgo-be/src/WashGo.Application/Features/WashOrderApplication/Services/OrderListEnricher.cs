@@ -54,6 +54,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             var serviceTypes = (await _executer.ToListAsync((await _serviceRepo.GetQueryableAsync())
                     .Where(x => serviceIds.Contains(x.Id)).Select(x => new { x.Id, x.ServiceType })))
                 .ToDictionary(x => x.Id, x => x.ServiceType);
+            // Legacy processing types only shape how steps an old order skipped are shown; new orders run every step.
             var rows = await _executer.ToListAsync((await _timelineRepo.GetQueryableAsync())
                     .Where(x => orderIds.Contains(x.WashOrderId) && (x.FromStatus != x.Status ||
                         x.EventType == "MerchantAssigned" || x.EventType == "ShipperAssigned"))
@@ -80,7 +81,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 order.BoxSize = sizes.TryGetValue(order.BoxId, out var size) ? size : null;
                 order.IsNew = IsNew(order, role);
                 var types = items.Where(x => x.WashOrderId == order.Id)
-                    .Select(x => x.ProcessingTypeSnapshot ?? serviceTypes.GetValueOrDefault(x.ServiceId, WashServiceType.StandardWash));
+                    .Select(x => x.ProcessingTypeSnapshot ?? serviceTypes.GetValueOrDefault(x.ServiceId))
+                    .Where(x => x.HasValue).Select(x => x!.Value);
                 (order.ProgressPercent, order.WorkflowSteps) = OrderProgressCalculator.Build(order.Status, types,
                     history[order.Id].Select(x => (x.Status, x.Timestamp)), evidence[order.Id].Select(x => (x.Step!.Value, x.Timestamp)));
             }

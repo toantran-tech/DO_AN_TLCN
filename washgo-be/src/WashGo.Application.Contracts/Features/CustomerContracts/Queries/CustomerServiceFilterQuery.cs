@@ -14,6 +14,7 @@ public class CustomerServiceFilterQuery : BaseFilterQuery
         Take = 20;
     }
 
+    /// <summary>Lọc legacy: tương đương lọc theo các danh mục gốc của những loại này; nên dùng categoryIds.</summary>
     public WashServiceType[] ServiceTypes { get; set; } = [];
     public ServicePriceRangeQuery[] PriceRanges { get; set; } = [];
 }

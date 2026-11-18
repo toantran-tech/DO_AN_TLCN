@@ -31,7 +31,8 @@ namespace WashGo.Domain.Entities.WashService
         public decimal? PricePerItem { get; set; }
 
         [Filterable(ColumnVariant.MultiSelect)]
-        public WashServiceType ServiceType { get; set; } = WashServiceType.StandardWash;
+        /// <summary>Loại xử lý legacy (cột category): chỉ có với 5 danh mục gốc; phân loại dùng CategoryId.</summary>
+        public WashServiceType? ServiceType { get; set; }
 
         public string Unit { get; set; } = "kg";
         public int EstimatedDurationHours { get; set; } = 24;

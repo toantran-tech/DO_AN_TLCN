@@ -21,7 +21,8 @@ namespace WashGo.Application.Contracts.Features.WashServiceContracts.Commands
         public decimal UnitPrice { get; set; }
         public decimal? PricePerKg { get; set; }
         public decimal? PricePerItem { get; set; }
-        public WashServiceType ServiceType { get; set; } = WashServiceType.StandardWash;
+        /// <summary>Không cần gửi: phân loại theo categoryId. Client cũ chỉ gửi serviceType (1–5) được ánh xạ sang danh mục gốc.</summary>
+        public WashServiceType? ServiceType { get; set; }
         public string Unit { get; set; } = "kg";
         public int EstimatedDurationHours { get; set; } = 24;
     }
