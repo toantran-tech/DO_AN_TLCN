@@ -91,12 +91,17 @@ function Confirm-ReturnReady($Id, $Token) {
 }
 
 function Assert-Status($Expected, $Method, $Path, $Body, $Token) {
-    try { Call-Api $Method $Path $Body $Token | Out-Null }
-    catch {
-        if ([int]$_.Exception.Response.StatusCode -eq $Expected) { return }
-        if ($null -eq $_.Exception.Response) { throw }
-        throw "Expected HTTP $Expected for $Method $Path; received HTTP $([int]$_.Exception.Response.StatusCode)."
+    # An explicit status check sends payment requests as written: no automatic quote confirmation on 409.
+    $previousNoAutoQuote = $global:NoAutoQuote; $global:NoAutoQuote = $true
+    try {
+        try { Call-Api $Method $Path $Body $Token | Out-Null }
+        catch {
+            if ([int]$_.Exception.Response.StatusCode -eq $Expected) { return }
+            if ($null -eq $_.Exception.Response) { throw }
+            throw "Expected HTTP $Expected for $Method $Path; received HTTP $([int]$_.Exception.Response.StatusCode)."
+        }
     }
+    finally { $global:NoAutoQuote = $previousNoAutoQuote }
     throw "Expected HTTP $Expected for $Method $Path"
 }
 

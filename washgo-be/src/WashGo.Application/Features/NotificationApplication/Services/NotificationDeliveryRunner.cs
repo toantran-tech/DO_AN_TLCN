@@ -17,16 +17,19 @@ public class NotificationDeliveryRunner(IRepository<NotificationDelivery, Guid> 
     IWashOrderRepository orders, IUnitOfWorkManager units, IRealtimeNotifier realtime, ILogger<NotificationDeliveryRunner> logger)
     : INotificationDeliveryRunner, ITransientDependency
 {
+    public const int BatchSize = 40;
+
     [UnitOfWork(IsDisabled = true)]
-    public async Task DrainAsync()
+    public async Task<int> DrainAsync()
     {
         List<Guid> ids;
+        var handled = 0;
         using (var scan = units.Begin(requiresNew: true, isTransactional: false))
         {
             var now = DateTime.UtcNow;
             ids = await deliveries.AsyncExecuter.ToListAsync((await deliveries.GetQueryableAsync())
                 .Where(x => x.State == "Pending" && x.NextAttemptAt <= now || x.State == "Sending" && x.LeaseUntil < now)
-                .OrderBy(x => x.NextAttemptAt).ThenBy(x => x.Id).Take(40).Select(x => x.Id));
+                .OrderBy(x => x.NextAttemptAt).ThenBy(x => x.Id).Take(BatchSize).Select(x => x.Id));
             await scan.CompleteAsync();
         }
         foreach (var id in ids)
@@ -41,12 +44,12 @@ public class NotificationDeliveryRunner(IRepository<NotificationDelivery, Guid> 
                 var user = row == null ? null : await users.FindAsync(row.UserId);
                 var role = user == null ? null : (await roles.FindAsync(user.RoleId))?.Name;
                 if (row == null || row.IsDeleted || row.IsRead || user?.IsActive != true || role == null || !await CanDeliverAsync(row, role))
-                { job.State = "Suppressed"; await deliveries.UpdateAsync(job, true); await claim.CompleteAsync(); continue; }
+                { job.State = "Suppressed"; await deliveries.UpdateAsync(job, true); await claim.CompleteAsync(); handled++; continue; }
                 userId = row.UserId;
                 payload = NotificationAppService.ToDto(row);
                 if (role != "Admin" && row.LinkType == "order") payload = OrderNotificationPrivacy.Apply(payload, role == "Customer");
                 token = Guid.NewGuid(); job.LeaseToken = token; job.LeaseUntil = now.AddMinutes(2); job.State = "Sending"; job.Attempts++;
-                await deliveries.UpdateAsync(job, true); await claim.CompleteAsync();
+                await deliveries.UpdateAsync(job, true); await claim.CompleteAsync(); handled++;
             }
             string? error = null;
             try { await realtime.SendAsync(userId, payload).WaitAsync(TimeSpan.FromSeconds(15)); }
@@ -62,6 +65,7 @@ public class NotificationDeliveryRunner(IRepository<NotificationDelivery, Guid> 
             if (delivery.State == "DeadLetter") logger.LogWarning("Notification outbox dead-letter {NotificationId} for {UserId}", delivery.NotificationId, delivery.UserId);
             await deliveries.UpdateAsync(delivery, true); await finish.CompleteAsync();
         }
+        return handled;
     }
     private async Task<bool> CanDeliverAsync(Notification row, string role)
     {
