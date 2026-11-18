@@ -5,6 +5,7 @@ using Volo.Abp.Domain.Repositories;
 using WashGo.Domain.Entities.WashService;
 using WashGo.Domain.Entities.WashService.Interfaces;
 using WashGo.Domain.Shared.Enums;
+using WashGo.Domain.Shared.Validation;
 
 namespace WashGo.Application.Features.WashServiceApplication.Services
 {
@@ -14,8 +15,23 @@ namespace WashGo.Application.Features.WashServiceApplication.Services
         public const string InvalidPrice = "Giá dịch vụ không hợp lệ (lớn hơn 0, tối đa 100.000.000đ, tối đa 2 chữ số thập phân).";
         public const string DuplicateName = "Tên dịch vụ này đã tồn tại.";
 
+        public const string CategoryRequired = "Vui lòng chọn danh mục dịch vụ.";
+
+        /// <summary>
+        /// Danh mục là nguồn phân loại duy nhất. Loại xử lý legacy chỉ suy ra từ 5 danh mục gốc; client cũ chỉ gửi serviceType
+        /// được ánh xạ sang danh mục gốc tương ứng. Không có cả hai thì trả (null, null).
+        /// </summary>
+        public static (Guid? CategoryId, WashServiceType? LegacyType) Classify(Guid? categoryId, WashServiceType? legacyType)
+        {
+            if (categoryId is { } id && id != Guid.Empty)
+                return (id, ServiceCategoryRules.LegacyType(id) is { } t ? (WashServiceType)t : null);
+            if (legacyType is { } type && Enum.IsDefined(type))
+                return (ServiceCategoryRules.LegacyId((int)type), type);
+            return (null, null);
+        }
+
         public static string? Validate(string? name, decimal unitPrice, decimal? pricePerKg, decimal? pricePerItem,
-            int durationHours, WashServiceType serviceType, string? unit)
+            int durationHours, WashServiceType? serviceType, string? unit)
         {
             if (string.IsNullOrWhiteSpace(name) || name.Trim().Length > 200)
                 return "Tên dịch vụ phải có từ 1 đến 200 ký tự.";
@@ -24,8 +40,8 @@ namespace WashGo.Application.Features.WashServiceApplication.Services
                 return InvalidPrice;
             if (durationHours is < 1 or > 8760)
                 return "Thời gian xử lý phải từ 1 đến 8760 giờ.";
-            if (!Enum.IsDefined(serviceType))
-                return "Danh mục dịch vụ không hợp lệ.";
+            if (serviceType is { } legacy && !Enum.IsDefined(legacy))
+                return "Loại xử lý (serviceType) không hợp lệ.";
             if (string.IsNullOrWhiteSpace(unit) || unit.Trim().Length > 20)
                 return "Đơn vị tính không hợp lệ.";
             return null;

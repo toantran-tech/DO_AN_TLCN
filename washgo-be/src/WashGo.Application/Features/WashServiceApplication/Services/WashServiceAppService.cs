@@ -95,8 +95,12 @@ namespace WashGo.Application.Features.WashServiceApplication.Services
                     if (query.ApprovalStatus.HasValue)
                         q = q.Where(x => x.ApprovalStatus == query.ApprovalStatus.Value);
                     if ((query.CategoryIds?.Length ?? 0) > 0) q = q.Where(x => query.CategoryIds!.Contains(x.CategoryId));
-            if (query.ServiceType.HasValue)
-                        q = q.Where(x => x.ServiceType == query.ServiceType.Value);
+            if (query.ServiceType.HasValue && Enum.IsDefined(query.ServiceType.Value))
+                    {
+                        // Legacy filter: the matching seed category, not the stored legacy type.
+                        var legacyCategory = ServiceCategoryRules.LegacyId((int)query.ServiceType.Value);
+                        q = q.Where(x => x.CategoryId == legacyCategory);
+                    }
                     if (query.IsActive.HasValue)
                         q = q.Where(x => x.IsActive == query.IsActive.Value);
                     if (!string.IsNullOrWhiteSpace(query.Keyword))
@@ -188,12 +192,18 @@ namespace WashGo.Application.Features.WashServiceApplication.Services
             using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
             if (await Writes.ReplayAsync<WashServiceResultDto>(command.OperationId, CurrentUser.Id!.Value, "Service", "Create", "new", command) is { } replay) return replay;
             await _serviceRepo.AcquireLockAsync("service-catalog");
+            // The request stays as sent (its fingerprint guards operationId replays); the classification is applied to the entity.
+            var (categoryId, legacyType) = WashServiceRules.Classify(command.CategoryId, command.ServiceType);
+            if (categoryId == null)
+                return AdministrativeWriteGuard.Error<WashServiceResultDto>(HttpStatusCode.BadRequest, "CategoryRequired", WashServiceRules.CategoryRequired);
             var error = await ValidateAsync(command, null);
             if (error != null)
                 return BadRequest<WashServiceResultDto>(error);
 
             var entity = new WashService(GuidGenerator.Create());
             ObjectMapper.Map(command, entity);
+            entity.CategoryId = categoryId.Value;
+            entity.ServiceType = legacyType;
             var imageError = await ApplyImagesAsync(entity, command.ImageUrls);
             if (imageError != null) return BadRequest<WashServiceResultDto>(imageError);
             entity.ApprovalStatus = ServiceApprovalStatus.Approved;
@@ -225,12 +235,16 @@ namespace WashGo.Application.Features.WashServiceApplication.Services
 
             if (!BusinessCodeRules.AcceptsOnUpdate(command.Code, entity.Code))
                 return AdministrativeWriteGuard.Error<WashServiceResultDto>(HttpStatusCode.BadRequest, BusinessCodeRules.ImmutableCode, BusinessCodeRules.ImmutableMessage);
+            // The category is the only classification: no category or legacy type sent keeps the stored pair.
+            var (categoryId, legacyType) = command.CategoryId == null && command.ServiceType == null
+                ? (entity.CategoryId, entity.ServiceType)
+                : WashServiceRules.Classify(command.CategoryId, command.ServiceType);
             var error = await ValidateAsync(command, command.Id);
             if (error != null)
                 return BadRequest<WashServiceResultDto>(error);
-
-            command.CategoryId ??= entity.CategoryId;
             ObjectMapper.Map(command, entity);
+            entity.CategoryId = categoryId ?? entity.CategoryId;
+            entity.ServiceType = legacyType;
             var imageError = await ApplyImagesAsync(entity, command.ImageUrls);
             if (imageError != null) return BadRequest<WashServiceResultDto>(imageError);
             await _serviceRepo.UpdateAsync(entity, autoSave: true);

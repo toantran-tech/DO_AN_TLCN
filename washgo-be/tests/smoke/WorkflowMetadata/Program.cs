@@ -11,6 +11,7 @@ void Check(bool condition, string message) { if (!condition) throw new Exception
 Check(ServiceCategoryRules.Key("  Giặt   chăn  ") == ServiceCategoryRules.Key("giặt chăn"), "Category case/space normalization");
 Check(ServiceCategoryRules.Key("a\u0301") == ServiceCategoryRules.Key("á"), "Category Unicode normalization");
 Check(ServiceCategoryRules.LegacyId(4).ToString() == "ca000000-0000-0000-0000-000000000004", "Blanket mapped to Combo");
+Check(ServiceCategoryRules.LegacyType(ServiceCategoryRules.LegacyId(3)) == 3 && ServiceCategoryRules.LegacyType(Guid.NewGuid()) == null, "Legacy processing type not derived from the five root categories only");
 Check(ServiceCategoryRules.Validate("<script>", null, 0) != null, "HTML accepted");
 Check(ServiceCategoryRules.Validate("Category six", null, 100000) == null, "New category bounded by enum");
 Check(ServiceCategoryRules.Validate("Category six", null, 100001) != null, "Sort order unbounded");

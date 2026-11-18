@@ -39,8 +39,8 @@ public partial class WashGoDbContext
         foreach (var entry in services)
         {
             var service = entry.Entity;
-            if (entry.State == EntityState.Added && service.CategoryId == Guid.Empty)
-                service.CategoryId = ServiceCategoryRules.LegacyId((int)service.ServiceType);
+            if (entry.State == EntityState.Added && service.CategoryId == Guid.Empty && service.ServiceType is { } legacyType)
+                service.CategoryId = ServiceCategoryRules.LegacyId((int)legacyType);
             var original = entry.State == EntityState.Added ? null : await WashServices.AsNoTracking().Where(x => x.Id == service.Id)
                 .Select(x => new { x.CategoryId, x.IsActive, x.ApprovalStatus }).FirstOrDefaultAsync(ct);
             // Editing metadata on a locked category is allowed; attaching or reactivating is not.

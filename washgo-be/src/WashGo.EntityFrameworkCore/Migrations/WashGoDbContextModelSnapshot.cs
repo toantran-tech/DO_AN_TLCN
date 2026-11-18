@@ -4814,7 +4814,7 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("tsvector")
                         .HasColumnName("search_vector");
 
-                    b.Property<int>("ServiceType")
+                    b.Property<int?>("ServiceType")
                         .HasColumnType("integer")
                         .HasColumnName("category");
 
