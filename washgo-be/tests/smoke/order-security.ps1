@@ -64,10 +64,10 @@ function Call-Api($Method, $Path, $Body, $Token) {
             # Read the quote the Customer would confirm (the 409 body may already be consumed by a logging wrapper).
             $purpose = switch ($Path) { '/payment/overdue-fee/create-url' { 2 } '/payment/cancellation-fee/create-url' { 3 } default { 1 } }
             $points = if ($Body.ContainsKey('pointsToRedeem')) { [long]$Body.pointsToRedeem } else { 0 }
-            $token = $null
-            try { $token = (Invoke-RestMethod -Method Get -Uri "$BaseUrl/payment/orders/$($Body.orderId)/quote?purpose=$purpose&pointsToRedeem=$points" -Headers @{ Authorization = "Bearer $Token" } -TimeoutSec 30).data.quoteToken } catch { }
-            if ($token) {
-                $retry = $Body.Clone(); $retry.expectedQuoteToken = $token
+            $quoteToken = $null
+            try { $quoteToken = (Invoke-RestMethod -Method Get -Uri "$BaseUrl/payment/orders/$($Body.orderId)/quote?purpose=$purpose&pointsToRedeem=$points" -Headers @{ Authorization = "Bearer $Token" } -TimeoutSec 30).data.quoteToken } catch { }
+            if ($quoteToken) {
+                $retry = $Body.Clone(); $retry.expectedQuoteToken = $quoteToken
                 return Call-Api $Method $Path $retry $Token
             }
         }
