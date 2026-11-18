@@ -66,7 +66,8 @@ function New-CompletedOrder {
     Call-Api Put '/wash-order/assign-shipper' @{orderId=$id;shipperId="$fixtureShipper"} $merchant | Out-Null
     Invoke-TestDelivery $id return $shipper | Out-Null
     $done=(Invoke-TestDelivery $id pickup $customer).data
-    if($done.status -ne 12 -or !$done.merchantName){throw 'Fixture order did not complete or lost the Merchant name.'}
+    # Customer responses hide the Merchant; the Admin view keeps it.
+    if($done.status -ne 12 -or !(Call-Api Get "/wash-order/$id" $null $admin).data.merchantName){throw 'Fixture order did not complete or lost the Merchant name.'}
     return $done
 }
 function Assert-MerchantRating {

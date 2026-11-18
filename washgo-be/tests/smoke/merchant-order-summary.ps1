@@ -53,7 +53,7 @@ UPDATE washgo.orders SET merchant_order_code='SUM$run'||'C' WHERE id='$($ids[2])
     if($d.total -ne 1 -or $d.statusCounts.washing -ne 1 -or $d.fromDate -ne $now-86400){throw 'fromDate not applied.'}
     $created=[long](Sql "SELECT created_on FROM washgo.orders WHERE id='$($ids[0])';")
     $e=(Call-Api Post '/wash-order/summary' @{keyword=$kw;fromDate=$created;toDate=$created} $merchant).data
-    if($e.total -ne 1 -or $e.statusCounts.deposited -ne 1){throw 'Bounds not inclusive.'}
+    if($e.total -ne 1 -or $e.statusCounts.merchantAssigned -ne 1){throw 'Bounds not inclusive.'}
     if((Call-Api Post '/wash-order/filter' @{keyword=$kw;toDate=$now-86400;page=1;take=10} $merchant).total -ne 1){throw 'toDate not applied to the list.'}
     foreach($bad in @(@{fromDate=$now;toDate=$now-60}, @{fromDate=-1}, @{toDate=-5}, @{toDate=999999999999})){
         $body=@{keyword=$kw}+$bad

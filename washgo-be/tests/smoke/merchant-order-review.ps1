@@ -42,7 +42,7 @@ try {
     Sql "UPDATE washgo.orders SET is_deleted=true WHERE id='$($ids[2])';" | Out-Null
     $s=(Call-Api Post '/wash-order/summary' @{keyword=$kw} $merchant).data
     $l=Call-Api Post '/wash-order/filter' @{keyword=$kw;page=1;take=10} $merchant
-    if($s.total -ne 2 -or $l.total -ne 2 -or $s.statusCounts.deposited -ne 2){throw "Deleted order counted: summary=$($s.total) list=$($l.total)"}
+    if($s.total -ne 2 -or $l.total -ne 2 -or $s.statusCounts.merchantAssigned -ne 2){throw "Deleted order counted: summary=$($s.total) list=$($l.total)"}
 
     Write-Output '2. Stable paging when the sort value ties'
     Sql "UPDATE washgo.orders SET created_on=1794000000 WHERE locker_id='$lockerId';" | Out-Null

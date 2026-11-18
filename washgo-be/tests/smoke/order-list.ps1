@@ -49,6 +49,8 @@ INSERT INTO washgo.shippers SELECT (jsonb_populate_record(NULL::washgo.shippers,
     $lockerId=[Guid]$locker.id
     $l=(Call-Api Get "/customer/lockers/$lockerId" $null $customer).data
     $o=(Call-Api Post '/wash-order/' @{lockerId="$lockerId";boxId=$l.availableSlots[0].id;paymentMethod=2;items=@(@{serviceId="$serviceId";quantity=1})} $customer).data
+    # Customer responses hide the Merchant order code; read it as Admin.
+    $o.merchantOrderCode=(Call-Api Get "/wash-order/$($o.id)" $null $admin).data.merchantOrderCode
     if($o.merchantOrderCode -ne ('MC'+$o.orderCode.Substring(2))){throw "Merchant order code wrong: $($o.merchantOrderCode)"}
     $mine=(Call-Api Post '/wash-order/mine' @{page=1;take=20} $customer).list[0]
     if((@($mine.serviceNames) -join ',') -ne 'List Smoke Package' -or $mine.boxSize -ne 3 -or $mine.isNew){throw 'Customer row wrong.'}
@@ -64,7 +66,8 @@ INSERT INTO washgo.shippers SELECT (jsonb_populate_record(NULL::washgo.shippers,
 
     Write-Output '4. Filters (1.2.8 status + time range)'
     $now=[DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
-    if((Call-Api Post '/wash-order/mine' @{status=2;page=1;take=20} $customer).total -ne 1){throw 'Status filter wrong.'}
+    # Shop and collect Shipper assigned: the order is CollectionShipperAssigned (17).
+    if((Call-Api Post '/wash-order/mine' @{status=17;page=1;take=20} $customer).total -ne 1){throw 'Status filter wrong.'}
     if((Call-Api Post '/wash-order/mine' @{status=12;page=1;take=20} $customer).total -ne 0){throw 'Other status matched.'}
     if((Call-Api Post '/wash-order/mine' @{fromDate=$now-3600;toDate=$now+60;page=1;take=20} $customer).total -ne 1){throw 'Time range missed the order.'}
     if((Call-Api Post '/wash-order/mine' @{fromDate=$now+3600;page=1;take=20} $customer).total -ne 0){throw 'Future range matched.'}

@@ -57,6 +57,17 @@ function Call-Api($Method, $Path, $Body, $Token) {
     }
     try { Invoke-RestMethod @request }
     catch {
+        # After a closed failed attempt a new payment session needs the quote the Customer saw; older tests did not
+        # confirm it, so resend once with the quote token from the 409. Set $global:NoAutoQuote to keep the 409.
+        if (-not $global:NoAutoQuote -and $null -ne $_.Exception.Response -and [int]$_.Exception.Response.StatusCode -eq 409 -and
+            $Method -eq 'Post' -and $Path -like '/payment/*create-url' -and $Body -is [hashtable] -and -not $Body.ContainsKey('expectedQuoteToken')) {
+            $quote = $null
+            try { $quote = ($_.ErrorDetails.Message | ConvertFrom-Json).meta } catch { }
+            if ($quote.code -eq 'QuoteConfirmationRequired' -and $quote.quote.quoteToken) {
+                $retry = $Body.Clone(); $retry.expectedQuoteToken = $quote.quote.quoteToken
+                return Call-Api $Method $Path $retry $Token
+            }
+        }
         if ($null -ne $_.Exception.Response -and [int]$_.Exception.Response.StatusCode -eq 429) {
             $safePath = ($Path -split '\?', 2)[0]
             $_.ErrorDetails = New-Object System.Management.Automation.ErrorDetails("HTTP 429 for $Method $safePath. Check the test environment rate-limit configuration.")
@@ -237,6 +248,9 @@ try {
     $NoAutoAssign = $true
     Invoke-TestDelivery $orderId deposit $customer | Out-Null
     $NoAutoAssign = $false
+    # The shop comes from a real Admin assignment (Deposited -> MerchantAssigned), not from the fixture column.
+    Sql "UPDATE washgo.orders SET merchant_id = NULL WHERE id = '$orderId';" | Out-Null
+    Assign-Order $orderId $merchantId $admin | Out-Null
     Call-Api Put '/wash-order/assign-shipper' @{ orderId = "$orderId"; shipperId = "$shipperId"; shipperName = 'Security smoke Shipper' } $merchant | Out-Null
     Assert-Private (Call-Api Get "/wash-order/$orderId" $null $shipper).data
     Sql "UPDATE washgo.orders SET shipper_id = NULL WHERE id = '$orderId';" | Out-Null
