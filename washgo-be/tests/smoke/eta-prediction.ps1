@@ -21,7 +21,7 @@ function New-Order {
 function Add-History($Id,$Status,$At) {
     Sql @"
 INSERT INTO washgo.order_status_history SELECT (jsonb_populate_record(NULL::washgo.order_status_history,to_jsonb(h)||jsonb_build_object(
-'id','$([Guid]::NewGuid())','to_status',$Status,'created_at',$At,'note','ETA smoke'))).* FROM washgo.order_status_history h WHERE order_id='$Id' ORDER BY created_at LIMIT 1;
+'id','$([Guid]::NewGuid())','to_status',$Status,'created_at',$At,'note','ETA smoke','sequence',NULL,'event_type','Legacy','basis','Legacy'))).* FROM washgo.order_status_history h WHERE order_id='$Id' ORDER BY created_at LIMIT 1;
 "@ | Out-Null
 }
 function Eta($Id) { (Call-Api Get "/wash-order/$Id" $null $customer).data }

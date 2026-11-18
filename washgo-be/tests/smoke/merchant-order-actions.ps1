@@ -31,7 +31,7 @@ try {
     if((Statuses $a) -ne '' -or $a.canAssignShipper -or $a.assignShipperReasonCode -ne 'NoMerchant' -or $a.canUpdateWeight -or $a.updateWeightReasonCode -ne 'RoleNotAllowed'){throw "Pending actions wrong: $($a | ConvertTo-Json -Depth 4 -Compress)"}
     if($null -ne (Actions $customer)){throw 'Customer got allowedActions.'}
 
-    Write-Output '2. Deposited: assign Collect, then already assigned'
+    Write-Output '2. Merchant assigned: assign Collect, then already assigned'
     Invoke-TestDelivery $o.id deposit $customer | Out-Null
     $a=Actions $merchant
     if(!$a.canAssignShipper -or $a.assignTaskType -ne 1 -or $a.hasAssignedShipper -or $a.canUpdateWeight -or $a.updateWeightReasonCode -ne 'WrongStage' -or (Statuses $a) -ne '' -or (Reason $a 4) -ne 'InvalidTransition'){throw "Deposited actions wrong: $($a | ConvertTo-Json -Depth 4 -Compress)"}
@@ -55,11 +55,11 @@ try {
     if((Statuses $a) -ne '4' -or !$a.weightAlreadySet -or !$a.canUpdateWeight){throw "Weighed actions wrong: $(Statuses $a)"}
     Call-Api Put '/wash-order/status' @{orderId=$o.id;newStatus=4} $merchant | Out-Null
     $a=Actions $merchant
-    if((Statuses $a) -ne '5,6,7,8' -or $a.canUpdateWeight -or (Reason $a 4) -ne 'InvalidTransition'){throw "Washing actions wrong: $(Statuses $a)"}
+    if((Statuses $a) -ne '5' -or $a.canUpdateWeight -or (Reason $a 4) -ne 'InvalidTransition' -or (Reason $a 7) -ne 'InvalidTransition'){throw "Washing actions wrong: $(Statuses $a)"}
     Call-Api Put '/wash-order/status' @{orderId=$o.id;newStatus=7} $merchant | Out-Null
     if((Statuses (Actions $merchant)) -ne '8'){throw 'Folding actions wrong.'}
 
-    Write-Output "PASS: allowedActions per stage (Pending, Deposited, Collected, weighed, Washing, Folding) with reason codes; same rule as the write endpoints (washing without weight rejected); assign task type and already-assigned flag; Admin cannot weigh; no metadata for Customer/Shipper."
+    Write-Output "PASS: allowedActions per stage (Pending, MerchantAssigned, Collected, weighed, Washing only to Drying, Folding) with reason codes; same rule as the write endpoints (washing without weight rejected); assign task type and already-assigned flag; Admin cannot weigh; no metadata for Customer/Shipper."
 }
 finally {
     foreach($session in $sessions.Values){try{Call-Api Post '/auth/logout' @{refreshToken=$session.refreshToken} $session.accessToken|Out-Null}catch{Write-Warning 'Smoke session logout failed.'}}

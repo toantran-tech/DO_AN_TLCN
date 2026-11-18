@@ -54,9 +54,22 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             var serviceTypes = (await _executer.ToListAsync((await _serviceRepo.GetQueryableAsync())
                     .Where(x => serviceIds.Contains(x.Id)).Select(x => new { x.Id, x.ServiceType })))
                 .ToDictionary(x => x.Id, x => x.ServiceType);
-            var history = (await _executer.ToListAsync((await _timelineRepo.GetQueryableAsync())
-                    .Where(x => orderIds.Contains(x.WashOrderId) && x.FromStatus != x.Status).Select(x => new { x.WashOrderId, x.Status, x.Timestamp })))
-                .ToLookup(x => x.WashOrderId);
+            // Legacy processing types only shape how steps an old order skipped are shown; new orders run every step.
+            var rows = await _executer.ToListAsync((await _timelineRepo.GetQueryableAsync())
+                    .Where(x => orderIds.Contains(x.WashOrderId) && (x.FromStatus != x.Status ||
+                        x.EventType == "MerchantAssigned" || x.EventType == "ShipperAssigned"))
+                    .Select(x => new { x.WashOrderId, x.FromStatus, x.Status, x.Timestamp, x.EventType, x.TaskType }));
+            var history = rows.Where(x => x.FromStatus != x.Status).ToLookup(x => x.WashOrderId);
+            // Assignment events recorded before the assignment statuses existed (fromStatus == status): real times only.
+            var evidence = rows.Where(x => x.FromStatus == x.Status).Select(x => new
+                {
+                    x.WashOrderId, x.Timestamp,
+                    Step = x.EventType == "MerchantAssigned" ? WashOrderStatus.MerchantAssigned
+                        : x.TaskType == DeliveryTaskType.Collect ? WashOrderStatus.CollectionShipperAssigned
+                        : x.TaskType == DeliveryTaskType.Return && x.Status != WashOrderStatus.Cancelled ? WashOrderStatus.ReturnShipperAssigned
+                        : (WashOrderStatus?)null
+                })
+                .Where(x => x.Step.HasValue).ToLookup(x => x.WashOrderId);
             var sizes = (await _executer.ToListAsync((await _boxRepo.GetQueryableAsync())
                     .Where(x => boxIds.Contains(x.Id))
                     .Select(x => new { x.Id, x.Size })))
@@ -68,9 +81,10 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 order.BoxSize = sizes.TryGetValue(order.BoxId, out var size) ? size : null;
                 order.IsNew = IsNew(order, role);
                 var types = items.Where(x => x.WashOrderId == order.Id)
-                    .Select(x => x.ProcessingTypeSnapshot ?? serviceTypes.GetValueOrDefault(x.ServiceId, WashServiceType.StandardWash));
+                    .Select(x => x.ProcessingTypeSnapshot ?? serviceTypes.GetValueOrDefault(x.ServiceId))
+                    .Where(x => x.HasValue).Select(x => x!.Value);
                 (order.ProgressPercent, order.WorkflowSteps) = OrderProgressCalculator.Build(order.Status, types,
-                    history[order.Id].Select(x => (x.Status, x.Timestamp)));
+                    history[order.Id].Select(x => (x.Status, x.Timestamp)), evidence[order.Id].Select(x => (x.Step!.Value, x.Timestamp)));
             }
             await FillTasksAsync(orders);
         }
@@ -143,8 +157,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
 
         private static bool IsNew(WashOrderResultDto order, string role) => role switch
         {
-            // UC 2.3.1 step 4: the customer has deposited and the Merchant has not assigned a Shipper yet.
-            "Merchant" => order.Status == WashOrderStatus.Deposited && order.ShipperId == null,
+            // UC 2.3.1 step 4: the Admin assigned the shop and the Merchant has not assigned a collect Shipper yet.
+            "Merchant" => order.Status == WashOrderStatus.MerchantAssigned,
             // UC 4.3.1 step 4: a collect/return task the Shipper has not done yet.
             "Shipper" => IsActiveTask(order),
             _ => false

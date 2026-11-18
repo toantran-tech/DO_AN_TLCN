@@ -26,6 +26,8 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Services
         Task<BaseResponse<WashOrderDetailDto>> UpdateActualWeightAsync(Guid orderId, UpdateActualWeightCommand command);
         Task<BaseResponse<WashOrderDetailDto>> MoveToStorageAsync(MoveOrderToStorageCommand command);
         Task<BaseResponse<WashOrderDetailDto>> AssignShipperAsync(AssignShipperCommand command);
+        Task<BaseResponse<WashOrderDetailDto>> ConfirmReturnReadyAsync(Guid orderId, ConfirmReturnReadyCommand command);
+        Task<BaseResponse<WashOrderDetailDto>> UnassignShipperAsync(Guid orderId, UnassignShipperCommand command);
         Task<BaseResponse<List<AvailableShipperDto>>> GetAvailableShippersAsync(Guid orderId);
         Task<BaseResponse<OrderOperationDto>> GetOperationAsync(Guid orderId, Guid operationId);
         Task<BaseResponse<List<ColumnFilterDistinctValueDto>>> GetColumnDistinctValuesAsync(string fieldName, WashOrderFilterQuery query);

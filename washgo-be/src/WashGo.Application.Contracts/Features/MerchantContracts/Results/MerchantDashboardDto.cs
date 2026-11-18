@@ -22,7 +22,7 @@ namespace WashGo.Application.Contracts.Features.MerchantContracts.Results
         /// <summary>Tổng số đơn gán cho tiệm trong kỳ lọc.</summary>
         public int TotalOrders { get; set; }
 
-        /// <summary>Thống kê số lượng đơn theo 14 trạng thái của WashOrderStatus trong kỳ lọc.</summary>
+        /// <summary>Thống kê số lượng đơn theo từng trạng thái của WashOrderStatus trong kỳ lọc.</summary>
         public MerchantStatusCountsDto StatusCounts { get; set; } = new();
 
         /// <summary>5 đơn hàng mới nhất cần tiệm xử lý.</summary>
@@ -36,12 +36,16 @@ namespace WashGo.Application.Contracts.Features.MerchantContracts.Results
     }
 
     /// <summary>
-    /// Số lượng đơn phân bố theo 14 trạng thái xử lý trong hệ thống WashGo.
+    /// Số lượng đơn phân bố theo từng trạng thái của WashOrderStatus; tổng các trạng thái (và tổng các nhóm) bằng tổng đơn.
     /// </summary>
     public class MerchantStatusCountsDto
     {
         public int Pending { get; set; }
         public int Deposited { get; set; }
+        /// <summary>Đã phân công tiệm, chờ Merchant phân công Shipper lấy đồ (16).</summary>
+        public int MerchantAssigned { get; set; }
+        /// <summary>Đã có Shipper lấy đồ, chờ thu gom (17).</summary>
+        public int CollectionShipperAssigned { get; set; }
         public int Collected { get; set; }
         public int Washing { get; set; }
         public int Drying { get; set; }
@@ -49,6 +53,10 @@ namespace WashGo.Application.Contracts.Features.MerchantContracts.Results
         public int Folding { get; set; }
         public int AwaitingPayment { get; set; }
         public int Paid { get; set; }
+        /// <summary>Tiệm đã chuẩn bị xong, chờ phân công Shipper trả đồ (18).</summary>
+        public int ReadyForReturnDispatch { get; set; }
+        /// <summary>Đã có Shipper trả đồ, chờ đặt vào locker (19).</summary>
+        public int ReturnShipperAssigned { get; set; }
         public int ReadyToReturn { get; set; }
         public int Returned { get; set; }
         public int Completed { get; set; }
@@ -64,6 +72,8 @@ namespace WashGo.Application.Contracts.Features.MerchantContracts.Results
         {
             ["Pending"] = Pending,
             ["Deposited"] = Deposited,
+            ["MerchantAssigned"] = MerchantAssigned,
+            ["CollectionShipperAssigned"] = CollectionShipperAssigned,
             ["Collected"] = Collected,
             ["Washing"] = Washing,
             ["Drying"] = Drying,
@@ -71,10 +81,32 @@ namespace WashGo.Application.Contracts.Features.MerchantContracts.Results
             ["Folding"] = Folding,
             ["AwaitingPayment"] = AwaitingPayment,
             ["Paid"] = Paid,
+            ["ReadyForReturnDispatch"] = ReadyForReturnDispatch,
+            ["ReturnShipperAssigned"] = ReturnShipperAssigned,
             ["ReadyToReturn"] = ReadyToReturn,
             ["Returned"] = Returned,
             ["Completed"] = Completed,
+            ["TransferringToStorage"] = TransferringToStorage,
             ["MovedToStorage"] = MovedToStorage,
+            ["ReturningFromStorage"] = ReturningFromStorage,
+            ["Cancelled"] = Cancelled
+        };
+
+        /// <summary>
+        /// Nhóm vận hành không trùng nhau: Incoming = đã gửi/đã phân công tiệm/đã phân công lấy đồ; ReturnPreparation = Paid
+        /// chờ tiệm chuẩn bị; ReturnDispatch = sẵn sàng trả/đã phân công trả; AwaitingPickup = đồ đã ở locker trả.
+        /// </summary>
+        public Dictionary<string, int> ByGroup => new()
+        {
+            ["Pending"] = Pending,
+            ["Incoming"] = Deposited + MerchantAssigned + CollectionShipperAssigned,
+            ["Processing"] = Collected + Washing + Drying + Ironing + Folding,
+            ["AwaitingPayment"] = AwaitingPayment,
+            ["ReturnPreparation"] = Paid,
+            ["ReturnDispatch"] = ReadyForReturnDispatch + ReturnShipperAssigned,
+            ["AwaitingPickup"] = ReadyToReturn,
+            ["Storage"] = TransferringToStorage + MovedToStorage + ReturningFromStorage,
+            ["Finished"] = Returned + Completed,
             ["Cancelled"] = Cancelled
         };
     }

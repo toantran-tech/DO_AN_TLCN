@@ -149,7 +149,8 @@ JOIN washgo.users u ON u.id=s.user_id WHERE u.email='shipper@washgo.vn';
     $returnBody=Delivery-Body $returnTask $returnCred
     Sql "UPDATE washgo.locker_slots SET status=4 WHERE locker_id='$lockerId';" | Out-Null
     Assert-Status 409 Post "/wash-order/$id/shipper-return" $returnBody $s2
-    Check ((Sql "SELECT status FROM washgo.orders WHERE id='$id';") -eq '9') 'No-box failure changed order.'
+    # A failed locker return keeps the order at ReturnShipperAssigned (19) with the task still open.
+    Check ((Sql "SELECT status FROM washgo.orders WHERE id='$id';") -eq '19') 'No-box failure changed order.'
     Sql "UPDATE washgo.locker_slots SET status=1 WHERE locker_id='$lockerId';" | Out-Null
     $returned=(Call-Api Post "/wash-order/$id/shipper-return" $returnBody $s2).data
     Check ($returned.status -eq 10 -and $returned.returnBoxNumber) 'Return failed.'

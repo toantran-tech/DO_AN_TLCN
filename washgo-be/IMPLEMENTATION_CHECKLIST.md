@@ -1,5 +1,31 @@
 > Customer Guest 15/11/2026: đã triển khai yêu cầu docs/BACKEND_CUSTOMER (1).md: mở đúng 7 API đọc, giữ API cá nhân/ghi có JWT; phê duyệt publishForGuests riêng không tự public review cũ, ảnh kiểm tra phạm vi/Hide mỗi lần, rate limit + input bounds. Có migration AddGuestReviewApproval. Ba smoke suite hiện có đã cập nhật/nối CI; mới kiểm tra cú pháp PowerShell và whitespace, chưa chạy tests/build/Docker local hoặc áp DB/deploy. Bàn giao: [CUSTOMER_GUEST_ACCESS_API_REVIEW.md](docs/CUSTOMER_GUEST_ACCESS_API_REVIEW.md).
 
+## Chỉ chọn Danh mục cho dịch vụ — 19/11/2026
+
+- [x] Tạo/sửa dịch vụ và đề xuất nhận categoryId làm phân loại duy nhất (CategoryRequired); serviceType gửi kèm không ghi đè danh mục; client cũ chỉ gửi serviceType → danh mục gốc.
+- [x] Lọc serviceType/serviceTypes (Admin, Merchant, Customer, chatbot) theo danh mục gốc; ETA nhóm theo danh mục, không mượn lịch sử danh mục khác.
+- [x] Migration `MakeServiceLegacyTypeOptional` (chỉ cho phép null, không ghi lại dữ liệu cũ); snapshot đơn và JSON đề xuất cũ giữ nguyên.
+- [x] Smoke `category-classification.ps1` PASS trên DB local, đã nối CI; cập nhật `service-categories-workflow`, `customer-service-filter`.
+- [ ] FE bỏ dropdown/payload serviceType theo [bàn giao](docs/CATEGORY_CLASSIFICATION_API_REVIEW.md).
+
+## Mã nghiệp vụ tự sinh và validate Locker — 19/11/2026
+
+- [x] Allocator dùng chung (`business_code_claims`, INSERT ON CONFLICT, tìm số trống khi va chạm nhiều, CodeSpaceExhausted/CodeAllocationBusy), replay cùng tài nguyên trả mã cũ.
+- [x] Dịch vụ (Admin + duyệt đề xuất) SV, danh mục DM, locker LK, vùng phục vụ KV, mã lưu giữ mới ST; mã cũ/seed giữ nguyên, migration giữ chỗ mã cũ đã có dạng mới.
+- [x] Sửa không cần gửi mã; gửi mã khác → 400 CodeImmutable. Locker: ward/district tùy chọn, lỗi theo trường (`errors`, `meta.fields`), sửa không gửi ward/district thì giữ giá trị cũ.
+- [x] Smoke `business-codes.ps1` (replay, đồng thời, số trống cuối cùng, hết mã) PASS trên DB local, đã nối CI; cập nhật `locker-admin`, `storage-lifecycle`, `payment-overdue-storage`.
+- [ ] FE khóa ô mã/bỏ phường-quận theo [bàn giao](docs/BUSINESS_CODES_API_REVIEW.md).
+
+## Trạng thái phân công, giặt tuần tự và trả đồ — 18/11/2026
+
+- [x] Giặt chỉ chuyển đúng bước kế tiếp (Collected→Washing→Drying→Ironing→Folding→AwaitingPayment), dùng chung cho ghi và allowedNextStatuses.
+- [x] MerchantAssigned (16) khi Admin phân công tiệm; CollectionShipperAssigned (17) khi phân công Collect; Shipper chỉ lấy đồ ở 17.
+- [x] Paid → ReadyForReturnDispatch (18) qua `POST /wash-order/{id}/confirm-return-ready` (Merchant, ReturnReadyConfirmed); phân công Return chỉ từ 18 → ReturnShipperAssigned (19); trả locker → 10 và bắt đầu PickupDeadline.
+- [x] Đổi Shipper giữ trạng thái (ShipperReassigned, task cũ hết hiệu lực); `POST /wash-order/{id}/unassign-shipper` trả về 16/18 và đóng task.
+- [x] allowedActions (canConfirmReturnReady, canUnassignShipper, ReturnNotReady), workflowSteps theo thứ tự nghiệp vụ + basis, summary/byGroup, dashboard Admin/Merchant, SLA/nhắc nhở, hủy đơn, locker, ETA, chatbot, thông báo.
+- [x] Migration `OrderAssignmentAndReturnStatuses` cho đơn cũ (không sửa timeline); smoke `order-assignment-return-statuses.ps1` PASS trên DB local, đã nối CI; cập nhật các smoke cũ theo luồng mới.
+- [ ] FE cập nhật enum/nhãn/nút theo [bàn giao](docs/ORDER_ASSIGNMENT_RETURN_STATUSES_API_REVIEW.md) và phát hành cùng BE.
+
 ## Phiên thanh toán và khôi phục — 16/11/2026
 
 - [x] Source GET session/quote riêng tư, no-store, mục đích độc lập, không mở ví/giữ điểm từ GET.

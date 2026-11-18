@@ -13,7 +13,8 @@ namespace WashGo.Application.Contracts.Features.ServiceProposalContracts.Results
         public decimal? PricePerKg { get; set; }
         public decimal? PricePerItem { get; set; }
         public int EstimatedDurationHours { get; set; }
-        public WashServiceType ServiceType { get; set; }
+        /// <summary>Loại xử lý legacy, chỉ có với 5 danh mục gốc (suy ra từ categoryId); null với danh mục mới. Không phải lựa chọn phân loại.</summary>
+        public WashServiceType? ServiceType { get; set; }
         public string Unit { get; set; } = string.Empty;
         public List<string> ImageUrls { get; set; } = [];
     }

@@ -14,13 +14,15 @@ namespace WashGo.Application.Contracts.Features.WashServiceContracts.Commands
         public List<string>? ImageUrls { get; set; }
         /// <summary>Tùy chọn: Merchant đề xuất dịch vụ. Dịch vụ thuộc bảng giá chung của nền tảng.</summary>
         public Guid? MerchantId { get; set; }
-        public string Code { get; set; } = string.Empty;
+        /// <summary>Không cần gửi: tạo mới thì BE tự cấp SVdddd (mã gửi kèm bị bỏ qua); sửa chỉ chấp nhận đúng mã hiện tại.</summary>
+        public string? Code { get; set; }
         public string Name { get; set; } = string.Empty;
         public string? Description { get; set; }
         public decimal UnitPrice { get; set; }
         public decimal? PricePerKg { get; set; }
         public decimal? PricePerItem { get; set; }
-        public WashServiceType ServiceType { get; set; } = WashServiceType.StandardWash;
+        /// <summary>Không cần gửi: phân loại theo categoryId. Client cũ chỉ gửi serviceType (1–5) được ánh xạ sang danh mục gốc.</summary>
+        public WashServiceType? ServiceType { get; set; }
         public string Unit { get; set; } = "kg";
         public int EstimatedDurationHours { get; set; } = 24;
     }

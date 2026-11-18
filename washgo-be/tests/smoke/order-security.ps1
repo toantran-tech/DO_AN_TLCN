@@ -29,12 +29,48 @@ function Call-Api($Method, $Path, $Body, $Token) {
             else { $Body = $Body.PSObject.Copy(); $Body | Add-Member -NotePropertyName expectedMerchantVersion -NotePropertyValue $version }
         }
     }
+    # Processing steps are strictly sequential; older tests that jump ahead walk the steps in between first.
+    # Set $global:StrictTransitions to send the request exactly as written.
+    if (-not $global:StrictTransitions -and $Method -eq 'Put' -and $Path -eq '/wash-order/status' -and $Token -and $Body -is [hashtable] -and $Body.newStatus -in 5..8) {
+        $chain = @(3, 4, 5, 6, 7, 8)
+        $current = 0
+        try { $current = [int](Invoke-RestMethod -Method Get -Uri "$BaseUrl/wash-order/$($Body.orderId)" -Headers @{ Authorization = "Bearer $Token" } -TimeoutSec 30).data.status } catch { }
+        $from = $chain.IndexOf($current); $to = $chain.IndexOf([int]$Body.newStatus)
+        if ($from -ge 1 -and $to -gt $from + 1) {
+            foreach ($step in $chain[($from + 1)..($to - 1)]) {
+                $walk = [Text.Encoding]::UTF8.GetBytes((@{ orderId = "$($Body.orderId)"; newStatus = $step } | ConvertTo-Json))
+                # A step that is refused (e.g. weight missing) stops the walk; the original request then gets its own answer.
+                try { Invoke-RestMethod -Method Put -Uri "$BaseUrl/wash-order/status" -Headers @{ Authorization = "Bearer $Token" } -ContentType 'application/json; charset=utf-8' -Body $walk -TimeoutSec 30 | Out-Null } catch { break }
+            }
+        }
+    }
+    # Return trips need the Merchant's "ready for return" confirmation first (Paid -> ReadyForReturnDispatch).
+    # Set $global:NoAutoReturnReady to assign exactly as written.
+    if (-not $global:NoAutoReturnReady -and $Method -eq 'Put' -and $Path -eq '/wash-order/assign-shipper' -and $Token -and $Body -is [hashtable] -and $Body.orderId) {
+        $view = $null
+        try { $view = (Invoke-RestMethod -Method Get -Uri "$BaseUrl/wash-order/$($Body.orderId)" -Headers @{ Authorization = "Bearer $Token" } -TimeoutSec 30).data } catch { }
+        if ($view -and [int]$view.status -eq 9) { Confirm-ReturnReady $Body.orderId $Token | Out-Null }
+    }
     if ($null -ne $Body) {
         $request.ContentType = 'application/json; charset=utf-8'
         $request.Body = [Text.Encoding]::UTF8.GetBytes(($Body | ConvertTo-Json -Depth 15))
     }
     try { Invoke-RestMethod @request }
     catch {
+        # After a closed failed attempt a new payment session needs the quote the Customer saw; older tests did not
+        # confirm it, so resend once with the quote token from the 409. Set $global:NoAutoQuote to keep the 409.
+        if (-not $global:NoAutoQuote -and $null -ne $_.Exception.Response -and [int]$_.Exception.Response.StatusCode -eq 409 -and
+            $Method -eq 'Post' -and $Path -like '/payment/*create-url' -and $Body -is [hashtable] -and -not $Body.ContainsKey('expectedQuoteToken')) {
+            # Read the quote the Customer would confirm (the 409 body may already be consumed by a logging wrapper).
+            $purpose = switch ($Path) { '/payment/overdue-fee/create-url' { 2 } '/payment/cancellation-fee/create-url' { 3 } default { 1 } }
+            $points = if ($Body.ContainsKey('pointsToRedeem')) { [long]$Body.pointsToRedeem } else { 0 }
+            $quoteToken = $null
+            try { $quoteToken = (Invoke-RestMethod -Method Get -Uri "$BaseUrl/payment/orders/$($Body.orderId)/quote?purpose=$purpose&pointsToRedeem=$points" -Headers @{ Authorization = "Bearer $Token" } -TimeoutSec 30).data.quoteToken } catch { }
+            if ($quoteToken) {
+                $retry = $Body.Clone(); $retry.expectedQuoteToken = $quoteToken
+                return Call-Api $Method $Path $retry $Token
+            }
+        }
         if ($null -ne $_.Exception.Response -and [int]$_.Exception.Response.StatusCode -eq 429) {
             $safePath = ($Path -split '\?', 2)[0]
             $_.ErrorDetails = New-Object System.Management.Automation.ErrorDetails("HTTP 429 for $Method $safePath. Check the test environment rate-limit configuration.")
@@ -43,13 +79,29 @@ function Call-Api($Method, $Path, $Body, $Token) {
     }
 }
 
-function Assert-Status($Expected, $Method, $Path, $Body, $Token) {
-    try { Call-Api $Method $Path $Body $Token | Out-Null }
-    catch {
-        if ([int]$_.Exception.Response.StatusCode -eq $Expected) { return }
-        if ($null -eq $_.Exception.Response) { throw }
-        throw "Expected HTTP $Expected for $Method $Path; received HTTP $([int]$_.Exception.Response.StatusCode)."
+# Merchant confirms the paid order is packed (Paid -> ReadyForReturnDispatch). An Admin token cannot confirm: the
+# test's $merchant token is tried, then (other fixture Merchants) the status is set directly in the local database.
+function Confirm-ReturnReady($Id, $Token) {
+    foreach ($candidate in @($Token, $merchant) | Where-Object { $_ } | Select-Object -Unique) {
+        try {
+            return Invoke-RestMethod -Method Post -Uri "$BaseUrl/wash-order/$Id/confirm-return-ready" -Headers @{ Authorization = "Bearer $candidate" } -ContentType 'application/json; charset=utf-8' -Body '{}' -TimeoutSec 30
+        } catch { }
     }
+    Sql "UPDATE washgo.orders SET status=18 WHERE id='$Id' AND status=9;" | Out-Null
+}
+
+function Assert-Status($Expected, $Method, $Path, $Body, $Token) {
+    # An explicit status check sends payment requests as written: no automatic quote confirmation on 409.
+    $previousNoAutoQuote = $global:NoAutoQuote; $global:NoAutoQuote = $true
+    try {
+        try { Call-Api $Method $Path $Body $Token | Out-Null }
+        catch {
+            if ([int]$_.Exception.Response.StatusCode -eq $Expected) { return }
+            if ($null -eq $_.Exception.Response) { throw }
+            throw "Expected HTTP $Expected for $Method $Path; received HTTP $([int]$_.Exception.Response.StatusCode)."
+        }
+    }
+    finally { $global:NoAutoQuote = $previousNoAutoQuote }
     throw "Expected HTTP $Expected for $Method $Path"
 }
 
@@ -204,6 +256,9 @@ try {
     $NoAutoAssign = $true
     Invoke-TestDelivery $orderId deposit $customer | Out-Null
     $NoAutoAssign = $false
+    # The shop comes from a real Admin assignment (Deposited -> MerchantAssigned), not from the fixture column.
+    Sql "UPDATE washgo.orders SET merchant_id = NULL WHERE id = '$orderId';" | Out-Null
+    Assign-Order $orderId $merchantId $admin | Out-Null
     Call-Api Put '/wash-order/assign-shipper' @{ orderId = "$orderId"; shipperId = "$shipperId"; shipperName = 'Security smoke Shipper' } $merchant | Out-Null
     Assert-Private (Call-Api Get "/wash-order/$orderId" $null $shipper).data
     Sql "UPDATE washgo.orders SET shipper_id = NULL WHERE id = '$orderId';" | Out-Null

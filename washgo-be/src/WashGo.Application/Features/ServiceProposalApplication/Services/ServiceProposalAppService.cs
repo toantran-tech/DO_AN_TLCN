@@ -26,6 +26,7 @@ using WashGo.Domain.Entities.Partner;
 using WashGo.Domain.Entities.WashService;
 using WashGo.Domain.Entities.WashService.Interfaces;
 using WashGo.Domain.Shared.Enums;
+using WashGo.Domain.Entities.SystemConfig;
 using System.Data;
 
 namespace WashGo.Application.Features.ServiceProposalApplication.Services
@@ -80,8 +81,12 @@ namespace WashGo.Application.Features.ServiceProposalApplication.Services
             var queryable = (await _serviceRepo.GetQueryableAsync())
                 .Where(x => !x.IsDeleted && x.ApprovalStatus == ServiceApprovalStatus.Approved);
             if ((query.CategoryIds?.Length ?? 0) > 0) queryable = queryable.Where(x => query.CategoryIds!.Contains(x.CategoryId));
-            if (query.ServiceType.HasValue)
-                queryable = queryable.Where(x => x.ServiceType == query.ServiceType.Value);
+            if (query.ServiceType.HasValue && Enum.IsDefined(query.ServiceType.Value))
+            {
+                // Legacy filter: the matching seed category, not the stored legacy type.
+                var legacyCategory = ServiceCategoryRules.LegacyId((int)query.ServiceType.Value);
+                queryable = queryable.Where(x => x.CategoryId == legacyCategory);
+            }
             if (query.IsActive.HasValue)
                 queryable = queryable.Where(x => x.IsActive == query.IsActive.Value);
             if (!string.IsNullOrWhiteSpace(query.Keyword))
@@ -228,10 +233,14 @@ namespace WashGo.Application.Features.ServiceProposalApplication.Services
                     return Fail<ServiceProposalDto>(HttpStatusCode.Conflict, "StaleVersion",
                         "Dịch vụ đã được thay đổi sau khi bạn mở; vui lòng tải lại trước khi đề xuất.");
                 // Edits keep the service's category and unit; only name, description, prices, duration and images change.
-                command.CategoryId ??= service.CategoryId;
-                command.ServiceType = service.ServiceType;
+                command.CategoryId = service.CategoryId;
+                command.ServiceType = null;
                 command.Unit = service.Unit;
             }
+            // The category is the only classification; a legacy client that sends only serviceType gets its seed category.
+            (command.CategoryId, command.ServiceType) = WashServiceRules.Classify(command.CategoryId, command.ServiceType);
+            if (command.CategoryId == null)
+                return Fail<ServiceProposalDto>(HttpStatusCode.BadRequest, "CategoryRequired", WashServiceRules.CategoryRequired);
 
             var error = WashServiceRules.Validate(command.Name, command.UnitPrice, command.PricePerKg, command.PricePerItem,
                 command.EstimatedDurationHours, command.ServiceType, command.Unit);
@@ -273,7 +282,7 @@ namespace WashGo.Application.Features.ServiceProposalApplication.Services
                 PricePerKg = command.PricePerKg,
                 PricePerItem = command.PricePerItem,
                 EstimatedDurationHours = command.EstimatedDurationHours,
-                CategoryId = command.CategoryId ?? ServiceCategoryRules.LegacyId((int)command.ServiceType),
+                CategoryId = command.CategoryId,
                 ServiceType = command.ServiceType,
                 Unit = command.Unit.Trim(),
                 ImageUrls = images
@@ -391,9 +400,10 @@ namespace WashGo.Application.Features.ServiceProposalApplication.Services
                 service = new WashService(GuidGenerator.Create())
                 {
                     MerchantId = merchant.Id,
-                    Code = $"SVC_{Guid.NewGuid():N}"[..16].ToUpperInvariant(),
                     IsActive = true
                 };
+                // Same SV allocator and unique claim as services created by the Admin.
+                service.Code = await LazyServiceProvider.LazyGetRequiredService<IBusinessCodeAllocator>().AllocateAsync(BusinessCodeRules.Service, service.Id);
                 Apply(service, data);
                 service.ApprovalStatus = ServiceApprovalStatus.Approved;
                 service.ApprovedBy = CurrentUser.Id;
@@ -485,8 +495,10 @@ namespace WashGo.Application.Features.ServiceProposalApplication.Services
             service.PricePerKg = data.PricePerKg;
             service.PricePerItem = data.PricePerItem;
             service.EstimatedDurationHours = data.EstimatedDurationHours;
-            service.CategoryId = data.CategoryId ?? ServiceCategoryRules.LegacyId((int)data.ServiceType);
-            service.ServiceType = data.ServiceType;
+            // Stored proposal JSON stays as it was; the category decides the legacy type when it is applied.
+            var (categoryId, legacyType) = WashServiceRules.Classify(data.CategoryId, data.ServiceType);
+            service.CategoryId = categoryId ?? service.CategoryId;
+            service.ServiceType = legacyType;
             service.Unit = data.Unit;
             service.Images = data.ImageUrls.Count == 0 ? null : JsonSerializer.Serialize(data.ImageUrls);
         }
@@ -518,8 +530,8 @@ namespace WashGo.Application.Features.ServiceProposalApplication.Services
             try {
                 var data = JsonSerializer.Deserialize<ServiceProposalDataDto>(json, Json);
                 if (data != null && !data.CategoryId.HasValue) {
-                    if (!Enum.IsDefined(data.ServiceType)) return null;
-                    data.CategoryId = ServiceCategoryRules.LegacyId((int)data.ServiceType);
+                    if (data.ServiceType is not { } legacy || !Enum.IsDefined(legacy)) return null;
+                    data.CategoryId = ServiceCategoryRules.LegacyId((int)legacy);
                 }
                 return data;
             }

@@ -129,7 +129,7 @@ FROM washgo.payment_transactions p WHERE transaction_reference='$($fee.transacti
     ))
     if((($pair.code|Sort-Object)-join ',') -ne '200,409'){throw 'Cross-order operation key collision did not return 409.'}
     # Reset only these fixture assignments to reproduce reversed batch order.
-    foreach($order in $waiting[1..2]){Sql "UPDATE washgo.orders SET merchant_id=NULL,commission_rate_applied=NULL WHERE id='$($order.id)';" | Out-Null}
+    foreach($order in $waiting[1..2]){Sql "UPDATE washgo.orders SET merchant_id=NULL,commission_rate_applied=NULL,status=2 WHERE id='$($order.id)';" | Out-Null}
     $pair=@(Parallel-Requests @(
         @{path='/order-assignment/auto-assign';token=$admin;body=@{operationId=[Guid]::NewGuid().ToString();assignments=@(@{orderId=$waiting[1].id;merchantId="$($merchantIds[0])"},@{orderId=$waiting[2].id;merchantId="$($merchantIds[0])"})}},
         @{path='/order-assignment/auto-assign';token=$admin;body=@{operationId=[Guid]::NewGuid().ToString();assignments=@(@{orderId=$waiting[2].id;merchantId="$($merchantIds[1])"},@{orderId=$waiting[1].id;merchantId="$($merchantIds[1])"})}}

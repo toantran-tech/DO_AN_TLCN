@@ -145,7 +145,12 @@ public class ChatbotContextBuilder(ICustomerCatalogAppService catalog, IPolicyAp
     {
         WashOrderStatus.Pending when order.DepositDeadline < DateTime.UtcNow => "Xem báo phí và hủy đơn đã quá hạn gửi đồ.",
         WashOrderStatus.Pending => "Mở chi tiết đơn để gửi đồ vào locker trong thời hạn.",
+        WashOrderStatus.MerchantAssigned => "WashGo đã phân công tiệm giặt; chờ tiệm phân công Shipper đến locker lấy đồ.",
+        WashOrderStatus.CollectionShipperAssigned => "Shipper đã được phân công đến locker lấy đồ và chuyển về tiệm giặt; chưa cần thao tác thêm.",
         WashOrderStatus.AwaitingPayment => "Xem giá đã chốt và thanh toán trực tuyến sau khi giặt xong.",
+        WashOrderStatus.Paid => "Đã thanh toán; tiệm đang chuẩn bị đồ để trả về locker. Chưa đến bước nhận đồ.",
+        WashOrderStatus.ReadyForReturnDispatch => "Tiệm giặt đã chuẩn bị đồ xong, đang chờ phân công Shipper trả về locker. Chưa đến bước nhận đồ.",
+        WashOrderStatus.ReturnShipperAssigned => "Shipper đã được phân công mang đồ về locker để bạn nhận lại; chờ thông báo đồ đã có tại locker.",
         WashOrderStatus.ReadyToReturn when order.StorageFeeTotal < storageDue => "Thanh toán phí quá hạn còn thiếu trước khi nhận đồ.",
         WashOrderStatus.ReadyToReturn => "Mở chi tiết đơn, xác thực mở ô, lấy hết đồ rồi xác nhận đóng cửa.",
         WashOrderStatus.TransferringToStorage => "Đồ đang được chuyển về khu lưu tại tiệm; chưa xác nhận vào kho. Liên hệ WashGo nếu cần hỗ trợ.",

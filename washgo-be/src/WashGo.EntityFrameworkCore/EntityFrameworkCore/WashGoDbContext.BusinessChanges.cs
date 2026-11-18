@@ -39,8 +39,8 @@ public partial class WashGoDbContext
         foreach (var entry in services)
         {
             var service = entry.Entity;
-            if (entry.State == EntityState.Added && service.CategoryId == Guid.Empty)
-                service.CategoryId = ServiceCategoryRules.LegacyId((int)service.ServiceType);
+            if (entry.State == EntityState.Added && service.CategoryId == Guid.Empty && service.ServiceType is { } legacyType)
+                service.CategoryId = ServiceCategoryRules.LegacyId((int)legacyType);
             var original = entry.State == EntityState.Added ? null : await WashServices.AsNoTracking().Where(x => x.Id == service.Id)
                 .Select(x => new { x.CategoryId, x.IsActive, x.ApprovalStatus }).FirstOrDefaultAsync(ct);
             // Editing metadata on a locked category is allowed; attaching or reactivating is not.
@@ -86,14 +86,18 @@ public partial class WashGoDbContext
                 .Where(x => x.Id == cycle.Id).Select(x => (StorageCycleState?)x.State).FirstOrDefaultAsync(ct);
             var issued = DateTime.UtcNow;
             string? code = await StorageReferenceClaims.Where(x => x.Id == cycle.Id).Select(x => x.Code).FirstOrDefaultAsync(ct);
-            for (var attempt = 0; code == null && attempt < 20; attempt++)
+            // Random draws first, then a direct search for a free number: a few collisions never mean the space is full.
+            for (var attempt = 0; code == null && attempt < 11; attempt++)
             {
-                var candidate = StorageReferenceRules.Format(issued, RandomNumberGenerator.GetInt32(0, 10000));
+                int? number = attempt < 8 ? RandomNumberGenerator.GetInt32(0, BusinessCodeRules.Space)
+                    : await Repositories.BusinessCodeAllocator.FreeNumberAsync(this, "washgo.storage_reference_claims", "code", BusinessCodeRules.Storage);
+                if (number == null) throw Repositories.BusinessCodeAllocator.Exhausted(BusinessCodeRules.Storage);
+                var candidate = StorageReferenceRules.Format(number.Value);
                 // ON CONFLICT keeps PostgreSQL usable: collision never aborts the business transaction.
                 var inserted = await Database.ExecuteSqlInterpolatedAsync($"INSERT INTO washgo.storage_reference_claims(id,code,issued_at) VALUES ({cycle.Id},{candidate},{issued}) ON CONFLICT DO NOTHING", ct);
                 code = inserted == 1 ? candidate : await StorageReferenceClaims.Where(x => x.Id == cycle.Id).Select(x => x.Code).FirstOrDefaultAsync(ct);
             }
-            if (code == null) throw new InvalidOperationException("Storage reference allocation exhausted; retry the operation.");
+            if (code == null) throw new CatalogRuleException("CodeAllocationBusy", "Hệ thống đang cấp nhiều mã lưu giữ cùng lúc; vui lòng thử lại.");
             cycle.StorageReference = code; cycle.ReferenceIssuedAt = issued;
             cycle.ReferenceBasis = previousState != StorageCycleState.Stored ? "StoredConfirmation" : "IssuedForVerifiedExistingCycle";
             var order = WashOrders.Local.FirstOrDefault(x => x.Id == cycle.OrderId) ?? await WashOrders.FirstOrDefaultAsync(x => x.Id == cycle.OrderId, ct);

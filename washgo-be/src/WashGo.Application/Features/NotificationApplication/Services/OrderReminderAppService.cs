@@ -183,7 +183,7 @@ namespace WashGo.Application.Features.NotificationApplication.Services
         private async Task RemindCollectionAsync(DateTime now, SystemSetting s)
         {
             var shipperDue = now.AddMinutes(-ShipperCollectReminderMinutes);
-            foreach (var o in await OrdersAsync(q => q.Where(x => x.Status == WashOrderStatus.Deposited
+            foreach (var o in await OrdersAsync(q => q.Where(x => x.Status == WashOrderStatus.CollectionShipperAssigned
                          && x.ShipperId != null && x.AssignedTaskType == DeliveryTaskType.Collect
                          && x.ShipperAssignedAt != null && x.ShipperAssignedAt <= shipperDue)))
             {
@@ -206,8 +206,9 @@ namespace WashGo.Application.Features.NotificationApplication.Services
                     "order", o.Id);
             }
 
+            // Collect SLA runs from DepositedAt through shop and Shipper assignment until the goods leave the locker.
             var slaDue = now.AddHours(-1);
-            foreach (var o in await OrdersAsync(q => q.Where(x => x.Status == WashOrderStatus.Deposited
+            foreach (var o in await OrdersAsync(q => q.Where(x => WashOrderStatusFlow.AtDepositLocker.Contains(x.Status)
                          && x.DepositedAt != null && x.DepositedAt <= slaDue)))
             {
                 var policy = OrderOperationalPolicy.Resolve(o, s);
@@ -222,8 +223,9 @@ namespace WashGo.Application.Features.NotificationApplication.Services
         // Đơn đã thanh toán nhưng chưa trả về locker: nhắc ở nửa SLA trả đồ, cảnh báo khi trễ SLA.
         private async Task RemindReturnAsync(DateTime now, SystemSetting s)
         {
+            // Return SLA runs from PaidAt; confirming readiness or (re)assigning the Shipper does not reset it.
             var remindDue = now.AddMinutes(-30);
-            foreach (var o in await OrdersAsync(q => q.Where(x => x.Status == WashOrderStatus.Paid
+            foreach (var o in await OrdersAsync(q => q.Where(x => WashOrderStatusFlow.PaidAtMerchant.Contains(x.Status)
                          && x.PaidAt != null && x.PaidAt <= remindDue)))
             {
                 var sla = TimeSpan.FromHours(OrderOperationalPolicy.Resolve(o, s).MerchantReturnSlaHours);
@@ -240,7 +242,7 @@ namespace WashGo.Application.Features.NotificationApplication.Services
             }
 
             var lateDue = now.AddHours(-1);
-            foreach (var o in await OrdersAsync(q => q.Where(x => x.Status == WashOrderStatus.Paid
+            foreach (var o in await OrdersAsync(q => q.Where(x => WashOrderStatusFlow.PaidAtMerchant.Contains(x.Status)
                          && x.PaidAt != null && x.PaidAt <= lateDue)))
             {
                 var policy = OrderOperationalPolicy.Resolve(o, s);

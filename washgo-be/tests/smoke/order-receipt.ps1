@@ -48,7 +48,9 @@ INSERT INTO washgo.customers SELECT (jsonb_populate_record(NULL::washgo.customer
     $r=(Call-Api Get "/wash-order/$($o.id)/receipt" $null $customer).data
     $merchantName=Sql "SELECT business_name FROM washgo.merchants WHERE user_id='$($sessions.Merchant.user.id)';"
     if($r.receiptNumber -ne ('BL'+$o.orderCode.Substring(2)) -or !$r.issuedAt -or $r.orderCode -ne $o.orderCode){throw 'Receipt number/date wrong.'}
-    if($r.seller.name -ne $merchantName -or $r.buyer.name -ne $order.customerName -or $r.buyer.email -ne 'customer@washgo.vn'){throw 'Parties wrong.'}
+    # Customer receipts show WashGo as the seller (the Merchant stays private); Admin sees the Merchant.
+    if($r.seller.name -ne 'WashGo' -or $r.buyer.name -ne $order.customerName -or $r.buyer.email -ne 'customer@washgo.vn'){throw 'Parties wrong.'}
+    if((Call-Api Get "/wash-order/$($o.id)/receipt" $null $admin).data.seller.name -ne $merchantName){throw 'Admin receipt lacks the Merchant.'}
     if($r.lines.Count -ne 1 -or $r.weightSurchargeAmount -ne $order.weightSurchargeAmount -or $r.laundryAmount -ne $order.finalAmount -or $r.totalPaid -ne $order.finalAmount){throw "Totals wrong: $($r.totalPaid) vs $($order.finalAmount)"}
     if($r.payments.Count -ne 1 -or $r.payments[0].method -ne 2 -or $r.payments[0].reference -ne $pay.transactionReference -or !$r.note -or $null -ne $r.vatRate){throw 'Payment/note wrong.'}
 

@@ -90,11 +90,12 @@ UPDATE washgo.services SET is_deleted=true WHERE id='$($ids[6])';" | Out-Null
     $detail = (Call-Api Get "/customer/services/$($ids[0])" $null $session.accessToken).data
     if ($detail.id -ne $ids[0]) { throw 'Service detail route is broken.' }
     Write-Output '5. Multiple types/ranges: OR within criteria, AND across criteria'
-    Sql "UPDATE washgo.services SET base_price=30000,category=1 WHERE id='$($ids[0])';
-UPDATE washgo.services SET base_price=50000,category=2 WHERE id='$($ids[1])';
-UPDATE washgo.services SET base_price=90000,category=3 WHERE id='$($ids[2])';
-UPDATE washgo.services SET base_price=100000,category=1 WHERE id='$($ids[3])';
-UPDATE washgo.services SET base_price=60000,category=2,is_active=true WHERE id='$($ids[4])';" | Out-Null
+    # Legacy serviceTypes filters mean the seed categories, so each fixture's category matches its legacy type.
+    Sql "UPDATE washgo.services SET base_price=30000,category=1,category_id='ca000000-0000-0000-0000-000000000001' WHERE id='$($ids[0])';
+UPDATE washgo.services SET base_price=50000,category=2,category_id='ca000000-0000-0000-0000-000000000002' WHERE id='$($ids[1])';
+UPDATE washgo.services SET base_price=90000,category=3,category_id='ca000000-0000-0000-0000-000000000003' WHERE id='$($ids[2])';
+UPDATE washgo.services SET base_price=100000,category=1,category_id='ca000000-0000-0000-0000-000000000001' WHERE id='$($ids[3])';
+UPDATE washgo.services SET base_price=60000,category=2,category_id='ca000000-0000-0000-0000-000000000002',is_active=true WHERE id='$($ids[4])';" | Out-Null
     $bands=@(@{minPrice=30000;maxPrice=50000},@{minPrice=90000;maxPrice=100000})
     $twoRanges=Catalog @{priceRanges=$bands;sortBy=@(@{field='UnitPrice'})}
     Assert-Values @($twoRanges.list.unitPrice) @(30000,50000,90000,100000)

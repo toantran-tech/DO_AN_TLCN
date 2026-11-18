@@ -35,8 +35,9 @@ UPDATE washgo.orders SET merchant_order_code='SUM$run'||'C' WHERE id='$($ids[2])
 
     Write-Output '1. Summary = list filters, one snapshot, status/page ignored'
     $s=(Call-Api Post '/wash-order/summary' @{keyword=$kw;status=4;page=2;take=1} $merchant).data
-    if($s.total -ne 2 -or $s.statusCounts.deposited -ne 1 -or $s.statusCounts.washing -ne 1 -or $s.statusCounts.pending -ne 0 -or !$s.generatedAt){throw "Merchant summary wrong: $($s | ConvertTo-Json -Depth 4 -Compress)"}
-    if($s.statusCounts.byStatus.Deposited -ne 1){throw 'byStatus missing.'}
+    # The deposited order got its shop right after the deposit, so it is MerchantAssigned (16) now.
+    if($s.total -ne 2 -or $s.statusCounts.merchantAssigned -ne 1 -or $s.statusCounts.deposited -ne 0 -or $s.statusCounts.washing -ne 1 -or $s.statusCounts.pending -ne 0 -or !$s.generatedAt){throw "Merchant summary wrong: $($s | ConvertTo-Json -Depth 4 -Compress)"}
+    if($s.statusCounts.byStatus.MerchantAssigned -ne 1 -or $s.statusCounts.byGroup.Incoming -ne 1 -or $s.statusCounts.byGroup.Processing -ne 1){throw 'byStatus/byGroup missing.'}
     $list=Call-Api Post '/wash-order/filter' @{keyword=$kw;page=1;take=10} $merchant
     if($list.total -ne 2){throw "Merchant code search wrong: $($list.total)"}
     $a=(Call-Api Post '/wash-order/summary' @{keyword=$kw} $admin).data
@@ -52,7 +53,7 @@ UPDATE washgo.orders SET merchant_order_code='SUM$run'||'C' WHERE id='$($ids[2])
     if($d.total -ne 1 -or $d.statusCounts.washing -ne 1 -or $d.fromDate -ne $now-86400){throw 'fromDate not applied.'}
     $created=[long](Sql "SELECT created_on FROM washgo.orders WHERE id='$($ids[0])';")
     $e=(Call-Api Post '/wash-order/summary' @{keyword=$kw;fromDate=$created;toDate=$created} $merchant).data
-    if($e.total -ne 1 -or $e.statusCounts.deposited -ne 1){throw 'Bounds not inclusive.'}
+    if($e.total -ne 1 -or $e.statusCounts.merchantAssigned -ne 1){throw 'Bounds not inclusive.'}
     if((Call-Api Post '/wash-order/filter' @{keyword=$kw;toDate=$now-86400;page=1;take=10} $merchant).total -ne 1){throw 'toDate not applied to the list.'}
     foreach($bad in @(@{fromDate=$now;toDate=$now-60}, @{fromDate=-1}, @{toDate=-5}, @{toDate=999999999999})){
         $body=@{keyword=$kw}+$bad

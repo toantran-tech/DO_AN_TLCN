@@ -9,7 +9,8 @@ namespace WashGo.Application.Contracts.Features.ServiceAreaContracts.Commands
     public class CreateServiceAreaCommand
     {
         public string Name { get; set; } = string.Empty;
-        public string Code { get; set; } = string.Empty;
+        /// <summary>Không cần gửi: tạo mới thì BE tự cấp KVdddd (mã gửi kèm bị bỏ qua); sửa chỉ chấp nhận đúng mã hiện tại.</summary>
+        public string? Code { get; set; }
         public string? Description { get; set; }
         public string? Address { get; set; }
         public string District { get; set; } = string.Empty;

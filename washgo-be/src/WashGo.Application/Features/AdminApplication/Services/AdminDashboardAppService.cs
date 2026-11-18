@@ -28,7 +28,8 @@ namespace WashGo.Application.Features.AdminApplication.Services
         private static readonly WashOrderStatus[] InProgressStatuses =
         [
             WashOrderStatus.Collected, WashOrderStatus.Washing, WashOrderStatus.Drying, WashOrderStatus.Ironing,
-            WashOrderStatus.Folding, WashOrderStatus.AwaitingPayment, WashOrderStatus.Paid, WashOrderStatus.ReadyToReturn
+            WashOrderStatus.Folding, WashOrderStatus.AwaitingPayment, WashOrderStatus.Paid,
+            WashOrderStatus.ReadyForReturnDispatch, WashOrderStatus.ReturnShipperAssigned, WashOrderStatus.ReadyToReturn
         ];
 
         private readonly IRepository<WashOrder, Guid> _orderRepo;
@@ -184,6 +185,12 @@ namespace WashGo.Application.Features.AdminApplication.Services
                     WaitingAssignment = waitingCount,
                     WaitingAssignmentOverdue = waitingOverdue,
                     InProgress = InProgressStatuses.Sum(s => statusCounts.GetValueOrDefault(s)),
+                    WaitingCollectAssignment = statusCounts.GetValueOrDefault(WashOrderStatus.MerchantAssigned),
+                    WaitingCollection = statusCounts.GetValueOrDefault(WashOrderStatus.CollectionShipperAssigned),
+                    WaitingReturnPreparation = statusCounts.GetValueOrDefault(WashOrderStatus.Paid),
+                    WaitingReturnAssignment = statusCounts.GetValueOrDefault(WashOrderStatus.ReadyForReturnDispatch),
+                    WaitingReturnDelivery = statusCounts.GetValueOrDefault(WashOrderStatus.ReturnShipperAssigned),
+                    AwaitingCustomerPickup = statusCounts.GetValueOrDefault(WashOrderStatus.ReadyToReturn),
                     CurrentByStatus = statusCounts
                 },
                 Revenue = new AdminRevenueStatsDto
@@ -343,7 +350,7 @@ namespace WashGo.Application.Features.AdminApplication.Services
                     .Where(o => o.Status == WashOrderStatus.Deposited && o.MerchantId == null && o.DepositedAt != null && o.DepositedAt < assignBefore)
                     .Select(o => new AlertRow { Id = o.Id, Type = AdminAlertType.AssignmentOverdue, Deadline = o.DepositedAt!.Value.AddMinutes(assignMinutes) }),
                 [AdminAlertType.CollectionOverdue] = orders
-                    .Where(o => o.Status == WashOrderStatus.Deposited && o.MerchantId != null && o.DepositedAt != null && o.DepositedAt.Value.AddHours(o.CollectSlaHoursSnapshot ?? collectSla) < now)
+                    .Where(o => WashOrderStatusFlow.AtDepositLocker.Contains(o.Status) && o.MerchantId != null && o.DepositedAt != null && o.DepositedAt.Value.AddHours(o.CollectSlaHoursSnapshot ?? collectSla) < now)
                     .Select(o => new AlertRow { Id = o.Id, Type = AdminAlertType.CollectionOverdue, Deadline = o.DepositedAt!.Value.AddHours(o.CollectSlaHoursSnapshot ?? collectSla) }),
                 [AdminAlertType.ProcessingOverdue] = orders
                     .Where(o => (o.Status == WashOrderStatus.Washing || o.Status == WashOrderStatus.Drying ||
@@ -351,7 +358,7 @@ namespace WashGo.Application.Features.AdminApplication.Services
                                 o.EstimatedFinishAt != null && o.EstimatedFinishAt < now)
                     .Select(o => new AlertRow { Id = o.Id, Type = AdminAlertType.ProcessingOverdue, Deadline = o.EstimatedFinishAt!.Value }),
                 [AdminAlertType.ReturnOverdue] = orders
-                    .Where(o => o.Status == WashOrderStatus.Paid && o.PaidAt != null && o.PaidAt.Value.AddHours(o.ReturnSlaHoursSnapshot ?? returnSla) < now)
+                    .Where(o => WashOrderStatusFlow.PaidAtMerchant.Contains(o.Status) && o.PaidAt != null && o.PaidAt.Value.AddHours(o.ReturnSlaHoursSnapshot ?? returnSla) < now)
                     .Select(o => new AlertRow { Id = o.Id, Type = AdminAlertType.ReturnOverdue, Deadline = o.PaidAt!.Value.AddHours(o.ReturnSlaHoursSnapshot ?? returnSla) }),
                 [AdminAlertType.PickupOverdue] = orders
                     .Where(o => o.Status == WashOrderStatus.ReadyToReturn && o.PickupDeadline != null && o.PickupDeadline < now)

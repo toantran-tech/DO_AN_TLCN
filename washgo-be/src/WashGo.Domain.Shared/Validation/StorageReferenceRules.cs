@@ -1,10 +1,14 @@
-using System.Globalization;
 namespace WashGo.Domain.Shared.Validation;
+
+/// <summary>
+/// Mã lưu giữ của vòng kho: mã mới STdddd (theo quy tắc mã nghiệp vụ); mã đã phát hành trước đó
+/// (LK + thời gian Việt Nam + 4 số) vẫn hợp lệ và không đổi.
+/// </summary>
 public static class StorageReferenceRules
 {
-    public static string Format(DateTime utc, int suffix)
-    {
-        if (utc.Kind != DateTimeKind.Utc || suffix is < 0 or > 9999) throw new ArgumentOutOfRangeException(nameof(suffix));
-        return "LK" + utc.AddHours(7).ToString("yyyyMMddHHmmss", CultureInfo.InvariantCulture) + suffix.ToString("D4", CultureInfo.InvariantCulture);
-    }
+    public static string Format(int number) => BusinessCodeRules.Format(BusinessCodeRules.Storage, number);
+
+    public static bool IsIssuedFormat(string? code) =>
+        BusinessCodeRules.IsGenerated(code, BusinessCodeRules.Storage) ||
+        code is { Length: 20 } && code.StartsWith("LK", StringComparison.Ordinal) && code[2..].All(char.IsAsciiDigit);
 }

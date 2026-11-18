@@ -48,7 +48,8 @@ try {
     $orderId=$order.id
     $view=(Call-Api Get "/wash-order/$orderId" $null $admin).data
     Check (@($view.timeline | Where-Object {$_.eventType -eq 'OrderCreated' -and $_.sequence -gt 0}).Count -eq 1) 'Created event missing structure/sequence.'
-    Check ((Sql "SELECT count(*) FROM washgo.order_items WHERE order_id='$orderId' AND category_id_snapshot='$($a.id)' AND processing_type_snapshot=1;") -eq '1') 'Order did not snapshot category/processing type.'
+    # The category is the only classification: a new category has no legacy processing type, even if serviceType was sent.
+    Check ((Sql "SELECT count(*) FROM washgo.order_items WHERE order_id='$orderId' AND category_id_snapshot='$($a.id)' AND processing_type_snapshot IS NULL;") -eq '1') 'Order did not snapshot the category (without a legacy processing type).'
     Check ((Sql "SELECT count(*) FROM washgo.notifications n JOIN washgo.order_status_history h ON n.event_id=h.id WHERE h.order_id='$orderId' AND n.user_id='$($sessions.Admin.user.id)';") -eq '1') 'Admin event fanout was lost or duplicated.'
     Check ((Sql "SELECT count(*) FROM washgo.notifications n LEFT JOIN washgo.notification_deliveries d ON d.notification_id=n.id WHERE n.link_id='$orderId' AND d.id IS NULL;") -eq '0') 'Inbox persisted without delivery outbox.'
     $a=(Call-Api Get "/admin/service-categories/$($a.id)" $null $admin).data
