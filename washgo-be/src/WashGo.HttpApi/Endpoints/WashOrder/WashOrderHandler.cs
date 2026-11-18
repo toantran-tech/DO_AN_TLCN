@@ -158,7 +158,23 @@ namespace WashGo.HttpApi.Endpoints.WashOrder
                 (await svc.AssignShipperAsync(OrderWriteHeaders.Apply(command, http))).CustomResult())
                 .RequireAuthorization("MerchantOrAdmin")
                 .WithName("Phân công Shipper cho đơn")
-                .WithSummary("Merchant hoặc Admin phân công riêng chuyến lấy đồ hoặc chuyến trả đồ theo trạng thái đơn. Hỗ trợ expectedRevision/expectedStatus (409) và operationId như PUT /status.")
+                .WithSummary("Merchant hoặc Admin phân công chuyến lấy đồ (MerchantAssigned → CollectionShipperAssigned) hoặc chuyến trả đồ (ReadyForReturnDispatch → ReturnShipperAssigned); đổi Shipper giữ nguyên trạng thái và ghi ShipperReassigned; chuyến trả của đơn hủy giữ Cancelled. Hỗ trợ expectedRevision/expectedStatus (409) và operationId như PUT /status.")
+                .Produces<BaseResponse<WashOrderDetailDto>>(StatusCodes.Status200OK).Produces<BaseResponse<WashOrderDetailDto>>(StatusCodes.Status400BadRequest).Produces<BaseResponse<WashOrderDetailDto>>(StatusCodes.Status404NotFound).Produces<BaseResponse<WashOrderDetailDto>>(StatusCodes.Status409Conflict)
+                .WithOpenApi();
+
+            group.MapPost("/{id:guid}/confirm-return-ready", async (Guid id, ConfirmReturnReadyCommand command, HttpContext http, IWashOrderAppService svc) =>
+                (await svc.ConfirmReturnReadyAsync(id, OrderWriteHeaders.Apply(command, http))).CustomResult())
+                .RequireAuthorization("MerchantOnly")
+                .WithName("Merchant xác nhận sẵn sàng trả đồ")
+                .WithSummary("Merchant phụ trách đơn xác nhận đồ đã đóng gói xong tại tiệm: Paid → ReadyForReturnDispatch (eventType ReturnReadyConfirmed). Chỉ khi thanh toán đã được BE xác nhận; chưa mời khách đến nhận. Điều kiện xem trước ở allowedActions.canConfirmReturnReady. Hỗ trợ expectedRevision/expectedStatus (409) và operationId (gửi lại không ghi thêm mốc/thông báo).")
+                .Produces<BaseResponse<WashOrderDetailDto>>(StatusCodes.Status200OK).Produces<BaseResponse<WashOrderDetailDto>>(StatusCodes.Status400BadRequest).Produces<BaseResponse<WashOrderDetailDto>>(StatusCodes.Status404NotFound).Produces<BaseResponse<WashOrderDetailDto>>(StatusCodes.Status409Conflict)
+                .WithOpenApi();
+
+            group.MapPost("/{id:guid}/unassign-shipper", async (Guid id, UnassignShipperCommand command, HttpContext http, IWashOrderAppService svc) =>
+                (await svc.UnassignShipperAsync(id, OrderWriteHeaders.Apply(command, http))).CustomResult())
+                .RequireAuthorization("MerchantOrAdmin")
+                .WithName("Hủy phân công Shipper của chuyến chưa hoàn thành")
+                .WithSummary("Đóng task, thu hồi mã nhiệm vụ của Shipper cũ và trả đơn về bước chờ phân công: CollectionShipperAssigned → MerchantAssigned, ReturnShipperAssigned → ReadyForReturnDispatch (eventType ShipperUnassigned). Điều kiện xem trước ở allowedActions.canUnassignShipper. Hỗ trợ expectedRevision/expectedStatus (409) và operationId.")
                 .Produces<BaseResponse<WashOrderDetailDto>>(StatusCodes.Status200OK).Produces<BaseResponse<WashOrderDetailDto>>(StatusCodes.Status400BadRequest).Produces<BaseResponse<WashOrderDetailDto>>(StatusCodes.Status404NotFound).Produces<BaseResponse<WashOrderDetailDto>>(StatusCodes.Status409Conflict)
                 .WithOpenApi();
 

@@ -202,6 +202,11 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Results
         public bool IsCompleted { get; set; }
         public bool IsCurrent { get; set; }
         public long? Timestamp { get; set; }
+        /// <summary>
+        /// Căn cứ của mốc đã qua: StatusChange (lịch sử chuyển trạng thái), AssignmentEvent (sự kiện phân công ghi trước khi
+        /// có trạng thái riêng), NotRecorded (đơn cũ đã qua mốc nhưng không có thời điểm thật; Timestamp null). Null khi chưa qua.
+        /// </summary>
+        public string? Basis { get; set; }
     }
 
     public class WashOrderDetailDto : WashOrderResultDto

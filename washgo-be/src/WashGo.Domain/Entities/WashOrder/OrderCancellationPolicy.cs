@@ -22,7 +22,10 @@ namespace WashGo.Domain.Entities.WashOrder
                     percent = OrderDepositRules.IsExpired(order, now, settings.DepositWindowMinutes)
                         ? settings.CancelLatePendingPercent : 0;
                     break;
+                // Assigning the shop or the collect Shipper does not move the goods: same fee as Deposited.
                 case WashOrderStatus.Deposited:
+                case WashOrderStatus.MerchantAssigned:
+                case WashOrderStatus.CollectionShipperAssigned:
                     percent = settings.CancelDepositedPercent;
                     break;
                 case WashOrderStatus.Collected when order.ActualWeightKg > 0:

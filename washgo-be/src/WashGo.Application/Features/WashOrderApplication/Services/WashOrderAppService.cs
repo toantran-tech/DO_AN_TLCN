@@ -282,10 +282,12 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 StatusCounts = new MerchantStatusCountsDto
                 {
                     Pending = C(WashOrderStatus.Pending), Deposited = C(WashOrderStatus.Deposited),
+                    MerchantAssigned = C(WashOrderStatus.MerchantAssigned), CollectionShipperAssigned = C(WashOrderStatus.CollectionShipperAssigned),
                     Collected = C(WashOrderStatus.Collected), Washing = C(WashOrderStatus.Washing),
                     Drying = C(WashOrderStatus.Drying), Ironing = C(WashOrderStatus.Ironing),
                     Folding = C(WashOrderStatus.Folding), AwaitingPayment = C(WashOrderStatus.AwaitingPayment),
-                    Paid = C(WashOrderStatus.Paid), ReadyToReturn = C(WashOrderStatus.ReadyToReturn),
+                    Paid = C(WashOrderStatus.Paid), ReadyForReturnDispatch = C(WashOrderStatus.ReadyForReturnDispatch),
+                    ReturnShipperAssigned = C(WashOrderStatus.ReturnShipperAssigned), ReadyToReturn = C(WashOrderStatus.ReadyToReturn),
                     Returned = C(WashOrderStatus.Returned), Completed = C(WashOrderStatus.Completed),
                     TransferringToStorage = C(WashOrderStatus.TransferringToStorage), ReturningFromStorage = C(WashOrderStatus.ReturningFromStorage),
                     MovedToStorage = C(WashOrderStatus.MovedToStorage), Cancelled = C(WashOrderStatus.Cancelled)
@@ -864,7 +866,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 return Success(RedactStaffData(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), scope), "Đơn hàng đã được hủy trước đó.");
             var now = DateTime.UtcNow;
             if (!OrderCancellationPolicy.TryCalculate(order, now, await _settings.ForOrderAsync(order), out _, out var percent, out var fee))
-                return BadRequest<WashOrderDetailDto>("Chỉ được hủy Pending, Deposited hoặc Collected đã cân; không hủy khi đã bắt đầu giặt.");
+                return BadRequest<WashOrderDetailDto>("Chỉ được hủy khi đơn chờ gửi, đồ còn trong locker gửi (kể cả đã phân công tiệm/Shipper lấy đồ) hoặc đã thu gom và cân; không hủy khi đã bắt đầu giặt.");
             var paid = await GetVerifiedPaidAmountAsync(order);
             if (order.PaymentStatus == PaymentStatus.Paid && paid <= 0m)
                 return BadRequest<WashOrderDetailDto>("Không có giao dịch thanh toán gốc hợp lệ để đối chiếu hoàn tiền.");
@@ -872,7 +874,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 return BadRequest<WashOrderDetailDto>("Đơn đã có yêu cầu hoàn tiền; vui lòng xử lý yêu cầu đó trước khi hủy.");
 
             var previous = order.Status;
-            var voidedTaskShipperId = previous == WashOrderStatus.Deposited && order.AssignedTaskType == DeliveryTaskType.Collect
+            var atDepositLocker = WashOrderStatusFlow.IsAtDepositLocker(previous);
+            var voidedTaskShipperId = atDepositLocker && order.AssignedTaskType == DeliveryTaskType.Collect
                 ? order.ShipperId : null;
             if (previous == WashOrderStatus.Pending &&
                 !await _lockerRepo.TryReleaseReservedBoxAsync(order.LockerId, order.BoxId))
@@ -883,11 +886,11 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             // Occupied slots keep the customer's belongings until authenticated pickup.
             order.CancelledGoodsStatus = previous switch
             {
-                WashOrderStatus.Deposited => CancelledGoodsStatus.AtDepositLocker,
+                _ when atDepositLocker => CancelledGoodsStatus.AtDepositLocker,
                 WashOrderStatus.Collected => CancelledGoodsStatus.AtMerchant,
                 _ => CancelledGoodsStatus.None
             };
-            if (previous == WashOrderStatus.Deposited)
+            if (atDepositLocker)
             {
                 order.ReturnLockerId = order.LockerId;
                 order.ReturnBoxId = order.BoxId;
@@ -1007,6 +1010,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
         {
             if (command.NewStatus is WashOrderStatus.Paid or WashOrderStatus.Cancelled or
                 WashOrderStatus.Deposited or WashOrderStatus.Collected or
+                WashOrderStatus.MerchantAssigned or WashOrderStatus.CollectionShipperAssigned or
+                WashOrderStatus.ReadyForReturnDispatch or WashOrderStatus.ReturnShipperAssigned or
                 WashOrderStatus.ReadyToReturn or WashOrderStatus.Returned or
                 WashOrderStatus.Completed or WashOrderStatus.MovedToStorage)
             {
@@ -1159,7 +1164,10 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             var taskTypeStr = task == DeliveryTaskType.Collect ? "COLLECT" : "RETURN";
             var taskQr = $"WASHGO:{taskTypeStr}:{order.OrderCode}:{taskPin}";
 
-            if (order.ShipperId == shipper.Id && order.AssignedTaskType == task)
+            // Same Shipper and trip already in the assigned stage: nothing new to record. A stale assignment left on a
+            // legacy order that is back at the waiting stage goes through a real assignment instead.
+            if (order.ShipperId == shipper.Id && order.AssignedTaskType == task &&
+                OrderActionRules.StatusAfterAssign(order.Status) == order.Status)
             {
                 if (string.IsNullOrEmpty(order.ShipperTaskPinCode) || command.Note != null && order.ShipperNote != note)
                 {
@@ -1182,6 +1190,11 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
 
             var previousShipperId = order.ShipperId;
             var previousTaskType = order.AssignedTaskType;
+            var previousStatus = order.Status;
+            // First assignment moves the order to its assigned stage; a reassignment keeps it there.
+            order.Status = OrderActionRules.StatusAfterAssign(order.Status);
+            // Reassignment = another Shipper for the same trip at the same stage; it keeps the first assignment time.
+            var reassigned = previousStatus == order.Status && previousShipperId.HasValue && previousTaskType == task;
             order.ShipperId = shipper.Id;
             order.ShipperName = user.FullName;
             order.AssignedTaskType = task;
@@ -1195,8 +1208,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
 
             order.Timeline.Add(new WashOrderTimeline
             {
-                EventType = previousShipperId.HasValue && previousTaskType == task ? "ShipperReassigned" : "ShipperAssigned",
-                TaskId = assignedTaskId, PreviousShipperId = previousTaskType == task ? previousShipperId : null, FromStatus = order.Status, ShipperId = order.ShipperId, ShipperName = order.ShipperName, TaskType = order.AssignedTaskType,
+                EventType = reassigned ? "ShipperReassigned" : "ShipperAssigned",
+                TaskId = assignedTaskId, PreviousShipperId = reassigned ? previousShipperId : null, FromStatus = previousStatus, ShipperId = order.ShipperId, ShipperName = order.ShipperName, TaskType = order.AssignedTaskType,
                 WashOrderId = order.Id,
                 Status = order.Status,
                 ActorId = CurrentUser.Id,
@@ -1208,10 +1221,106 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
 
             await _orderRepo.UpdateAsync(order, autoSave: true);
             await _writeGuard.RecordAsync(order, CurrentUser.Id!.Value, command, "AssignShipper", assignRequest);
-            await _notifications.ShipperAssignedAsync(order, order.AssignedTaskType ?? DeliveryTaskType.Collect);
+            await _notifications.ShipperAssignedAsync(order, order.AssignedTaskType ?? DeliveryTaskType.Collect,
+                !reassigned, reassigned ? previousShipperId : null);
             await uow.CompleteAsync();
             var result = ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order);
             return Success(RedactStaffData(result, scope), "Phân công Shipper thành công!");
+        }
+
+        /// <summary>Merchant xác nhận đồ đã đóng gói xong tại tiệm: Paid → ReadyForReturnDispatch (chưa mời khách đến nhận).</summary>
+        public async Task<BaseResponse<WashOrderDetailDto>> ConfirmReturnReadyAsync(Guid orderId, ConfirmReturnReadyCommand command)
+        {
+            var note = string.IsNullOrWhiteSpace(command.Note) ? null : command.Note.Trim();
+            if (note?.Length > 500)
+                return BadRequest<WashOrderDetailDto>("Ghi chú tối đa 500 ký tự.");
+            var scope = await GetOrderScopeAsync();
+            using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            await OrderOperationLocks.AcquireAsync(_orderRepo, command.OperationId);
+            await _orderRepo.GetForUpdateAsync(orderId);
+            var order = await _orderRepo.GetWithDetailsAsync(orderId);
+            if (order == null || scope.Role is not ("Merchant" or "Admin") || !CanAccess(order, scope))
+                return NotFound<WashOrderDetailDto>("Không tìm thấy đơn hàng được phép xác nhận sẵn sàng trả đồ.");
+            var request = OrderWriteGuard.Fingerprint("confirmReturnReady", note);
+            if (await GuardAsync(order, scope, command, "ConfirmReturnReady", request) is { } stop)
+                return stop;
+            if (OrderActionRules.ConfirmReturnReady(order, scope.Role) is { } blocked)
+                return BadRequest<WashOrderDetailDto>(blocked.Message);
+
+            var now = DateTime.UtcNow;
+            var previousStatus = order.Status;
+            order.Status = WashOrderStatus.ReadyForReturnDispatch;
+            order.Timeline.Add(new WashOrderTimeline
+            {
+                EventType = "ReturnReadyConfirmed",
+                WashOrderId = order.Id, FromStatus = previousStatus, Status = order.Status,
+                ActorId = CurrentUser.Id, ActorName = CurrentUser.UserName ?? "Merchant", ActorRole = scope.Role,
+                Timestamp = new DateTimeOffset(now).ToUnixTimeSeconds(),
+                Note = note ?? "Tiệm xác nhận đồ đã đóng gói xong, sẵn sàng bàn giao cho chuyến trả về locker."
+            });
+            await _orderRepo.UpdateAsync(order, autoSave: true);
+            await _writeGuard.RecordAsync(order, CurrentUser.Id!.Value, command, "ConfirmReturnReady", request);
+            await _notifications.ReturnReadyConfirmedAsync(order);
+            await uow.CompleteAsync();
+            var dto = RedactStaffData(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), scope);
+            dto.AllowedActions = OrderActionRules.Build(order, scope.Role);
+            return Success(dto, "Đã xác nhận sẵn sàng trả đồ. Vui lòng phân công Shipper trả đồ về locker.");
+        }
+
+        /// <summary>
+        /// Hủy phân công chuyến chưa hoàn thành: đóng task, thu hồi mã nhiệm vụ của Shipper cũ và trả đơn về bước chờ phân
+        /// công (CollectionShipperAssigned → MerchantAssigned, ReturnShipperAssigned → ReadyForReturnDispatch) trong một transaction.
+        /// </summary>
+        public async Task<BaseResponse<WashOrderDetailDto>> UnassignShipperAsync(Guid orderId, UnassignShipperCommand command)
+        {
+            var reason = string.IsNullOrWhiteSpace(command.Reason) ? null : command.Reason.Trim();
+            if (reason?.Length > 500)
+                return BadRequest<WashOrderDetailDto>("Lý do hủy phân công tối đa 500 ký tự.");
+            var scope = await GetOrderScopeAsync();
+            using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            await OrderOperationLocks.AcquireAsync(_orderRepo, command.OperationId);
+            await _orderRepo.GetForUpdateAsync(orderId);
+            var order = await _orderRepo.GetWithDetailsAsync(orderId);
+            if (order == null || scope.Role is not ("Merchant" or "Admin") || !CanAccess(order, scope))
+                return NotFound<WashOrderDetailDto>("Không tìm thấy đơn hàng được phép hủy phân công.");
+            var request = OrderWriteGuard.Fingerprint("unassignShipper", reason);
+            if (await GuardAsync(order, scope, command, "UnassignShipper", request) is { } stop)
+                return stop;
+            if (OrderActionRules.Unassign(order, scope.Role) is { } blocked)
+                return BadRequest<WashOrderDetailDto>(blocked.Message);
+
+            var now = DateTime.UtcNow;
+            var previousStatus = order.Status;
+            var task = order.AssignedTaskType!.Value;
+            var previousShipperId = order.ShipperId;
+            var previousShipperName = order.ShipperName;
+            order.Status = OrderActionRules.StatusAfterUnassign(order)!.Value;
+            order.ShipperId = null;
+            order.ShipperName = null;
+            order.AssignedTaskType = null;
+            order.ShipperAssignedAt = null;
+            order.ShipperNote = null;
+            order.ShipperTaskPinCode = null;
+            order.ShipperTaskQrString = null;
+            order.TaskPinAttemptCount = 0;
+            order.TaskPinLockoutUntil = null;
+            await _taskRecorder.CancelledAsync(order.Id, now);
+            order.Timeline.Add(new WashOrderTimeline
+            {
+                EventType = "ShipperUnassigned", TaskType = task, PreviousShipperId = previousShipperId,
+                WashOrderId = order.Id, FromStatus = previousStatus, Status = order.Status,
+                ActorId = CurrentUser.Id, ActorName = CurrentUser.UserName ?? scope.Role, ActorRole = scope.Role,
+                Timestamp = new DateTimeOffset(now).ToUnixTimeSeconds(),
+                Note = $"Hủy phân công Shipper {previousShipperName} cho chuyến {(task == DeliveryTaskType.Collect ? "lấy đồ" : "trả đồ")}." +
+                       (reason == null ? string.Empty : $" Lý do: {reason}")
+            });
+            await _orderRepo.UpdateAsync(order, autoSave: true);
+            await _writeGuard.RecordAsync(order, CurrentUser.Id!.Value, command, "UnassignShipper", request);
+            await _notifications.ShipperUnassignedAsync(order, previousShipperId, task);
+            await uow.CompleteAsync();
+            var dto = RedactStaffData(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), scope);
+            dto.AllowedActions = OrderActionRules.Build(order, scope.Role);
+            return Success(dto, "Đã hủy phân công Shipper; có thể phân công Shipper khác.");
         }
 
         // Replay or 409 (with the current order) before any rule runs; null = go on with the write.
@@ -1304,7 +1413,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 return NotFound<WashOrderDetailDto>("Không tìm thấy đơn hàng.");
 
             // Idempotency: already deposited
-            if (order.Status == WashOrderStatus.Deposited)
+            // Already deposited (the shop or the collect Shipper may have been assigned since): nothing to repeat.
+            if (WashOrderStatusFlow.IsAtDepositLocker(order.Status))
             {
                 await uow.CompleteAsync();
                 return Success(RedactStaffData(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), scope),
@@ -1409,8 +1519,10 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                     "Thao tác lấy đồ đã được thực hiện trước đó.");
             }
 
-            if (order.Status != WashOrderStatus.Deposited)
-                return BadRequest<WashOrderDetailDto>("Đơn hàng không ở trạng thái đã gửi đồ vào tủ.");
+            if (order.Status != WashOrderStatus.CollectionShipperAssigned)
+                return BadRequest<WashOrderDetailDto>(WashOrderStatusFlow.IsAtDepositLocker(order.Status)
+                    ? "Đơn hàng chưa được phân công Shipper lấy đồ."
+                    : "Đơn hàng không ở trạng thái chờ Shipper lấy đồ tại locker.");
 
             if (!order.ShipperId.HasValue || order.AssignedTaskType != DeliveryTaskType.Collect)
                 return BadRequest<WashOrderDetailDto>("Đơn hàng chưa được phân công chuyến lấy đồ.");
@@ -1517,8 +1629,10 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                     "Thao tác trả đồ đã được thực hiện trước đó.");
             }
 
-            if (order.Status != WashOrderStatus.Paid && !(cancelledReturn && order.CancelledGoodsStatus == CancelledGoodsStatus.AtMerchant))
-                return BadRequest<WashOrderDetailDto>("Đơn hàng chưa ở trạng thái sẵn sàng để trả về tủ (phải là Paid).");
+            if (order.Status != WashOrderStatus.ReturnShipperAssigned && !(cancelledReturn && order.CancelledGoodsStatus == CancelledGoodsStatus.AtMerchant))
+                return BadRequest<WashOrderDetailDto>(order.Status is WashOrderStatus.Paid or WashOrderStatus.ReadyForReturnDispatch
+                    ? "Đơn hàng chưa được phân công Shipper trả đồ (tiệm cần xác nhận sẵn sàng trả đồ rồi phân công)."
+                    : "Đơn hàng không ở trạng thái chờ Shipper trả đồ về locker.");
 
             if (!order.ShipperId.HasValue || order.AssignedTaskType != DeliveryTaskType.Return)
                 return BadRequest<WashOrderDetailDto>("Đơn hàng chưa được phân công chuyến trả đồ.");

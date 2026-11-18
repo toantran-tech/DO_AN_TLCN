@@ -41,9 +41,10 @@ namespace WashGo.Application.Features.OrderAssignmentApplication.Services
         // Orders a Merchant is still responsible for, counted as its current workload.
         private static readonly WashOrderStatus[] LoadStatuses =
         [
-            WashOrderStatus.Deposited, WashOrderStatus.Collected, WashOrderStatus.Washing, WashOrderStatus.Drying,
+            WashOrderStatus.Deposited, WashOrderStatus.MerchantAssigned, WashOrderStatus.CollectionShipperAssigned,
+            WashOrderStatus.Collected, WashOrderStatus.Washing, WashOrderStatus.Drying,
             WashOrderStatus.Ironing, WashOrderStatus.Folding, WashOrderStatus.AwaitingPayment, WashOrderStatus.Paid,
-            WashOrderStatus.ReadyToReturn
+            WashOrderStatus.ReadyForReturnDispatch, WashOrderStatus.ReturnShipperAssigned, WashOrderStatus.ReadyToReturn
         ];
 
         private readonly IWashOrderRepository _orderRepo;
@@ -234,7 +235,7 @@ namespace WashGo.Application.Features.OrderAssignmentApplication.Services
             await _operationRepo.InsertAsync(new OrderOperation(id)
             {
                 GroupId = groupId, OrderId = result.OrderId, ActorId = CurrentUser.Id ?? Guid.Empty, Operation = operation,
-                Request = $"merchantId={result.MerchantId}", ResultStatus = WashOrderStatus.Deposited,
+                Request = $"merchantId={result.MerchantId}", ResultStatus = WashOrderStatus.MerchantAssigned,
                 ResultRevision = result.ResultRevision, CreatedAt = DateTime.UtcNow, ResultJson = JsonSerializer.Serialize(result)
             }, autoSave: true);
         }
@@ -372,12 +373,14 @@ namespace WashGo.Application.Features.OrderAssignmentApplication.Services
             order.CommissionRateApplied = target.CommissionRate;
             order.CommissionLockedAt = DateTime.UtcNow;
             order.CommissionSnapshotSource = "Assignment";
+            var previousStatus = order.Status;
+            order.Status = WashOrderStatus.MerchantAssigned;
             await _orderRepo.UpdateAsync(order, autoSave: true);
             await _timelineRepo.InsertAsync(new WashOrderTimeline
             {
                 EventType = "MerchantAssigned", MerchantId = target.MerchantId, MerchantName = target.BusinessName, AssignmentMode = auto ? "Automatic" : "Manual",
                 WashOrderId = order.Id,
-                FromStatus = order.Status,
+                FromStatus = previousStatus,
                 Status = order.Status,
                 ActorId = CurrentUser.Id,
                 ActorName = CurrentUser.UserName ?? "Admin",
@@ -385,9 +388,7 @@ namespace WashGo.Application.Features.OrderAssignmentApplication.Services
                 Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
                 Note = $"Admin phân công {(auto ? "tự động " : string.Empty)}đơn cho Merchant {target.BusinessName}."
             }, autoSave: true);
-            await _notifications.SendAsync([target.MerchantId], NotificationType.NewOrderForMerchant, "Đơn hàng mới được phân công",
-                $"Bạn được phân công đơn #{order.OrderCode} tại {order.LockerName}, ô số {order.BoxNumber}. Vui lòng phân công Shipper lấy đồ.",
-                "order", order.Id);
+            await _notifications.MerchantAssignedAsync(order);
             return (new AssignmentResultDto
             {
                 OrderId = order.Id,

@@ -46,9 +46,11 @@ namespace WashGo.Application.Features.MerchantApplication.Services
         // Orders the Merchant still has to process (UC 3.2.4 6a).
         private static readonly WashOrderStatus[] UnfinishedStatuses =
         [
-            WashOrderStatus.Pending, WashOrderStatus.Deposited, WashOrderStatus.Collected, WashOrderStatus.Washing,
+            WashOrderStatus.Pending, WashOrderStatus.Deposited, WashOrderStatus.MerchantAssigned,
+            WashOrderStatus.CollectionShipperAssigned, WashOrderStatus.Collected, WashOrderStatus.Washing,
             WashOrderStatus.Drying, WashOrderStatus.Ironing, WashOrderStatus.Folding, WashOrderStatus.AwaitingPayment,
-            WashOrderStatus.Paid, WashOrderStatus.ReadyToReturn
+            WashOrderStatus.Paid, WashOrderStatus.ReadyForReturnDispatch, WashOrderStatus.ReturnShipperAssigned,
+            WashOrderStatus.ReadyToReturn
         ];
 
         private readonly IRepository<Merchant, Guid> _merchantRepo;
@@ -702,6 +704,8 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             {
                 Pending = countsByStatus.GetValueOrDefault(WashOrderStatus.Pending),
                 Deposited = countsByStatus.GetValueOrDefault(WashOrderStatus.Deposited),
+                MerchantAssigned = countsByStatus.GetValueOrDefault(WashOrderStatus.MerchantAssigned),
+                CollectionShipperAssigned = countsByStatus.GetValueOrDefault(WashOrderStatus.CollectionShipperAssigned),
                 Collected = countsByStatus.GetValueOrDefault(WashOrderStatus.Collected),
                 Washing = countsByStatus.GetValueOrDefault(WashOrderStatus.Washing),
                 Drying = countsByStatus.GetValueOrDefault(WashOrderStatus.Drying),
@@ -709,6 +713,8 @@ namespace WashGo.Application.Features.MerchantApplication.Services
                 Folding = countsByStatus.GetValueOrDefault(WashOrderStatus.Folding),
                 AwaitingPayment = countsByStatus.GetValueOrDefault(WashOrderStatus.AwaitingPayment),
                 Paid = countsByStatus.GetValueOrDefault(WashOrderStatus.Paid),
+                ReadyForReturnDispatch = countsByStatus.GetValueOrDefault(WashOrderStatus.ReadyForReturnDispatch),
+                ReturnShipperAssigned = countsByStatus.GetValueOrDefault(WashOrderStatus.ReturnShipperAssigned),
                 ReadyToReturn = countsByStatus.GetValueOrDefault(WashOrderStatus.ReadyToReturn),
                 Returned = countsByStatus.GetValueOrDefault(WashOrderStatus.Returned),
                 Completed = countsByStatus.GetValueOrDefault(WashOrderStatus.Completed),
@@ -867,13 +873,13 @@ namespace WashGo.Application.Features.MerchantApplication.Services
                 isolationLevel: IsolationLevel.RepeatableRead);
             var orders = (await _orderRepo.GetQueryableAsync()).Where(o => !o.IsDeleted && o.MerchantId == merchantId.Value);
             // Same rules as before, evaluated by the database for the whole scope; only the requested page is loaded.
-            var collection = orders.Where(o => o.Status == WashOrderStatus.Deposited && o.DepositedAt != null && o.DepositedAt.Value.AddHours(o.CollectSlaHoursSnapshot ?? collectSlaHours) < now)
+            var collection = orders.Where(o => WashOrderStatusFlow.AtDepositLocker.Contains(o.Status) && o.DepositedAt != null && o.DepositedAt.Value.AddHours(o.CollectSlaHoursSnapshot ?? collectSlaHours) < now)
                 .Select(o => new SlaRow { Id = o.Id, Type = MerchantSlaAlertType.CollectionOverdue, Deadline = o.DepositedAt!.Value.AddHours(o.CollectSlaHoursSnapshot ?? collectSlaHours) });
             var processing = orders.Where(o => (o.Status == WashOrderStatus.Washing || o.Status == WashOrderStatus.Drying ||
                                                 o.Status == WashOrderStatus.Ironing || o.Status == WashOrderStatus.Folding) &&
                                                o.EstimatedFinishAt != null && o.EstimatedFinishAt < now)
                 .Select(o => new SlaRow { Id = o.Id, Type = MerchantSlaAlertType.ProcessingOverdue, Deadline = o.EstimatedFinishAt!.Value });
-            var returns = orders.Where(o => o.Status == WashOrderStatus.Paid && o.PaidAt != null && o.PaidAt.Value.AddHours(o.ReturnSlaHoursSnapshot ?? returnSlaHours) < now)
+            var returns = orders.Where(o => WashOrderStatusFlow.PaidAtMerchant.Contains(o.Status) && o.PaidAt != null && o.PaidAt.Value.AddHours(o.ReturnSlaHoursSnapshot ?? returnSlaHours) < now)
                 .Select(o => new SlaRow { Id = o.Id, Type = MerchantSlaAlertType.ReturnOverdue, Deadline = o.PaidAt!.Value.AddHours(o.ReturnSlaHoursSnapshot ?? returnSlaHours) });
             var collectionCount = await AsyncExecuter.CountAsync(collection);
             var processingCount = await AsyncExecuter.CountAsync(processing);

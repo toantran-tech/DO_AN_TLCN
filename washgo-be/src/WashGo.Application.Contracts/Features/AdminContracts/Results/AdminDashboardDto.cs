@@ -65,6 +65,18 @@ namespace WashGo.Application.Contracts.Features.AdminContracts.Results
         public int WaitingAssignmentOverdue { get; set; }
         /// <summary>Hiện tại: đơn đang được xử lý (từ lấy đồ tới chờ trả).</summary>
         public int InProgress { get; set; }
+        /// <summary>Hiện tại: đã phân công tiệm, chờ Merchant phân công Shipper lấy đồ (MerchantAssigned).</summary>
+        public int WaitingCollectAssignment { get; set; }
+        /// <summary>Hiện tại: đã có Shipper lấy đồ, chờ thu gom (CollectionShipperAssigned).</summary>
+        public int WaitingCollection { get; set; }
+        /// <summary>Hiện tại: đã thanh toán, chờ tiệm xác nhận chuẩn bị xong (Paid).</summary>
+        public int WaitingReturnPreparation { get; set; }
+        /// <summary>Hiện tại: tiệm đã chuẩn bị xong, chờ phân công Shipper trả (ReadyForReturnDispatch).</summary>
+        public int WaitingReturnAssignment { get; set; }
+        /// <summary>Hiện tại: đã có Shipper trả đồ, chờ đặt vào locker (ReturnShipperAssigned).</summary>
+        public int WaitingReturnDelivery { get; set; }
+        /// <summary>Hiện tại: đồ đã ở locker trả, chờ khách nhận (ReadyToReturn).</summary>
+        public int AwaitingCustomerPickup { get; set; }
         /// <summary>Hiện tại: số đơn theo từng trạng thái.</summary>
         public Dictionary<WashOrderStatus, int> CurrentByStatus { get; set; } = [];
     }

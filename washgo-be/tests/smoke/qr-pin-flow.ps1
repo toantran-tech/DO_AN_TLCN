@@ -122,7 +122,7 @@ FROM washgo.shippers s WHERE user_id = '$seedUser';
 
     # Idempotent call
     $repeatDeposit = (Call-Api Post "/wash-order/$orderId/deposit" @{ pinCode = $depositPin } $customer).data
-    if ($repeatDeposit.status -ne 2) { throw "Idempotent call deposit that bai" }
+    if ($repeatDeposit.status -ne 16) { throw "Idempotent call deposit that bai (sau phan cong tiem phai giu MerchantAssigned 16)" }
     Write-Host "  -> Idempotency gui do thanh cong!" -ForegroundColor Green
 
     Write-Host "=== 8. Merchant phan cong Shipper lay do ===" -ForegroundColor Cyan

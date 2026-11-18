@@ -85,7 +85,8 @@ try {
 
     Write-Output '5. Move to storage: allowedActions, guard, replay'
     $s=$o[4]; $box=Sql "SELECT locker_slot_id FROM washgo.orders WHERE id='$($s.id)';"
-    Sql "UPDATE washgo.orders SET merchant_id='$teamId', status=10, payment_status=2, return_locker_id='$lockerId', return_box_id='$box', return_box_number=ls.slot_number, pickup_deadline=now() AT TIME ZONE 'utc' - interval '1 hour' FROM washgo.locker_slots ls WHERE washgo.orders.id='$($s.id)' AND ls.id='$box'; UPDATE washgo.locker_slots SET status=2 WHERE id='$box';" | Out-Null
+    # This section exercises the legacy /move-to-storage endpoint, which only serves orders outside the storage-cycle workflow.
+    Sql "UPDATE washgo.orders SET storage_workflow_version=0, merchant_id='$teamId', status=10, payment_status=2, return_locker_id='$lockerId', return_box_id='$box', return_box_number=ls.slot_number, pickup_deadline=now() AT TIME ZONE 'utc' - interval '1 hour' FROM washgo.locker_slots ls WHERE washgo.orders.id='$($s.id)' AND ls.id='$box'; UPDATE washgo.locker_slots SET status=2 WHERE id='$box';" | Out-Null
     $d=(Call-Api Get "/wash-order/$($s.id)" $null $admin).data.allowedActions
     if($d.canMoveToStorage -or $d.moveToStorageReasonCode -ne 'NotYetDue' -or !$d.transferToStorageEligibleAt){throw "Not-yet-due metadata wrong: $($d | ConvertTo-Json -Compress)"}
     # Explicit legacy fixture: this suite verifies the v0 shortcut; storage-lifecycle covers v1.

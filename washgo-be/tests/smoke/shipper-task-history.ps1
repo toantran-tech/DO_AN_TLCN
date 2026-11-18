@@ -36,6 +36,8 @@ try {
     foreach($sid in @($x.id,$y.id,$x.id)){ Call-Api Put '/wash-order/assign-shipper' @{orderId=$orders[0].id;shipperId="$sid"} $team | Out-Null }
     $open=(Tasks $x.id @{status=1}).list
     if(@($open).Count -ne 1 -or $open[0].orderId -ne $orders[0].id -or !$open[0].assignedAt -or $open[0].completedAt){throw 'Open task wrong.'}
+    # Completion times are recorded per second (the event time); keep the collect in a later second than the reassignments.
+    Start-Sleep -Seconds 1
     Invoke-TestDelivery $orders[0].id collect $sessions.X.accessToken | Out-Null
     Call-Api Put '/wash-order/assign-shipper' @{orderId=$orders[1].id;shipperId="$($x.id)"} $team | Out-Null
     Call-Api Post "/wash-order/$($orders[1].id)/cancel" @{reason="Test task history $run"} $customer | Out-Null

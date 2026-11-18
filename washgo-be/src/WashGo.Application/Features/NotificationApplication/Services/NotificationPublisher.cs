@@ -171,14 +171,51 @@ namespace WashGo.Application.Features.NotificationApplication.Services
 
         }
 
-        public async Task ShipperAssignedAsync(WashOrder o, DeliveryTaskType task)
+        /// <summary>Admin phân công tiệm (Deposited → MerchantAssigned): Merchant nhận việc, khách chỉ biết đã có tiệm phụ trách.</summary>
+        public async Task MerchantAssignedAsync(WashOrder o)
+        {
+            await SendAsync([o.MerchantId], NotificationType.NewOrderForMerchant, "Đơn hàng mới được phân công",
+                $"Bạn được phân công đơn #{o.OrderCode} tại {o.LockerName}, ô số {o.BoxNumber}. Vui lòng phân công Shipper lấy đồ.",
+                "order", o.Id, Msg("merchantAssigned.merchant", o));
+            await SendAsync([o.CustomerId], NotificationType.OrderEvent, "Đã phân công tiệm giặt",
+                $"WashGo đã phân công tiệm giặt phụ trách đơn hàng #{o.OrderCode} của bạn.", "order", o.Id, Msg("merchantAssigned.customer", o));
+        }
+
+        /// <summary>
+        /// Shipper mới nhận nhiệm vụ. Lần phân công đầu (đổi trạng thái) báo khách nội dung an toàn; đổi người thì báo
+        /// Shipper cũ là nhiệm vụ đã chuyển cho người khác, không báo lại khách.
+        /// </summary>
+        public async Task ShipperAssignedAsync(WashOrder o, DeliveryTaskType task, bool firstAssignment = false, Guid? previousShipperId = null)
         {
             var content = task == DeliveryTaskType.Collect
                 ? $"Bạn có đơn mới #{o.OrderCode} cần lấy đồ tại {o.LockerName}, ô số {o.BoxNumber}."
                 : $"Bạn có đơn #{o.OrderCode} cần trả đồ về locker.";
             await SendAsync([await ShipperUserIdAsync(o.ShipperId)], NotificationType.NewTaskForShipper,
                 "Đơn mới được phân công", content, "order", o.Id, Msg(task == DeliveryTaskType.Collect ? "shipperAssigned.collect.shipper" : "shipperAssigned.return.shipper", o));
+            if (previousShipperId.HasValue && previousShipperId != o.ShipperId)
+                await SendAsync([await ShipperUserIdAsync(previousShipperId)], NotificationType.OrderEvent, "Nhiệm vụ đã được chuyển",
+                    $"Nhiệm vụ {(task == DeliveryTaskType.Collect ? "lấy đồ" : "trả đồ")} của đơn #{o.OrderCode} đã được chuyển cho Shipper khác; mã nhiệm vụ cũ không còn hiệu lực.",
+                    "order", o.Id, Msg(task == DeliveryTaskType.Collect ? "shipperReassigned.collect.previousShipper" : "shipperReassigned.return.previousShipper", o));
+            if (!firstAssignment || o.Status == WashOrderStatus.Cancelled)
+                return;
+            if (task == DeliveryTaskType.Collect)
+                await SendAsync([o.CustomerId], NotificationType.OrderEvent, "Đã phân công Shipper lấy đồ",
+                    $"Shipper đã được phân công đến locker lấy đồ đơn #{o.OrderCode} và chuyển về tiệm giặt.", "order", o.Id, Msg("shipperAssigned.collect.customer", o));
+            else
+                await SendAsync([o.CustomerId], NotificationType.OrderEvent, "Đã phân công Shipper trả đồ",
+                    $"Shipper đã được phân công mang đồ đơn #{o.OrderCode} về locker để bạn nhận lại.", "order", o.Id, Msg("shipperAssigned.return.customer", o));
         }
+
+        /// <summary>Hủy phân công chuyến chưa hoàn thành: Shipper cũ mất quyền nhiệm vụ.</summary>
+        public async Task ShipperUnassignedAsync(WashOrder o, Guid? previousShipperId, DeliveryTaskType task) =>
+            await SendAsync([await ShipperUserIdAsync(previousShipperId)], NotificationType.OrderEvent, "Nhiệm vụ đã bị hủy phân công",
+                $"Nhiệm vụ {(task == DeliveryTaskType.Collect ? "lấy đồ" : "trả đồ")} của đơn #{o.OrderCode} đã bị hủy phân công; mã nhiệm vụ không còn hiệu lực.",
+                "order", o.Id, Msg(task == DeliveryTaskType.Collect ? "shipperUnassigned.collect.shipper" : "shipperUnassigned.return.shipper", o));
+
+        /// <summary>Paid → ReadyForReturnDispatch: chưa mời khách đến nhận vì đồ chưa ở locker.</summary>
+        public async Task ReturnReadyConfirmedAsync(WashOrder o) =>
+            await SendAsync([o.CustomerId], NotificationType.OrderEvent, "Tiệm đã chuẩn bị xong đồ",
+                $"Tiệm giặt đã chuẩn bị xong đồ của đơn #{o.OrderCode}, đang chờ phân công Shipper trả về locker.", "order", o.Id, Msg("returnReadyConfirmed.customer", o));
 
         public async Task CollectedAsync(WashOrder o)
         {
@@ -222,7 +259,7 @@ namespace WashGo.Application.Features.NotificationApplication.Services
                 $"Thanh toán thành công! Đơn hàng #{o.OrderCode} sẽ được trả vào locker trong thời gian sớm nhất.", "order", o.Id, Msg("paymentSucceeded.customer", o));
             // UC 1.2.4 step 9: the Merchant can now send the clean laundry back.
             await SendAsync([o.MerchantId], NotificationType.PaymentSucceeded, "Khách đã thanh toán",
-                $"Khách đã thanh toán đơn #{o.OrderCode}. Vui lòng phân công Shipper trả đồ về locker.", "order", o.Id, Msg("paymentSucceeded.merchant", o));
+                $"Khách đã thanh toán đơn #{o.OrderCode}. Vui lòng chuẩn bị đồ, xác nhận sẵn sàng trả đồ rồi phân công Shipper trả về locker.", "order", o.Id, Msg("paymentSucceeded.merchant", o));
         }
 
         // UC 1.2.4 7a.

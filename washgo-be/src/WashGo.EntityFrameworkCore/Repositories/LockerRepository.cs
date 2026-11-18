@@ -103,7 +103,8 @@ namespace WashGo.EntityFrameworkCore.Repositories
                     && x.Status == expectedStatus
                     && !db.WashOrders.Any(order => !order.IsDeleted &&
                         ((order.BoxId == boxId &&
-                          (order.Status == WashOrderStatus.Pending || order.Status == WashOrderStatus.Deposited)) ||
+                          (order.Status == WashOrderStatus.Pending || order.Status == WashOrderStatus.Deposited ||
+                           order.Status == WashOrderStatus.MerchantAssigned || order.Status == WashOrderStatus.CollectionShipperAssigned)) ||
                          (order.Status == WashOrderStatus.Cancelled &&
                           ((order.CancelledGoodsStatus == CancelledGoodsStatus.AtDepositLocker && order.BoxId == boxId) ||
                            (order.CancelledGoodsStatus == CancelledGoodsStatus.AtReturnLocker && order.ReturnBoxId == boxId))) ||
@@ -138,7 +139,8 @@ namespace WashGo.EntityFrameworkCore.Repositories
                         (box.Status == LockerBoxStatus.Reserved || box.Status == LockerBoxStatus.Occupied)) &&
                     !db.WashOrders.Any(order => !order.IsDeleted &&
                         ((order.LockerId == x.Id &&
-                          (order.Status == WashOrderStatus.Pending || order.Status == WashOrderStatus.Deposited)) ||
+                          (order.Status == WashOrderStatus.Pending || order.Status == WashOrderStatus.Deposited ||
+                           order.Status == WashOrderStatus.MerchantAssigned || order.Status == WashOrderStatus.CollectionShipperAssigned)) ||
                          (order.Status == WashOrderStatus.ReadyToReturn &&
                           (order.ReturnBoxId.HasValue
                               ? (order.ReturnLockerId ?? order.LockerId) == x.Id

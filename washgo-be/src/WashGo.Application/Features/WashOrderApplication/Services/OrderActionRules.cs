@@ -22,21 +22,43 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             WashOrderStatus.Folding, WashOrderStatus.AwaitingPayment
         ];
 
+        /// <summary>Chỉ đúng bước kế tiếp: Collected → Washing → Drying → Ironing → Folding → AwaitingPayment.</summary>
         public static bool IsValidTransition(WashOrderStatus current, WashOrderStatus next) => current switch
         {
             WashOrderStatus.Collected => next == WashOrderStatus.Washing,
-            WashOrderStatus.Washing => next is WashOrderStatus.Drying or WashOrderStatus.Ironing or WashOrderStatus.Folding or WashOrderStatus.AwaitingPayment,
-            WashOrderStatus.Drying => next is WashOrderStatus.Ironing or WashOrderStatus.Folding or WashOrderStatus.AwaitingPayment,
-            WashOrderStatus.Ironing => next is WashOrderStatus.Folding or WashOrderStatus.AwaitingPayment,
+            WashOrderStatus.Washing => next == WashOrderStatus.Drying,
+            WashOrderStatus.Drying => next == WashOrderStatus.Ironing,
+            WashOrderStatus.Ironing => next == WashOrderStatus.Folding,
             WashOrderStatus.Folding => next == WashOrderStatus.AwaitingPayment,
             _ => false
         };
 
+        /// <summary>
+        /// Chuyến được phân công ở trạng thái hiện tại: lấy đồ sau khi Admin phân công tiệm, trả đồ sau khi Merchant
+        /// xác nhận sẵn sàng; đơn hủy có đồ ở tiệm vẫn dùng chuyến trả riêng và giữ Cancelled.
+        /// </summary>
         public static DeliveryTaskType? AssignableTask(WashOrder order) => order.Status switch
         {
-            WashOrderStatus.Deposited => DeliveryTaskType.Collect,
-            WashOrderStatus.Paid when order.PaymentStatus == PaymentStatus.Paid => DeliveryTaskType.Return,
+            WashOrderStatus.MerchantAssigned or WashOrderStatus.CollectionShipperAssigned => DeliveryTaskType.Collect,
+            WashOrderStatus.ReadyForReturnDispatch or WashOrderStatus.ReturnShipperAssigned
+                when order.PaymentStatus == PaymentStatus.Paid => DeliveryTaskType.Return,
             WashOrderStatus.Cancelled when order.CancelledGoodsStatus == CancelledGoodsStatus.AtMerchant => DeliveryTaskType.Return,
+            _ => null
+        };
+
+        /// <summary>Trạng thái sau khi phân công thành công; đổi Shipper hoặc chuyến của đơn hủy giữ nguyên trạng thái.</summary>
+        public static WashOrderStatus StatusAfterAssign(WashOrderStatus status) => status switch
+        {
+            WashOrderStatus.MerchantAssigned => WashOrderStatus.CollectionShipperAssigned,
+            WashOrderStatus.ReadyForReturnDispatch => WashOrderStatus.ReturnShipperAssigned,
+            _ => status
+        };
+
+        /// <summary>Trạng thái khi hủy phân công chuyến chưa hoàn thành; null = không hỗ trợ hủy ở trạng thái này.</summary>
+        public static WashOrderStatus? StatusAfterUnassign(WashOrder order) => order.Status switch
+        {
+            WashOrderStatus.CollectionShipperAssigned when order.AssignedTaskType == DeliveryTaskType.Collect => WashOrderStatus.MerchantAssigned,
+            WashOrderStatus.ReturnShipperAssigned when order.AssignedTaskType == DeliveryTaskType.Return => WashOrderStatus.ReadyForReturnDispatch,
             _ => null
         };
 
@@ -77,8 +99,32 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 return new("RoleNotAllowed", "Chỉ Merchant hoặc Admin được phân công Shipper.");
             if (order.MerchantId == null)
                 return new("NoMerchant", "Đơn chưa được Admin phân công cho Merchant.");
+            if (order.Status == WashOrderStatus.Paid)
+                return new("ReturnNotReady", "Merchant cần xác nhận sẵn sàng trả đồ trước khi phân công Shipper trả đồ.");
             if (!task.HasValue)
-                return new("WrongStage", "Chỉ phân công khi đơn đã gửi đồ hoặc đã thanh toán và chờ mang đồ về tủ.");
+                return new("WrongStage", "Chỉ phân công khi đơn đã được phân công tiệm (lấy đồ) hoặc tiệm đã xác nhận sẵn sàng trả đồ.");
+            return null;
+        }
+
+        /// <summary>Lý do không được hủy phân công chuyến lấy/trả chưa hoàn thành; null = được phép.</summary>
+        public static Block? Unassign(WashOrder order, string role)
+        {
+            if (role is not ("Merchant" or "Admin"))
+                return new("RoleNotAllowed", "Chỉ Merchant hoặc Admin được hủy phân công Shipper.");
+            if (!order.ShipperId.HasValue || StatusAfterUnassign(order) == null)
+                return new("NoActiveAssignment", "Đơn không có chuyến lấy đồ hoặc trả đồ đang chờ Shipper thực hiện.");
+            return null;
+        }
+
+        /// <summary>Lý do Merchant chưa được xác nhận sẵn sàng trả đồ; null = được phép (Paid → ReadyForReturnDispatch).</summary>
+        public static Block? ConfirmReturnReady(WashOrder order, string role)
+        {
+            if (role != "Merchant")
+                return new("RoleNotAllowed", "Chỉ Merchant phụ trách đơn được xác nhận đồ đã chuẩn bị xong.");
+            if (order.Status != WashOrderStatus.Paid)
+                return new("WrongStage", "Chỉ xác nhận sẵn sàng trả đồ khi đơn đã thanh toán và còn ở tiệm.");
+            if (order.PaymentStatus != PaymentStatus.Paid)
+                return new("NotPaid", "Thanh toán của đơn chưa được hệ thống xác nhận.");
             return null;
         }
 
@@ -130,6 +176,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             var assign = Assign(order, role, out var task);
             var storage = MoveToStorage(order, role, DateTime.UtcNow);
             var expired = CancelExpiredDeposit(order, role, DateTime.UtcNow);
+            var unassign = Unassign(order, role);
+            var ready = ConfirmReturnReady(order, role);
             return new OrderAllowedActionsDto
             {
                 AllowedNextStatuses = options.Where(x => x.Allowed).Select(x => x.Status).ToList(),
@@ -143,6 +191,11 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 AssignShipperReasonCode = assign?.Code,
                 AssignShipperReason = assign?.Message,
                 HasAssignedShipper = assign == null && order.ShipperId.HasValue && order.AssignedTaskType == task,
+                CanUnassignShipper = unassign == null,
+                UnassignShipperReasonCode = unassign?.Code,
+                CanConfirmReturnReady = ready == null,
+                ConfirmReturnReadyReasonCode = ready?.Code,
+                ConfirmReturnReadyReason = ready?.Message,
                 CanMoveToStorage = storage == null,
                 MoveToStorageReasonCode = storage?.Code,
                 MoveToStorageReason = storage?.Message,

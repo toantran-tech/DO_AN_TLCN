@@ -26,7 +26,8 @@ function Read-Response($Response){
 }
 function Send($Method,$Path,$Body,$Token,$Headers){ Read-Response ($http.SendAsync((New-Request $Method $Path $Body $Token $Headers)).Result) }
 function Detail(){ (Call-Api Get "/wash-order/$($o.id)" $null $merchant).data }
-function Notes($Pattern){ @((Detail).timeline | Where-Object { $_.note -like $Pattern }).Count }
+# Staff responses hide free-text notes; count structured events instead.
+function EventCount($Type){ @((Detail).timeline | Where-Object { $_.eventType -eq $Type }).Count }
 
 try {
     foreach($role in @('Admin','Merchant','Customer','Shipper')){
@@ -54,7 +55,7 @@ try {
     if($first.Status -ne 200 -or $first.Json.data.revision -le $r1){throw "Assign failed: $($first.Status) $($first.Json.message)"}
     $again=Send Put '/wash-order/assign-shipper' @{orderId=$o.id;shipperId="$shipperId";expectedRevision=$r1;operationId=$k1} $merchant
     if($again.Status -ne 200 -or !$again.Json.meta.replayed -or $again.Json.meta.resultRevision -ne $first.Json.data.revision){throw "Replay failed: $($again.Status) $($again.Json.meta | ConvertTo-Json -Compress)"}
-    if((Notes 'Ph*n c*ng Shipper*') -ne 1){throw 'Replay assigned twice.'}
+    if((EventCount 'ShipperAssigned') -ne 1){throw 'Replay assigned twice.'}
     $other=Send Put '/wash-order/assign-shipper' @{orderId=$o.id;shipperId="$([Guid]::NewGuid())";operationId=$k1} $merchant
     if($other.Status -ne 409 -or $other.Json.meta.code -ne 'OperationIdReused'){throw "Reused key: $($other.Status)"}
     $op=(Call-Api Get "/wash-order/$($o.id)/operations/$k1" $null $merchant).data

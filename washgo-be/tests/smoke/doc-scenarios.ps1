@@ -26,7 +26,7 @@ try {
     $n=0
     function New-Order($Rate,$MerchantId){
         $script:n++; $id=[Guid]::NewGuid(); $code="DS$run$($script:n)"
-        Sql "INSERT INTO washgo.orders SELECT (jsonb_populate_record(NULL::washgo.orders,to_jsonb(o)||jsonb_build_object('id','$id','order_code','$code','merchant_order_code',NULL,'receipt_number',NULL,'merchant_id','$MerchantId','commission_rate_applied',$Rate,'commission_snapshot_source','Assignment','status',12,'payment_status',2,'is_deleted',false))).* FROM washgo.orders o WHERE id='$base';" | Out-Null
+        Sql "INSERT INTO washgo.orders SELECT (jsonb_populate_record(NULL::washgo.orders,to_jsonb(o)||jsonb_build_object('id','$id','order_code','$code','merchant_order_code','MC$code','receipt_number',NULL,'merchant_id','$MerchantId','commission_rate_applied',$Rate,'commission_snapshot_source','Assignment','status',12,'payment_status',2,'is_deleted',false))).* FROM washgo.orders o WHERE id='$base';" | Out-Null
         $script:orders+=$id; "$id"
     }
     function Pay($Order,$Amount,$Rate,$DaysAgo,$Settlement='NULL'){
@@ -106,7 +106,7 @@ try {
     $o2=(Call-Api Post '/wash-order/' @{lockerId="$lockerId";boxId=$slot2.id;paymentMethod=2;items=@(@{serviceId=$standardWash;quantity=1})} $customer).data
     Invoke-TestDelivery $o2.id deposit $customer | Out-Null
     # Deposits may already pick the locker's Merchant: put both orders back in the waiting state for this check.
-    Sql "UPDATE washgo.orders SET merchant_id=NULL, merchant_name=NULL WHERE id IN ('$($o1.id)','$($o2.id)');" | Out-Null
+    Sql "UPDATE washgo.orders SET merchant_id=NULL, merchant_name=NULL, status=2 WHERE id IN ('$($o1.id)','$($o2.id)');" | Out-Null
     function Waiting { @((Call-Api Post '/order-assignment/filter' @{district="Doc$run";page=1;take=100} $admin).list | Where-Object { $_.id -in @($o1.id,$o2.id) }) }
     $w=Waiting
     if($w.Count -ne 2){throw "Waiting orders not listed: $($w.Count)"}

@@ -57,6 +57,20 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Commands
         public string? Note { get; set; }
     }
 
+    /// <summary>Merchant xác nhận đồ đã chuẩn bị xong tại tiệm (Paid → ReadyForReturnDispatch).</summary>
+    public class ConfirmReturnReadyCommand : GuardedOrderCommand
+    {
+        /// <summary>Ghi chú chuẩn bị (tối đa 500 ký tự), lưu vào lịch sử đơn.</summary>
+        public string? Note { get; set; }
+    }
+
+    /// <summary>Hủy phân công chuyến lấy/trả chưa hoàn thành.</summary>
+    public class UnassignShipperCommand : GuardedOrderCommand
+    {
+        /// <summary>Lý do (tối đa 500 ký tự), lưu vào lịch sử đơn.</summary>
+        public string? Reason { get; set; }
+    }
+
     public class MoveOrderToStorageCommand : GuardedOrderCommand
     {
         public Guid OrderId { get; set; }

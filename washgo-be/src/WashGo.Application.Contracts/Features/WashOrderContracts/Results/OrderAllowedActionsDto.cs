@@ -23,11 +23,20 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Results
         public bool CanAssignShipper { get; set; }
         /// <summary>Nhiệm vụ sẽ tạo khi phân công: Collect (lấy đồ) hoặc Return (trả đồ).</summary>
         public DeliveryTaskType? AssignTaskType { get; set; }
-        /// <summary>RoleNotAllowed, NoMerchant, WrongStage.</summary>
+        /// <summary>RoleNotAllowed, NoMerchant, ReturnNotReady, WrongStage.</summary>
         public string? AssignShipperReasonCode { get; set; }
         public string? AssignShipperReason { get; set; }
         /// <summary>Nhiệm vụ hiện tại đã có Shipper; phân công nữa là đổi người.</summary>
         public bool HasAssignedShipper { get; set; }
+        /// <summary>Hủy chuyến lấy/trả chưa hoàn thành: CollectionShipperAssigned → MerchantAssigned, ReturnShipperAssigned → ReadyForReturnDispatch.</summary>
+        public bool CanUnassignShipper { get; set; }
+        /// <summary>RoleNotAllowed, NoActiveAssignment.</summary>
+        public string? UnassignShipperReasonCode { get; set; }
+        /// <summary>Merchant xác nhận đồ đã chuẩn bị xong (Paid → ReadyForReturnDispatch) qua POST /wash-order/{id}/confirm-return-ready.</summary>
+        public bool CanConfirmReturnReady { get; set; }
+        /// <summary>RoleNotAllowed, WrongStage, NotPaid.</summary>
+        public string? ConfirmReturnReadyReasonCode { get; set; }
+        public string? ConfirmReturnReadyReason { get; set; }
         /// <summary>Ghi nhận chuyển đồ quá hạn từ tủ trả sang kho (Admin/Shipper).</summary>
         public bool CanMoveToStorage { get; set; }
         /// <summary>RoleNotAllowed, WrongStage, AlreadyMoved, NotYetDue.</summary>
