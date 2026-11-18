@@ -9,6 +9,8 @@ public static class OrderEventLabels
         "MerchantAssigned" => "Đã phân công tiệm giặt",
         "ShipperAssigned" => "Đã phân công Shipper",
         "ShipperReassigned" => "Đã đổi phân công Shipper",
+        "ShipperUnassigned" => "Đã hủy phân công Shipper",
+        "ReturnReadyConfirmed" => "Tiệm đã chuẩn bị xong, sẵn sàng trả đồ",
         "ShipperCollected" => "Shipper đã lấy đồ về tiệm",
         "ShipperReturned" => "Shipper đã trả đồ vào locker",
         "ActualWeightConfirmed" => "Đã cân và chốt giá",

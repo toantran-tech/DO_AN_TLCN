@@ -64,7 +64,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             }
             // Laundry already done: report when it actually finished.
             if (reached.TryGetValue(WashOrderStatus.AwaitingPayment, out var doneAt) || order.Status is not
-                (WashOrderStatus.Pending or WashOrderStatus.Deposited or WashOrderStatus.Collected or WashOrderStatus.Washing or
+                (WashOrderStatus.Pending or WashOrderStatus.Deposited or WashOrderStatus.MerchantAssigned or
+                 WashOrderStatus.CollectionShipperAssigned or WashOrderStatus.Collected or WashOrderStatus.Washing or
                  WashOrderStatus.Drying or WashOrderStatus.Ironing or WashOrderStatus.Folding))
             {
                 order.PredictionStatus = "done";

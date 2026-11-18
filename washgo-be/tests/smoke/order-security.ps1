@@ -29,6 +29,28 @@ function Call-Api($Method, $Path, $Body, $Token) {
             else { $Body = $Body.PSObject.Copy(); $Body | Add-Member -NotePropertyName expectedMerchantVersion -NotePropertyValue $version }
         }
     }
+    # Processing steps are strictly sequential; older tests that jump ahead walk the steps in between first.
+    # Set $global:StrictTransitions to send the request exactly as written.
+    if (-not $global:StrictTransitions -and $Method -eq 'Put' -and $Path -eq '/wash-order/status' -and $Token -and $Body -is [hashtable] -and $Body.newStatus -in 5..8) {
+        $chain = @(3, 4, 5, 6, 7, 8)
+        $current = 0
+        try { $current = [int](Invoke-RestMethod -Method Get -Uri "$BaseUrl/wash-order/$($Body.orderId)" -Headers @{ Authorization = "Bearer $Token" } -TimeoutSec 30).data.status } catch { }
+        $from = $chain.IndexOf($current); $to = $chain.IndexOf([int]$Body.newStatus)
+        if ($from -ge 1 -and $to -gt $from + 1) {
+            foreach ($step in $chain[($from + 1)..($to - 1)]) {
+                $walk = [Text.Encoding]::UTF8.GetBytes((@{ orderId = "$($Body.orderId)"; newStatus = $step } | ConvertTo-Json))
+                # A step that is refused (e.g. weight missing) stops the walk; the original request then gets its own answer.
+                try { Invoke-RestMethod -Method Put -Uri "$BaseUrl/wash-order/status" -Headers @{ Authorization = "Bearer $Token" } -ContentType 'application/json; charset=utf-8' -Body $walk -TimeoutSec 30 | Out-Null } catch { break }
+            }
+        }
+    }
+    # Return trips need the Merchant's "ready for return" confirmation first (Paid -> ReadyForReturnDispatch).
+    # Set $global:NoAutoReturnReady to assign exactly as written.
+    if (-not $global:NoAutoReturnReady -and $Method -eq 'Put' -and $Path -eq '/wash-order/assign-shipper' -and $Token -and $Body -is [hashtable] -and $Body.orderId) {
+        $view = $null
+        try { $view = (Invoke-RestMethod -Method Get -Uri "$BaseUrl/wash-order/$($Body.orderId)" -Headers @{ Authorization = "Bearer $Token" } -TimeoutSec 30).data } catch { }
+        if ($view -and [int]$view.status -eq 9) { Confirm-ReturnReady $Body.orderId $Token | Out-Null }
+    }
     if ($null -ne $Body) {
         $request.ContentType = 'application/json; charset=utf-8'
         $request.Body = [Text.Encoding]::UTF8.GetBytes(($Body | ConvertTo-Json -Depth 15))
@@ -41,6 +63,17 @@ function Call-Api($Method, $Path, $Body, $Token) {
         }
         throw
     }
+}
+
+# Merchant confirms the paid order is packed (Paid -> ReadyForReturnDispatch). An Admin token cannot confirm: the
+# test's $merchant token is tried, then (other fixture Merchants) the status is set directly in the local database.
+function Confirm-ReturnReady($Id, $Token) {
+    foreach ($candidate in @($Token, $merchant) | Where-Object { $_ } | Select-Object -Unique) {
+        try {
+            return Invoke-RestMethod -Method Post -Uri "$BaseUrl/wash-order/$Id/confirm-return-ready" -Headers @{ Authorization = "Bearer $candidate" } -ContentType 'application/json; charset=utf-8' -Body '{}' -TimeoutSec 30
+        } catch { }
+    }
+    Sql "UPDATE washgo.orders SET status=18 WHERE id='$Id' AND status=9;" | Out-Null
 }
 
 function Assert-Status($Expected, $Method, $Path, $Body, $Token) {
