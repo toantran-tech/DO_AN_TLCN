@@ -26,6 +26,7 @@ using WashGo.Domain.Entities.Partner;
 using WashGo.Domain.Entities.WashService;
 using WashGo.Domain.Entities.WashService.Interfaces;
 using WashGo.Domain.Shared.Enums;
+using WashGo.Domain.Entities.SystemConfig;
 using System.Data;
 
 namespace WashGo.Application.Features.ServiceProposalApplication.Services
@@ -391,9 +392,10 @@ namespace WashGo.Application.Features.ServiceProposalApplication.Services
                 service = new WashService(GuidGenerator.Create())
                 {
                     MerchantId = merchant.Id,
-                    Code = $"SVC_{Guid.NewGuid():N}"[..16].ToUpperInvariant(),
                     IsActive = true
                 };
+                // Same SV allocator and unique claim as services created by the Admin.
+                service.Code = await LazyServiceProvider.LazyGetRequiredService<IBusinessCodeAllocator>().AllocateAsync(BusinessCodeRules.Service, service.Id);
                 Apply(service, data);
                 service.ApprovalStatus = ServiceApprovalStatus.Approved;
                 service.ApprovedBy = CurrentUser.Id;

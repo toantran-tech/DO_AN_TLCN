@@ -1,5 +1,13 @@
 > Customer Guest 15/11/2026: đã triển khai yêu cầu docs/BACKEND_CUSTOMER (1).md: mở đúng 7 API đọc, giữ API cá nhân/ghi có JWT; phê duyệt publishForGuests riêng không tự public review cũ, ảnh kiểm tra phạm vi/Hide mỗi lần, rate limit + input bounds. Có migration AddGuestReviewApproval. Ba smoke suite hiện có đã cập nhật/nối CI; mới kiểm tra cú pháp PowerShell và whitespace, chưa chạy tests/build/Docker local hoặc áp DB/deploy. Bàn giao: [CUSTOMER_GUEST_ACCESS_API_REVIEW.md](docs/CUSTOMER_GUEST_ACCESS_API_REVIEW.md).
 
+## Mã nghiệp vụ tự sinh và validate Locker — 19/11/2026
+
+- [x] Allocator dùng chung (`business_code_claims`, INSERT ON CONFLICT, tìm số trống khi va chạm nhiều, CodeSpaceExhausted/CodeAllocationBusy), replay cùng tài nguyên trả mã cũ.
+- [x] Dịch vụ (Admin + duyệt đề xuất) SV, danh mục DM, locker LK, vùng phục vụ KV, mã lưu giữ mới ST; mã cũ/seed giữ nguyên, migration giữ chỗ mã cũ đã có dạng mới.
+- [x] Sửa không cần gửi mã; gửi mã khác → 400 CodeImmutable. Locker: ward/district tùy chọn, lỗi theo trường (`errors`, `meta.fields`), sửa không gửi ward/district thì giữ giá trị cũ.
+- [x] Smoke `business-codes.ps1` (replay, đồng thời, số trống cuối cùng, hết mã) PASS trên DB local, đã nối CI; cập nhật `locker-admin`, `storage-lifecycle`, `payment-overdue-storage`.
+- [ ] FE khóa ô mã/bỏ phường-quận theo [bàn giao](docs/BUSINESS_CODES_API_REVIEW.md).
+
 ## Trạng thái phân công, giặt tuần tự và trả đồ — 18/11/2026
 
 - [x] Giặt chỉ chuyển đúng bước kế tiếp (Collected→Washing→Drying→Ironing→Folding→AwaitingPayment), dùng chung cho ghi và allowedNextStatuses.

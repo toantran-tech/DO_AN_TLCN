@@ -29,6 +29,7 @@ namespace WashGo.EntityFrameworkCore.EntityFrameworkCore
         public DbSet<ServiceCategoryEntity> ServiceCategories { get; set; } = null!;
         public DbSet<NotificationDelivery> NotificationDeliveries { get; set; } = null!;
         public DbSet<StorageReferenceClaim> StorageReferenceClaims { get; set; } = null!;
+        public DbSet<BusinessCodeClaim> BusinessCodeClaims { get; set; } = null!;
         public DbSet<LoyaltyWallet> LoyaltyWallets { get; set; } = null!;
         public DbSet<LoyaltyEntry> LoyaltyEntries { get; set; } = null!;
         public DbSet<OrderStorageCycle> StorageCycles { get; set; } = null!;
@@ -139,6 +140,7 @@ namespace WashGo.EntityFrameworkCore.EntityFrameworkCore
             builder.ApplyConfiguration(new ServiceCategoryEntityTypeConfiguration());
             builder.ApplyConfiguration(new NotificationDeliveryEntityTypeConfiguration());
             builder.ApplyConfiguration(new StorageReferenceClaimEntityTypeConfiguration());
+            builder.ApplyConfiguration(new BusinessCodeClaimEntityTypeConfiguration());
             builder.Entity<WashService>().HasOne(x => x.Category).WithMany().HasForeignKey(x => x.CategoryId).OnDelete(DeleteBehavior.Restrict);
             builder.Entity<WashOrderTimeline>().Property(x => x.EventType).HasMaxLength(64);
             builder.Entity<WashOrderTimeline>().Property(x => x.Basis).HasMaxLength(40);

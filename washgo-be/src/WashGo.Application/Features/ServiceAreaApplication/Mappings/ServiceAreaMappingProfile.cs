@@ -11,8 +11,9 @@ namespace WashGo.Application.Features.ServiceAreaApplication.Mappings
         {
             config.NewConfig<ServiceArea, ServiceAreaResultDto>()
                 .Ignore(dest => dest.MerchantCount);
-            config.NewConfig<CreateServiceAreaCommand, ServiceArea>();
-            config.NewConfig<UpdateServiceAreaCommand, ServiceArea>();
+            // The code is issued by the server on create and never changes afterwards.
+            config.NewConfig<CreateServiceAreaCommand, ServiceArea>().Ignore(dest => dest.Code);
+            config.NewConfig<UpdateServiceAreaCommand, ServiceArea>().Ignore(dest => dest.Code).Ignore(dest => dest.Id);
         }
     }
 }

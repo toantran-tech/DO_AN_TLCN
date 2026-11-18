@@ -23,8 +23,9 @@ namespace WashGo.Application.Features.WashServiceApplication.Mappings
                 .Ignore(dest => dest.CanProposeUpdate)
                 .Ignore(dest => dest.ProposeBlockedCode)
                 .Ignore(dest => dest.ProposeBlockedReason);
-            config.NewConfig<CreateWashServiceCommand, WashService>();
-            config.NewConfig<UpdateWashServiceCommand, WashService>();
+            // The code is issued by the server on create and never changes afterwards.
+            config.NewConfig<CreateWashServiceCommand, WashService>().Ignore(dest => dest.Code);
+            config.NewConfig<UpdateWashServiceCommand, WashService>().Ignore(dest => dest.Code).Ignore(dest => dest.Id);
         }
     }
 }

@@ -14,11 +14,14 @@ namespace WashGo.Application.Contracts.Features.LockerContracts.Commands
         /// <summary>Cách viết ngắn khi locker chỉ có một Merchant phụ trách (dùng khi không gửi MerchantIds).</summary>
         public Guid? MerchantId { get; set; }
         public Guid? ServiceAreaId { get; set; }
-        public string Code { get; set; } = string.Empty;
+        /// <summary>Không cần gửi: tạo mới thì BE tự cấp LKdddd (mã gửi kèm bị bỏ qua); sửa chỉ chấp nhận đúng mã hiện tại.</summary>
+        public string? Code { get; set; }
         public string Name { get; set; } = string.Empty;
         public string Address { get; set; } = string.Empty;
+        /// <summary>Không bắt buộc. Khi sửa: không gửi (null) thì giữ giá trị đã lưu.</summary>
         public string? Ward { get; set; }
-        public string District { get; set; } = string.Empty;
+        /// <summary>Không bắt buộc. Khi sửa: không gửi (null) thì giữ giá trị đã lưu.</summary>
+        public string? District { get; set; }
         public string City { get; set; } = string.Empty;
         public double Latitude { get; set; }
         public double Longitude { get; set; }

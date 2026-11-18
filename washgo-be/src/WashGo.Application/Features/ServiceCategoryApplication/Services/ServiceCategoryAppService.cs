@@ -17,6 +17,7 @@ using WashGo.Core.Domain.Shared.Bases;
 using WashGo.Domain.Entities.WashService;
 using WashGo.Domain.Shared.Enums;
 using WashGo.Domain.Shared.Validation;
+using WashGo.Domain.Entities.SystemConfig;
 
 namespace WashGo.Application.Features.ServiceCategoryApplication.Services;
 
@@ -92,14 +93,17 @@ public class ServiceCategoryAppService(IRepository<ServiceCategoryEntity, Guid> 
     [UnitOfWork(IsDisabled = true)]
     public Task<BaseResponse<ServiceCategoryDto>> SaveAsync(Guid? id, SaveServiceCategoryCommand command) => WriteAsync(id, "Save", command.OperationId, command.ExpectedVersion, command, async row =>
     {
-        var error = ServiceCategoryRules.Validate(command.Code, command.Name, command.Description, command.SortOrder);
+        var error = ServiceCategoryRules.Validate(command.Name, command.Description, command.SortOrder);
         if (error != null) return Fail<ServiceCategoryDto>("InvalidCategory", error, HttpStatusCode.BadRequest);
-        var code = command.Code.Trim().ToUpperInvariant(); var name = ServiceCategoryRules.Name(command.Name); var key = ServiceCategoryRules.Key(name);
-        if (id.HasValue && row.Code != code) return Fail<ServiceCategoryDto>("CategoryCodeImmutable", "Mã danh mục không đổi sau khi tạo.");
-        if (await categories.AnyAsync(x => x.Id != row.Id && (x.Code == code || !x.IsDeleted && x.NormalizedName == key)))
-            return Fail<ServiceCategoryDto>("CategoryDuplicate", "Mã hoặc tên danh mục đã tồn tại.");
+        // The code is issued by the server: ignored on create, and on edit only the stored code is accepted.
+        if (id.HasValue && !BusinessCodeRules.AcceptsOnUpdate(command.Code, row.Code))
+            return Fail<ServiceCategoryDto>(BusinessCodeRules.ImmutableCode, BusinessCodeRules.ImmutableMessage, HttpStatusCode.BadRequest);
+        var name = ServiceCategoryRules.Name(command.Name); var key = ServiceCategoryRules.Key(name);
+        if (await categories.AnyAsync(x => x.Id != row.Id && !x.IsDeleted && x.NormalizedName == key))
+            return Fail<ServiceCategoryDto>("CategoryDuplicate", "Tên danh mục đã tồn tại.");
         var changed = !id.HasValue || row.Name != name || row.Description != command.Description?.Trim() || row.IsActive != command.IsActive || row.SortOrder != command.SortOrder;
-        row.Code = code; row.Name = name; row.NormalizedName = key; row.Description = command.Description?.Trim(); row.IsActive = command.IsActive; row.SortOrder = command.SortOrder;
+        if (!id.HasValue) row.Code = await LazyServiceProvider.LazyGetRequiredService<IBusinessCodeAllocator>().AllocateAsync(BusinessCodeRules.Category, row.Id);
+        row.Name = name; row.NormalizedName = key; row.Description = command.Description?.Trim(); row.IsActive = command.IsActive; row.SortOrder = command.SortOrder;
         if (!id.HasValue) await categories.InsertAsync(row, autoSave: true);
         else if (changed) { row.Revision++; await categories.UpdateAsync(row, autoSave: true); }
         var response = Success(await DtoAsync(row));
