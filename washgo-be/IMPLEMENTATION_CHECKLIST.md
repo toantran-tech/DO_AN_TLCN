@@ -1,3 +1,14 @@
+## Quản lý tài khoản trong Admin — 21/11/2026
+
+- [x] Xóa mềm User (không xóa cứng, không dùng bộ lọc ABP để lịch sử vẫn đọc được), khóa/mở có người/lý do/giờ server, revision do trigger (không đổi khi đăng nhập), cờ tài khoản bảo vệ.
+- [x] Email chuẩn hóa, unique lower(email) và Google trên tài khoản chưa xóa; đăng nhập/Google/làm mới token/quên mật khẩu/OTP/đăng ký bỏ qua tài khoản đã xóa; OTP đặt lại gắn đúng tài khoản; đăng ký trùng đồng thời → 409.
+- [x] Quyền riêng (`user_permissions`), xác thực lại `/auth/reauthenticate`, chặn tự khóa/xóa, tài khoản bảo vệ, Admin quản trị cuối (khóa tư vấn, an toàn đồng thời).
+- [x] Nghĩa vụ chặn xóa (đơn, thanh toán, hoàn tiền, khiếu nại, đối soát, Shipper, locker, nhiệm vụ, điểm); khóa Customer/Merchant cần xác nhận khi còn đơn, Shipper còn nhiệm vụ bị chặn.
+- [x] Trang Merchant/Shipper dùng chung khóa/mở/xóa tài khoản; xóa Shipper xóa mềm luôn tài khoản; Merchant có tài khoản khóa/xóa không được phân công.
+- [x] Hàng loạt (preview, từng dòng một transaction, replay, tra cứu operation), nhật ký tài khoản, đổi email qua OTP.
+- [x] Smoke `admin-accounts.ps1` PASS (DB mới kiểu CI), đã nối CI cùng `category-classification.ps1` (trước đó bị sót).
+- [ ] FE trang quản lý tài khoản theo [bàn giao](docs/ADMIN_ACCOUNT_MANAGEMENT_API_REVIEW.md).
+
 > Customer Guest 15/11/2026: đã triển khai yêu cầu docs/BACKEND_CUSTOMER (1).md: mở đúng 7 API đọc, giữ API cá nhân/ghi có JWT; phê duyệt publishForGuests riêng không tự public review cũ, ảnh kiểm tra phạm vi/Hide mỗi lần, rate limit + input bounds. Có migration AddGuestReviewApproval. Ba smoke suite hiện có đã cập nhật/nối CI; mới kiểm tra cú pháp PowerShell và whitespace, chưa chạy tests/build/Docker local hoặc áp DB/deploy. Bàn giao: [CUSTOMER_GUEST_ACCESS_API_REVIEW.md](docs/CUSTOMER_GUEST_ACCESS_API_REVIEW.md).
 
 ## Chỉ chọn Danh mục cho dịch vụ — 19/11/2026

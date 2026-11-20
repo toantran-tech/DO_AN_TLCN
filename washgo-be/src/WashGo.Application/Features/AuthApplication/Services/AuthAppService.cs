@@ -1,4 +1,5 @@
 using WashGo.Application.Features.AuditApplication.Services;
+using WashGo.Application.Features.AccountApplication.Services;
 using System;
 using System.Collections.Generic;
 using System.IdentityModel.Tokens.Jwt;
@@ -73,7 +74,8 @@ namespace WashGo.Application.Features.AuthApplication.Services
             }
 
             var email = command.Email.Trim().ToLowerInvariant();
-            var user = await _userRepo.FirstOrDefaultAsync(u => u.Email.ToLower() == email);
+            // Soft-deleted accounts never sign in; their email may already belong to a new account.
+            var user = await _userRepo.FirstOrDefaultAsync(u => u.Email.ToLower() == email && !u.IsDeleted);
             if (user == null)
             {
                 await AuditLoginFailedAsync(command.Email, user, "InvalidCredentials");
@@ -182,8 +184,9 @@ namespace WashGo.Application.Features.AuthApplication.Services
             }
 
             var email = payload.Email.Trim().ToLowerInvariant();
+            // A deleted account keeps its Google subject for history but is never signed in or relinked.
             var user = await _userRepo.FirstOrDefaultAsync(u =>
-                u.AuthProvider == AuthProvider.Google && u.ProviderId == payload.Subject);
+                u.AuthProvider == AuthProvider.Google && u.ProviderId == payload.Subject && !u.IsDeleted);
 
             if (user == null)
             {
@@ -193,7 +196,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
                         "Tài khoản quản trị này chưa được liên kết Google. Vui lòng đăng nhập bằng mật khẩu trước.");
                 }
 
-                var existingEmailUser = await _userRepo.FirstOrDefaultAsync(u => u.Email.ToLower() == email);
+                var existingEmailUser = await _userRepo.FirstOrDefaultAsync(u => u.Email.ToLower() == email && !u.IsDeleted);
                 if (existingEmailUser != null)
                 {
                     var existingRole = await _roleRepo.FindAsync(existingEmailUser.RoleId);
@@ -289,7 +292,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
         public async Task<BaseResponse<bool>> LinkGoogleAsync(Guid userId, LinkGoogleCommand command)
         {
             var user = await _userRepo.FindAsync(userId);
-            if (user == null || !user.IsActive)
+            if (user == null || user.IsDeleted || !user.IsActive)
             {
                 return BadRequest<bool>("Tài khoản không tồn tại hoặc đã bị khóa.");
             }
@@ -308,7 +311,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
             }
 
             var linkedUser = await _userRepo.FirstOrDefaultAsync(u =>
-                u.AuthProvider == AuthProvider.Google && u.ProviderId == payload.Subject);
+                u.AuthProvider == AuthProvider.Google && u.ProviderId == payload.Subject && !u.IsDeleted);
             if (linkedUser != null && linkedUser.Id != user.Id)
             {
                 return BadRequest<bool>("Tài khoản Google này đã được liên kết với một tài khoản WashGo khác.");
@@ -350,7 +353,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
             }
 
             var user = await _userRepo.FindAsync(storedToken.UserId);
-            if (user == null || !user.IsActive)
+            if (user == null || user.IsDeleted || !user.IsActive)
             {
                 return BadRequest<AuthResponseDto>("Tài khoản không tồn tại hoặc đã bị khóa.");
             }
@@ -362,7 +365,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
             var role = await _roleRepo.FindAsync(user.RoleId);
             var roleName = role?.Name ?? "Customer";
 
-            var (newRefreshToken, sessionId) = await GenerateAndSaveRefreshTokenAsync(user.Id, storedToken.StartedAt ?? storedToken.CreatedAt, storedToken.SessionKey ?? storedToken.Id);
+            var (newRefreshToken, sessionId) = await GenerateAndSaveRefreshTokenAsync(user.Id, storedToken.StartedAt ?? storedToken.CreatedAt, storedToken.SessionKey ?? storedToken.Id, storedToken.ReauthenticatedAt);
             var (accessToken, expiresAt) = GenerateJwtToken(user, roleName, sessionId);
 
             var result = new AuthResponseDto
@@ -443,10 +446,16 @@ namespace WashGo.Application.Features.AuthApplication.Services
             }
 
             var email = command.Email.Trim().ToLowerInvariant();
-            var existingUser = await _userRepo.FirstOrDefaultAsync(u => u.Email.ToLower() == email);
-            if (existingUser != null)
+            // Same identity lock as back-office account creation: two sign-ups with one email serialise here and the
+            // partial unique index (accounts not soft-deleted) is the final guard.
+            var identity = LazyServiceProvider.LazyGetRequiredService<AccountIdentityGuard>();
+            using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            await identity.LockEmailAsync(email);
+            if (await identity.EmailInUseAsync(email))
             {
-                return BadRequest<RegisterResultDto>($"Email '{command.Email}' đã được đăng ký.");
+                var taken = BadRequest<RegisterResultDto>($"Email '{command.Email}' đã được đăng ký.");
+                taken.Errors = new() { ["email"] = [taken.Message!] };
+                return taken;
             }
 
             var activeOtps = await _otpRepo.GetListAsync(o =>
@@ -495,11 +504,11 @@ namespace WashGo.Application.Features.AuthApplication.Services
                 UpdatedAt = DateTime.UtcNow
             };
 
-            await _userRepo.InsertAsync(user, autoSave: true);
-
-            // If Customer role, create Customer profile
-            if (role.Name.Equals("Customer", StringComparison.OrdinalIgnoreCase))
+            try
             {
+                await _userRepo.InsertAsync(user, autoSave: true);
+
+                // Public registration only creates Customers: create the Customer profile in the same transaction.
                 var customer = new Customer(userId)
                 {
                     LoyaltyPoints = 0,
@@ -509,8 +518,12 @@ namespace WashGo.Application.Features.AuthApplication.Services
                     UpdatedAt = DateTime.UtcNow
                 };
                 await _customerRepo.InsertAsync(customer, autoSave: true);
+                await uow.CompleteAsync();
             }
-
+            catch (Exception error) when (identity.Classify(error) != null)
+            {
+                return AccountIdentityGuard.EmailConflict<RegisterResultDto>();
+            }
             return Created(new RegisterResultDto { Id = user.Id, Email = user.Email },
                 "Đăng ký tài khoản thành công! Vui lòng đăng nhập.");
         }
@@ -541,7 +554,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
             }
 
             var email = command.Email.Trim().ToLowerInvariant();
-            var user = await _userRepo.FirstOrDefaultAsync(u => u.Email.ToLower() == email);
+            var user = await _userRepo.FirstOrDefaultAsync(u => u.Email.ToLower() == email && !u.IsDeleted);
 
             if (command.Purpose == OtpPurpose.Register)
             {
@@ -688,11 +701,15 @@ namespace WashGo.Application.Features.AuthApplication.Services
                 !PasswordHasher.Verify(command.VerificationToken, validOtp.CodeHash[VerifiedPasswordResetPrefix.Length..]))
                 return BadRequest<bool>("Phiên đặt lại mật khẩu không hợp lệ hoặc đã hết hạn. Vui lòng yêu cầu OTP mới.");
 
-            var user = await _userRepo.FirstOrDefaultAsync(u => u.Email.ToLower() == email);
+            var user = await _userRepo.FirstOrDefaultAsync(u => u.Email.ToLower() == email && !u.IsDeleted);
             if (user == null)
             {
                 return NotFound<bool>("Không tìm thấy thông tin tài khoản người dùng.");
             }
+            // The reset challenge belongs to the account it was issued for: after a soft delete and a new
+            // registration with the same email, an old challenge must not reset the new account.
+            if (validOtp.UserId != user.Id)
+                return BadRequest<bool>("Phiên đặt lại mật khẩu không hợp lệ hoặc đã hết hạn. Vui lòng yêu cầu OTP mới.");
 
             user.PasswordHash = PasswordHasher.HashPassword(command.NewPassword);
             user.UpdatedAt = DateTime.UtcNow;
@@ -714,7 +731,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
         public async Task<BaseResponse<AuthUserDto>> GetCurrentUserAsync(Guid userId)
         {
             var user = await _userRepo.FindAsync(userId);
-            if (user == null)
+            if (user == null || user.IsDeleted)
             {
                 return NotFound<AuthUserDto>("Không tìm thấy thông tin người dùng.");
             }
@@ -778,7 +795,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
             return (new JwtSecurityTokenHandler().WriteToken(token), expiresAt);
         }
 
-        private async Task<(string token, Guid sessionId)> GenerateAndSaveRefreshTokenAsync(Guid userId, DateTime? startedAt = null, Guid? sessionKey = null)
+        private async Task<(string token, Guid sessionId)> GenerateAndSaveRefreshTokenAsync(Guid userId, DateTime? startedAt = null, Guid? sessionKey = null, DateTime? reauthenticatedAt = null)
         {
             var userAgent = LazyServiceProvider.LazyGetService<IHttpContextAccessor>()?
                 .HttpContext?.Request.Headers.UserAgent.ToString();
@@ -799,6 +816,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
                 IsRevoked = false,
                 CreatedAt = DateTime.UtcNow,
                 StartedAt = startedAt ?? DateTime.UtcNow,
+                ReauthenticatedAt = reauthenticatedAt,
                 UserAgent = string.IsNullOrWhiteSpace(userAgent) ? null : userAgent.Length <= 300 ? userAgent : userAgent[..300]
             };
 

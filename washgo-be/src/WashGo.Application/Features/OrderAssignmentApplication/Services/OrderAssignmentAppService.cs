@@ -421,6 +421,10 @@ namespace WashGo.Application.Features.OrderAssignmentApplication.Services
             }
             var ids = links.Select(x => x.MerchantId).ToList();
             var merchants = (await _merchantRepo.GetListAsync(m => ids.Contains(m.Id))).ToDictionary(m => m.Id);
+            // A Merchant whose login account is locked or deleted (Admin account page) receives no new orders.
+            var accountsOk = (await AsyncExecuter.ToListAsync((await LazyServiceProvider
+                    .LazyGetRequiredService<IRepository<WashGo.Domain.Entities.Identity.User, Guid>>().GetQueryableAsync())
+                .Where(u => ids.Contains(u.Id) && u.IsActive && !u.IsDeleted).Select(u => u.Id))).ToHashSet();
             var loads = (await AsyncExecuter.ToListAsync((await _orderRepo.GetQueryableAsync())
                     .Where(o => !o.IsDeleted && o.MerchantId != null && ids.Contains(o.MerchantId.Value) && LoadStatuses.Contains(o.Status))
                     .GroupBy(o => o.MerchantId!.Value)
@@ -434,7 +438,8 @@ namespace WashGo.Application.Features.OrderAssignmentApplication.Services
             var result = new List<MerchantCandidateDto>();
             foreach (var link in links)
             {
-                if (!merchants.TryGetValue(link.MerchantId, out var m) || m.Status != MerchantStatus.Active || MerchantContractRules.IsExpired(m.ContractEndDate, DateTime.UtcNow))
+                if (!merchants.TryGetValue(link.MerchantId, out var m) || m.Status != MerchantStatus.Active || !accountsOk.Contains(m.Id) ||
+                    MerchantContractRules.IsExpired(m.ContractEndDate, DateTime.UtcNow))
                     continue;
                 double? distance = m.Latitude == 0 && m.Longitude == 0
                     ? null

@@ -9,6 +9,7 @@ using WashGo.Domain.Entities.Identity;
 using WashGo.Domain.Entities.Locker;
 using WashGo.Domain.Entities.Partner;
 using WashGo.Domain.Entities.WashService;
+using WashGo.Domain.Shared.Constants;
 using WashGo.Domain.Shared.Enums;
 using PasswordHasher = global::BCrypt.Net.BCrypt;
 
@@ -27,6 +28,7 @@ namespace WashGo.EntityFrameworkCore.Seeding
         private readonly IRepository<LockerMerchant, Guid> _lockerMerchantRepo;
         private readonly IRepository<WashService, Guid> _washServiceRepo;
         private readonly IRepository<TermsPolicy, Guid> _termsRepo;
+        private readonly IRepository<UserPermission, Guid> _permissionRepo;
 
         public WashGoDataSeederContributor(
             IRepository<Role, Guid> roleRepo,
@@ -39,8 +41,10 @@ namespace WashGo.EntityFrameworkCore.Seeding
             IRepository<Locker, Guid> lockerRepo,
             IRepository<LockerMerchant, Guid> lockerMerchantRepo,
             IRepository<WashService, Guid> washServiceRepo,
-            IRepository<TermsPolicy, Guid> termsRepo)
+            IRepository<TermsPolicy, Guid> termsRepo,
+            IRepository<UserPermission, Guid> permissionRepo)
         {
+            _permissionRepo = permissionRepo;
             _roleRepo = roleRepo;
             _userRepo = userRepo;
             _customerRepo = customerRepo;
@@ -83,6 +87,7 @@ namespace WashGo.EntityFrameworkCore.Seeding
             await SeedUserAsync(customerUserId, customerRole.Id, "customer@washgo.vn", customerPassHash, "Nguyễn Văn Khách", "0902000002");
             await SeedUserAsync(merchantUserId, merchantRole.Id, "merchant@washgo.vn", merchantPassHash, "Cửa Hàng Giặt Sấy WashGo Q1", "0903000003");
             await SeedUserAsync(shipperUserId, shipperRole.Id, "shipper@washgo.vn", shipperPassHash, "Trần Văn Shipper", "0904000004");
+            await SeedAccountPermissionsAsync(adminUserId);
 
             // 3. Profiles
             await SeedCustomerProfileAsync(customerUserId, "123 Nguyễn Huệ", "TP. Hồ Chí Minh");
@@ -113,6 +118,27 @@ namespace WashGo.EntityFrameworkCore.Seeding
 
             // 8. Terms of service for customers (first login)
             await SeedTermsPolicyAsync();
+        }
+
+        /// <summary>
+        /// A fresh database needs one Admin who can manage Admin accounts. Only when no active Admin holds
+        /// Accounts.ManageAdmins yet; existing grants (or their removal by an operator) are never overwritten.
+        /// </summary>
+        private async Task SeedAccountPermissionsAsync(Guid adminUserId)
+        {
+            var admin = await _userRepo.FindAsync(adminUserId);
+            if (admin == null || admin.IsDeleted || !admin.IsActive)
+                return;
+            var holders = await _permissionRepo.GetListAsync(x => x.Permission == AccountPermissions.ManageAdmins);
+            foreach (var holder in holders)
+                if (await _userRepo.FindAsync(holder.UserId) is { IsActive: true, IsDeleted: false })
+                    return;
+            foreach (var permission in AccountPermissions.Grantable)
+                if (!await _permissionRepo.AnyAsync(x => x.UserId == adminUserId && x.Permission == permission))
+                    await _permissionRepo.InsertAsync(new UserPermission(Guid.NewGuid())
+                    {
+                        UserId = adminUserId, Permission = permission, GrantedAt = DateTime.UtcNow
+                    }, autoSave: true);
         }
 
         private async Task SeedTermsPolicyAsync()

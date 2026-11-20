@@ -17,6 +17,14 @@ namespace WashGo.Application.Contracts.Features.AuthContracts.Results
         public bool IsCurrent { get; set; }
     }
 
+    /// <summary>Kết quả xác thực lại: hiệu lực cho phiên hiện tại tới reauthenticatedUntil (UTC).</summary>
+    public class ReauthenticationDto
+    {
+        public DateTime ReauthenticatedAt { get; set; }
+        public DateTime ReauthenticatedUntil { get; set; }
+        public int ValidForSeconds { get; set; }
+    }
+
     public class SecurityStatusDto
     {
         /// <summary>false với tài khoản chỉ đăng nhập Google (chưa có mật khẩu).</summary>

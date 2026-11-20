@@ -17,5 +17,6 @@ namespace WashGo.Application.Contracts.Features.AuthContracts.Services
         Task<BaseResponse<SessionListDto>> GetSessionsAsync(Guid userId, Guid sessionId, SessionListQuery query);
         Task<BaseResponse<RevokeSessionsResultDto>> RevokeOtherSessionsAsync(Guid userId, Guid sessionId);
         Task<BaseResponse<RevokeSessionsResultDto>> RevokeSessionAsync(Guid userId, Guid sessionId, Guid targetId);
+        Task<BaseResponse<ReauthenticationDto>> ReauthenticateAsync(Guid userId, Guid sessionId, ReauthenticateCommand command);
     }
 }

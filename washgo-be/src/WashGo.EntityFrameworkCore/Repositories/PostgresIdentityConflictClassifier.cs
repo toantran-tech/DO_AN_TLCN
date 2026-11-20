@@ -14,7 +14,9 @@ public class PostgresIdentityConflictClassifier : IIdentityConflictClassifier, I
             if (current is not PostgresException { SqlState: PostgresErrorCodes.UniqueViolation } error) continue;
             return error.ConstraintName switch
             {
-                "IX_users_email" => "EmailAlreadyUsed",
+                // Unique only among accounts that are not soft-deleted (lower(email) / provider identity).
+                "IX_users_email" or "ux_users_email_active" => "EmailAlreadyUsed",
+                "ux_users_provider_active" => "IdentityAlreadyInUse",
                 "IX_merchants_tax_code" => "TaxCodeAlreadyUsed",
                 _ => null
             };

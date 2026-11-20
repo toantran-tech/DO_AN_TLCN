@@ -39,6 +39,12 @@ namespace WashGo.HttpApi.Endpoints.Auth
                 .WithSummary("Đổi mật khẩu khi đang đăng nhập: cần mật khẩu hiện tại; mật khẩu mới 8-128 ký tự có hoa/thường/số, khác mật khẩu cũ. Sai mật khẩu hiện tại 5 lần trong 15 phút → 429. revokeOtherSessions (mặc định true) đăng xuất mọi phiên khác, giữ phiên hiện tại.")
                 .WithOpenApi();
 
+            group.MapPost("/reauthenticate", async (ReauthenticateCommand command, HttpContext http, IAccountSecurityAppService svc) =>
+                    TryIds(http, out var u, out var s) ? (await svc.ReauthenticateAsync(u, s, command)).CustomResult() : Results.Unauthorized())
+                .WithName("Xác thực lại")
+                .WithSummary("Nhập lại mật khẩu của chính tài khoản trước thao tác nhạy cảm (ví dụ quản lý tài khoản Admin). Thành công → phiên hiện tại được coi là vừa xác thực trong `validForSeconds` giây (`reauthenticatedUntil`). Sai mật khẩu 5 lần/15 phút → 429.")
+                .WithOpenApi();
+
             group.MapGet("/sessions", async ([AsParameters] SessionListQuery query, HttpContext http, IAccountSecurityAppService svc) =>
                     TryIds(http, out var u, out var s) ? (await svc.GetSessionsAsync(u, s, query)).CustomResult() : Results.Unauthorized())
                 .WithName("Danh sách phiên đăng nhập")

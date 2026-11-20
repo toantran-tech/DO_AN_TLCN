@@ -45,6 +45,7 @@ namespace WashGo.HttpApi
             context.Services.AddTransient<IEndpointBase, AdministrativeOperationHandler>();
             context.Services.AddTransient<IEndpointBase, AccountSecurityHandler>();
             context.Services.AddTransient<IEndpointBase, AdminProfileHandler>();
+            context.Services.AddTransient<IEndpointBase, AdminAccountHandler>();
             context.Services.AddTransient<IEndpointBase, AdminDashboardHandler>();
             context.Services.AddTransient<IEndpointBase, CustomerHandler>();
             context.Services.AddTransient<IEndpointBase, LoyaltyHandler>();

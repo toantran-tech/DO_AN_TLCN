@@ -1,4 +1,5 @@
 using WashGo.Application.Features.AuditApplication.Services;
+using WashGo.Application.Features.AccountApplication.Services;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -245,7 +246,7 @@ namespace WashGo.Application.Features.MerchantApplication.Services
                 if (!MerchantRules.IsValidEmail(email))
                     return BadRequest<MerchantResultDto>("Email không hợp lệ.");
                 await _writeGuard.LockIdentityAsync(email, command.TaxCode);
-                if (await _userRepo.AnyAsync(x => x.Email.ToLower() == email))
+                if (await _userRepo.AnyAsync(x => x.Email.ToLower() == email && !x.IsDeleted))
                     return MerchantWriteGuard.Error<MerchantResultDto>(HttpStatusCode.Conflict, "EmailAlreadyUsed", "Email này đã được sử dụng.");
                 if (command.TaxCode != null && await _merchantRepo.AnyAsync(x => x.TaxCode == command.TaxCode))
                     return MerchantWriteGuard.Error<MerchantResultDto>(HttpStatusCode.Conflict, "TaxCodeAlreadyUsed", "Mã số thuế này đã được sử dụng.");
@@ -426,6 +427,9 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             {
                 return NotFound<MerchantResultDto>("Không tìm thấy đối tác Merchant!");
             }
+            if (user.IsDeleted && command.Status == MerchantStatus.Active)
+                return MerchantWriteGuard.Error<MerchantResultDto>(HttpStatusCode.Conflict, "AccountDeleted",
+                    "Tài khoản đăng nhập của Merchant đã bị xóa; không thể mở lại cửa hàng.");
             if (string.IsNullOrWhiteSpace(command.ExpectedVersion))
                 return MerchantWriteGuard.Error<MerchantResultDto>(HttpStatusCode.BadRequest, "ExpectedVersionRequired", "Thiếu expectedVersion từ GET /merchant/{id}.");
             if (command.ExpectedVersion != MerchantWriteGuard.Version(entity))
@@ -462,23 +466,21 @@ namespace WashGo.Application.Features.MerchantApplication.Services
 
             entity.Status = command.Status;
             MerchantWriteGuard.Touch(entity);
+            var lifecycle = LazyServiceProvider.LazyGetRequiredService<AccountLifecycle>();
             if (locking)
             {
                 entity.RejectionReason = reason;
-                user.IsActive = false;
-                // Locked accounts cannot refresh their session.
-                var tokens = await _tokenRepo.GetListAsync(x => x.UserId == user.Id && !x.IsRevoked);
-                foreach (var token in tokens)
-                    token.IsRevoked = true;
-                if (tokens.Count > 0)
-                    await _tokenRepo.UpdateManyAsync(tokens, autoSave: true);
+                // Same account lock as the Admin account page: sessions revoked, realtime closed, who/why recorded.
+                if (!user.IsDeleted && user.IsActive)
+                    await lifecycle.LockAsync(user, CurrentUser.Id, reason);
             }
             else
             {
                 entity.RejectionReason = null;
                 entity.ApprovedBy = CurrentUser.Id;
                 entity.ApprovedAt = now;
-                user.IsActive = true;
+                if (!user.IsActive)
+                    lifecycle.Unlock(user, CurrentUser.Id, null);
             }
             user.UpdatedAt = now;
             await _merchantRepo.UpdateAsync(entity, autoSave: true);
@@ -553,7 +555,7 @@ namespace WashGo.Application.Features.MerchantApplication.Services
                 if (await AsyncExecuter.CountAsync((await _areaRepo.GetQueryableAsync()).Where(x => distinct.Contains(x.Id) && x.IsActive)) != distinct.Count)
                     return ("Vùng phục vụ không tồn tại hoặc đã ngừng hoạt động.", null);
             }
-            if (await _userRepo.AnyAsync(x => x.Email.ToLower() == email && x.Id != currentId))
+            if (await _userRepo.AnyAsync(x => x.Email.ToLower() == email && !x.IsDeleted && x.Id != currentId))
                 return ("Email này đã được sử dụng.", null);
             var taxCode = string.IsNullOrWhiteSpace(command.TaxCode) ? null : command.TaxCode.Trim();
             if (taxCode != null && (taxCode.Length > 20 || await _merchantRepo.AnyAsync(x => x.TaxCode == taxCode && x.Id != currentId)))
