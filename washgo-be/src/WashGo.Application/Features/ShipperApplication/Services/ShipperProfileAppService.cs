@@ -59,7 +59,7 @@ public class ShipperProfileAppService(IShipperRepository shippers, IRepository<U
         if (error != null) return Error("InvalidProfile", error, HttpStatusCode.BadRequest);
         // Same normalized phone lock is shared by self/management writers in this round.
         await guard.LockAsync($"shipper-phone:{phone}");
-        if (await users.AnyAsync(x => x.Phone == phone && x.Id != user.Id))
+        if (await users.AnyAsync(x => x.Phone == phone && !x.IsDeleted && x.Id != user.Id))
             return Error("PhoneAlreadyUsed", "Số điện thoại này đã được sử dụng.", HttpStatusCode.BadRequest);
         var avatar = user.Avatar;
         if (command.AvatarUrl != null)

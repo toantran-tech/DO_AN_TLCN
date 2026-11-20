@@ -21,5 +21,8 @@ namespace WashGo.HttpApi.Hubs
 
         public Task SendStateAsync(Guid userId, NotificationStateDto state) =>
             _hub.Clients.User(userId.ToString()).SendAsync(NotificationHub.StateMethod, state);
+
+        public Task<int> DisconnectUserAsync(Guid userId) =>
+            Task.FromResult(NotificationHub.AbortUser(userId.ToString()));
     }
 }

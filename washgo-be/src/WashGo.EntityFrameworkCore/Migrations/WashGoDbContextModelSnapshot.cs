@@ -1049,6 +1049,10 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("is_revoked");
 
+                    b.Property<DateTime?>("ReauthenticatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("reauthenticated_at");
+
                     b.Property<Guid?>("SessionKey")
                         .HasColumnType("uuid")
                         .HasColumnName("session_key");
@@ -1135,6 +1139,27 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
+                    b.Property<int?>("CredentialDelivery")
+                        .HasColumnType("integer")
+                        .HasColumnName("credential_delivery");
+
+                    b.Property<DateTime?>("CredentialSentAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("credential_sent_at");
+
+                    b.Property<string>("DeleteReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("delete_reason");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("deleted_by");
+
                     b.Property<string>("Email")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -1150,6 +1175,18 @@ namespace WashGo.EntityFrameworkCore.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean")
                         .HasColumnName("is_active");
+
+                    b.Property<bool>("IsDeleted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("is_deleted");
+
+                    b.Property<bool>("IsProtected")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("is_protected");
 
                     b.Property<DateTime?>("LastLoginAt")
                         .HasColumnType("timestamp with time zone")
@@ -1174,9 +1211,28 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("character varying(255)")
                         .HasColumnName("provider_id");
 
+                    b.Property<long>("Revision")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("bigint")
+                        .HasDefaultValue(0L)
+                        .HasColumnName("revision");
+
                     b.Property<Guid>("RoleId")
                         .HasColumnType("uuid")
                         .HasColumnName("role_id");
+
+                    b.Property<DateTime?>("StatusChangedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("status_changed_at");
+
+                    b.Property<Guid?>("StatusChangedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("status_changed_by");
+
+                    b.Property<string>("StatusReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("status_reason");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
@@ -1184,18 +1240,56 @@ namespace WashGo.EntityFrameworkCore.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("Email")
-                        .IsUnique();
+                    b.HasIndex("DeletedAt")
+                        .HasDatabaseName("ix_users_deleted_at")
+                        .HasFilter("is_deleted = true");
 
                     b.HasIndex("RoleId");
 
-                    b.HasIndex("AuthProvider", "ProviderId")
-                        .IsUnique();
+                    b.HasIndex("CreatedAt", "Id")
+                        .HasDatabaseName("ix_users_created_active")
+                        .HasFilter("is_deleted = false");
 
                     b.ToTable("users", "washgo", t =>
                         {
                             t.HasCheckConstraint("chk_users_auth", "(auth_provider = 1 AND password_hash IS NOT NULL) OR (auth_provider <> 1 AND provider_id IS NOT NULL)");
+
+                            t.HasCheckConstraint("chk_users_deleted", "(is_deleted AND deleted_at IS NOT NULL AND NOT is_active) OR (NOT is_deleted AND deleted_at IS NULL AND deleted_by IS NULL AND delete_reason IS NULL)");
                         });
+                });
+
+            modelBuilder.Entity("WashGo.Domain.Entities.Identity.UserPermission", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("GrantedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("granted_at");
+
+                    b.Property<Guid?>("GrantedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("granted_by");
+
+                    b.Property<string>("Permission")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("permission");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Permission");
+
+                    b.HasIndex("UserId", "Permission")
+                        .IsUnique();
+
+                    b.ToTable("user_permissions", "washgo");
                 });
 
             modelBuilder.Entity("WashGo.Domain.Entities.Locker.Locker", b =>
@@ -4916,6 +5010,15 @@ namespace WashGo.EntityFrameworkCore.Migrations
                     b.HasOne("WashGo.Domain.Entities.Identity.Role", null)
                         .WithMany()
                         .HasForeignKey("RoleId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("WashGo.Domain.Entities.Identity.UserPermission", b =>
+                {
+                    b.HasOne("WashGo.Domain.Entities.Identity.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });

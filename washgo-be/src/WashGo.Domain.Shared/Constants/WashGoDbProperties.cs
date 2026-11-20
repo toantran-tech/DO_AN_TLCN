@@ -40,5 +40,6 @@ namespace WashGo.Domain.Shared.Constants
         public const string ShipperAudits = "shipper_audits";
         public const string DeliveryTasks = "delivery_tasks";
         public const string AuditLogs = "audit_logs";
+        public const string UserPermissions = "user_permissions";
     }
 }

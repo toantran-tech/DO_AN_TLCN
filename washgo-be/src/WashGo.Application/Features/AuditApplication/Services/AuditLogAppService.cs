@@ -77,7 +77,7 @@ namespace WashGo.Application.Features.AuditApplication.Services
             return Success(rows.Select(ToDto), total, page, take, total == 0 ? "Chưa có hoạt động nào." : null);
         }
 
-        private static AuditLogDto ToDto(AuditLog x) => new()
+        internal static AuditLogDto ToDto(AuditLog x) => new()
         {
             Id = x.Id,
             OccurredAt = DateTime.SpecifyKind(x.OccurredAt, DateTimeKind.Utc),

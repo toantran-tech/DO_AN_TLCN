@@ -9,4 +9,10 @@ namespace WashGo.Application.Contracts.Features.AuthContracts.Commands
         /// <summary>true (mặc định): đăng xuất mọi phiên khác, giữ phiên hiện tại.</summary>
         public bool RevokeOtherSessions { get; set; } = true;
     }
+
+    /// <summary>Nhập lại mật khẩu trước thao tác nhạy cảm; có hiệu lực cho phiên hiện tại trong một khoảng ngắn.</summary>
+    public class ReauthenticateCommand
+    {
+        public string Password { get; set; } = string.Empty;
+    }
 }

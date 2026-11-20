@@ -42,6 +42,11 @@ namespace WashGo.Application.Features.AuthApplication.Services
                     "Yêu cầu đặt lại mật khẩu",
                     "Chúng tôi nhận được yêu cầu đặt lại mật khẩu cho tài khoản WashGo của bạn. Dưới đây là mã OTP xác thực của bạn."
                 ),
+                OtpPurpose.ChangeEmail => (
+                    "Mã xác minh email mới cho tài khoản WashGo",
+                    "Xác minh email mới",
+                    "Quản trị viên WashGo đang đổi email đăng nhập của tài khoản sang địa chỉ này. Vui lòng cung cấp mã dưới đây cho quản trị viên để xác nhận bạn sở hữu email. Nếu bạn không yêu cầu, hãy bỏ qua thư này."
+                ),
                 _ => (
                     "Mã xác thực WashGo",
                     "Mã xác thực bảo mật",
@@ -60,6 +65,10 @@ namespace WashGo.Application.Features.AuthApplication.Services
         public Task<CredentialDeliveryStatus> SendMerchantCredentialsAsync(string email, string fullName, string temporaryPassword) =>
             SendWithStatusAsync(email, "Tài khoản Merchant WashGo của bạn",
                 AuthEmailTemplates.RenderCredentialsEmail("Merchant", fullName, email, temporaryPassword), isHtml: true);
+
+        public Task<CredentialDeliveryStatus> SendRoleCredentialsAsync(string email, string fullName, string role, string temporaryPassword) =>
+            SendWithStatusAsync(email, $"Tài khoản {role} WashGo của bạn",
+                AuthEmailTemplates.RenderCredentialsEmail(role, fullName, email, temporaryPassword), isHtml: true);
 
         public Task<bool> SendGoogleLinkedAsync(string email, string fullName, string googleEmail) =>
             SendAsync(email, "Liên kết Google với WashGo thành công",
