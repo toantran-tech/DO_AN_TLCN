@@ -24,5 +24,7 @@ namespace WashGo.Domain.Entities.Identity
         public Guid? SessionKey { get; set; }
         /// <summary>User-Agent của thiết bị (cắt 300 ký tự) để người dùng nhận ra phiên; không lưu IP.</summary>
         public string? UserAgent { get; set; }
+        /// <summary>Lần nhập lại mật khẩu gần nhất trong phiên (POST /auth/reauthenticate); giữ qua các lần làm mới token.</summary>
+        public DateTime? ReauthenticatedAt { get; set; }
     }
 }

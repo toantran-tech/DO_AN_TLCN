@@ -117,7 +117,7 @@ namespace WashGo.HttpApi.Host
                         var session = await tokenRepository.FindAsync(sessionId);
                         var user = await userRepository.FindAsync(userId);
                         if (session == null || session.UserId != userId || session.IsRevoked ||
-                            session.ExpiryDate <= DateTime.UtcNow || user == null || !user.IsActive)
+                            session.ExpiryDate <= DateTime.UtcNow || user == null || !user.IsActive || user.IsDeleted)
                         {
                             tokenContext.Fail("Phiên đăng nhập đã hết hiệu lực.");
                         }

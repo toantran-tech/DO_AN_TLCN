@@ -130,6 +130,7 @@ namespace WashGo.Application.Features.AuditApplication.Services
             ["Incident"] = ["messageId", "percent", "settingsVersion", "compensationAmount", "reference"],
             ["Locker"] = ["newStatus"],
             ["Documents"] = ["kind"],
+            ["Account"] = ["role", "operationId", "openOrders", "confirm", "added", "removed", "permissions"],
         };
 
         public static string? Sanitize(object? details, string? module = null)

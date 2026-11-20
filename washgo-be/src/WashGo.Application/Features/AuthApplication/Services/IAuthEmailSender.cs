@@ -16,4 +16,6 @@ public interface IAuthEmailSender
     Task<bool> SendAccountCredentialsAsync(string email, string fullName, string temporaryPassword);
     /// <summary>Merchant credential message; Sent means SMTP accepted, Unknown is not safe to auto-retry.</summary>
     Task<CredentialDeliveryStatus> SendMerchantCredentialsAsync(string email, string fullName, string temporaryPassword);
+    /// <summary>Thông tin đăng nhập cho tài khoản Customer/Admin do Admin tạo; Unknown không được tự gửi lại.</summary>
+    Task<CredentialDeliveryStatus> SendRoleCredentialsAsync(string email, string fullName, string role, string temporaryPassword);
 }

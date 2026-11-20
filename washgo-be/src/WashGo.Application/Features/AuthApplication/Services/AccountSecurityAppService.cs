@@ -59,7 +59,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
         {
             using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
             var user = await _userRepo.FindAsync(userId);
-            if (user == null || !user.IsActive)
+            if (user == null || user.IsDeleted || !user.IsActive)
                 return NotFound<bool>("Không tìm thấy tài khoản.");
             if (string.IsNullOrEmpty(user.PasswordHash))
                 return BadRequest<bool>("Tài khoản đăng nhập bằng Google chưa có mật khẩu; hãy dùng Quên mật khẩu để tạo mật khẩu.");
@@ -168,6 +168,53 @@ namespace WashGo.Application.Features.AuthApplication.Services
                 });
             return Success(new RevokeSessionsResultDto { Revoked = revoked, Stale = revoked == 0 },
                 revoked == 0 ? "Phiên này đã kết thúc trước đó." : keys.Contains(currentKey) ? "Đã đăng xuất phiên hiện tại." : "Đã đăng xuất phiên đã chọn.");
+        }
+
+        /// <summary>How long a re-authentication counts as "recent" for sensitive actions (Admin account management).</summary>
+        public static readonly TimeSpan ReauthenticationWindow = TimeSpan.FromMinutes(10);
+
+        public async Task<BaseResponse<ReauthenticationDto>> ReauthenticateAsync(Guid userId, Guid sessionId, ReauthenticateCommand command)
+        {
+            using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            var user = await _userRepo.FindAsync(userId);
+            var session = await _tokenRepo.FindAsync(sessionId);
+            if (user == null || user.IsDeleted || !user.IsActive || session == null || session.UserId != userId || session.IsRevoked)
+                return NotFound<ReauthenticationDto>("Không tìm thấy phiên đăng nhập.");
+            if (string.IsNullOrEmpty(user.PasswordHash))
+                return BadRequest<ReauthenticationDto>("Tài khoản chưa có mật khẩu; hãy dùng Quên mật khẩu để tạo mật khẩu trước.");
+            var since = DateTime.UtcNow - FailedWindow;
+            var failures = await _auditRepo.CountAsync(x => x.ActorId == userId && x.Module == "Auth" && x.Action == "Reauthenticate" &&
+                                                            x.Result == AuditResult.Failed && x.OccurredAt >= since);
+            if (failures >= MaxFailedChanges)
+                return new BaseResponse<ReauthenticationDto>
+                {
+                    Succeeded = false, StatusCode = HttpStatusCode.TooManyRequests, Meta = new { code = "TooManyAttempts" },
+                    Message = $"Bạn đã nhập sai mật khẩu quá {MaxFailedChanges} lần. Vui lòng thử lại sau {FailedWindow.TotalMinutes:0} phút."
+                };
+            if (string.IsNullOrEmpty(command.Password) || !PasswordHasher.Verify(command.Password, user.PasswordHash))
+            {
+                await Audit.LogAsync(new AuditEntry("Auth", "Reauthenticate", "User", user.Id.ToString(), user.Email)
+                {
+                    Result = AuditResult.Failed, ErrorCode = "WrongPassword"
+                });
+                await uow.CompleteAsync();
+                return new BaseResponse<ReauthenticationDto>
+                {
+                    Succeeded = false, StatusCode = HttpStatusCode.BadRequest, Meta = new { code = "WrongPassword" },
+                    Message = "Mật khẩu không đúng.", Errors = new() { ["password"] = ["Mật khẩu không đúng."] }
+                };
+            }
+            var now = DateTime.UtcNow;
+            session.ReauthenticatedAt = now;
+            await _tokenRepo.UpdateAsync(session, autoSave: true);
+            await Audit.LogAsync(new AuditEntry("Auth", "Reauthenticate", "User", user.Id.ToString(), user.Email) { Details = new { sessionId } });
+            await uow.CompleteAsync();
+            return Success(new ReauthenticationDto
+            {
+                ReauthenticatedAt = DateTime.SpecifyKind(now, DateTimeKind.Utc),
+                ReauthenticatedUntil = DateTime.SpecifyKind(now + ReauthenticationWindow, DateTimeKind.Utc),
+                ValidForSeconds = (int)ReauthenticationWindow.TotalSeconds
+            }, "Đã xác thực lại.");
         }
 
         private async Task<Guid> KeyOfAsync(Guid tokenId)

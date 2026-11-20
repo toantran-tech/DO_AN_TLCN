@@ -9,5 +9,7 @@ namespace WashGo.Application.Contracts.Features.NotificationContracts.Services
     {
         Task SendAsync(Guid userId, NotificationDto notification);
         Task SendStateAsync(Guid userId, NotificationStateDto state);
+        /// <summary>Ends every open real-time connection of the user (account locked/deleted); returns how many were closed.</summary>
+        Task<int> DisconnectUserAsync(Guid userId);
     }
 }

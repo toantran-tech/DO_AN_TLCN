@@ -38,6 +38,7 @@ namespace WashGo.EntityFrameworkCore.EntityFrameworkCore
         public DbSet<ChatMessage> ChatMessages { get; set; } = null!;
         public DbSet<Role> Roles { get; set; } = null!;
         public DbSet<User> Users { get; set; } = null!;
+        public DbSet<UserPermission> UserPermissions { get; set; } = null!;
         public DbSet<RefreshToken> RefreshTokens { get; set; } = null!;
         public DbSet<OtpCode> OtpCodes { get; set; } = null!;
         public DbSet<Customer> Customers { get; set; } = null!;
@@ -95,6 +96,7 @@ namespace WashGo.EntityFrameworkCore.EntityFrameworkCore
 
             builder.ApplyConfiguration(new RoleEntityTypeConfiguration());
             builder.ApplyConfiguration(new UserEntityTypeConfiguration());
+            builder.ApplyConfiguration(new UserPermissionEntityTypeConfiguration());
             builder.ApplyConfiguration(new RefreshTokenEntityTypeConfiguration());
             builder.ApplyConfiguration(new OtpCodeEntityTypeConfiguration());
             builder.ApplyConfiguration(new CustomerEntityTypeConfiguration());

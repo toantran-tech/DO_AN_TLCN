@@ -1,4 +1,5 @@
 using WashGo.Application.Features.AuditApplication.Services;
+using WashGo.Application.Features.AccountApplication.Services;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -85,6 +86,9 @@ namespace WashGo.Application.Features.ShipperApplication.Services
         }
 
         private bool IsAdmin => CurrentUser.IsInRole("Admin");
+
+        // Account-level lock/unlock/delete is shared with the Admin account page (same rules, sessions, realtime).
+        private AccountLifecycle Lifecycle => LazyServiceProvider.LazyGetRequiredService<AccountLifecycle>();
 
         // Merchant accounts share their id with the Merchant profile.
         private Guid? ScopeMerchantId(Guid? requested) => IsAdmin ? requested : CurrentUser.Id;
@@ -377,7 +381,7 @@ namespace WashGo.Application.Features.ShipperApplication.Services
             if (shipper == null || !IsAdmin && shipper.MerchantId != CurrentUser.Id)
                 return NotFound<ShipperDto>("Không tìm thấy Shipper!");
             var user = await _userRepo.FindAsync(shipper.UserId);
-            if (user == null)
+            if (user == null || user.IsDeleted)
                 return NotFound<ShipperDto>("Không tìm thấy Shipper!");
             if (user.IsActive)
             {
@@ -385,8 +389,7 @@ namespace WashGo.Application.Features.ShipperApplication.Services
                 return Success(await ToDtoAsync(shipper, user), "Tài khoản Shipper đang hoạt động, không cần mở khóa.");
             }
             // Unlocking restores sign-in only: working/operational status and old tasks are left as they are.
-            user.IsActive = true;
-            user.UpdatedAt = DateTime.UtcNow;
+            Lifecycle.Unlock(user, CurrentUser.Id, reason);
             shipper.LockedAt = null;
             shipper.LockReason = null;
             shipper.UpdatedAt = DateTime.UtcNow;
@@ -535,11 +538,10 @@ namespace WashGo.Application.Features.ShipperApplication.Services
             shipper.DeletedBy = CurrentUser.Id;
             shipper.IsActive = false;
             shipper.UpdatedAt = now;
-            user.IsActive = false;
-            user.UpdatedAt = now;
+            // The login account is soft-deleted too: sessions end, the email is free for a new account, history keeps the id.
+            await Lifecycle.SoftDeleteAsync(user, CurrentUser.Id, reason);
             await _userRepo.UpdateAsync(user, autoSave: true);
             await _shipperRepo.UpdateAsync(shipper, autoSave: true);
-            await RevokeSessionsAsync(user.Id);
             await AuditAsync(shipper, ShipperAuditAction.Deleted, reason, null);
             await uow.CompleteAsync();
             return new(HttpStatusCode.OK, "Deleted", "Đã xóa Shipper; tài khoản không còn đăng nhập được, lịch sử đơn hàng được giữ nguyên.", null);
@@ -577,27 +579,15 @@ namespace WashGo.Application.Features.ShipperApplication.Services
                     ToDto(shipper, user, active));
 
             var now = DateTime.UtcNow;
-            user.IsActive = false;
-            user.UpdatedAt = now;
+            await Lifecycle.LockAsync(user, CurrentUser.Id, reason);
             shipper.LockedAt = now;
             shipper.LockReason = reason;
             shipper.UpdatedAt = now;
             await _userRepo.UpdateAsync(user, autoSave: true);
             await _shipperRepo.UpdateAsync(shipper, autoSave: true);
-            await RevokeSessionsAsync(user.Id);
             await AuditAsync(shipper, ShipperAuditAction.Locked, reason, null);
             await uow.CompleteAsync();
             return new(HttpStatusCode.OK, "Locked", "Đã khóa tài khoản Shipper; các phiên đăng nhập hiện tại đã bị thu hồi.", ToDto(shipper, user, 0));
-        }
-
-        // Refresh tokens are revoked; access tokens stop working at once because each request checks the session and User.IsActive.
-        private async Task RevokeSessionsAsync(Guid userId)
-        {
-            var sessions = await _refreshTokenRepo.GetListAsync(x => x.UserId == userId && !x.IsRevoked);
-            foreach (var session in sessions)
-                session.IsRevoked = true;
-            if (sessions.Count > 0)
-                await _refreshTokenRepo.UpdateManyAsync(sessions, autoSave: true);
         }
 
         private async Task AuditAsync(Shipper shipper, ShipperAuditAction action, string? reason, string? details)
@@ -683,9 +673,10 @@ namespace WashGo.Application.Features.ShipperApplication.Services
 
         private async Task<string?> DuplicateErrorAsync(string phone, string email, Guid? exceptUserId)
         {
-            if (await _userRepo.AnyAsync(x => x.Phone == phone && x.Id != exceptUserId))
+            // Soft-deleted accounts no longer hold their phone/email.
+            if (await _userRepo.AnyAsync(x => x.Phone == phone && !x.IsDeleted && x.Id != exceptUserId))
                 return "Số điện thoại này đã được sử dụng.";
-            if (await _userRepo.AnyAsync(x => x.Email.ToLower() == email && x.Id != exceptUserId))
+            if (await _userRepo.AnyAsync(x => x.Email.ToLower() == email && !x.IsDeleted && x.Id != exceptUserId))
                 return "Email này đã được sử dụng.";
             return null;
         }
