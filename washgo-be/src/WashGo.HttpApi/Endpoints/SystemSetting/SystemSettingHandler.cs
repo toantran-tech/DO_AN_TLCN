@@ -46,6 +46,11 @@ namespace WashGo.HttpApi.Endpoints.SystemSetting
                 .WithName("Cấu hình phí phạt và bồi thường")
                 .WithSummary("Phí quá hạn locker theo ngày 1/2/3, phí lưu kho/ngày, % phí hủy theo giai đoạn và % bồi thường theo mức hư hỏng.")
                 .WithOpenApi();
+            group.MapPut("/dispatch", async (UpdateDispatchSettingsCommand command, ISystemSettingAppService svc) =>
+                    (await svc.UpdateDispatchAsync(command)).CustomResult())
+                .WithName("Cấu hình điều phối Shipper")
+                .WithSummary("Số nhiệm vụ giao nhận chưa hoàn tất tối đa của mỗi Shipper (1–20, mặc định 3), áp dụng cho mọi luồng phân công. Giảm dưới số đang có chỉ chặn nhận thêm, không hủy nhiệm vụ đã giao. Có expectedVersion/operationId.")
+                .WithOpenApi();
             group.MapPut("/loyalty", async (UpdateLoyaltySettingsCommand command, ISystemSettingAppService svc) =>
                 (await svc.UpdateLoyaltyAsync(command)).CustomResult())
                 .WithSummary("Admin cấu hình % tích điểm (0–100), % dùng tối đa (0–99); 1 điểm = 1đ, WashGo chịu giảm điểm. Có expectedVersion/operationId; chỉ áp dụng phiên mới.").WithOpenApi();

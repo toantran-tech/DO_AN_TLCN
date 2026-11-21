@@ -16,6 +16,12 @@ $fixtureShipper = [Guid]::NewGuid()
 $fixtureEmail = "assignment-smoke-$($fixtureUser.ToString('N'))@example.com"
 $complete = $false
 $merchantId = $null
+$originalLimit = $null
+# A Shipper may hold several open tasks up to the dispatch limit; this suite checks the one-slot case.
+function Set-DispatchLimit($Value) {
+    $version = (Call-Api Get '/system-setting/' $null $admin).data.version
+    Call-Api Put '/system-setting/dispatch' @{ maxActiveTasksPerShipper = $Value; expectedVersion = $version; operationId = [Guid]::NewGuid().ToString() } $admin | Out-Null
+}
 try {
     foreach ($role in @('Admin', 'Merchant', 'Customer', 'Shipper')) {
         $sessions[$role] = (Call-Api Post '/auth/login' @{
@@ -80,7 +86,9 @@ FROM washgo.shippers s WHERE user_id = '$seedUser';
     Assert-Status 400 Put '/wash-order/assign-shipper' $assignment $merchant
     Sql "UPDATE washgo.users SET is_active = true WHERE id = '$fixtureUser';" | Out-Null
 
-    # Competing orders must not reserve the same available Shipper twice.
+    # With one slot left, competing orders must not reserve the same available Shipper twice.
+    $originalLimit = (Call-Api Get '/system-setting/' $null $admin).data.maxActiveTasksPerShipper
+    Set-DispatchLimit 1
     foreach ($id in $orders) {
         $jobs += Start-Job -ScriptBlock {
             param($Url, $Token, $OrderId, $ShipperId)
@@ -93,7 +101,7 @@ FROM washgo.shippers s WHERE user_id = '$seedUser';
     }
     $codes = @($jobs | Receive-Job -Wait -AutoRemoveJob)
     $jobs = @()
-    if (($codes | Sort-Object) -join ',' -ne '200,400') { throw "Concurrent assignment returned $codes instead of 200/400." }
+    if (($codes | Sort-Object) -join ',' -ne '200,409') { throw "Concurrent assignment returned $codes instead of 200/409 (ShipperCapacityExceeded)." }
 
     $winner = $null
     $loser = $null
@@ -108,6 +116,8 @@ FROM washgo.shippers s WHERE user_id = '$seedUser';
         !$repeated.shipperAssignedAt -or $before.timeline.Count -ne $repeated.timeline.Count) { throw 'Assignment identity, task, or replay check failed.' }
     $available = (Call-Api Get "/wash-order/$loser/available-shippers" $null $merchant).data
     if (@($available | Where-Object { $_.id -eq "$fixtureShipper" }).Count) { throw 'Busy Shipper was listed for another order.' }
+    Set-DispatchLimit $originalLimit
+    $originalLimit = $null
     Invoke-TestDelivery $winner collect $shipper | Out-Null
     $available = (Call-Api Get "/wash-order/$loser/available-shippers" $null $merchant).data
     if (!@($available | Where-Object { $_.id -eq "$fixtureShipper" }).Count) { throw 'Shipper did not become available after collection.' }
@@ -132,10 +142,11 @@ FROM washgo.shippers s WHERE user_id = '$seedUser';
 
     }
     $complete = $true
-    Write-Output "PASS: Merchant assignment, role/ownership/state/availability checks, server name, replay, concurrent 200/400, separate collect/return tasks. Completed smoke orders: $($orders -join ', ')"
+    Write-Output "PASS: Merchant assignment, role/ownership/state/availability checks, server name, replay, concurrent 200/409 with a one-task limit, separate collect/return tasks. Completed smoke orders: $($orders -join ', ')"
 }
 finally {
     foreach ($job in $jobs) { Stop-Job $job -ErrorAction SilentlyContinue; Remove-Job $job -Force -ErrorAction SilentlyContinue }
+    if ($originalLimit) { try { Set-DispatchLimit $originalLimit } catch { Write-Warning 'Could not restore the Shipper task limit.' } }
     if ($orders.Count -gt 0) {
         $ids = ($orders | ForEach-Object { "'$_'" }) -join ','
         Sql "UPDATE washgo.orders SET merchant_id = '$merchantId' WHERE id IN ($ids);" | Out-Null

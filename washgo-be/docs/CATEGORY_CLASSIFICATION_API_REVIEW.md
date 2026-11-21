@@ -15,3 +15,11 @@ Ngày 19/11/2026. Thực hiện `Docs/cần làm/BACKEND_CATEGORY_REMAINING.md`.
 - Dự đoán ETA nhóm lịch sử theo danh mục (snapshot danh mục của dòng đơn; đơn cũ không có snapshot dùng ánh xạ cố định từ loại xử lý legacy). Danh mục chưa đủ lịch sử dùng ETA theo quy tắc (`predictionSource = "rule"`), không mượn lịch sử danh mục khác.
 - Snapshot đơn (`categoryIdSnapshot`, `processingTypeSnapshot`) và JSON đề xuất cũ giữ nguyên; đề xuất cũ chỉ có `serviceType` vẫn được đọc qua ánh xạ danh mục gốc (`categoryMappingBasis = "LegacyServiceTypeMapping"`).
 - Migration `MakeServiceLegacyTypeOptional` chỉ cho phép cột loại xử lý nhận null, không ghi lại dữ liệu cũ. Dịch vụ mới/sửa ở danh mục mới có loại legacy null.
+
+## Lọc đề xuất Merchant theo danh mục (21/11/2026)
+
+Thực hiện `Docs/cần làm/BACKEND_ADMIN_CATEGORY.md`.
+
+- `POST /service-proposal/filter` nhận thêm `categoryIds` (mảng UUID; null/rỗng = tất cả; tối đa 100, không nhận UUID rỗng → 400), OR trong danh sách, AND với `keyword`, `status`, `requestType`, `merchantId`, `serviceId`. Áp dụng trước khi đếm `total` và phân trang; Merchant vẫn chỉ thấy đề xuất của mình.
+- Lọc theo danh mục **trong nội dung đề xuất** (`proposed.categoryId`), kể cả đề xuất tạo mới chưa có `serviceId`. Đề xuất sửa lưu danh mục của dịch vụ tại lúc đề xuất; dịch vụ đổi danh mục sau đó không làm đề xuất đổi kết quả lọc. Đề xuất cũ chỉ có `serviceType` dùng cùng ánh xạ danh mục gốc như DTO. Danh mục đã ngừng hoạt động vẫn lọc được.
+- Migration `AddProposalCategoryFilter` thêm cột `proposed_category_id` (có index) và điền lại cho dữ liệu cũ từ nội dung đề xuất.

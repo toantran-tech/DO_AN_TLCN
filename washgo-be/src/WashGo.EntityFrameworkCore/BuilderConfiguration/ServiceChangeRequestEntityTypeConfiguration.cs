@@ -21,6 +21,7 @@ namespace WashGo.EntityFrameworkCore.BuilderConfiguration
             builder.HasIndex(x => x.MerchantId);
             builder.HasIndex(x => x.ServiceId);
             builder.HasIndex(x => x.Status);
+            builder.HasIndex(x => x.ProposedCategoryId);
             builder.Property(x => x.ProposedName).HasMaxLength(200).IsRequired();
             builder.HasIndex(x => new { x.MerchantId, x.ClientRequestId }).IsUnique().HasFilter("client_request_id IS NOT NULL");
             builder.HasOne<Merchant>().WithMany().HasForeignKey(x => x.MerchantId).OnDelete(DeleteBehavior.Cascade);

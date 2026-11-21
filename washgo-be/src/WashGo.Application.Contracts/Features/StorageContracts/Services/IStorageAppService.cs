@@ -10,7 +10,7 @@ public interface IStorageAppService : IApplicationService
     Task<PaginatedResult<StorageCycleDto>> FilterAsync(StorageFilterQuery query);
     Task<BaseResponse<Dictionary<string,int>>> SummaryAsync();
     Task<PaginatedResult<StorageCycleDto>> GetAsync(Guid orderId, int page, int take);
-    Task<BaseResponse<List<AvailableShipperDto>>> GetShippersAsync(Guid orderId);
+    Task<BaseResponse<List<AvailableShipperDto>>> GetShippersAsync(Guid orderId, bool includeUnavailable = false);
     Task<BaseResponse<StorageQuoteDto>> QuoteAsync(Guid orderId, Guid lockerId);
     Task<BaseResponse<StorageCycleDto>> ExecuteAsync(Guid orderId, string action, StorageCommand command);
     Task<BaseResponse<StorageCycleDto>> AssignAsync(Guid orderId, AssignStorageShipperCommand command);
