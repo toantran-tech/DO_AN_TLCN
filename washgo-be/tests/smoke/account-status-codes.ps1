@@ -52,11 +52,16 @@ try {
     Write-Output '1. Sign-in: locked only after valid credentials (all four roles), wrong password stays generic, unlock signs in again'
     foreach($role in @('Customer','Merchant','Shipper','Admin')){
         $id=Fixture $role.ToLower() $role
-        Sql "UPDATE washgo.users SET is_active=false WHERE id='$id';" | Out-Null
+        # Shipper gets a recorded lock reason; the others model locks without one (reason null, never a placeholder).
+        $why=if($role -eq 'Shipper'){"'Shipper lock reason'"}else{'NULL'}
+        Sql "UPDATE washgo.users SET is_active=false, status_reason=$why WHERE id='$id';" | Out-Null
         $locked=Expect (Login (Email $role.ToLower())) 400 'AccountLocked' "$role locked sign-in"
         Check (($role -eq 'Shipper') -eq ($locked.Json.message -match 'Merchant')) "$role locked message points to the wrong contact."
-        Check ($locked.Text -notmatch 'reason|statusReason|lockedBy') "$role locked sign-in leaks lock details."
-        Expect (Login (Email $role.ToLower()) 'Wrong-Password1') 400 'InvalidCredentials' "$role locked + wrong password" | Out-Null
+        $expectedWhy=if($role -eq 'Shipper'){'Shipper lock reason'}else{$null}
+        Check ($locked.Json.meta.accountAccessReason -eq $expectedWhy) "$role lock reason: '$($locked.Json.meta.accountAccessReason)'"
+        Check ($locked.Text -notmatch 'statusChangedBy|lockedBy|actor') "$role locked sign-in leaks who locked it."
+        $wrong=Expect (Login (Email $role.ToLower()) 'Wrong-Password1') 400 'InvalidCredentials' "$role locked + wrong password"
+        Check ($wrong.Text -notmatch 'accountAccessReason') "$role wrong password reveals the lock reason." 
         Sql "UPDATE washgo.users SET is_active=true WHERE id='$id';" | Out-Null
         Expect (Login (Email $role.ToLower())) 200 $null "$role sign-in after unlock" | Out-Null
     }
@@ -70,26 +75,36 @@ try {
     Expect (Raw Post "/admin/accounts/$c/status" @{operationId=(Op);isActive=$false;reason='Status code smoke';expectedRevision=$rev;confirm=$true} $admin) 200 $null 'Lock C' | Out-Null
     $me=Expect (Raw Get '/auth/me' $null $cs.accessToken) 401 'AccountLocked' 'Request after lock'
     Check ($me.Json.message -match 'Admin') 'Locked 401 has no readable message pointing to the Admin.'
-    Expect (Raw Post '/auth/refresh-token' @{refreshToken=$cs.refreshToken} $null) 400 'InvalidRefreshToken' 'Revoked refresh after lock' | Out-Null
+    Check ($me.Json.meta.accountAccessReason -eq 'Status code smoke') "Session lock reason: '$($me.Json.meta.accountAccessReason)'"
+    $revoked=Expect (Raw Post '/auth/refresh-token' @{refreshToken=$cs.refreshToken} $null) 400 'InvalidRefreshToken' 'Revoked refresh after lock'
+    Check ($revoked.Text -notmatch 'accountAccessReason|Status code smoke') 'Revoked refresh token reveals the lock reason.'
     $rev=(Call-Api Get "/admin/accounts/$c" $null $admin).data.revision
     Expect (Raw Post "/admin/accounts/$c/status" @{operationId=(Op);isActive=$true;expectedRevision=$rev} $admin) 200 $null 'Unlock C' | Out-Null
-    Expect (Raw Get '/auth/me' $null $cs.accessToken) 401 'SessionRevoked' 'Old token after unlock' | Out-Null
+    $after=Expect (Raw Get '/auth/me' $null $cs.accessToken) 401 'SessionRevoked' 'Old token after unlock'
+    Check ($after.Text -notmatch 'accountAccessReason') 'An ended session carries a lock reason.'
     $cs=(Expect (Login (Email 'inuse')) 200 $null 'Sign in C again').Json.data
 
     Write-Output '3. A still-valid refresh token of a locked account reports the state; random tokens do not'
-    Sql "UPDATE washgo.users SET is_active=false WHERE id='$c';" | Out-Null
-    Expect (Raw Post '/auth/refresh-token' @{refreshToken=$cs.refreshToken} $null) 400 'AccountLocked' 'Valid refresh of locked account' | Out-Null
+    Sql "UPDATE washgo.users SET is_active=false, status_reason='Refresh lock reason' WHERE id='$c';" | Out-Null
+    $refresh=Expect (Raw Post '/auth/refresh-token' @{refreshToken=$cs.refreshToken} $null) 400 'AccountLocked' 'Valid refresh of locked account'
+    Check ($refresh.Json.meta.accountAccessReason -eq 'Refresh lock reason') 'Valid refresh token did not return the lock reason.'
     Expect (Raw Post '/auth/refresh-token' @{refreshToken='not-a-real-token'} $null) 400 'InvalidRefreshToken' 'Unknown refresh token' | Out-Null
     Sql "UPDATE washgo.users SET is_active=true WHERE id='$c';" | Out-Null
 
     Write-Output '4. Deleted: session -> AccountDeleted, sign-in with the right password -> AccountDeleted, wrong one stays generic'
     $d=Fixture 'deleted' 'Customer'
     $ds=(Expect (Login (Email 'deleted')) 200 $null 'Sign in D').Json.data
+    # Locked first, then deleted: the delete reason is reported, never the earlier lock reason.
     $rev=(Call-Api Get "/admin/accounts/$d" $null $admin).data.revision
-    Expect (Raw Post "/admin/accounts/$d/soft-delete" @{operationId=(Op);reason='Status code smoke';expectedRevision=$rev} $admin) 200 $null 'Delete D' | Out-Null
-    Expect (Raw Get '/auth/me' $null $ds.accessToken) 401 'AccountDeleted' 'Request after delete' | Out-Null
-    Expect (Login (Email 'deleted')) 400 'AccountDeleted' 'Deleted sign-in' | Out-Null
-    Expect (Login (Email 'deleted') 'Wrong-Password1') 400 'InvalidCredentials' 'Deleted + wrong password' | Out-Null
+    Expect (Raw Post "/admin/accounts/$d/status" @{operationId=(Op);isActive=$false;reason='Old lock reason';expectedRevision=$rev;confirm=$true} $admin) 200 $null 'Lock D' | Out-Null
+    $rev=(Call-Api Get "/admin/accounts/$d" $null $admin).data.revision
+    Expect (Raw Post "/admin/accounts/$d/soft-delete" @{operationId=(Op);reason='Delete reason only';expectedRevision=$rev} $admin) 200 $null 'Delete D' | Out-Null
+    $gone=Expect (Raw Get '/auth/me' $null $ds.accessToken) 401 'AccountDeleted' 'Request after delete'
+    Check ($gone.Json.meta.accountAccessReason -eq 'Delete reason only') "Session delete reason: '$($gone.Json.meta.accountAccessReason)'"
+    $signIn=Expect (Login (Email 'deleted')) 400 'AccountDeleted' 'Deleted sign-in'
+    Check ($signIn.Json.meta.accountAccessReason -eq 'Delete reason only') "Sign-in delete reason: '$($signIn.Json.meta.accountAccessReason)'"
+    $wrongDeleted=Expect (Login (Email 'deleted') 'Wrong-Password1') 400 'InvalidCredentials' 'Deleted + wrong password'
+    Check ($wrongDeleted.Text -notmatch 'accountAccessReason|Delete reason') 'Wrong password reveals the delete reason.'
 
     Write-Output '5. Other 401/403 reasons are not reported as locked'
     Expect (Raw Get '/auth/me' $null $null) 401 'Unauthenticated' 'No token' | Out-Null
@@ -98,7 +113,8 @@ try {
     $es=(Expect (Login (Email 'session')) 200 $null 'Sign in E').Json.data
     Expect (Raw Get '/admin/accounts' $null $es.accessToken) 403 'Forbidden' 'Customer on an Admin endpoint' | Out-Null
     Sql "UPDATE washgo.refresh_tokens SET expiry_date=now() - interval '1 minute' WHERE user_id='$e';" | Out-Null
-    Expect (Raw Get '/auth/me' $null $es.accessToken) 401 'SessionExpired' 'Expired session' | Out-Null
+    $expired=Expect (Raw Get '/auth/me' $null $es.accessToken) 401 'SessionExpired' 'Expired session'
+    Check ($expired.Text -notmatch 'accountAccessReason') 'An expired session carries a lock reason.'
     $es=(Expect (Login (Email 'session')) 200 $null 'Sign in E again').Json.data
     Call-Api Post '/auth/logout' @{refreshToken=$es.refreshToken} $es.accessToken | Out-Null
     Expect (Raw Get '/auth/me' $null $es.accessToken) 401 'SessionRevoked' 'Signed-out session' | Out-Null
@@ -136,7 +152,7 @@ try {
     $sessions.B=(Expect (Login (Email 'admin2') 'Admin@123') 200 $null 'Sign in second Admin').Json.data
     Expect (Raw Get "/admin/accounts/operations/$k1" $null $sessions.B.accessToken) 404 $null 'Lookup by another Admin' | Out-Null
 
-    Write-Output 'PASS: AccountLocked/AccountDeleted only after valid credentials, a valid session or a valid refresh token (four roles, Shipper -> Merchant contact); unknown/wrong credentials and revoked refresh tokens stay generic; Unauthenticated/InvalidToken/SessionExpired/SessionRevoked/Forbidden kept apart; no session revival after unlock; Shipper creation from the account page is looked up in the Account module (completed, replay, key reuse, lost response resolved, Processing, unknown and other-Admin 404).'
+    Write-Output 'PASS: AccountLocked/AccountDeleted with the owner-facing lock/delete reason (delete reason only after delete) only after valid credentials, a valid session or a valid refresh token (four roles, Shipper -> Merchant contact); unknown/wrong credentials and revoked refresh tokens stay generic; Unauthenticated/InvalidToken/SessionExpired/SessionRevoked/Forbidden kept apart; no session revival after unlock; Shipper creation from the account page is looked up in the Account module (completed, replay, key reuse, lost response resolved, Processing, unknown and other-Admin 404).'
 }
 finally {
     foreach($session in $sessions.Values){ try { Call-Api Post '/auth/logout' @{refreshToken=$session.refreshToken} $session.accessToken | Out-Null } catch { } }
