@@ -1,3 +1,12 @@
+## Mã lỗi tài khoản và tra cứu tạo đối tác — 21/11/2026
+
+- [x] Đăng nhập/Google/refresh: InvalidCredentials, AccountLocked (Shipper → liên hệ Merchant), AccountDeleted chỉ khi đã xác minh mật khẩu/Google/refresh token còn hiệu lực; refresh token sai/thu hồi → InvalidRefreshToken.
+- [x] 401/403 có meta.code: AccountLocked, AccountDeleted, SessionRevoked, SessionExpired, TokenExpired, InvalidToken, Unauthenticated, Forbidden; trạng thái lấy từ tài khoản của token có chữ ký hợp lệ.
+- [x] `meta.accountAccessReason` cho chính chủ khi khóa/xóa (lý do khóa hiện tại hoặc lý do xóa, null nếu không có), chỉ sau khi xác minh mật khẩu/Google/phiên/refresh token hợp lệ.
+- [x] Tạo Merchant/Shipper từ trang tài khoản: operation Processing → Completed trong module Account, replay/khóa dùng lại, lookup phát hiện tài khoản đã commit khi mất phản hồi, chỉ người gửi tra cứu được.
+- [x] Smoke `account-status-codes.ps1` PASS, đã nối CI.
+- [ ] FE dùng meta.code theo [bàn giao](docs/ACCOUNT_STATUS_CODES_API_REVIEW.md).
+
 ## Quản lý tài khoản trong Admin — 21/11/2026
 
 - [x] Xóa mềm User (không xóa cứng, không dùng bộ lọc ABP để lịch sử vẫn đọc được), khóa/mở có người/lý do/giờ server, revision do trigger (không đổi khi đăng nhập), cờ tài khoản bảo vệ.
