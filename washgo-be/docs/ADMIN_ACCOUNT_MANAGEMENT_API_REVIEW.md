@@ -45,7 +45,7 @@ DTO không bao giờ chứa mật khẩu, hash, token, OTP, provider subject, gi
 
 ## Ghi (mọi thao tác ghi)
 
-- `operationId` (GUID) chống tạo/ghi trùng: gửi lại cùng khóa + cùng payload trả đúng kết quả cũ; cùng khóa khác payload → 409 `OperationIdReused`. Timeout/mất mạng: tra `GET /admin/accounts/operations/{operationId}`, **không** chạy lại bằng khóa mới.
+- `operationId` (GUID) chống tạo/ghi trùng: gửi lại cùng khóa + cùng payload trả đúng kết quả cũ; cùng khóa khác payload → 409 `OperationIdReused`. Timeout/mất mạng: tra `GET /admin/accounts/operations/{operationId}` (áp dụng cả tạo Merchant/Shipper, xem [ACCOUNT_STATUS_CODES_API_REVIEW.md](ACCOUNT_STATUS_CODES_API_REVIEW.md)), **không** chạy lại bằng khóa mới.
 - `expectedRevision` (từ `revision`) hoặc header `If-Match: "12"` là bắt buộc khi sửa/khóa/xóa/khôi phục/cấp quyền/xác nhận đổi email; lệch → 409 `RevisionConflict` kèm bản mới nhất trong `data`. Đăng nhập của người dùng không làm đổi `revision`.
 - Đã ở trạng thái đích → 200 `meta.outcome = "Unchanged"`.
 

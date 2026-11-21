@@ -41,10 +41,10 @@ namespace WashGo.HttpApi.Endpoints.Admin
                 .WithSummary("Tổng/đang hoạt động/bị khóa theo role trên tài khoản chưa xóa, tính bằng một truy vấn; deleted chỉ trả khi có Accounts.ReadDeleted.")
                 .WithOpenApi();
 
-            group.MapGet("/operations/{operationId:guid}", async (Guid operationId, IAdministrativeOperationAppService svc) =>
-                    (await svc.GetAsync("Account", operationId)).CustomResult())
+            group.MapGet("/operations/{operationId:guid}", async (Guid operationId, IAdminAccountAppService svc) =>
+                    (await svc.GetOperationAsync(operationId)).CustomResult())
                 .WithName("Tra cứu thao tác tài khoản")
-                .WithSummary("Kết quả của một thao tác (đơn lẻ hoặc hàng loạt) do chính bạn gửi, dùng khi timeout/mất phản hồi. Processing = đang chạy; 404 không chứng minh thao tác đã thất bại. Không tự chạy lại lô bằng khóa mới.")
+                .WithSummary("Kết quả của một thao tác (đơn lẻ, hàng loạt, tạo Customer/Admin/Merchant/Shipper) do chính bạn gửi, dùng khi timeout/mất phản hồi. state Processing = đang chạy (gửi lại cùng operationId và payload là an toàn); Completed kèm result (data.id = account ID). 404 = chưa có kết quả của bạn, không chứng minh thao tác đã thất bại. Không tạo lại bằng khóa mới.")
                 .WithOpenApi();
 
             group.MapGet("/{id:guid}", async (Guid id, IAdminAccountAppService svc) => (await svc.GetAsync(id)).CustomResult())

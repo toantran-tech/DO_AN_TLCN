@@ -27,6 +27,7 @@ using Volo.Abp.Domain.Repositories;
 using Volo.Abp.Swashbuckle;
 using Volo.Abp.Threading;
 using WashGo.Application;
+using WashGo.Application.Features.AuthApplication.Services;
 using WashGo.Application.Features.FileApplication.Services;
 using WashGo.Core.Endpoint;
 using WashGo.EntityFrameworkCore;
@@ -106,6 +107,7 @@ namespace WashGo.HttpApi.Host
                         if (!Guid.TryParse(userIdText, out var userId) ||
                             !Guid.TryParse(sessionIdText, out var sessionId))
                         {
+                            AuthFailureResponses.Remember(tokenContext.HttpContext, AuthFailureResponses.InvalidToken, tokenContext.Principal);
                             tokenContext.Fail("Phiên đăng nhập không hợp lệ.");
                             return;
                         }
@@ -116,12 +118,19 @@ namespace WashGo.HttpApi.Host
                             .GetRequiredService<IRepository<User, Guid>>();
                         var session = await tokenRepository.FindAsync(sessionId);
                         var user = await userRepository.FindAsync(userId);
-                        if (session == null || session.UserId != userId || session.IsRevoked ||
-                            session.ExpiryDate <= DateTime.UtcNow || user == null || !user.IsActive || user.IsDeleted)
+                        if (AuthFailureResponses.Classify(userId, user, session, DateTime.UtcNow) is { } reason)
                         {
+                            // A signed token of a locked/deleted account is trusted enough to tell its owner why.
+                            var accessReason = reason is AuthFailureResponses.AccountLocked or AuthFailureResponses.AccountDeleted
+                                ? await tokenContext.HttpContext.RequestServices.GetRequiredService<AccountAccessReasonReader>().ReasonAsync(user!)
+                                : null;
+                            AuthFailureResponses.Remember(tokenContext.HttpContext, reason, tokenContext.Principal, accessReason);
                             tokenContext.Fail("Phiên đăng nhập đã hết hiệu lực.");
                         }
-                    }
+                    },
+                    // 401/403 carry meta.code (AccountLocked, AccountDeleted, SessionRevoked, SessionExpired, TokenExpired, ...).
+                    OnChallenge = AuthFailureResponses.WriteChallengeAsync,
+                    OnForbidden = AuthFailureResponses.WriteForbiddenAsync
                 };
             });
 

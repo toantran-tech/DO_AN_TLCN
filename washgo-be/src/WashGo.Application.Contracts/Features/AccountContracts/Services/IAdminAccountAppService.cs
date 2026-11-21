@@ -26,4 +26,6 @@ public interface IAdminAccountAppService : IApplicationService
     Task<BaseResponse<AccountBulkPreviewDto>> PreviewBulkAsync(AccountBulkPreviewCommand command);
     Task<BaseResponse<AdministrativeBatchResultDto>> BulkAsync(AccountBulkCommand command);
     Task<PaginatedResult<AuditLogDto>> GetActivitiesAsync(Guid id, AccountActivityQuery query);
+    /// <summary>Kết quả thao tác của chính Admin trong module Account (kể cả tạo Merchant/Shipper đã commit nhưng mất phản hồi).</summary>
+    Task<BaseResponse<AdministrativeOperationDto>> GetOperationAsync(Guid operationId);
 }

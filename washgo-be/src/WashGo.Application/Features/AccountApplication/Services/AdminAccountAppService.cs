@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Security.Cryptography;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Volo.Abp;
@@ -15,6 +16,7 @@ using WashGo.Application.Contracts.Features.AccountContracts.Results;
 using WashGo.Application.Contracts.Features.AccountContracts.Services;
 using WashGo.Application.Contracts.Features.AuditContracts.Commands;
 using WashGo.Application.Contracts.Features.AuditContracts.Results;
+using WashGo.Application.Contracts.Features.AuditContracts.Services;
 using WashGo.Application.Contracts.Features.MerchantContracts.Services;
 using WashGo.Application.Contracts.Features.ShipperContracts.Services;
 using WashGo.Application.Features.AuditApplication.Services;
@@ -58,6 +60,7 @@ public class AdminAccountAppService(
     ILogger<AdminAccountAppService> logger) : WashGoAppService, IAdminAccountAppService
 {
     private const string Module = "Account";
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private const int MaxBulk = 100;
     private static readonly string[] BulkActions = ["Lock", "Unlock", "SoftDelete"];
 
@@ -535,11 +538,122 @@ public class AdminAccountAppService(
         }
         return role switch
         {
-            "Merchant" => await CreateMerchantAsync(command),
-            "Shipper" => await CreateShipperAsync(command),
+            "Merchant" or "Shipper" => await CreatePartnerAsync(caller, role, command),
             _ => await IdentitySafeAsync(() => CreateUserAsync(caller, role, command))
         };
     }
+
+    private static BaseResponse<AccountDetailDto> Processing() => new()
+    {
+        Succeeded = true, StatusCode = HttpStatusCode.Accepted, Message = "Đang xử lý; tra cứu lại bằng operationId.",
+        Meta = new { state = "Processing" }
+    };
+
+    private static bool IsProcessing(string responseJson) =>
+        JsonSerializer.Deserialize<JsonElement>(responseJson) is { ValueKind: JsonValueKind.Object } root &&
+        root.TryGetProperty("meta", out var meta) && meta.ValueKind == JsonValueKind.Object &&
+        meta.TryGetProperty("state", out var state) && state.ValueKind == JsonValueKind.String && state.GetString() == "Processing";
+
+    private IRepository<AdministrativeOperation, Guid> Operations =>
+        LazyServiceProvider.LazyGetRequiredService<IRepository<AdministrativeOperation, Guid>>();
+
+    /// <summary>
+    /// Merchant/Shipper creation from the account page is recorded in the Account module like every other account write:
+    /// the key is reserved as Processing before the partner service runs (that service is itself idempotent on the same key)
+    /// and completed with the account result, so a lost response can be looked up instead of creating again.
+    /// </summary>
+    private async Task<BaseResponse<AccountDetailDto>> CreatePartnerAsync(Caller caller, string role, CreateAccountCommand command)
+    {
+        if (role == "Merchant" && command.Merchant == null)
+            return Invalid<AccountDetailDto>(new() { ["merchant"] = ["Tạo Merchant cần hồ sơ merchant (cùng payload với POST /merchant)."] });
+        if (role == "Shipper" && command.Shipper == null)
+            return Invalid<AccountDetailDto>(new() { ["shipper"] = ["Tạo Shipper cần hồ sơ shipper (cùng payload với POST /shipper)."] });
+        var key = command.OperationId;
+        var resource = $"new:{role}";
+        // Fingerprint the request as sent, before the partner request id is filled in from the operation id.
+        var hash = AdministrativeWriteGuard.Version(command);
+        if (key.HasValue)
+        {
+            if (key == Guid.Empty)
+                return Fail<AccountDetailDto>(HttpStatusCode.BadRequest, "InvalidOperationId", "operationId không hợp lệ.");
+            using var reserve = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            await Writes.LockAsync($"admin-operation:{key}");
+            var existing = await Operations.FindAsync(key.Value);
+            if (existing != null)
+            {
+                if (existing.ActorId != caller.Id || existing.Module != Module || existing.Action != "Create" ||
+                    existing.ResourceId != resource || existing.PayloadHash != hash)
+                    return Fail<AccountDetailDto>(HttpStatusCode.Conflict, "OperationIdReused", "operationId đã được dùng cho yêu cầu khác.");
+                if (!IsProcessing(existing.ResponseJson))
+                    return JsonSerializer.Deserialize<BaseResponse<AccountDetailDto>>(existing.ResponseJson, Json)
+                           ?? throw new InvalidOperationException("Invalid stored account operation.");
+                // Still Processing (crash or concurrent send): run the idempotent partner create again below.
+            }
+            else
+                await Operations.InsertAsync(new AdministrativeOperation(key.Value)
+                {
+                    ActorId = caller.Id, Module = Module, Action = "Create", ResourceId = resource, PayloadHash = hash,
+                    ResponseJson = JsonSerializer.Serialize(Processing(), Json), CompletedAt = DateTime.UtcNow
+                }, autoSave: true);
+            await reserve.CompleteAsync();
+        }
+        var response = role == "Merchant" ? await CreateMerchantAsync(command) : await CreateShipperAsync(command);
+        // Server errors stay Processing so the same key can be sent again; every other answer is final for this key.
+        if (key.HasValue && (int)response.StatusCode < 500)
+            await FinishOperationAsync(key.Value, response);
+        return response;
+    }
+
+    private async Task FinishOperationAsync(Guid key, BaseResponse<AccountDetailDto> response)
+    {
+        using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+        await Writes.LockAsync($"admin-operation:{key}");
+        var row = await Operations.FindAsync(key);
+        if (row != null && IsProcessing(row.ResponseJson))
+        {
+            row.ResponseJson = JsonSerializer.Serialize(response, Json);
+            row.CompletedAt = DateTime.UtcNow;
+            await Operations.UpdateAsync(row, autoSave: true);
+        }
+        await uow.CompleteAsync();
+    }
+
+    public async Task<BaseResponse<AdministrativeOperationDto>> GetOperationAsync(Guid operationId)
+    {
+        var caller = await CallerAsync();
+        if (caller == null)
+            return Fail<AdministrativeOperationDto>(HttpStatusCode.Forbidden, "AdminOnly", "Chỉ Admin đang hoạt động được tra cứu thao tác tài khoản.");
+        var row = await Writes.FindAsync(operationId, caller.Id, Module);
+        if (row is { Action: "Create" } && row.ResourceId.StartsWith("new:", StringComparison.Ordinal) && IsProcessing(row.ResponseJson))
+        {
+            // The partner account may already be committed although our answer was lost: resolve it from the partner's own record.
+            var userId = row.ResourceId == "new:Shipper"
+                ? await ShipperCreatedWithAsync(operationId)
+                : await MerchantCreatedWithAsync(operationId, caller.Id);
+            if (userId.HasValue && await GetAsync(userId.Value) is { Succeeded: true } detail)
+            {
+                detail.StatusCode = HttpStatusCode.Created;
+                detail.Message = "Tài khoản đã được tạo.";
+                await FinishOperationAsync(operationId, detail);
+            }
+        }
+        // Read through a fresh unit of work: this request already tracks the row as it was before it was completed above.
+        using var read = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: false);
+        var result = await LazyServiceProvider.LazyGetRequiredService<IAdministrativeOperationAppService>().GetAsync(Module, operationId);
+        await read.CompleteAsync();
+        return result;
+    }
+
+    private async Task<Guid?> ShipperCreatedWithAsync(Guid requestId)
+    {
+        using (dataFilter.Disable<ISoftDelete>())
+            return (await shippers.FirstOrDefaultAsync(x => x.CreateRequestId == requestId))?.UserId;
+    }
+
+    private async Task<Guid?> MerchantCreatedWithAsync(Guid requestId, Guid actorId) =>
+        await LazyServiceProvider.LazyGetRequiredService<MerchantWriteGuard>().FindAsync(requestId, actorId) is { Operation: "Create" } created
+            ? created.MerchantId
+            : null;
 
     // Merchant/Shipper accounts are created by the existing partner services (account + profile in one transaction).
     private async Task<BaseResponse<AccountDetailDto>> CreateMerchantAsync(CreateAccountCommand command)
