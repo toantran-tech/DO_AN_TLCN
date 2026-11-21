@@ -36,8 +36,12 @@ namespace WashGo.Application.Contracts.Features.FeedbackContracts.Commands
     public class RatingBatchCommand
     {
         public Guid OperationId { get; set; }
+        /// <summary>Hide | Show | PublishPublic (Duyệt và công khai cho Merchant, Customer, khách) | Publish (chỉ duyệt nội dung cho Merchant).</summary>
         public string Action { get; set; } = string.Empty;
         public string? Reason { get; set; }
+        /// <summary>Action = Publish kèm một trong hai cờ được hiểu là PublishPublic (công khai mọi phạm vi).</summary>
+        public bool PublishForCustomers { get; set; }
+        public bool PublishForGuests { get; set; }
         public List<AdministrativeBatchItem> Items { get; set; } = [];
     }
 

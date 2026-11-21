@@ -24,7 +24,9 @@ public class CustomerReviewAppService(IRepository<OrderRating, Guid> ratings,
         var query = (await ratings.GetQueryableAsync()).Where(x => !x.IsDeleted && !x.IsHidden &&
             x.ContentApprovedAt != null && x.PublicApprovedAt != null && x.PublicId != null &&
             x.OverallStars >= 1 && x.OverallStars <= 5 && validOrders.Any(o => o.Id == x.OrderId));
-        return CurrentUser.IsInRole("Customer") ? query : query.Where(x => x.GuestApprovedAt != null);
+        // One publication ("Duyệt và công khai") reaches Customers and anonymous visitors alike; older ratings published
+        // for Customers before the guest scope existed are therefore public too (no per-record re-approval).
+        return query;
     }
 
     public async Task<BaseResponse<CustomerReviewPageDto>> GetAsync(int page, int take, int? stars)
