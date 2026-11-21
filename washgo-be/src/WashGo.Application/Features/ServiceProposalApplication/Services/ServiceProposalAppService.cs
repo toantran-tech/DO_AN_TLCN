@@ -294,6 +294,7 @@ namespace WashGo.Application.Features.ServiceProposalApplication.Services
                 RequestType = serviceId.HasValue ? ServiceChangeRequestType.Update : ServiceChangeRequestType.Create,
                 ProposedData = JsonSerializer.Serialize(proposed, Json),
                 ProposedName = name,
+                ProposedCategoryId = proposed.CategoryId,
                 ClientRequestId = command.ClientRequestId,
                 CurrentData = service == null ? null : JsonSerializer.Serialize(Snapshot(service), Json),
                 Reason = reason,
@@ -319,6 +320,12 @@ namespace WashGo.Application.Features.ServiceProposalApplication.Services
 
         public async Task<PaginatedResult<ServiceProposalDto>> GetListAsync(ServiceProposalFilterQuery query)
         {
+            if ((query.CategoryIds?.Length ?? 0) > 100 || query.CategoryIds?.Contains(Guid.Empty) == true)
+                return new PaginatedResult<ServiceProposalDto>
+                {
+                    Succeeded = false, StatusCode = HttpStatusCode.BadRequest, CurrentPage = query.Page, PageSize = query.Take,
+                    Message = "Invalid categoryIds: maximum 100 nonempty UUIDs."
+                };
             var isAdmin = CurrentUser.IsInRole("Admin");
             var queryable = await _requestRepo.GetQueryableAsync();
             // Merchants only see their own proposals.
@@ -331,6 +338,12 @@ namespace WashGo.Application.Features.ServiceProposalApplication.Services
                 queryable = queryable.Where(x => x.RequestType == query.RequestType.Value);
             if (query.ServiceId.HasValue)
                 queryable = queryable.Where(x => x.ServiceId == query.ServiceId.Value);
+            // The category of the proposed content (also for new-service proposals), never the live category of the service.
+            if ((query.CategoryIds?.Length ?? 0) > 0)
+            {
+                var categoryIds = query.CategoryIds!.Distinct().ToList();
+                queryable = queryable.Where(x => x.ProposedCategoryId != null && categoryIds.Contains(x.ProposedCategoryId.Value));
+            }
             if (!string.IsNullOrWhiteSpace(query.Keyword))
             {
                 var kw = query.Keyword.Trim().ToLower();

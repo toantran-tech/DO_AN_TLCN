@@ -4730,6 +4730,10 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("merchant_id");
 
+                    b.Property<Guid?>("ProposedCategoryId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("proposed_category_id");
+
                     b.Property<string>("ProposedData")
                         .IsRequired()
                         .HasColumnType("jsonb")
@@ -4776,6 +4780,8 @@ namespace WashGo.EntityFrameworkCore.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("MerchantId");
+
+                    b.HasIndex("ProposedCategoryId");
 
                     b.HasIndex("ReviewedBy");
 

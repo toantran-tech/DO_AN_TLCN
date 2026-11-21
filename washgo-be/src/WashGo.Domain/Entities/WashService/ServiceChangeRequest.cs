@@ -18,6 +18,11 @@ namespace WashGo.Domain.Entities.WashService
         public string ProposedData { get; set; } = "{}";
         /// <summary>Tên dịch vụ đề xuất (bản sao từ ProposedData) để tìm kiếm.</summary>
         public string ProposedName { get; set; } = string.Empty;
+        /// <summary>
+        /// Danh mục trong nội dung đề xuất (không phải danh mục hiện tại của dịch vụ), tách ra để lọc/đếm ở DB. Đề xuất cũ chỉ có
+        /// loại xử lý legacy được ánh xạ sang danh mục gốc như DTO; null khi nội dung không có danh mục hợp lệ.
+        /// </summary>
+        public Guid? ProposedCategoryId { get; set; }
         /// <summary>Mã yêu cầu FE sinh (Idempotency-Key): gửi lại trả đề xuất đã tạo.</summary>
         public Guid? ClientRequestId { get; set; }
         public string? CurrentData { get; set; }
