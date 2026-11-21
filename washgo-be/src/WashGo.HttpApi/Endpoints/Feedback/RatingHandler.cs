@@ -68,7 +68,7 @@ namespace WashGo.HttpApi.Endpoints.Feedback
             group.MapPost("/batch", async (RatingBatchCommand command, IRatingAppService svc) => (await svc.BatchAsync(command)).CustomResult())
                 .RequireAuthorization("AdminOnly")
                 .WithName("Ẩn/hiện đánh giá hàng loạt")
-                .WithSummary("action Hide|Show|Publish cho 1-50 đánh giá được chọn (mỗi dòng id + expectedVersion), Hide cần lý do chung 1-500 ký tự. Từng dòng xử lý độc lập: outcome Changed/Unchanged/Skipped/Failed + reasonCode, totals. Cùng operationId trả kết quả cũ, khác nội dung → 409; tra cứu GET /admin-operations/Rating/{operationId}.")
+                .WithSummary("action Hide|Show|PublishPublic (Duyệt và công khai cho Merchant, Customer và khách chưa đăng nhập; tương đương Publish kèm publishForCustomers/publishForGuests)|Publish (không cờ: chỉ duyệt nội dung cho Merchant) cho 1-50 đánh giá được chọn (mỗi dòng id + expectedVersion), Hide cần lý do chung 1-500 ký tự. Từng dòng xử lý độc lập: outcome Changed/Unchanged/Skipped/Failed + reasonCode, totals. Cùng operationId trả kết quả cũ, khác nội dung → 409; tra cứu GET /admin-operations/Rating/{operationId}.")
                 .WithOpenApi();
 
             group.MapPost("/{id:guid}/publish", async (Guid id, PublishRatingCommand command, IRatingAppService svc) =>
