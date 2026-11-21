@@ -12,6 +12,8 @@ namespace WashGo.Application.Contracts.Features.ServiceProposalContracts.Queries
         /// <summary>Tìm theo tên dịch vụ đề xuất hoặc mã dịch vụ.</summary>
         public string? Keyword { get; set; }
         public Guid? ServiceId { get; set; }
+        /// <summary>Lọc theo danh mục trong nội dung đề xuất (OR); null/rỗng = tất cả; tối đa 100 UUID khác rỗng.</summary>
+        public Guid[]? CategoryIds { get; set; }
         public int Page { get; set; } = 1;
         public int Take { get; set; } = 20;
     }
