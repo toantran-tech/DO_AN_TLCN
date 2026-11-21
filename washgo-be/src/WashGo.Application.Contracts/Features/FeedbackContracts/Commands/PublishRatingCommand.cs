@@ -3,9 +3,12 @@ namespace WashGo.Application.Contracts.Features.FeedbackContracts.Commands;
 /// <summary>Admin confirms review of the original comment and media before releasing them to the Merchant.</summary>
 public class PublishRatingCommand
 {
-    /// <summary>Explicit approval for Customer testimonials, including comment/media PII review. False preserves Merchant-only publishing.</summary>
+    /// <summary>
+    /// Duyệt và công khai: either flag publishes for Customers and anonymous visitors together (one public scope).
+    /// Both false = content approval for the Merchant only (kept for older clients).
+    /// </summary>
     public bool PublishForCustomers { get; set; }
-    /// <summary>Separate explicit approval for anonymous Home visitors; also approves the Customer audience.</summary>
+    /// <summary>Same meaning as <see cref="PublishForCustomers"/>; sending both is the recommended form.</summary>
     public bool PublishForGuests { get; set; }
     public string? ExpectedVersion { get; set; }
     public Guid? OperationId { get; set; }

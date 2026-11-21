@@ -325,32 +325,30 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
             if (rating.IsHidden)
                 return AdministrativeWriteGuard.Error<RatingResultDto>(HttpStatusCode.BadRequest, "HiddenRating", "Hiển thị lại đánh giá trước khi duyệt nội dung.");
             BaseResponse<RatingResultDto> response;
-            if (rating.ContentApprovedAt.HasValue && (!(command.PublishForCustomers || command.PublishForGuests) || rating.PublicApprovedAt.HasValue)
-                && (!command.PublishForGuests || rating.GuestApprovedAt.HasValue))
+            // Publishing is one decision for every audience: Customer and guest milestones are set together.
+            var publish = command.PublishForCustomers || command.PublishForGuests;
+            if (rating.ContentApprovedAt.HasValue && (!publish || rating.PublicApprovedAt.HasValue && rating.GuestApprovedAt.HasValue))
                 response = AdministrativeBatchExecutor.Unchanged(Success(await AdminDtoAsync(rating), "Nội dung đã được duyệt."));
             else
             {
                 var now = DateTime.UtcNow;
                 rating.ContentApprovedAt ??= new DateTime(now.Ticks - now.Ticks % 10, DateTimeKind.Utc);
                 rating.ContentApprovedBy ??= CurrentUser.Id;
-                if (command.PublishForCustomers || command.PublishForGuests)
+                if (publish)
                 {
                     rating.PublicId ??= Guid.NewGuid();
                     rating.PublicApprovedAt ??= new DateTime(now.Ticks - now.Ticks % 10, DateTimeKind.Utc);
                     rating.PublicApprovedBy ??= CurrentUser.Id;
-                }
-                if (command.PublishForGuests)
-                {
                     rating.GuestApprovedAt ??= new DateTime(now.Ticks - now.Ticks % 10, DateTimeKind.Utc);
                     rating.GuestApprovedBy ??= CurrentUser.Id;
                 }
                 await _ratingRepo.UpdateAsync(rating, autoSave: true);
                 await Audit.LogAsync(new AuditEntry("Rating", "Publish", "OrderRating", rating.Id.ToString(), rating.OrderCode)
                 {
-                    Reason = reason, ChangedFields = command.PublishForGuests ? ["guestApprovedAt", "guestApprovedBy", "publicApprovedAt", "publicApprovedBy", "publicId", "contentApprovedAt", "contentApprovedBy"] : command.PublishForCustomers ? ["contentApprovedAt", "contentApprovedBy", "publicApprovedAt", "publicApprovedBy", "publicId"] : ["contentApprovedAt", "contentApprovedBy"],
+                    Reason = reason, ChangedFields = publish ? ["guestApprovedAt", "guestApprovedBy", "publicApprovedAt", "publicApprovedBy", "publicId", "contentApprovedAt", "contentApprovedBy"] : ["contentApprovedAt", "contentApprovedBy"],
                     Details = new { operationId = command.OperationId, command.PublishForCustomers, command.PublishForGuests }
                 });
-                response = Success(await AdminDtoAsync(rating), command.PublishForGuests ? "Đã duyệt đánh giá cho khách chưa đăng nhập, Customer và Merchant." : command.PublishForCustomers ? "Đã duyệt nội dung đánh giá cho Customer và Merchant." : "Đã duyệt nội dung đánh giá cho Merchant.");
+                response = Success(await AdminDtoAsync(rating), publish ? "Đã duyệt và công khai đánh giá cho Merchant, Customer và khách chưa đăng nhập." : "Đã duyệt nội dung đánh giá cho Merchant.");
             }
             await Writes.RecordAsync(command.OperationId, CurrentUser.Id!.Value, "Rating", "Publish", id.ToString(), payload, response);
             await uow.CompleteAsync();
@@ -362,15 +360,22 @@ namespace WashGo.Application.Features.FeedbackApplication.Services
             var reason = command.Reason?.Trim();
             if (command.Action == "Hide" && (string.IsNullOrWhiteSpace(reason) || reason.Length > 500))
                 return AdministrativeWriteGuard.Error<AdministrativeBatchResultDto>(HttpStatusCode.BadRequest, "ReasonRequired", "Ẩn hàng loạt cần một lý do chung 1-500 ký tự.");
+            // "PublishPublic" = Duyệt và công khai (all audiences). "Publish" without flags keeps its original meaning
+            // (content approval for the Merchant only), so stored operations replay exactly as first sent.
+            var action = command.Action == "Publish" && (command.PublishForCustomers || command.PublishForGuests) ? "PublishPublic" : command.Action;
             var batch = new AdministrativeBatchCommand
             {
-                OperationId = command.OperationId, Action = command.Action, Items = command.Items ?? [], Reason = reason
+                OperationId = command.OperationId, Action = action, Items = command.Items ?? [], Reason = reason
             };
             return await LazyServiceProvider.LazyGetRequiredService<AdministrativeBatchExecutor>().RunAsync("Rating", batch, 50,
-                async (item, key) => AdministrativeBatchExecutor.Item(item.Id, command.Action == "Publish"
-                    ? await PublishAsync(item.Id, new PublishRatingCommand { Reason = reason, ExpectedVersion = item.ExpectedVersion, OperationId = key })
-                    : await SetVisibilityAsync(item.Id, new SetRatingVisibilityCommand { IsHidden = command.Action == "Hide", Reason = reason, ExpectedVersion = item.ExpectedVersion, OperationId = key })),
-                ["Hide", "Show", "Publish"]);
+                async (item, key) => AdministrativeBatchExecutor.Item(item.Id, action is "Publish" or "PublishPublic"
+                    ? await PublishAsync(item.Id, new PublishRatingCommand
+                    {
+                        Reason = reason, ExpectedVersion = item.ExpectedVersion, OperationId = key,
+                        PublishForCustomers = action == "PublishPublic", PublishForGuests = action == "PublishPublic"
+                    })
+                    : await SetVisibilityAsync(item.Id, new SetRatingVisibilityCommand { IsHidden = action == "Hide", Reason = reason, ExpectedVersion = item.ExpectedVersion, OperationId = key })),
+                ["Hide", "Show", "Publish", "PublishPublic"]);
         }
 
         // Older orders never stored the Merchant name, so fall back to the Merchant record.

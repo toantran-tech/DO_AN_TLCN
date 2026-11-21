@@ -80,32 +80,54 @@ VALUES ('$($ratingIds[$n])','$orderId','PU$($run.Substring(0,14))$n','$owner','P
     Visibility $ratingIds[0] $false
     if((Call-Api Get '/customer/reviews/summary' $null $customer).data.total -ne ($baseline.total+2)){throw 'Show did not restore publication.'}
     foreach($path in @('/customer/reviews?stars=6','/customer/reviews?take=21','/customer/reviews?page=0','/customer/reviews?serviceId=invalid')){Assert-Status 400 Get $path $null $customer}
+    # One publication reaches Customers and anonymous visitors alike (Duyệt và công khai).
     $guest=(Call-Api Get '/customer/reviews?page=1&take=20' $null $null).data
-    if (@($guest.items|Where-Object{$_.comment -like "*$run*"}).Count -ne 0) { throw 'Customer-only approvals leaked to anonymous visitors.' }
-    Assert-Status 404 Get $publicImage $null $null
+    if (@($guest.items|Where-Object{$_.comment -like "*$run*"}).Count -ne 2) { throw 'Published reviews must reach anonymous visitors too.' }
+    if ((Review $ratingIds[0]).guestApprovedAt -eq $null) { throw 'Publishing did not set the guest milestone.' }
     $guestPublish=@{publishForGuests=$true;expectedVersion=(Review $ratingIds[0]).version;operationId=[Guid]::NewGuid().ToString()}
     $approved=(Call-Api Post "/rating/$($ratingIds[0])/publish" $guestPublish $admin).data
     $replayed=(Call-Api Post "/rating/$($ratingIds[0])/publish" $guestPublish $admin).data
     if (!$approved.guestApprovedAt -or $approved.version -ne $replayed.version -or $approved.publicApprovedAt -ne $replayed.publicApprovedAt) { throw 'Guest approval/replay invalid.' }
     $guest=(Call-Api Get '/customer/reviews?page=1&take=20' $null $null).data
     $guestMine=@($guest.items|Where-Object{$_.comment -like "*$run*"})
-    if ($guestMine.Count -ne 1 -or $guestMine[0].id -ne $withImage.id) { throw 'Guest feed contains Customer-only/unapproved reviews.' }
+    if ($guestMine.Count -ne 2 -or @($guestMine | ForEach-Object id) -notcontains $withImage.id) { throw 'Guest feed misses published reviews or shows unapproved ones.' }
     if (@($guestMine[0].PSObject.Properties.Name|Where-Object{$_ -notin @('id','overallStars','comment','imageUrls','publishedAt')}).Count) { throw 'Guest review leaked private fields.' }
     $guestSummary=(Call-Api Get '/customer/reviews/summary' $null $null).data
-    if ($guestSummary.total -ne ($guestBaseline.total+1) -or @($guestSummary.distribution).Count -ne 5) { throw 'Guest summary has wrong approval scope.' }
+    if ($guestSummary.total -ne ($guestBaseline.total+2) -or @($guestSummary.distribution).Count -ne 5) { throw 'Guest summary has wrong approval scope.' }
     $guestImage=Invoke-WebRequest -Uri "$BaseUrl$publicImage" -UseBasicParsing
     if ($guestImage.StatusCode -ne 200 -or $guestImage.Headers['Cache-Control'] -ne 'no-store') { throw 'Guest image must load without JWT and without caching.' }
     Sql "UPDATE washgo.orders SET is_deleted=true WHERE id='$($orderIds[0])';" | Out-Null
     Assert-Status 404 Get $publicImage $null $null
-    if ((Call-Api Get '/customer/reviews/summary' $null $null).data.total -ne $guestBaseline.total) { throw 'Review of deleted order remained public.' }
+    if ((Call-Api Get '/customer/reviews/summary' $null $null).data.total -ne ($guestBaseline.total+1)) { throw 'Review of deleted order remained public.' }
     Sql "UPDATE washgo.orders SET is_deleted=false WHERE id='$($orderIds[0])';" | Out-Null
     Sql "UPDATE washgo.order_ratings SET is_deleted=true WHERE id='$($ratingIds[0])';" | Out-Null
     Assert-Status 404 Get $publicImage $null $null
     Sql "UPDATE washgo.order_ratings SET is_deleted=false WHERE id='$($ratingIds[0])';" | Out-Null
     Visibility $ratingIds[0] $true
     Assert-Status 404 Get $publicImage $null $null
-    if ((Call-Api Get '/customer/reviews/summary' $null $null).data.total -ne $guestBaseline.total) { throw 'Hidden guest review still included in summary.' }
+    if ((Call-Api Get '/customer/reviews/summary' $null $null).data.total -ne ($guestBaseline.total+1)) { throw 'Hidden guest review still included in summary.' }
     Visibility $ratingIds[0] $false
+    if ((Review $ratingIds[0]).guestApprovedAt -eq $null) { throw 'Hide/Show dropped the publication milestones.' }
+    # Older ratings published for Customers before the guest scope existed are public for guests too; the migration
+    # SyncGuestReviewPublication copies the milestone (same statement, limited to the fixture).
+    Sql "UPDATE washgo.order_ratings SET guest_approved_at=NULL, guest_approved_by=NULL WHERE id='$($ratingIds[1])';" | Out-Null
+    if ((Call-Api Get '/customer/reviews/summary' $null $null).data.total -ne ($guestBaseline.total+2)) { throw 'Legacy Customer publication hidden from guests.' }
+    Sql "UPDATE washgo.order_ratings SET guest_approved_at=public_approved_at, guest_approved_by=public_approved_by WHERE public_approved_at IS NOT NULL AND guest_approved_at IS NULL AND id='$($ratingIds[1])';" | Out-Null
+    if (!(Review $ratingIds[1]).guestApprovedAt) { throw 'Backfill did not set the guest milestone.' }
+    # Batch "Duyệt và công khai": every audience in one action; the old Publish keeps its content-only meaning.
+    $batchKey=[Guid]::NewGuid().ToString()
+    $batch=@{operationId=$batchKey;action='PublishPublic';items=@(@{id="$($ratingIds[2])";expectedVersion=(Review $ratingIds[2]).version})}
+    $result=(Call-Api Post '/rating/batch' $batch $admin).data
+    $row=@($result.items)[0]
+    $published=Review $ratingIds[2]
+    if ($row.outcome -ne 'Changed' -or !$published.contentApprovedAt -or !$published.publicApprovedAt -or !$published.guestApprovedAt) { throw 'Batch publish did not publish every scope.' }
+    if ((Call-Api Get '/customer/reviews/summary' $null $null).data.total -ne ($guestBaseline.total+3)) { throw 'Batch-published review missing for guests.' }
+    $again=(Call-Api Post '/rating/batch' $batch $admin).data
+    if ((@($again.items)[0] | ConvertTo-Json -Compress) -ne ($row | ConvertTo-Json -Compress)) { throw 'Batch replay changed the result.' }
+    $reused=$batch.Clone(); $reused.action='Publish'
+    Assert-Status 409 Post '/rating/batch' $reused $admin
+    $lookup=(Call-Api Get "/admin-operations/Rating/$batchKey" $null $admin).data
+    if ($lookup.state -ne 'Completed') { throw 'Batch publish lookup not completed.' }
     # Guest flag must take part in the idempotency fingerprint.
     $mismatch=$guestPublish.Clone();$mismatch.publishForGuests=$false
     Assert-Status 409 Post "/rating/$($ratingIds[0])/publish" $mismatch $admin
@@ -127,7 +149,7 @@ VALUES ('$($ratingIds[$n])','$orderId','PU$($run.Substring(0,14))$n','$owner','P
     Assert-Status 401 Post "/rating/$($ratingIds[0])/publish" @{publishForGuests=$true} $null
     Assert-Status 403 Post "/rating/$($ratingIds[0])/publish" @{publishForGuests=$true} $customer
     foreach($path in @('/customer/reviews?take=21','/customer/reviews?stars=0','/customer/reviews?page=0','/customer/reviews?serviceId=x','/customer/reviews/summary?stars=5')) { Assert-Status 400 Get $path $null $null }
-    if ((Call-Api Get '/customer/reviews/summary' $null $admin).data.total -ne ($guestBaseline.total+1)) { throw 'Staff public feed unexpectedly widens audience.' }
+    if ((Call-Api Get '/customer/reviews/summary' $null $admin).data.total -ne ($guestBaseline.total+3)) { throw 'Staff public feed differs from the public scope.' }
     Assert-Status 404 Get "/customer/reviews/$($mine[0].id)/images/0" $null $customer
     $safe="visible$run";$secret="internal$run"
     Sql @"
@@ -148,7 +170,7 @@ INSERT INTO washgo.notifications (id,user_id,type,title,content,link_type,messag
     if($byVisible.total -lt 1 -or !$byVisible.items[0].content.Contains($safeRow.content)){throw 'Query and visible content use different privacy rules.'}
     if((Call-Api Post '/notification/filter' @{keyword=$safe;types=@(11)} $customer).data.total -ne 0){throw 'Type filter lost after keyword projection.'}
     if((Call-Api Post '/notification/filter' @{keyword=$safe;unreadOnly=$true;fromDate=0;toDate=1} $customer).data.total -ne 0){throw 'Date/unread guards lost after safe search.'}
-    Write-Output 'PASS: explicit Customer publication, anonymous IDs/DTO, paging/summary/Hide/Show/validation/auth and SQL safe-notification search/count/owner filters.'
+    Write-Output 'PASS: one publication for Customers and guests (legacy Customer publications included, backfill), batch Duyệt và công khai with replay/lookup/key reuse, anonymous IDs/DTO, paging/summary/Hide/Show/validation/auth and SQL safe-notification search/count/owner filters.'
 }
 finally {
     $ids=($notes|ForEach-Object{"'$_'"})-join ',';Sql "DELETE FROM washgo.notifications WHERE id IN ($ids);" | Out-Null
