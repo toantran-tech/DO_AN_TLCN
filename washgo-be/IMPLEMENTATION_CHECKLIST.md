@@ -1,3 +1,11 @@
+## Shipper nhận nhiều nhiệm vụ trong giới hạn — 21/11/2026
+
+- [x] `SystemSetting.MaxActiveTasksPerShipper` (1–20, mặc định 3), `PUT /system-setting/dispatch`, migration `AddShipperTaskCapacity`.
+- [x] `ShipperCapacityService` đếm theo `DeliveryTaskRules.ActiveDeliveries`, dùng cho phân công đơn, phân công kho, danh sách khả dụng (đơn + kho), quản lý Shipper và hồ sơ Shipper; kiểm tra sau khóa hàng Shipper.
+- [x] 409 `ShipperCapacityExceeded` kèm số liệu; mã riêng `ShipperNotInMerchant`/`ShipperNotAvailable`; replay/cùng chuyến không chiếm thêm chỗ; giảm giới hạn không hủy nhiệm vụ.
+- [x] Smoke `shipper-task-capacity.ps1` PASS, đã nối CI; `shipper-assignment.ps1` kiểm tra tranh chấp với giới hạn 1 (200/409).
+- [ ] FE hiển thị "Đang có x / y nhiệm vụ", lý do không chọn được, cấu hình giới hạn trong cài đặt.
+
 ## Lọc đề xuất Merchant theo danh mục — 21/11/2026
 
 - [x] `categoryIds` trên `POST /service-proposal/filter` (≤100, không UUID rỗng), lọc trước khi đếm/phân trang, giữ phạm vi Merchant.

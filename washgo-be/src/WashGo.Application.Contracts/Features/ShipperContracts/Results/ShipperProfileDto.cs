@@ -8,6 +8,10 @@ namespace WashGo.Application.Contracts.Features.ShipperContracts.Results
     {
         public bool CanChangeWorkStatus { get; set; }
         public bool CanGoOffline { get; set; }
+        /// <summary>Nhiệm vụ chưa hoàn tất của chính Shipper, giới hạn hiệu lực và số còn nhận được.</summary>
+        public int ActiveTaskCount { get; set; }
+        public int MaxActiveTasks { get; set; }
+        public int RemainingTaskCapacity { get; set; }
         public string? WorkStatusBlockedReason { get; set; }
         public string? GoOfflineBlockedReason { get; set; }
         public Guid Id { get; set; }

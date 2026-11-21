@@ -186,11 +186,11 @@ namespace WashGo.HttpApi.Endpoints.WashOrder
                 .Produces<BaseResponse<OrderOperationDto>>(StatusCodes.Status200OK).Produces<BaseResponse<OrderOperationDto>>(StatusCodes.Status400BadRequest).Produces<BaseResponse<OrderOperationDto>>(StatusCodes.Status404NotFound)
                 .WithOpenApi();
 
-            group.MapGet("/{id:guid}/available-shippers", async (Guid id, IWashOrderAppService svc) =>
-                (await svc.GetAvailableShippersAsync(id)).CustomResult())
+            group.MapGet("/{id:guid}/available-shippers", async (Guid id, bool? includeUnavailable, IWashOrderAppService svc) =>
+                (await svc.GetAvailableShippersAsync(id, includeUnavailable == true)).CustomResult())
                 .RequireAuthorization("MerchantOrAdmin")
                 .WithName("Xem Shipper khả dụng cho đơn")
-                .WithSummary("Liệt kê Shipper đủ điều kiện nhận nhiệm vụ lấy hoặc trả đồ của đơn hàng.")
+                .WithSummary("Shipper của tiệm nhận được nhiệm vụ lấy/trả đồ của đơn: đang làm việc, Available, tài khoản hoạt động và còn chỗ (activeTaskCount < maxActiveTasks). Mỗi dòng có activeTaskCount, maxActiveTasks, remainingTaskCapacity, canAssign, blockedReasonCode. includeUnavailable=true trả cả người chưa nhận được kèm lý do (AccountInactive, ShipperOnLeave, ShipperNotAvailable, ShipperCapacityExceeded).")
                 .Produces<BaseResponse<List<AvailableShipperDto>>>(StatusCodes.Status200OK).Produces<BaseResponse<List<AvailableShipperDto>>>(StatusCodes.Status400BadRequest).Produces<BaseResponse<List<AvailableShipperDto>>>(StatusCodes.Status404NotFound)
                 .WithOpenApi();
 

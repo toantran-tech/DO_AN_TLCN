@@ -1147,17 +1147,23 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             if (note?.Length > 500)
                 return BadRequest<WashOrderDetailDto>("Ghi chú cho Shipper tối đa 500 ký tự.");
 
-            // Serialize assignments for the same Shipper, including different orders.
+            // Serialize assignments for the same Shipper, including different orders: the capacity count below runs after
+            // this row lock, so two assignments cannot both take the Shipper's last slot.
             var shipper = await _shipperRepo.GetForUpdateAsync(command.ShipperId);
             if (shipper == null || shipper.MerchantId != order.MerchantId)
-                return BadRequest<WashOrderDetailDto>("Shipper phải thuộc cùng tiệm với đơn hàng.");
+                return AdministrativeWriteGuard.Error<WashOrderDetailDto>(HttpStatusCode.BadRequest, "ShipperNotInMerchant", "Shipper phải thuộc cùng tiệm với đơn hàng.");
             var user = await _userRepo.FindAsync(shipper.UserId);
             if (!shipper.IsActive || shipper.Status != ShipperStatus.Available || user == null || !user.IsActive ||
                 !await _roleRepo.AnyAsync(x => x.Id == user.RoleId && x.Name == "Shipper" && x.IsActive))
-                return BadRequest<WashOrderDetailDto>("Shipper không hoạt động hoặc không sẵn sàng nhận chuyến.");
-            if (await AsyncExecuter.AnyAsync(DeliveryTaskRules.ActiveDeliveries(await _orderRepo.GetQueryableAsync())
-                    .Where(x => x.Id != order.Id && x.ShipperId == shipper.Id)))
-                return BadRequest<WashOrderDetailDto>("Shipper đang có chuyến chưa hoàn tất; vui lòng chọn người khác.");
+                return AdministrativeWriteGuard.Error<WashOrderDetailDto>(HttpStatusCode.BadRequest, "ShipperNotAvailable", "Shipper không hoạt động hoặc không sẵn sàng nhận chuyến.");
+            // Several open tasks are allowed up to the limit; this order's own trip never takes a second slot.
+            var capacity = await LazyServiceProvider.LazyGetRequiredService<ShipperCapacityService>().ForAsync(shipper.Id, order.Id);
+            if (!capacity.HasRoom)
+                return new BaseResponse<WashOrderDetailDto>
+                {
+                    Succeeded = false, StatusCode = HttpStatusCode.Conflict, Message = ShipperCapacityService.ExceededMessage(capacity),
+                    Meta = ShipperCapacityService.ExceededMeta(capacity)
+                };
 
             // Generate a secure 6-digit PIN and task QR for this assignment
             var taskPin = RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
@@ -1366,7 +1372,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             });
         }
 
-        public async Task<BaseResponse<List<AvailableShipperDto>>> GetAvailableShippersAsync(Guid orderId)
+        public async Task<BaseResponse<List<AvailableShipperDto>>> GetAvailableShippersAsync(Guid orderId, bool includeUnavailable = false)
         {
             var scope = await GetOrderScopeAsync();
             var order = await _orderRepo.FindAsync(orderId);
@@ -1376,26 +1382,11 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             if (!task.HasValue)
                 return BadRequest<List<AvailableShipperDto>>("Đơn chưa ở giai đoạn phân công giao nhận.");
 
-            var shippers = await _shipperRepo.GetQueryableAsync();
-            var users = await _userRepo.GetQueryableAsync();
-            var roles = await _roleRepo.GetQueryableAsync();
-            var activeOrders = DeliveryTaskRules.ActiveDeliveries(await _orderRepo.GetQueryableAsync());
-            var candidates = from shipper in shippers
-                             join user in users on shipper.UserId equals user.Id
-                             join role in roles on user.RoleId equals role.Id
-                             where shipper.MerchantId == order.MerchantId && shipper.IsActive &&
-                                 shipper.Status == ShipperStatus.Available && user.IsActive &&
-                                 role.IsActive && role.Name == "Shipper" &&
-                                 !activeOrders.Any(x => x.Id != orderId && x.ShipperId == shipper.Id)
-                             orderby user.FullName, shipper.Id
-                             select new AvailableShipperDto
-                             {
-                                 Id = shipper.Id, FullName = user.FullName, AvatarUrl = user.Avatar, Phone = user.Phone, Email = user.Email,
-                                 VehicleType = shipper.VehicleType, VehiclePlate = shipper.VehiclePlate,
-                                 Rating = shipper.Rating, ActiveDeliveryCount = activeOrders.Count(x => x.ShipperId == shipper.Id),
-                                 TaskType = task.Value
-                             };
-            return Success(await AsyncExecuter.ToListAsync(candidates));
+            // Shippers with open tasks stay assignable until the limit (same rule as the assignment itself).
+            var list = await LazyServiceProvider.LazyGetRequiredService<ShipperCapacityService>()
+                .CandidatesAsync(order.MerchantId, orderId, task.Value, includeUnavailable);
+            return Success(list, list.Any(x => x.CanAssign) ? null
+                : "Chưa có Shipper nhận được nhiệm vụ này (tạm nghỉ, không sẵn sàng hoặc đã đủ số nhiệm vụ chưa hoàn tất).");
         }
 
         #region QR/PIN Simulation Flow

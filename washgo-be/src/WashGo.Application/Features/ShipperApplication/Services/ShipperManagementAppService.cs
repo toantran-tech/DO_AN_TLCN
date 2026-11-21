@@ -138,7 +138,8 @@ namespace WashGo.Application.Features.ShipperApplication.Services
                         .ThenBy(x => x.user.FullName).ThenBy(x => x.shipper.Id);
             var items = await AsyncExecuter.ToListAsync(ordered.Skip((page - 1) * take).Take(take));
             var activeCounts = await ActiveTaskCountsAsync(items.Select(x => x.shipper.Id).ToList());
-            var dtos = items.Select(x => ToDto(x.shipper, x.user, activeCounts.GetValueOrDefault(x.shipper.Id))).ToList();
+            var limit = await LazyServiceProvider.LazyGetRequiredService<ShipperCapacityService>().LimitAsync();
+            var dtos = items.Select(x => WithCapacity(ToDto(x.shipper, x.user, activeCounts.GetValueOrDefault(x.shipper.Id)), limit)).ToList();
             return Success(dtos, total, page, take, total == 0 ? "Bạn chưa có Shipper nào." : null);
         }
 
@@ -148,7 +149,8 @@ namespace WashGo.Application.Features.ShipperApplication.Services
             if (shipper == null || user == null)
                 return NotFound<ShipperDto>("Không tìm thấy Shipper!");
             var active = await ActiveTaskCountsAsync([shipper.Id]);
-            return Success(ToDto(shipper, user, active.GetValueOrDefault(shipper.Id)));
+            var limit = await LazyServiceProvider.LazyGetRequiredService<ShipperCapacityService>().LimitAsync();
+            return Success(WithCapacity(ToDto(shipper, user, active.GetValueOrDefault(shipper.Id)), limit));
         }
 
         public async Task<BaseResponse<ShipperSummaryDto>> GetSummaryAsync(Guid? merchantId)
@@ -689,6 +691,14 @@ namespace WashGo.Application.Features.ShipperApplication.Services
                 .GroupBy(x => x.ShipperId!.Value)
                 .Select(g => new { ShipperId = g.Key, Count = g.Count() }));
             return rows.ToDictionary(x => x.ShipperId, x => x.Count);
+        }
+
+        /// <summary>Same meaning of "open tasks" as the assignment screens: count, effective limit and room left.</summary>
+        private static ShipperDto WithCapacity(ShipperDto dto, int limit)
+        {
+            dto.MaxActiveTasks = limit;
+            dto.RemainingTaskCapacity = Math.Max(0, limit - dto.ActiveTaskCount);
+            return dto;
         }
 
         private static ShipperDto ToDto(Shipper s, User u, int activeTasks) => new()

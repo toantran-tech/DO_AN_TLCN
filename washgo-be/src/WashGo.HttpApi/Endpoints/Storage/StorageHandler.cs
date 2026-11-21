@@ -19,7 +19,7 @@ public class StorageHandler : IEndpointBase
             .RequireAuthorization("MerchantOrAdmin").WithSummary("Số đơn theo trạng thái lưu/giao kho trong phạm vi quyền.").WithOpenApi();
         group.MapGet("/{orderId:guid}/cycles", async (Guid orderId, int? page, int? take, IStorageAppService svc) => (await svc.GetAsync(orderId, page ?? 1, take ?? 20)).CustomResult())
             .WithSummary("Lịch sử vòng lưu kho của đơn được phép xem, page/take; Customer không nhận địa chỉ tiệm/biên nhận/nhân sự.").WithOpenApi();
-        group.MapGet("/{orderId:guid}/shippers", async (Guid orderId, IStorageAppService svc) => (await svc.GetShippersAsync(orderId)).CustomResult())
+        group.MapGet("/{orderId:guid}/shippers", async (Guid orderId, bool? includeUnavailable, IStorageAppService svc) => (await svc.GetShippersAsync(orderId, includeUnavailable == true)).CustomResult())
             .RequireAuthorization("MerchantOrAdmin").WithSummary("Shipper active/Available của tiệm, không còn chuyến hiệu lực; kiểm tra lại dưới khóa khi phân công.").WithOpenApi();
         group.MapGet("/{orderId:guid}/quote", async (Guid orderId, Guid lockerId, IStorageAppService svc) => (await svc.QuoteAsync(orderId, lockerId)).CustomResult())
             .RequireAuthorization("CustomerOnly").WithSummary("Báo phí hiện tại và quoteToken ký server, hạn 5 phút, gắn chủ đơn/trạm/vòng. Chưa giữ ô hoặc thu tiền; phí tiếp tục tới lúc Shipper xuất kho.").WithOpenApi();

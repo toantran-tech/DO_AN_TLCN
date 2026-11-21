@@ -76,7 +76,7 @@ try {
     if (!$?) { throw 'Order lifecycle/actual-weight smoke failed.' }
     & (Join-Path $PSScriptRoot '../smoke/locker-last-slot-race.ps1') -BaseUrl $baseUrl -PostgresContainer $postgres -Database washgo_ci
     if (!$?) { throw 'Last-slot concurrent reservation smoke failed.' }
-    foreach ($suite in @('rating-keyword-privacy.ps1', 'review-publishing.ps1', 'storage-lifecycle.ps1', 'customer-locker-slots.ps1', 'customer-public-reviews-notifications.ps1', 'service-categories-workflow.ps1', 'order-assignment-return-statuses.ps1', 'order-progress.ps1', 'business-codes.ps1', 'category-classification.ps1', 'admin-accounts.ps1', 'account-status-codes.ps1', 'proposal-category-filter.ps1')) {
+    foreach ($suite in @('rating-keyword-privacy.ps1', 'review-publishing.ps1', 'storage-lifecycle.ps1', 'customer-locker-slots.ps1', 'customer-public-reviews-notifications.ps1', 'service-categories-workflow.ps1', 'order-assignment-return-statuses.ps1', 'order-progress.ps1', 'business-codes.ps1', 'category-classification.ps1', 'admin-accounts.ps1', 'account-status-codes.ps1', 'proposal-category-filter.ps1', 'shipper-task-capacity.ps1')) {
         & (Join-Path $PSScriptRoot "../smoke/$suite") -BaseUrl $baseUrl -PostgresContainer $postgres -Database washgo_ci
         if (!$?) { throw "API regression failed: $suite" }
     }
