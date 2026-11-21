@@ -61,7 +61,7 @@ try {
         Check ($locked.Json.meta.accountAccessReason -eq $expectedWhy) "$role lock reason: '$($locked.Json.meta.accountAccessReason)'"
         Check ($locked.Text -notmatch 'statusChangedBy|lockedBy|actor') "$role locked sign-in leaks who locked it."
         $wrong=Expect (Login (Email $role.ToLower()) 'Wrong-Password1') 400 'InvalidCredentials' "$role locked + wrong password"
-        Check ($wrong.Text -notmatch 'accountAccessReason') "$role wrong password reveals the lock reason." 
+        Check ($wrong.Text -notmatch 'accountAccessReason') "$role wrong password reveals the lock reason."
         Sql "UPDATE washgo.users SET is_active=true WHERE id='$id';" | Out-Null
         Expect (Login (Email $role.ToLower())) 200 $null "$role sign-in after unlock" | Out-Null
     }
