@@ -13,7 +13,9 @@ Ngày 21/11/2026. Thực hiện `Docs/cần làm/BACEND_ADMIN.md`. Envelope gi�
 | Refresh token không tồn tại/đã thu hồi/hết hạn | `InvalidRefreshToken` (không cho biết tài khoản có tồn tại hay bị khóa) |
 | Refresh token **còn hiệu lực** nhưng tài khoản bị khóa/xóa | `AccountLocked` / `AccountDeleted` |
 
-Không trả lý do khóa, người khóa hay dữ liệu nội bộ. Khóa/xóa vẫn thu hồi mọi phiên, nên sau khi khóa, refresh token cũ trả `InvalidRefreshToken`; FE biết tài khoản bị khóa qua request kế tiếp có access token (mục 2).
+Khi trả `AccountLocked`/`AccountDeleted`, `meta` có thêm **`accountAccessReason`** (chuỗi hoặc `null`): lý do dành cho chính chủ tài khoản — khóa lấy lý do của lần khóa hiện tại (Admin, trang Merchant hoặc trang Shipper nhập), xóa lấy lý do xóa (không bao giờ dùng lý do khóa trước đó). `null` = không có lý do (FE hiện "Chưa có lý do được cung cấp"). Không trả người khóa, ghi chú audit hay dữ liệu nội bộ; các mã khác (`InvalidCredentials`, `InvalidRefreshToken`) không có trường này. FE hiển thị dạng văn bản thuần.
+
+Khóa/xóa vẫn thu hồi mọi phiên, nên sau khi khóa, refresh token cũ trả `InvalidRefreshToken`; FE biết tài khoản bị khóa (kèm lý do) qua request kế tiếp có access token (mục 2).
 
 ## 2. Request có access token (HTTP 401/403)
 
@@ -28,7 +30,7 @@ Không trả lý do khóa, người khóa hay dữ liệu nội bộ. Khóa/xóa
 | Phiên hết hạn | 401 | `SessionExpired` |
 | Đăng nhập rồi nhưng không đủ quyền | 403 | `Forbidden` |
 
-Trạng thái khóa/xóa lấy từ chính tài khoản của token có chữ ký hợp lệ, không suy ra từ việc phiên bị thu hồi. FE chỉ coi là tài khoản bị khóa khi nhận đúng `AccountLocked`/`AccountDeleted`; lỗi mạng hoặc 403 `Forbidden` không phải khóa. Áp dụng cho cả kết nối SignalR `/hubs/notifications` (negotiate trả cùng mã).
+Trạng thái khóa/xóa lấy từ chính tài khoản của token có chữ ký hợp lệ, không suy ra từ việc phiên bị thu hồi. 401 `AccountLocked`/`AccountDeleted` có `meta.accountAccessReason` như mục 1; `SessionRevoked`/`SessionExpired`/`TokenExpired` không có lý do. FE chỉ coi là tài khoản bị khóa khi nhận đúng `AccountLocked`/`AccountDeleted`; lỗi mạng hoặc 403 `Forbidden` không phải khóa. Áp dụng cho cả kết nối SignalR `/hubs/notifications` (negotiate trả cùng mã).
 
 ## 3. Tra cứu tạo Merchant/Shipper từ trang tài khoản
 
