@@ -1,3 +1,11 @@
+## Duyệt và công khai đánh giá — 21/11/2026
+
+- [x] Công khai đặt đủ content/public/guest trong một transaction; public feed/summary/ảnh dùng cùng điều kiện cho Customer và khách.
+- [x] Migration `SyncGuestReviewPublication` chép mốc guest cho đánh giá đã công khai; không công khai đánh giá chỉ duyệt cho Merchant.
+- [x] Batch `PublishPublic` (hoặc Publish + cờ); Publish không cờ giữ nghĩa cũ khi replay; kết quả từng dòng, audit, lookup.
+- [x] Smoke `customer-public-reviews-notifications.ps1` cập nhật (dữ liệu cũ, backfill, batch, replay, khóa dùng lại) PASS; `review-publishing`, `rating-keyword-privacy` PASS.
+- [ ] FE nối lại Duyệt và công khai hàng loạt.
+
 ## Shipper nhận nhiều nhiệm vụ trong giới hạn — 21/11/2026
 
 - [x] `SystemSetting.MaxActiveTasksPerShipper` (1–20, mặc định 3), `PUT /system-setting/dispatch`, migration `AddShipperTaskCapacity`.

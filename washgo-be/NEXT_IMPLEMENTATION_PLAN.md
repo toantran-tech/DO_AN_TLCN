@@ -1,3 +1,5 @@
+> Duyệt và công khai đánh giá 21/11/2026: đã làm `Docs/cần làm/BACKEND_REVIEW.md` — một phạm vi công khai cho Customer và khách (điều kiện public thống nhất, migration chép mốc guest cho đánh giá đã công khai), batch `PublishPublic`. Bàn giao: [REVIEW_PUBLISH_API_REVIEW.md](docs/REVIEW_PUBLISH_API_REVIEW.md).
+
 > Năng lực Shipper 21/11/2026: đã làm `Docs/cần làm/BACKEND_MERCHANT_SHIPPER_MANAGEMENT.md` — Shipper nhận nhiều nhiệm vụ tới `maxActiveTasksPerShipper` (cài đặt hệ thống, mặc định 3), một dịch vụ đếm dùng chung cho phân công đơn/kho, danh sách khả dụng (canAssign, blockedReasonCode, includeUnavailable), quản lý/hồ sơ Shipper; 409 ShipperCapacityExceeded. Bàn giao: [SHIPPER_TASK_CAPACITY_API_REVIEW.md](docs/SHIPPER_TASK_CAPACITY_API_REVIEW.md).
 
 > Lọc đề xuất theo danh mục 21/11/2026: đã làm `Docs/cần làm/BACKEND_ADMIN_CATEGORY.md` — `categoryIds` cho `POST /service-proposal/filter`, lọc theo danh mục trong nội dung đề xuất (cột `proposed_category_id`, điền lại dữ liệu cũ kể cả legacy serviceType). Bàn giao: [CATEGORY_CLASSIFICATION_API_REVIEW.md](docs/CATEGORY_CLASSIFICATION_API_REVIEW.md).
