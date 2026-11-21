@@ -134,7 +134,8 @@ public class ShipperProfileAppService(IShipperRepository shippers, IRepository<U
         var merchant = await merchants.FindAsync(s.MerchantId);
         var merchantUser = merchant == null ? null : await users.FindAsync(merchant.Id);
         var blocked = !s.IsActive || !u.IsActive || s.IsDeleted ? "ProfileInactive" : s.Status == ShipperStatus.Busy ? "StaffStatusManaged" : null;
-        var activeDelivery = await AsyncExecuter.AnyAsync(DeliveryTaskRules.ActiveDeliveries(await orders.GetQueryableAsync()).Where(x => x.ShipperId == s.Id));
+        var capacity = await LazyServiceProvider.LazyGetRequiredService<ShipperCapacityService>().ForAsync(s.Id, null);
+        var activeDelivery = capacity.ActiveTaskCount > 0;
         return new ShipperProfileDto
         {
             Id = s.Id, FullName = u.FullName, Email = u.Email, Phone = u.Phone, AvatarUrl = u.Avatar,
@@ -147,6 +148,7 @@ public class ShipperProfileAppService(IShipperRepository shippers, IRepository<U
                 .OrderByDescending(x => x.IsPrimary).ThenBy(x => x.DisplayOrder).Select(x => x.SecureUrl).ToList(),
             CanChangeWorkStatus = blocked == null, CanGoOffline = blocked == null && !activeDelivery,
             WorkStatusBlockedReason = blocked, GoOfflineBlockedReason = blocked ?? (activeDelivery ? "ActiveDelivery" : null),
+            ActiveTaskCount = capacity.ActiveTaskCount, MaxActiveTasks = capacity.MaxActiveTasks, RemainingTaskCapacity = capacity.RemainingTaskCapacity,
             Revision = Version(s, u), CreatedAt = s.CreatedAt, UpdatedAt = s.UpdatedAt > u.UpdatedAt ? s.UpdatedAt : u.UpdatedAt
         };
     }

@@ -27,6 +27,9 @@ namespace WashGo.Application.Contracts.Features.ShipperContracts.Results
         public string? LockReason { get; set; }
         public int TotalDeliveries { get; set; }
         public int ActiveTaskCount { get; set; }
+        /// <summary>Giới hạn nhiệm vụ chưa hoàn tất hiệu lực (cài đặt hệ thống) và số còn nhận được (danh sách/chi tiết).</summary>
+        public int MaxActiveTasks { get; set; }
+        public int RemainingTaskCapacity { get; set; }
         /// <summary>Không còn dùng (đã bỏ chấm sao Shipper): giữ tạm để tương thích, không dùng cho quyết định nghiệp vụ.</summary>
         public decimal Rating { get; set; }
         /// <summary>Không còn dùng (đã bỏ chấm sao Shipper): luôn chỉ để tương thích.</summary>

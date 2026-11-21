@@ -1,3 +1,4 @@
+using WashGo.Application.Features.ShipperApplication.Services;
 using System.Net;
 using WashGo.Domain.Entities.SystemConfig;
 using WashGo.Application.Features.SystemSettingApplication.Services;
@@ -68,21 +69,15 @@ public class StorageAppService(IWashOrderRepository orders, IRepository<OrderSto
         return Success(result, total, page, take);
     }
 
-    public async Task<BaseResponse<List<AvailableShipperDto>>> GetShippersAsync(Guid orderId)
+    public async Task<BaseResponse<List<AvailableShipperDto>>> GetShippersAsync(Guid orderId, bool includeUnavailable = false)
     {
         var order = await orders.FindAsync(orderId);
         if (order == null || order.IsDeleted || ActorRole is not ("Admin" or "Merchant") || !await CanReadAsync(order))
             return NotFound<List<AvailableShipperDto>>("Không tìm thấy đơn hàng.");
-        var active = DeliveryTaskRules.ActiveDeliveries(await orders.GetQueryableAsync());
-        var query = from s in await shippers.GetQueryableAsync()
-                    join u in await users.GetQueryableAsync() on s.UserId equals u.Id
-                    join r in await roles.GetQueryableAsync() on u.RoleId equals r.Id
-                    where !s.IsDeleted && s.IsActive && u.IsActive && r.IsActive && r.Name == "Shipper" &&
-                        s.MerchantId == order.MerchantId && s.Status == ShipperStatus.Available &&
-                        !active.Any(x => x.ShipperId == s.Id && x.Id != order.Id)
-                    orderby u.FullName, s.Id
-                    select new AvailableShipperDto { Id = s.Id, FullName = u.FullName, Phone = u.Phone, Email = u.Email, VehicleType = s.VehicleType, VehiclePlate = s.VehiclePlate };
-        return Success(await AsyncExecuter.ToListAsync(query));
+        // Same capacity rule as every other assignment; storage trips count toward the Shipper's open tasks.
+        var type = order.Status == WashOrderStatus.MovedToStorage ? DeliveryTaskType.StorageReturn : DeliveryTaskType.StorageTransfer;
+        return Success(await LazyServiceProvider.LazyGetRequiredService<ShipperCapacityService>()
+            .CandidatesAsync(order.MerchantId, order.Id, type, includeUnavailable));
     }
 
     private async Task<IQueryable<WashOrder>> FilterOrdersAsync(StorageFilterQuery query)
@@ -178,8 +173,11 @@ public class StorageAppService(IWashOrderRepository orders, IRepository<OrderSto
                 shipper.Status != ShipperStatus.Available || shipper.MerchantId != order.MerchantId ||
                 !await roles.AnyAsync(x => x.Id == user.RoleId && x.IsActive && x.Name == "Shipper"))
                 throw Rule("ShipperNotEligible", "Shipper không đủ điều kiện hoặc không thuộc tiệm.");
-            if (await AsyncExecuter.AnyAsync(DeliveryTaskRules.ActiveDeliveries(await orders.GetQueryableAsync()).Where(x => x.ShipperId == shipper.Id && x.Id != order.Id)))
-                throw Rule("ShipperBusy", "Shipper còn nhiệm vụ hiệu lực.", 409);
+            // Checked after the Shipper row lock above: the last slot cannot be taken twice.
+            var capacity = await LazyServiceProvider.LazyGetRequiredService<ShipperCapacityService>().ForAsync(shipper.Id, order.Id);
+            if (!capacity.HasRoom)
+                throw new StorageRuleException(ShipperCapacityService.ExceededCode, ShipperCapacityService.ExceededMessage(capacity), 409,
+                    ShipperCapacityService.ExceededMeta(capacity));
             var previousPin = order.ShipperTaskPinCode;
             await EndAssignmentAsync(order, cycle, DeliveryTaskStatus.Reassigned);
             var type = request == null ? DeliveryTaskType.StorageTransfer : DeliveryTaskType.StorageReturn;
@@ -404,6 +402,7 @@ public class StorageAppService(IWashOrderRepository orders, IRepository<OrderSto
             }
             else await uow.RollbackAsync();
             var response = AdministrativeWriteGuard.Error<StorageCycleDto>((HttpStatusCode)ex.Status, ex.Code, ex.Message);
+            if (ex.Meta != null) response.Meta = ex.Meta;
             if (ex.Code == "TaskCredentialInvalid") response.Meta = new { code = ex.Code, orderRevision = order.Revision,
                 remainingAttempts = Math.Max(0, 5 - order.TaskPinAttemptCount), lockoutUntil = order.TaskPinLockoutUntil };
             return response;

@@ -19,6 +19,13 @@ namespace WashGo.Application.Contracts.Features.SystemSettingContracts.Commands
         public int FreePickupHours { get; set; }
     }
 
+    /// <summary>Điều phối giao nhận: số nhiệm vụ chưa hoàn tất tối đa của mỗi Shipper (1–20).</summary>
+    public class UpdateDispatchSettingsCommand : SettingWriteCommand
+    {
+        [JsonRequired]
+        public int MaxActiveTasksPerShipper { get; set; }
+    }
+
     public class UpdateCommissionSettingsCommand : SettingWriteCommand
     {
         [JsonRequired]

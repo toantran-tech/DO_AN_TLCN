@@ -28,6 +28,11 @@ namespace WashGo.Domain.Entities.SystemConfig
         public int MerchantCollectSlaHours { get; set; } = 4;
         public int MerchantReturnSlaHours { get; set; } = 24;
         public int FreePickupHours { get; set; } = 24;
+        /// <summary>
+        /// Số nhiệm vụ giao nhận chưa hoàn tất tối đa của một Shipper (lấy, trả, chuyển kho, giao lại từ kho, trả đồ đơn hủy),
+        /// nhận trước để làm lần lượt. Luôn là số dương do server quyết định; mặc định 3.
+        /// </summary>
+        public int MaxActiveTasksPerShipper { get; set; } = 3;
 
         // Commission (UC 3.9.2)
         public decimal DefaultCommissionRate { get; set; } = 20;

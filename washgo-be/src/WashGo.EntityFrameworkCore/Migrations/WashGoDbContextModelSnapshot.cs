@@ -3481,6 +3481,10 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("numeric(5,2)")
                         .HasColumnName("loyalty_max_use_percent");
 
+                    b.Property<int>("MaxActiveTasksPerShipper")
+                        .HasColumnType("integer")
+                        .HasColumnName("max_active_tasks_per_shipper");
+
                     b.Property<int>("MerchantCollectSlaHours")
                         .HasColumnType("integer")
                         .HasColumnName("merchant_collect_sla_hours");
@@ -3537,6 +3541,7 @@ namespace WashGo.EntityFrameworkCore.Migrations
                             FreePickupHours = 24,
                             LoyaltyEarnPercent = 1m,
                             LoyaltyMaxUsePercent = 20m,
+                            MaxActiveTasksPerShipper = 3,
                             MerchantCollectSlaHours = 4,
                             MerchantReturnSlaHours = 24,
                             OverdueFeeDay1 = 10000m,
