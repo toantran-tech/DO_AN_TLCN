@@ -83,7 +83,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
                 if (await DeletedAccountWithPasswordAsync(email, command.Password) is { } deleted)
                 {
                     await AuditLoginFailedAsync(command.Email, deleted, AccountDeletedCode);
-                    return AuthFailure<AuthResponseDto>(AccountDeletedCode, DeletedMessage);
+                    return await AccessDeniedAsync<AuthResponseDto>(deleted, DeletedMessage);
                 }
                 await AuditLoginFailedAsync(command.Email, user, "InvalidCredentials");
                 return AuthFailure<AuthResponseDto>(InvalidCredentialsCode, InvalidCredentials);
@@ -108,7 +108,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
             if (!user.IsActive)
             {
                 await AuditLoginFailedAsync(command.Email, user, "AccountLocked");
-                return AuthFailure<AuthResponseDto>(AccountLockedCode, LockedMessage(roleName));
+                return await AccessDeniedAsync<AuthResponseDto>(user, LockedMessage(roleName));
             }
 
             if (!string.IsNullOrWhiteSpace(command.Portal) &&
@@ -176,6 +176,20 @@ namespace WashGo.Application.Features.AuthApplication.Services
             Succeeded = false, StatusCode = HttpStatusCode.BadRequest, Message = message, Meta = new { code }
         };
 
+        /// <summary>
+        /// Locked/deleted answer for a caller who proved the account (password, Google, valid refresh token):
+        /// meta.accountAccessReason is the lock or delete reason meant for the owner, or null.
+        /// </summary>
+        private async Task<BaseResponse<T>> AccessDeniedAsync<T>(User user, string message) => new()
+        {
+            Succeeded = false, StatusCode = HttpStatusCode.BadRequest, Message = message,
+            Meta = new
+            {
+                code = user.IsDeleted ? AccountDeletedCode : AccountLockedCode,
+                accountAccessReason = await LazyServiceProvider.LazyGetRequiredService<AccountAccessReasonReader>().ReasonAsync(user)
+            }
+        };
+
         /// <summary>The most recent soft-deleted accounts with this email whose password matches (never an active account).</summary>
         private async Task<User?> DeletedAccountWithPasswordAsync(string email, string password)
         {
@@ -219,8 +233,10 @@ namespace WashGo.Application.Features.AuthApplication.Services
                 if (!allowCustomerRegistration)
                 {
                     // The Google identity is verified: a back-office account deleted with this Google link is reported as such.
-                    if (await _userRepo.AnyAsync(u => u.AuthProvider == AuthProvider.Google && u.ProviderId == payload.Subject && u.IsDeleted))
-                        return AuthFailure<AuthResponseDto>(AccountDeletedCode, DeletedMessage);
+                    var deletedLink = (await _userRepo.GetListAsync(u => u.AuthProvider == AuthProvider.Google && u.ProviderId == payload.Subject && u.IsDeleted))
+                        .OrderByDescending(u => u.DeletedAt).FirstOrDefault();
+                    if (deletedLink != null)
+                        return await AccessDeniedAsync<AuthResponseDto>(deletedLink, DeletedMessage);
                     return BadRequest<AuthResponseDto>(
                         "Tài khoản quản trị này chưa được liên kết Google. Vui lòng đăng nhập bằng mật khẩu trước.");
                 }
@@ -232,7 +248,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
                     if (!string.Equals(existingRole?.Name, "Customer", StringComparison.OrdinalIgnoreCase))
                         return BadRequest<AuthResponseDto>("Tài khoản này không thuộc Customer. Vui lòng dùng cổng quản trị.");
                     if (!existingEmailUser.IsActive)
-                        return AuthFailure<AuthResponseDto>(AccountLockedCode, LockedMessage("Customer"));
+                        return await AccessDeniedAsync<AuthResponseDto>(existingEmailUser, LockedMessage("Customer"));
                     if (existingEmailUser.AuthProvider == AuthProvider.Google &&
                         existingEmailUser.ProviderId != payload.Subject)
                         return BadRequest<AuthResponseDto>("Email này đã liên kết với tài khoản Google khác.");
@@ -283,7 +299,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
             if (!user.IsActive)
             {
                 await AuditLoginFailedAsync(user.Email, user, "AccountLocked");
-                return AuthFailure<AuthResponseDto>(AccountLockedCode, LockedMessage(roleName));
+                return await AccessDeniedAsync<AuthResponseDto>(user, LockedMessage(roleName));
             }
             if (allowCustomerRegistration && !roleName.Equals("Customer", StringComparison.OrdinalIgnoreCase))
                 return BadRequest<AuthResponseDto>("Tài khoản này không thuộc Customer. Vui lòng dùng cổng quản trị.");
@@ -387,9 +403,9 @@ namespace WashGo.Application.Features.AuthApplication.Services
             if (user == null)
                 return AuthFailure<AuthResponseDto>("InvalidRefreshToken", InvalidRefresh);
             if (user.IsDeleted)
-                return AuthFailure<AuthResponseDto>(AccountDeletedCode, DeletedMessage);
+                return await AccessDeniedAsync<AuthResponseDto>(user, DeletedMessage);
             if (!user.IsActive)
-                return AuthFailure<AuthResponseDto>(AccountLockedCode, LockedMessage((await _roleRepo.FindAsync(user.RoleId))?.Name ?? "Customer"));
+                return await AccessDeniedAsync<AuthResponseDto>(user, LockedMessage((await _roleRepo.FindAsync(user.RoleId))?.Name ?? "Customer"));
 
             // Revoke old token
             storedToken.IsRevoked = true;

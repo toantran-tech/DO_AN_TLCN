@@ -27,6 +27,7 @@ using Volo.Abp.Domain.Repositories;
 using Volo.Abp.Swashbuckle;
 using Volo.Abp.Threading;
 using WashGo.Application;
+using WashGo.Application.Features.AuthApplication.Services;
 using WashGo.Application.Features.FileApplication.Services;
 using WashGo.Core.Endpoint;
 using WashGo.EntityFrameworkCore;
@@ -119,7 +120,11 @@ namespace WashGo.HttpApi.Host
                         var user = await userRepository.FindAsync(userId);
                         if (AuthFailureResponses.Classify(userId, user, session, DateTime.UtcNow) is { } reason)
                         {
-                            AuthFailureResponses.Remember(tokenContext.HttpContext, reason, tokenContext.Principal);
+                            // A signed token of a locked/deleted account is trusted enough to tell its owner why.
+                            var accessReason = reason is AuthFailureResponses.AccountLocked or AuthFailureResponses.AccountDeleted
+                                ? await tokenContext.HttpContext.RequestServices.GetRequiredService<AccountAccessReasonReader>().ReasonAsync(user!)
+                                : null;
+                            AuthFailureResponses.Remember(tokenContext.HttpContext, reason, tokenContext.Principal, accessReason);
                             tokenContext.Fail("Phiên đăng nhập đã hết hiệu lực.");
                         }
                     },

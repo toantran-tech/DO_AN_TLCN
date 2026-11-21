@@ -17,6 +17,7 @@ namespace WashGo.HttpApi.Host
     {
         private const string CodeKey = "washgo.auth-failure.code";
         private const string RoleKey = "washgo.auth-failure.role";
+        private const string ReasonKey = "washgo.auth-failure.reason";
 
         public const string AccountLocked = "AccountLocked";
         public const string AccountDeleted = "AccountDeleted";
@@ -38,10 +39,12 @@ namespace WashGo.HttpApi.Host
             return session.ExpiryDate <= now ? SessionExpired : null;
         }
 
-        public static void Remember(HttpContext http, string code, ClaimsPrincipal? principal)
+        /// <param name="reason">Lock/delete reason meant for the owner; only for AccountLocked/AccountDeleted of a signed token.</param>
+        public static void Remember(HttpContext http, string code, ClaimsPrincipal? principal, string? reason = null)
         {
             http.Items[CodeKey] = code;
             if (principal?.FindFirstValue(ClaimTypes.Role) is { } role) http.Items[RoleKey] = role;
+            if (reason != null) http.Items[ReasonKey] = reason;
         }
 
         public static async Task WriteChallengeAsync(JwtBearerChallengeContext context)
@@ -57,9 +60,13 @@ namespace WashGo.HttpApi.Host
             if (http.Response.HasStarted) return;
             http.Response.StatusCode = StatusCodes.Status401Unauthorized;
             http.Response.Headers.WWWAuthenticate = code == Unauthenticated ? "Bearer" : "Bearer error=\"invalid_token\"";
+            // An ended or expired session never carries a lock/delete reason.
+            object meta = code is AccountLocked or AccountDeleted
+                ? new { code, accountAccessReason = http.Items[ReasonKey] as string }
+                : new { code };
             await http.Response.WriteAsJsonAsync(new
             {
-                succeeded = false, statusCode = 401, message = Message(code, http.Items[RoleKey] as string), meta = new { code }
+                succeeded = false, statusCode = 401, message = Message(code, http.Items[RoleKey] as string), meta
             });
         }
 
