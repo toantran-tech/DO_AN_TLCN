@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.IdentityModel.Tokens.Jwt;
 using System.Linq;
+using System.Net;
 using System.Net.Mail;
 using System.Security.Claims;
 using System.Security.Cryptography;
@@ -70,7 +71,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
         {
             if (!IsValidEmail(command.Email) || string.IsNullOrWhiteSpace(command.Password))
             {
-                return BadRequest<AuthResponseDto>(InvalidCredentials);
+                return AuthFailure<AuthResponseDto>(InvalidCredentialsCode, InvalidCredentials);
             }
 
             var email = command.Email.Trim().ToLowerInvariant();
@@ -78,8 +79,14 @@ namespace WashGo.Application.Features.AuthApplication.Services
             var user = await _userRepo.FirstOrDefaultAsync(u => u.Email.ToLower() == email && !u.IsDeleted);
             if (user == null)
             {
+                // Only someone who proves the password of a deleted account learns that it was deleted.
+                if (await DeletedAccountWithPasswordAsync(email, command.Password) is { } deleted)
+                {
+                    await AuditLoginFailedAsync(command.Email, deleted, AccountDeletedCode);
+                    return AuthFailure<AuthResponseDto>(AccountDeletedCode, DeletedMessage);
+                }
                 await AuditLoginFailedAsync(command.Email, user, "InvalidCredentials");
-                return BadRequest<AuthResponseDto>(InvalidCredentials);
+                return AuthFailure<AuthResponseDto>(InvalidCredentialsCode, InvalidCredentials);
             }
 
             bool isPasswordValid = false;
@@ -92,7 +99,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
             if (!isPasswordValid)
             {
                 await AuditLoginFailedAsync(command.Email, user, "InvalidCredentials");
-                return BadRequest<AuthResponseDto>(InvalidCredentials);
+                return AuthFailure<AuthResponseDto>(InvalidCredentialsCode, InvalidCredentials);
             }
 
             var role = await _roleRepo.FindAsync(user.RoleId);
@@ -101,7 +108,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
             if (!user.IsActive)
             {
                 await AuditLoginFailedAsync(command.Email, user, "AccountLocked");
-                return BadRequest<AuthResponseDto>(LockedMessage(roleName));
+                return AuthFailure<AuthResponseDto>(AccountLockedCode, LockedMessage(roleName));
             }
 
             if (!string.IsNullOrWhiteSpace(command.Portal) &&
@@ -157,6 +164,25 @@ namespace WashGo.Application.Features.AuthApplication.Services
             });
 
         private const string InvalidCredentials = "Email hoặc mật khẩu không đúng.";
+        private const string InvalidCredentialsCode = "InvalidCredentials";
+        private const string AccountLockedCode = "AccountLocked";
+        private const string AccountDeletedCode = "AccountDeleted";
+        private const string DeletedMessage = "Tài khoản này đã bị xóa. Vui lòng liên hệ Admin.";
+        private const string InvalidRefresh = "Refresh token không hợp lệ hoặc đã hết hạn.";
+
+        /// <summary>Sign-in failure with a stable meta.code (InvalidCredentials, AccountLocked, AccountDeleted, InvalidRefreshToken).</summary>
+        private static BaseResponse<T> AuthFailure<T>(string code, string message) => new()
+        {
+            Succeeded = false, StatusCode = HttpStatusCode.BadRequest, Message = message, Meta = new { code }
+        };
+
+        /// <summary>The most recent soft-deleted accounts with this email whose password matches (never an active account).</summary>
+        private async Task<User?> DeletedAccountWithPasswordAsync(string email, string password)
+        {
+            var deleted = (await _userRepo.GetListAsync(u => u.Email.ToLower() == email && u.IsDeleted))
+                .OrderByDescending(u => u.DeletedAt).Take(3);
+            return deleted.FirstOrDefault(u => !string.IsNullOrEmpty(u.PasswordHash) && PasswordHasher.Verify(password, u.PasswordHash));
+        }
 
         // Shippers are managed by their Merchant, everyone else by the Admin (UC 1.1.2, 2.1.1, 4.1.1 5a).
         private static string LockedMessage(string roleName) => roleName == "Shipper"
@@ -192,6 +218,9 @@ namespace WashGo.Application.Features.AuthApplication.Services
             {
                 if (!allowCustomerRegistration)
                 {
+                    // The Google identity is verified: a back-office account deleted with this Google link is reported as such.
+                    if (await _userRepo.AnyAsync(u => u.AuthProvider == AuthProvider.Google && u.ProviderId == payload.Subject && u.IsDeleted))
+                        return AuthFailure<AuthResponseDto>(AccountDeletedCode, DeletedMessage);
                     return BadRequest<AuthResponseDto>(
                         "Tài khoản quản trị này chưa được liên kết Google. Vui lòng đăng nhập bằng mật khẩu trước.");
                 }
@@ -203,7 +232,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
                     if (!string.Equals(existingRole?.Name, "Customer", StringComparison.OrdinalIgnoreCase))
                         return BadRequest<AuthResponseDto>("Tài khoản này không thuộc Customer. Vui lòng dùng cổng quản trị.");
                     if (!existingEmailUser.IsActive)
-                        return BadRequest<AuthResponseDto>(LockedMessage("Customer"));
+                        return AuthFailure<AuthResponseDto>(AccountLockedCode, LockedMessage("Customer"));
                     if (existingEmailUser.AuthProvider == AuthProvider.Google &&
                         existingEmailUser.ProviderId != payload.Subject)
                         return BadRequest<AuthResponseDto>("Email này đã liên kết với tài khoản Google khác.");
@@ -247,15 +276,15 @@ namespace WashGo.Application.Features.AuthApplication.Services
                 }
             }
 
-            if (!user.IsActive)
-            {
-                return BadRequest<AuthResponseDto>(LockedMessage("Customer"));
-            }
-
             var role = await _roleRepo.FindAsync(user.RoleId);
             if (role == null)
                 return BadRequest<AuthResponseDto>("Tài khoản không có vai trò hợp lệ.");
             var roleName = role.Name;
+            if (!user.IsActive)
+            {
+                await AuditLoginFailedAsync(user.Email, user, "AccountLocked");
+                return AuthFailure<AuthResponseDto>(AccountLockedCode, LockedMessage(roleName));
+            }
             if (allowCustomerRegistration && !roleName.Equals("Customer", StringComparison.OrdinalIgnoreCase))
                 return BadRequest<AuthResponseDto>("Tài khoản này không thuộc Customer. Vui lòng dùng cổng quản trị.");
             if (!allowCustomerRegistration && roleName.Equals("Customer", StringComparison.OrdinalIgnoreCase))
@@ -342,21 +371,25 @@ namespace WashGo.Application.Features.AuthApplication.Services
         {
             if (string.IsNullOrWhiteSpace(command.RefreshToken))
             {
-                return BadRequest<AuthResponseDto>("Refresh token không hợp lệ hoặc đã hết hạn.");
+                return AuthFailure<AuthResponseDto>("InvalidRefreshToken", InvalidRefresh);
             }
 
+            // An unknown, revoked or expired token says nothing about the account behind it.
             var tokenHash = HashRefreshToken(command.RefreshToken);
             var storedToken = await _refreshTokenRepo.FirstOrDefaultAsync(t => t.Token == tokenHash);
             if (storedToken == null || storedToken.IsRevoked || storedToken.ExpiryDate <= DateTime.UtcNow)
             {
-                return BadRequest<AuthResponseDto>("Refresh token không hợp lệ hoặc đã hết hạn.");
+                return AuthFailure<AuthResponseDto>("InvalidRefreshToken", InvalidRefresh);
             }
 
+            // A still-valid token proves the earlier sign-in, so the account state may be reported.
             var user = await _userRepo.FindAsync(storedToken.UserId);
-            if (user == null || user.IsDeleted || !user.IsActive)
-            {
-                return BadRequest<AuthResponseDto>("Tài khoản không tồn tại hoặc đã bị khóa.");
-            }
+            if (user == null)
+                return AuthFailure<AuthResponseDto>("InvalidRefreshToken", InvalidRefresh);
+            if (user.IsDeleted)
+                return AuthFailure<AuthResponseDto>(AccountDeletedCode, DeletedMessage);
+            if (!user.IsActive)
+                return AuthFailure<AuthResponseDto>(AccountLockedCode, LockedMessage((await _roleRepo.FindAsync(user.RoleId))?.Name ?? "Customer"));
 
             // Revoke old token
             storedToken.IsRevoked = true;
