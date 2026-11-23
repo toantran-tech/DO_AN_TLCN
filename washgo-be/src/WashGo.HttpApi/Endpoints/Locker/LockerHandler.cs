@@ -34,6 +34,21 @@ namespace WashGo.HttpApi.Endpoints.Locker
                 .WithSummary("Tổng locker được gán (đang hoạt động/bảo trì/ngừng) và tổng ô chưa xóa theo trạng thái (trống/có đồ/giữ chỗ/bảo trì), một lần đếm, không theo bộ lọc bảng. Merchant theo JWT; merchantId chỉ dành cho Admin.")
                 .WithOpenApi();
 
+            group.MapGet("/eligible-merchants", async (double? latitude, double? longitude, Guid? lockerId, string? keyword,
+                bool? includeIneligible, int? page, int? take, ILockerAppService svc) =>
+                (await svc.GetEligibleMerchantsAsync(latitude, longitude, lockerId, keyword, includeIneligible ?? false, page ?? 1, take ?? 20)).CustomResult())
+                .RequireAuthorization("AdminOnly")
+                .WithName("Merchant phù hợp vị trí locker")
+                .WithSummary("Merchant có thể phụ trách locker theo tọa độ LOCKER (latitude/longitude; bỏ trống khi gửi lockerId thì dùng tọa độ đã lưu). Đủ điều kiện = đang hoạt động, tài khoản hợp lệ, hợp đồng còn hiệu lực và khoảng cách Haversine cửa hàng→locker (chưa làm tròn) ≤ serviceRadiusKm. lockerId: luôn trả cả Merchant đang gán (isLinked, linkPriority) dù không còn hợp lệ. includeIneligible=true trả thêm Merchant hoạt động ngoài bán kính/thiếu tọa độ với blockedReasonCode. Sắp: hợp lệ trước, gần trước, tên, id; lọc/phân trang ở BE. distanceKm làm tròn 2 số, null khi thiếu tọa độ. Lỗi 400 meta.code: LockerLocationRequired, InvalidLocation, InvalidFilter.")
+                .WithOpenApi();
+
+            group.MapGet("/coverage-issues", async (int? page, int? take, ILockerAppService svc) =>
+                (await svc.GetCoverageIssuesAsync(page ?? 1, take ?? 50)).CustomResult())
+                .RequireAuthorization("AdminOnly")
+                .WithName("Liên kết Merchant–locker ngoài bán kính")
+                .WithSummary("Liên kết cũ không đạt bán kính phục vụ (reasonCode MerchantOutsideServiceRadius/MerchantLocationUnavailable/LockerLocationRequired), khoảng cách, bán kính đề nghị, locker còn Merchant khác phục vụ hay không. Liên kết vẫn được giữ, đơn đang xử lý tiếp tục; liên kết này không nhận đơn mới cho tới khi Admin xử lý.")
+                .WithOpenApi();
+
             group.MapGet("/{id:guid}", async (Guid id, ILockerAppService svc) =>
                 (await svc.GetByIdAsync(id)).CustomResult())
                 .WithName("Xem chi tiết Locker")
@@ -57,14 +72,14 @@ namespace WashGo.HttpApi.Endpoints.Locker
                 (await svc.CreateAsync(command)).CustomResult())
                 .RequireAuthorization("AdminOnly")
                 .WithName("Thêm mới tủ Locker")
-                .WithSummary("Thêm mới tủ Locker.")
+                .WithSummary("Thêm mới tủ Locker. Mọi Merchant phụ trách phải có bán kính phục vụ bao gồm tọa độ locker (Haversine, chưa làm tròn). Lỗi 400 meta.code: MerchantOutsideServiceRadius (meta.merchants: merchantId, businessName, distanceKm, serviceRadiusKm, blockedReasonCode), MerchantLocationUnavailable, LockerLocationRequired, NoEligibleMerchantForLocker, MerchantNotEligible. Từ chối cả yêu cầu, không ghi một phần.")
                 .WithOpenApi();
 
             group.MapPut("/", async (UpdateLockerCommand command, ILockerAppService svc) =>
                 (await svc.UpdateAsync(command)).CustomResult())
                 .RequireAuthorization("AdminOnly")
                 .WithName("Cập nhật tủ Locker")
-                .WithSummary("Cập nhật tủ Locker.")
+                .WithSummary("Cập nhật tủ Locker. Khi gửi merchantIds hoặc đổi tọa độ (kể cả merchantIds = null giữ danh sách), kiểm tra lại bán kính phục vụ của mọi Merchant sau thay đổi; cùng mã lỗi như khi thêm. Merchant mới thêm còn cần tài khoản hoạt động và hợp đồng hiệu lực.")
                 .WithOpenApi();
 
             group.MapPut("/box-status", async (UpdateLockerBoxStatusCommand command, ILockerAppService svc) =>

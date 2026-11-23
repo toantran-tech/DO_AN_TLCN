@@ -151,7 +151,7 @@ public partial class PaymentAppService : IPaymentVerificationRunner
         else if (result.Outcome is GatewayQueryOutcome.Succeeded or GatewayQueryOutcome.Failed)
         {
             await ApplyGatewayResultAsync(transaction, result.Outcome == GatewayQueryOutcome.Succeeded,
-                result.ProviderTransactionId, result.ReasonCode, "Gateway query");
+                result.ProviderTransactionId, result.GatewayCode is { } code ? $"{code}: verified by gateway query" : result.ReasonCode, "Gateway query");
         }
         if (transaction != null && (transaction.GatewayVerifiedAt.HasValue || transaction.VerifiedClosedAt.HasValue))
         {

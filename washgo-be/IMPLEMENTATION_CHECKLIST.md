@@ -1,3 +1,36 @@
+## Trang kết quả thanh toán VNPay/MoMo — 23/11/2026
+
+- [x] `GET /payment/vnpay-return`, `/payment/momo-return`: kiểm chữ ký, 303 tới FE `/payment/success|failed|cancelled|pending|review?orderId&purpose&sessionId` theo trạng thái đã xác minh; chưa kết luận → pending + xếp một truy vấn cổng; origin FE theo cấu hình + allowlist.
+- [x] `GET /payment/orders/{orderId}/result` (Customer, no-store): status, resultPage, reasonCode, verified, amount, obligationSettled, serverNow, retryAfterSeconds, capabilities; từng lần thanh toán theo sessionId.
+- [x] Hủy (VNPay 24, MoMo 1006) tách khỏi thất bại; MoMo query giữ mã kết quả.
+- [x] C# `Payments` và smoke `payment-result-redirect.ps1` (CI, khóa ký CI giả) PASS; các smoke thanh toán cũ PASS.
+- [ ] FE dựng các trang kết quả và đổi VNPAY_RETURN_URL/MOMO_REDIRECT_URL sang endpoint BE.
+
+## Giờ mở cửa Merchant và hạn thu gom — 23/11/2026
+
+- [x] `openingSchedule` có cấu trúc (VN, ca [mở, đóng), ngày nghỉ, 24/7 tường minh) bắt buộc khi tạo/sửa Merchant và yêu cầu cập nhật hồ sơ; mã lỗi OpeningHours*; chuỗi cũ chỉ nhận dạng tính được.
+- [x] Hạn thu gom = SLA giờ mở cửa từ DepositedAt, tính khi gửi/phân công, lưu cùng lịch đã áp dụng (`collectionDeadlineAt/StartsAt/State`); ScheduleMissing/NoUpcomingShift, tính lại khi Admin nhập lịch.
+- [x] Một nguồn hạn cho task Shipper, cảnh báo Admin/Merchant, nhắc trễ, cảnh báo lấy đồ trễ, ETA; migration `AddCollectionDeadline` (lịch từ "HH:mm-HH:mm", đơn cũ Legacy).
+- [x] C# `CollectionDeadline` và smoke `collection-deadline.ps1` (CI) PASS; dashboard/nhắc/phân công PASS.
+- [ ] FE form giờ mở cửa có cấu trúc (bắt buộc) và hiển thị hạn thu gom từ BE.
+
+## Bán kính phục vụ khi gán Merchant cho locker — 23/11/2026
+
+- [x] Quy tắc cứng: Haversine cửa hàng→locker (chưa làm tròn) ≤ serviceRadiusKm của từng Merchant; thiếu tọa độ không tính là 0 km.
+- [x] `GET /locker/eligible-merchants` (theo tọa độ locker, giữ Merchant đang gán, includeIneligible, phân trang BE) và `GET /locker/coverage-issues` cho dữ liệu cũ.
+- [x] Tạo/sửa locker kiểm tra lúc lưu dưới khóa Merchant, từ chối toàn bộ; mã MerchantOutsideServiceRadius, MerchantLocationUnavailable, LockerLocationRequired, NoEligibleMerchantForLocker, MerchantNotEligible.
+- [x] Sửa Merchant/duyệt đổi vị trí làm locker ra ngoài vùng → 409 MerchantCoverageWouldExcludeLockers, không ghi.
+- [x] Catalog Customer, tạo đơn/báo giá và ứng viên phân công dùng cùng quy tắc; liên kết cũ được giữ, không nhận đơn mới.
+- [x] Smoke `merchant-service-radius.ps1` (CI); các smoke có locker cũ dời vào bán kính Merchant mẫu.
+- [ ] FE chọn Merchant theo vị trí locker, hiển thị khoảng cách/bán kính, xử lý 409 khi sửa Merchant.
+
+## Lọc locker theo bán kính tìm kiếm — 23/11/2026
+
+- [x] `GET /customer/lockers` thêm `radiusKm` (0–50, cần cặp tọa độ); lọc khoảng cách chưa làm tròn trước total/phân trang, gần nhất trước, rỗng không tự giãn.
+- [x] Mã lỗi ổn định `LocationRequiredForRadius`, `InvalidRadius`, `InvalidLocation`, `InvalidLockerFilter`; `meta` sortBy/radiusKm trên response.
+- [x] Smoke `locker-radius-filter.ps1` (CI) PASS; `locker-distance`, `customer-locker-slots` PASS.
+- [ ] FE chuyển getNearbyLockers sang `radiusKm`, bỏ kiểm tra khoảng cách cục bộ.
+
 ## Duyệt và công khai đánh giá — 21/11/2026
 
 - [x] Công khai đặt đủ content/public/guest trong một transaction; public feed/summary/ảnh dùng cùng điều kiện cho Customer và khách.

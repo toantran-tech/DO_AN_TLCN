@@ -161,34 +161,34 @@ public class CustomerCatalogAppService : WashGoAppService, ICustomerCatalogAppSe
 
     public async Task<PaginatedResult<CustomerLockerCatalogDto>> GetLockersAsync(
         string? city, string? district, string? keyword, int page, int take,
-        double? latitude = null, double? longitude = null)
+        double? latitude = null, double? longitude = null, double? radiusKm = null)
     {
         if (keyword?.Length > 200 || city?.Length > 100 || district?.Length > 100)
-            return new PaginatedResult<CustomerLockerCatalogDto> { Succeeded = false, StatusCode = HttpStatusCode.BadRequest,
-                Message = "Keyword tối đa 200 ký tự; city/district tối đa 100 ký tự." };
+            return LockerQueryError("InvalidLockerFilter", "Keyword tối đa 200 ký tự; city/district tối đa 100 ký tự.",
+                keyword?.Length > 200 ? "keyword" : city?.Length > 100 ? "city" : "district");
         (page, take) = NormalizePaging(page, take);
         // UC 1.2.2: with the customer's position, show the distance and list the nearest lockers first.
         var hasPosition = latitude.HasValue && longitude.HasValue;
         if (latitude.HasValue != longitude.HasValue ||
             hasPosition && (!double.IsFinite(latitude!.Value) || !double.IsFinite(longitude!.Value) ||
                 latitude is < -90 or > 90 || longitude is < -180 or > 180))
-            return new PaginatedResult<CustomerLockerCatalogDto>
-            {
-                Succeeded = false,
-                StatusCode = HttpStatusCode.BadRequest,
-                Message = "Vị trí không hợp lệ."
-            };
+            return LockerQueryError("InvalidLocation", "Vị trí không hợp lệ.", "latitude", "longitude");
+        // The search radius only narrows discovery around a position the customer chose to share.
+        if (radiusKm.HasValue && !hasPosition)
+            return LockerQueryError("LocationRequiredForRadius", "Cần gửi latitude và longitude khi lọc theo bán kính.", "latitude", "longitude");
+        if (radiusKm.HasValue && (!double.IsFinite(radiusKm.Value) || radiusKm <= 0 || radiusKm > MaxLockerSearchRadiusKm))
+            return LockerQueryError("InvalidRadius", $"Bán kính tìm kiếm phải lớn hơn 0 và tối đa {MaxLockerSearchRadiusKm} km.", "radiusKm");
         var lat = latitude ?? 0;
         var lng = longitude ?? 0;
         var lockers = await _lockers.GetQueryableAsync();
         var slots = await _slots.GetQueryableAsync();
         var merchants = await _merchants.GetQueryableAsync();
         var links = await _lockerMerchants.GetQueryableAsync();
-        // A locker is open to customers while at least one of its Merchants is active.
+        // A locker is open to customers while at least one active Merchant covers it within its service radius.
+        var served = ServedLockerIds(lockers, links, merchants);
         var query = from locker in lockers
                     where !locker.IsDeleted && locker.Status == LockerStatus.Active
-                        && links.Any(l => l.LockerId == locker.Id
-                            && merchants.Any(m => m.Id == l.MerchantId && m.Status == MerchantStatus.Active))
+                        && served.Contains(locker.Id)
                         && slots.Any(slot => slot.LockerId == locker.Id && !slot.IsDeleted
                             && slot.Status == LockerBoxStatus.Available)
                     select new { locker };
@@ -221,11 +221,17 @@ public class CustomerCatalogAppService : WashGoAppService, ICustomerCatalogAppSe
                 Math.Cos(lat * Rad) * Math.Cos(x.locker.Latitude * Rad) *
                 Math.Pow(Math.Sin((x.locker.Longitude - lng) * Rad / 2), 2)))
         });
+        // Filter on the unrounded distance over the whole eligible set, before counting and paging.
+        if (radiusKm.HasValue)
+        {
+            var radius = radiusKm.Value;
+            withDistance = withDistance.Where(x => x.distance <= radius);
+        }
         var ordered = hasPosition
             ? withDistance.OrderBy(x => x.distance).ThenBy(x => x.locker.Id)
             : withDistance.OrderBy(x => x.locker.Name).ThenBy(x => x.locker.Id);
 
-        var total = await AsyncExecuter.CountAsync(query);
+        var total = await AsyncExecuter.CountAsync(withDistance);
         var list = await AsyncExecuter.ToListAsync(ordered
             .Skip((page - 1) * take).Take(take)
             .Select(x => new CustomerLockerCatalogDto
@@ -246,8 +252,42 @@ public class CustomerCatalogAppService : WashGoAppService, ICustomerCatalogAppSe
                 DistanceKm = hasPosition ? Math.Round(x.distance, 2) : null
             }));
         // UC 1.2.1 4a.
-        return Success(list, total, page, take, total == 0 ? "Hiện tại không có locker khả dụng." : null);
+        var result = Success(list, total, page, take, total == 0
+            ? radiusKm.HasValue ? $"Không có locker khả dụng trong bán kính {radiusKm.Value:0.##} km." : "Hiện tại không có locker khả dụng."
+            : null);
+        result.Meta = new
+        {
+            sortBy = hasPosition ? "Distance" : "Name",
+            radiusKm,
+            distanceUnit = "km",
+            distanceDecimals = 2
+        };
+        return result;
     }
+
+    /// <summary>
+    /// Lockers with at least one active Merchant whose own service radius covers them (Haversine, unrounded). Same rule as
+    /// LockerMerchantResolver used by order creation and assignment; legacy links outside the radius do not count.
+    /// </summary>
+    private static IQueryable<Guid> ServedLockerIds(IQueryable<Locker> lockers, IQueryable<LockerMerchant> links, IQueryable<Merchant> merchants)
+    {
+        const double Rad = Math.PI / 180;
+        return from l in links
+               join m in merchants on l.MerchantId equals m.Id
+               join k in lockers on l.LockerId equals k.Id
+               where m.Status == MerchantStatus.Active
+                   && !(m.Latitude == 0 && m.Longitude == 0) && !(k.Latitude == 0 && k.Longitude == 0)
+                   && 2 * MerchantCoverage.EarthRadiusKm * Math.Asin(Math.Sqrt(Math.Min(1.0,
+                       Math.Pow(Math.Sin(((double)m.Latitude - k.Latitude) * Rad / 2), 2) +
+                       Math.Cos(k.Latitude * Rad) * Math.Cos((double)m.Latitude * Rad) *
+                       Math.Pow(Math.Sin(((double)m.Longitude - k.Longitude) * Rad / 2), 2)))) <= m.ServiceRadiusKm
+               select l.LockerId;
+    }
+
+    private const double MaxLockerSearchRadiusKm = 50;
+
+    private static PaginatedResult<CustomerLockerCatalogDto> LockerQueryError(string code, string message, params string[] fields) =>
+        new() { Succeeded = false, StatusCode = HttpStatusCode.BadRequest, Message = message, Meta = new { code, fields } };
 
     public async Task<BaseResponse<CustomerLockerCatalogDto>> GetLockerAsync(Guid id)
     {
@@ -256,8 +296,7 @@ public class CustomerCatalogAppService : WashGoAppService, ICustomerCatalogAppSe
         var links = await _lockerMerchants.GetQueryableAsync();
         var query = from locker in lockers
                     where locker.Id == id && !locker.IsDeleted && locker.Status == LockerStatus.Active
-                        && links.Any(l => l.LockerId == locker.Id
-                            && merchants.Any(m => m.Id == l.MerchantId && m.Status == MerchantStatus.Active))
+                        && ServedLockerIds(lockers, links, merchants).Contains(locker.Id)
                     select new CustomerLockerCatalogDto
                     {
                         Id = locker.Id,

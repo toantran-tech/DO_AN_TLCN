@@ -1,3 +1,4 @@
+using WashGo.Domain.Shared.Scheduling;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -251,6 +252,9 @@ namespace WashGo.EntityFrameworkCore.Seeding
                     CommissionRate = 20,
                     ServiceRadiusKm = 5,
                     MaxCapacity = 50,
+                    // Development fixture: an explicit 24/7 calendar (never inferred), so collect deadlines are deterministic.
+                    OpeningHours = "\"Mở cửa 24/7\"",
+                    OpeningSchedule = OpeningScheduleRules.Serialize(new OpeningSchedule { AlwaysOpen = true }),
                     CreatedAt = DateTime.UtcNow,
                     UpdatedAt = DateTime.UtcNow
                 };

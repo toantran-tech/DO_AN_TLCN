@@ -1,4 +1,5 @@
 using System;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.OpenApi;
@@ -16,6 +17,22 @@ namespace WashGo.HttpApi.Endpoints.Payment
     public class PaymentHandler : IEndpointBase
     {
         private const string Endpoint = "/payment";
+
+        /// <summary>
+        /// Gateway browser return (Payment:VnPay:ReturnUrl = /payment/vnpay-return, Payment:Momo:RedirectUrl = /payment/momo-return).
+        /// 303 to the configured FE result page chosen from verified server state; the query string is never trusted as payment proof.
+        /// </summary>
+        private static async Task<IResult> GatewayReturnAsync(HttpRequest request, PaymentMethod method, IPaymentAppService service)
+        {
+            request.HttpContext.Response.Headers.CacheControl = "no-store";
+            request.HttpContext.Response.Headers["Referrer-Policy"] = "no-referrer";
+            var parameters = request.Query.ToDictionary(x => x.Key, x => x.Value.ToString());
+            var target = await service.ResolveReturnRedirectAsync(method, parameters);
+            if (target == null)
+                return Results.Content("Bạn đã quay lại WashGo. Vui lòng mở đơn hàng để xem trạng thái thanh toán.", "text/plain; charset=utf-8", statusCode: 503);
+            request.HttpContext.Response.Headers.Location = target;
+            return Results.StatusCode(StatusCodes.Status303SeeOther);
+        }
 
         public void MapEndpoint(IEndpointRouteBuilder app)
         {
@@ -58,6 +75,23 @@ namespace WashGo.HttpApi.Endpoints.Payment
             }).RequireAuthorization("CustomerOnly").WithName("CustomerPaymentVerificationOperation")
                 .WithSummary("Đọc tiến độ xác minh của chính Customer; dùng retryAfterSeconds để thăm dò, không truy vấn cổng từ GET.")
                 .WithOpenApi();
+
+            group.MapGet("/orders/{orderId:guid}/result", async (Guid orderId, PaymentPurpose purpose, Guid? sessionId,
+                HttpContext context, IPaymentAppService service) =>
+            {
+                context.Response.Headers.CacheControl = "no-store";
+                return (await service.GetOutcomeAsync(orderId, purpose, sessionId)).CustomResult();
+            }).RequireAuthorization("CustomerOnly").RequireRateLimiting("payment-result")
+                .WithName("CustomerPaymentResult")
+                .WithSummary("Kết quả có thẩm quyền của một lần thanh toán (sessionId từ URL kết quả) hoặc lần mới nhất của đơn/purpose: status Succeeded|Failed|Cancelled|Pending|RequiresReview|Refunded|NotStarted, resultPage, reasonCode, verified, amount, obligationSettled, serverNow, retryAfterSeconds, capabilities (canVerify/canContinue/canRetry). Chỉ đọc; không xác nhận từ query trình duyệt. 404 với đơn/lần thanh toán của khách khác.")
+                .WithOpenApi();
+
+            group.MapGet("/vnpay-return", async (HttpRequest request, IPaymentAppService service) =>
+                await GatewayReturnAsync(request, PaymentMethod.VnPay, service))
+                .AllowAnonymous().RequireRateLimiting("payment-return").ExcludeFromDescription();
+            group.MapGet("/momo-return", async (HttpRequest request, IPaymentAppService service) =>
+                await GatewayReturnAsync(request, PaymentMethod.Momo, service))
+                .AllowAnonymous().RequireRateLimiting("payment-return").ExcludeFromDescription();
 
             // Browser redirect is informational. Only verified IPN/query may settle the transaction.
             group.MapGet("/return", (HttpContext context) =>

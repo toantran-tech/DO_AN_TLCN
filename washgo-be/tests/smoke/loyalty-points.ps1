@@ -60,7 +60,7 @@ COMMIT;
     $handler=New-Object System.Net.Http.HttpClientHandler;$handler.UseProxy=$false
     $client=New-Object System.Net.Http.HttpClient($handler);$client.Timeout=[TimeSpan]::FromSeconds(40)
     $service=(Call-Api Post '/customer/services/filter' @{page=1;take=1} $customer).list[0]
-    $locker=(Call-Api Post '/locker/' @{merchantIds=@("$merchantId");code="LOYALTY_$run";name='Loyalty fixture';address='Fixture';district='Test';city='Test';latitude=10.7;longitude=106.7;boxCount=10} $admin).data
+    $locker=(Call-Api Post '/locker/' @{merchantIds=@("$merchantId");code="LOYALTY_$run";name='Loyalty fixture';address='Fixture';district='Test';city='Test';latitude=10.77;longitude=106.69;boxCount=10} $admin).data
     $lockerId=[Guid]$locker.id
     Assert-Status 401 Get '/customer/loyalty/balance' $null $null
     Assert-Status 403 Get '/customer/loyalty/balance' $null $admin

@@ -100,8 +100,9 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             var settings = await _settings.ForOrderAsync(order);
             var collect = task.TaskType == DeliveryTaskType.Collect;
             task.SlaStartedAt = collect ? order.DepositedAt : order.Status == WashOrderStatus.Cancelled ? null : order.PaidAt;
-            task.SlaHours = collect ? settings.MerchantCollectSlaHours : settings.MerchantReturnSlaHours;
-            task.Deadline = task.SlaStartedAt?.AddHours(task.SlaHours.Value);
+            task.SlaHours = collect ? order.CollectSlaHoursSnapshot ?? settings.MerchantCollectSlaHours : settings.MerchantReturnSlaHours;
+            // Collect: the order's deadline counted in the Merchant's opening hours (null while it waits for a schedule).
+            task.Deadline = collect ? order.CollectionDeadlineAt : task.SlaStartedAt?.AddHours(task.SlaHours.Value);
         }
 
         public Task CancelledAsync(Guid orderId, DateTime at) => EndOpenAsync(orderId, DeliveryTaskStatus.Cancelled, at);

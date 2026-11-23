@@ -24,7 +24,7 @@ INSERT INTO washgo.customers SELECT (jsonb_populate_record(NULL::washgo.customer
 COMMIT;
 "@ | Out-Null
     $sessions.Fixture=(Call-Api Post '/auth/login' @{email=$email;password='Customer@123'} $null).data;$customer=$sessions.Fixture.accessToken
-    $locker=(Call-Api Post '/locker/' @{merchantIds=@("$merchantId");code="RECOVERY_$run";name='Payment recovery fixture';address='Fixture';district='Test';city='Test';latitude=10.7;longitude=106.7;boxCount=5} $admin).data
+    $locker=(Call-Api Post '/locker/' @{merchantIds=@("$merchantId");code="RECOVERY_$run";name='Payment recovery fixture';address='Fixture';district='Test';city='Test';latitude=10.77;longitude=106.69;boxCount=5} $admin).data
     $lockerId=$locker.id
     $service=(Call-Api Post '/customer/services/filter' @{page=1;take=1} $customer).list[0]
     $id=New-RecoveryOrder 9000

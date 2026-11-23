@@ -1,3 +1,4 @@
+using WashGo.Domain.Shared.Scheduling;
 using System;
 using System.Collections.Generic;
 using WashGo.Domain.Shared.Enums;
@@ -18,6 +19,7 @@ namespace WashGo.Application.Contracts.Features.MerchantProfileContracts.Results
         public decimal? Longitude { get; set; }
         public string Phone { get; set; } = string.Empty;
         public string? OpeningHours { get; set; }
+        public OpeningSchedule? OpeningSchedule { get; set; }
         public List<string> ImageUrls { get; set; } = [];
         /// <summary>null trong yêu cầu cũ = không đề cập (giữ nguyên); chuỗi rỗng = đề nghị xóa.</summary>
         public string? TaxCode { get; set; }
@@ -72,6 +74,7 @@ namespace WashGo.Application.Contracts.Features.MerchantProfileContracts.Results
         public decimal Longitude { get; set; }
         public string Phone { get; set; } = string.Empty;
         public string? OpeningHours { get; set; }
+        public OpeningSchedule? OpeningSchedule { get; set; }
         public List<string> ImageUrls { get; set; } = [];
         public MerchantStatus Status { get; set; }
         /// <summary>Điểm trung bình đánh giá công khai (1 chữ số thập phân); null khi chưa có đánh giá công khai (không phải 5 sao).</summary>

@@ -29,10 +29,10 @@ try {
         $o+=$x
     }
     Sql @"
-UPDATE washgo.orders SET merchant_id='$teamId', status=2, deposited_at=now() AT TIME ZONE 'utc' - interval '30 hours' WHERE id='$($o[0].id)';
+UPDATE washgo.orders SET merchant_id='$teamId', status=2, deposited_at=now() AT TIME ZONE 'utc' - interval '30 hours', collection_deadline_at=now() AT TIME ZONE 'utc' - interval '26 hours', collection_deadline_state='Scheduled' WHERE id='$($o[0].id)';
 UPDATE washgo.orders SET merchant_id='$teamId', status=4, estimated_finish_at=now() AT TIME ZONE 'utc' - interval '1 hour' WHERE id='$($o[1].id)';
 UPDATE washgo.orders SET merchant_id='$teamId', status=9, payment_status=2, paid_at=now() AT TIME ZONE 'utc' - interval '72 hours' WHERE id='$($o[2].id)';
-UPDATE washgo.orders SET merchant_id='$teamId', status=2, deposited_at=now() AT TIME ZONE 'utc' - interval '5 minutes' WHERE id='$($o[3].id)';
+UPDATE washgo.orders SET merchant_id='$teamId', status=2, deposited_at=now() AT TIME ZONE 'utc' - interval '5 minutes', collection_deadline_at=now() AT TIME ZONE 'utc' + interval '4 hours', collection_deadline_state='Scheduled' WHERE id='$($o[3].id)';
 "@ | Out-Null
 
     Write-Output '1. Counts over the whole scope, priority list paged in SQL'

@@ -1,3 +1,6 @@
+using WashGo.Application.Features.WashOrderApplication.Services;
+using WashGo.Domain.Shared.Scheduling;
+using WashGo.Application.Features.LockerApplication.Services;
 using WashGo.Application.Features.AuditApplication.Services;
 using System;
 using System.Collections.Generic;
@@ -94,6 +97,7 @@ namespace WashGo.Application.Features.MerchantApplication.Services
                 Longitude = merchant.Longitude,
                 Phone = merchant.Phone,
                 OpeningHours = merchant.OpeningHours,
+                OpeningSchedule = OpeningScheduleRules.Deserialize(merchant.OpeningSchedule),
                 ImageUrls = await StoreImagesAsync(merchant.Id),
                 Status = merchant.Status,
                 Rating = publicRatingCount == 0 ? null : merchant.Rating,
@@ -173,6 +177,18 @@ namespace WashGo.Application.Features.MerchantApplication.Services
                 return BadRequest<MerchantProfileRequestDto>(MerchantRules.InvalidPhone);
             if (hours?.Length > 1000)
                 return BadRequest<MerchantProfileRequestDto>("Giờ mở cửa quá dài.");
+            var currentSchedule = OpeningScheduleRules.Deserialize(merchant.OpeningSchedule);
+            var (schedule, scheduleProblem, structuredSchedule) = MerchantRules.ResolveSchedule(command.OpeningSchedule, command.OpeningHours,
+                currentSchedule, merchant.OpeningHours);
+            if (scheduleProblem != null)
+                return new BaseResponse<MerchantProfileRequestDto>
+                {
+                    Succeeded = false, StatusCode = HttpStatusCode.BadRequest, Message = scheduleProblem.Message,
+                    Errors = new Dictionary<string, string[]> { ["openingSchedule"] = [scheduleProblem.Message] },
+                    Meta = new { code = scheduleProblem.Code, fields = new[] { "openingSchedule" } }
+                };
+            if (structuredSchedule)
+                hours = MerchantRules.NormalizeJson(OpeningScheduleRules.Display(schedule!));
 
             var current = new MerchantProfileDataDto
             {
@@ -211,6 +227,7 @@ namespace WashGo.Application.Features.MerchantApplication.Services
                 Longitude = command.Longitude ?? merchant.Longitude,
                 Phone = digits,
                 OpeningHours = hours,
+                OpeningSchedule = schedule,
                 ImageUrls = images,
                 TaxCode = taxCode ?? string.Empty,
                 BusinessLicense = license ?? string.Empty
@@ -317,6 +334,15 @@ namespace WashGo.Application.Features.MerchantApplication.Services
                 Changes(current, before).Count != 0)
                 return MerchantWriteGuard.Error<MerchantProfileRequestDto>(HttpStatusCode.Conflict, "MerchantProfileChanged", "Hồ sơ cửa hàng đã đổi từ lúc gửi yêu cầu; không thể áp dữ liệu cũ. Hãy từ chối và yêu cầu gửi lại.");
 
+            if (data.Latitude.HasValue && data.Longitude.HasValue)
+            {
+                // A new store position must keep every linked locker inside the service radius; otherwise nothing is applied.
+                var (excluded, suggested) = await LazyServiceProvider.LazyGetRequiredService<MerchantCoverageReader>()
+                    .ExcludedLockersAsync(merchant, data.Latitude.Value, data.Longitude.Value, merchant.ServiceRadiusKm);
+                if (excluded.Count > 0)
+                    return MerchantCoverageReader.Blocked<MerchantProfileRequestDto>(merchant.Id, merchant.ServiceRadiusKm, excluded, suggested);
+            }
+
             var now = DateTime.UtcNow;
             if (data.DocumentsSnapshotIncluded)
             {
@@ -338,6 +364,10 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             }
             merchant.Phone = data.Phone;
             merchant.OpeningHours = data.OpeningHours;
+            // Requests sent before structured hours carry text only: keep the schedule unless the text is computable.
+            if ((data.OpeningSchedule ?? OpeningScheduleRules.FromLegacy(data.OpeningHours)) is { } approvedSchedule &&
+                OpeningScheduleRules.Validate(approvedSchedule) == null)
+                merchant.OpeningSchedule = OpeningScheduleRules.Serialize(approvedSchedule);
             // Requests made before these fields existed carry null: keep the current values.
             if (data.TaxCode != null)
             {
@@ -351,6 +381,7 @@ namespace WashGo.Application.Features.MerchantApplication.Services
                 merchant.BusinessLicense = data.BusinessLicense.Length == 0 ? null : MerchantRules.NormalizeJson(JsonSerializer.Serialize(data.BusinessLicense));
             MerchantWriteGuard.Touch(merchant);
             await _merchantRepo.UpdateAsync(merchant, autoSave: true);
+            await LazyServiceProvider.LazyGetRequiredService<CollectionDeadlineService>().RecomputeWaitingAsync(merchant.Id);
             await ReplaceStoreImagesAsync(merchant.Id, data.ImageUrls);
 
             request.Status = ServiceApprovalStatus.Approved;

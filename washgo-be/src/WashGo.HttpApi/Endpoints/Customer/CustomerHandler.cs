@@ -68,10 +68,10 @@ public class CustomerHandler : IEndpointBase
             .WithOpenApi();
 
         group.MapGet("/lockers", async (string? city, string? district, string? keyword,
-            int? page, int? take, double? latitude, double? longitude, ICustomerCatalogAppService catalog) =>
-            (await catalog.GetLockersAsync(city, district, keyword, page ?? 1, take ?? 20, latitude, longitude)).CustomResult())
+            int? page, int? take, double? latitude, double? longitude, double? radiusKm, ICustomerCatalogAppService catalog) =>
+            (await catalog.GetLockersAsync(city, district, keyword, page ?? 1, take ?? 20, latitude, longitude, radiusKm)).CustomResult())
             .AllowAnonymous().RequireRateLimiting("public-catalog").WithName("Customer tìm tủ còn ô trống")
-            .WithSummary("Customer tìm tủ còn ô trống; gửi latitude/longitude của khách để nhận khoảng cách (km) và sắp xếp gần nhất trước.")
+            .WithSummary("Customer tìm tủ còn ô trống; gửi latitude/longitude của khách để nhận khoảng cách (km) và sắp xếp gần nhất trước. radiusKm (0 < r ≤ 50, cần kèm latitude/longitude) chỉ giữ locker có khoảng cách chưa làm tròn ≤ radiusKm, lọc trước khi đếm total và phân trang; rỗng thì list rỗng, total 0. Lỗi 400 có meta.code: InvalidLocation, LocationRequiredForRadius, InvalidRadius, InvalidLockerFilter.")
             .WithOpenApi();
 
         group.MapGet("/lockers/{id:guid}", async (Guid id, ICustomerCatalogAppService catalog) =>

@@ -1,3 +1,5 @@
+using WashGo.Domain.Shared.Scheduling;
+using WashGo.Application.Features.LockerApplication.Services;
 using WashGo.Application.Features.AuditApplication.Services;
 using WashGo.Application.Features.AccountApplication.Services;
 using System;
@@ -252,6 +254,8 @@ namespace WashGo.Application.Features.MerchantApplication.Services
                     return MerchantWriteGuard.Error<MerchantResultDto>(HttpStatusCode.Conflict, "TaxCodeAlreadyUsed", "Mã số thuế này đã được sử dụng.");
                 var (error, phone) = await ValidateAsync(command, email, null);
                 if (error != null) return BadRequest<MerchantResultDto>(error);
+                var (schedule, scheduleProblem, structured) = MerchantRules.ResolveSchedule(command.OpeningSchedule, command.OpeningHours, null, null);
+                if (scheduleProblem != null) return ScheduleError<MerchantResultDto>(scheduleProblem);
                 var (imageError, images) = await UploadStorage.ValidateOwnedImagesAsync(LazyServiceProvider.LazyGetRequiredService<ObjectStorage>(), command.ImageUrls, CurrentUser.Id.Value, 0);
                 if (imageError != null) return BadRequest<MerchantResultDto>(imageError);
                 var role = await _roleRepo.FirstOrDefaultAsync(x => x.Name == "Merchant");
@@ -272,6 +276,7 @@ namespace WashGo.Application.Features.MerchantApplication.Services
                     ApprovedBy = CurrentUser.Id, ApprovedAt = DateTime.UtcNow
                 };
                 Apply(entity, command, phone!);
+                ApplySchedule(entity, schedule!, structured);
                 var documentError = await _documents.ApplyAsync(entity, command, CurrentUser.Id.Value);
                 if (documentError != null) return BadRequest<MerchantResultDto>(documentError);
                 await _userRepo.InsertAsync(user, autoSave: true);
@@ -366,6 +371,11 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             var (error, phone) = await ValidateAsync(command, email, entity.Id);
             if (error != null)
                 return BadRequest<MerchantResultDto>(error);
+            // Opening hours stay required: omitted keeps the current valid schedule; a Merchant without one must add it.
+            var (schedule, scheduleProblem, structured) = MerchantRules.ResolveSchedule(command.OpeningSchedule, command.OpeningHours,
+                OpeningScheduleRules.Deserialize(entity.OpeningSchedule), entity.OpeningHours);
+            if (scheduleProblem != null)
+                return ScheduleError<MerchantResultDto>(scheduleProblem);
             List<string>? images = null;
             if (command.ImageUrls != null)
             {
@@ -379,10 +389,20 @@ namespace WashGo.Application.Features.MerchantApplication.Services
                     return BadRequest<MerchantResultDto>($"Tối đa {UploadStorage.MaxImagesPerSubmission} ảnh.");
             }
 
+            // Service radius is a hard rule: a location/radius change may not leave a linked locker outside it (all-or-nothing).
+            // The Merchant lock above is the one locker writes take, so the two cannot interleave.
+            var (excluded, suggested) = await LazyServiceProvider.LazyGetRequiredService<MerchantCoverageReader>()
+                .ExcludedLockersAsync(entity, command.Latitude, command.Longitude, command.ServiceRadiusKm);
+            if (excluded.Count > 0)
+                return MerchantCoverageReader.Blocked<MerchantResultDto>(entity.Id, command.ServiceRadiusKm, excluded, suggested);
+
             var previousVersion = entity.UpdatedAt.Ticks / 10;
             var documentError = await _documents.ApplyAsync(entity, command, CurrentUser.Id!.Value);
             if (documentError != null) return BadRequest<MerchantResultDto>(documentError);
+            var keptHoursText = string.IsNullOrWhiteSpace(command.OpeningHours) ? entity.OpeningHours : null;
             Apply(entity, command, phone!);
+            if (!structured && keptHoursText != null) entity.OpeningHours = keptHoursText;
+            ApplySchedule(entity, schedule!, structured);
             entity.UpdatedAt = new DateTime(Math.Max(entity.UpdatedAt.Ticks / 10, previousVersion + 1) * 10, DateTimeKind.Utc);
             if (command.CommissionRate.HasValue)
                 entity.CommissionRate = command.CommissionRate.Value;
@@ -397,6 +417,8 @@ namespace WashGo.Application.Features.MerchantApplication.Services
                 await ReplaceImagesAsync(entity.Id, images);
             if (command.ServiceAreaIds != null)
                 await ReplaceAreasAsync(entity.Id, command.ServiceAreaIds);
+            // Orders that waited for this Merchant's opening hours get their deadline now, still counted from DepositedAt.
+            await LazyServiceProvider.LazyGetRequiredService<CollectionDeadlineService>().RecomputeWaitingAsync(entity.Id);
             var auditAfter = (await ToDtosAsync([entity]))[0];
             await Audit.LogAsync(new AuditEntry("Merchant", "Update", "Merchant", entity.Id.ToString(), entity.BusinessName)
             {
@@ -563,6 +585,21 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             return (null, phone);
         }
 
+        /// <summary>Stores the structured schedule; the display text follows it unless the client sent a computable text.</summary>
+        private static void ApplySchedule(Merchant entity, OpeningSchedule schedule, bool structured)
+        {
+            entity.OpeningSchedule = OpeningScheduleRules.Serialize(schedule);
+            if (structured || string.IsNullOrWhiteSpace(entity.OpeningHours))
+                entity.OpeningHours = MerchantRules.NormalizeJson(OpeningScheduleRules.Display(schedule));
+        }
+
+        private static BaseResponse<T> ScheduleError<T>(OpeningScheduleRules.Problem problem) => new()
+        {
+            Succeeded = false, StatusCode = HttpStatusCode.BadRequest, Message = problem.Message,
+            Errors = new Dictionary<string, string[]> { ["openingSchedule"] = [problem.Message] },
+            Meta = new { code = problem.Code, fields = new[] { "openingSchedule" } }
+        };
+
         private static void Apply(Merchant entity, CreateMerchantCommand command, string phone)
         {
             entity.BusinessName = command.BusinessName.Trim();
@@ -660,6 +697,7 @@ namespace WashGo.Application.Features.MerchantApplication.Services
                 dto.PublicRatingCount = ratings.FirstOrDefault(x => x.Id == dto.Id)?.Count ?? 0;
                 if (dto.PublicRatingCount == 0) dto.Rating = null;
                 dto.Version = MerchantWriteGuard.Version(merchants.First(x => x.Id == dto.Id));
+                dto.OpeningSchedule = OpeningScheduleRules.Deserialize(merchants.First(x => x.Id == dto.Id).OpeningSchedule);
                 dto.Email = emails.GetValueOrDefault(dto.Id, string.Empty);
                 dto.ServiceAreaIds = areas.GetValueOrDefault(dto.Id) ?? [];
                 dto.ImageUrls = images.GetValueOrDefault(dto.Id) ?? [];
@@ -863,20 +901,18 @@ namespace WashGo.Application.Features.MerchantApplication.Services
                 return BadRequest<MerchantSlaAlertsDto>("Không xác định được danh tính Merchant.");
 
             var settings = await _settings.GetAsync();
-            int collectSlaHours = settings.MerchantCollectSlaHours > 0 ? settings.MerchantCollectSlaHours : 4;
             int returnSlaHours = settings.MerchantReturnSlaHours > 0 ? settings.MerchantReturnSlaHours : 24;
             var page = Math.Max(1, query.Page ?? 1);
             var take = Math.Clamp(query.Take ?? 20, 1, 100);
             var now = DateTime.UtcNow;
-            var collectBefore = now.AddHours(-collectSlaHours);
             var returnBefore = now.AddHours(-returnSlaHours);
 
             using var snapshot = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true,
                 isolationLevel: IsolationLevel.RepeatableRead);
             var orders = (await _orderRepo.GetQueryableAsync()).Where(o => !o.IsDeleted && o.MerchantId == merchantId.Value);
             // Same rules as before, evaluated by the database for the whole scope; only the requested page is loaded.
-            var collection = orders.Where(o => WashOrderStatusFlow.AtDepositLocker.Contains(o.Status) && o.DepositedAt != null && o.DepositedAt.Value.AddHours(o.CollectSlaHoursSnapshot ?? collectSlaHours) < now)
-                .Select(o => new SlaRow { Id = o.Id, Type = MerchantSlaAlertType.CollectionOverdue, Deadline = o.DepositedAt!.Value.AddHours(o.CollectSlaHoursSnapshot ?? collectSlaHours) });
+            var collection = orders.Where(o => WashOrderStatusFlow.AtDepositLocker.Contains(o.Status) && o.CollectionDeadlineAt != null && o.CollectionDeadlineAt < now)
+                .Select(o => new SlaRow { Id = o.Id, Type = MerchantSlaAlertType.CollectionOverdue, Deadline = o.CollectionDeadlineAt!.Value });
             var processing = orders.Where(o => (o.Status == WashOrderStatus.Washing || o.Status == WashOrderStatus.Drying ||
                                                 o.Status == WashOrderStatus.Ironing || o.Status == WashOrderStatus.Folding) &&
                                                o.EstimatedFinishAt != null && o.EstimatedFinishAt < now)

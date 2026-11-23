@@ -25,7 +25,10 @@ namespace WashGo.Domain.Entities.Partner
         public decimal Latitude { get; set; }
         public decimal Longitude { get; set; }
         public string Phone { get; set; } = string.Empty;
+        /// <summary>Display text; the computable calendar is <see cref="OpeningSchedule"/>.</summary>
         public string? OpeningHours { get; set; }
+        /// <summary>Structured opening hours (JSON of Domain.Shared.Scheduling.OpeningSchedule); also the collection calendar.</summary>
+        public string? OpeningSchedule { get; set; }
         public MerchantStatus Status { get; set; } = MerchantStatus.Active;
         public string? RejectionReason { get; set; }
         public Guid? ApprovedBy { get; set; }

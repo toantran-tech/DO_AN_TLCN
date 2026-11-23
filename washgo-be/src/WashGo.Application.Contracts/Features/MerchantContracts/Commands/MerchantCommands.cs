@@ -1,3 +1,4 @@
+using WashGo.Domain.Shared.Scheduling;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -25,7 +26,10 @@ namespace WashGo.Application.Contracts.Features.MerchantContracts.Commands
         public decimal Latitude { get; set; }
         public decimal Longitude { get; set; }
         public string Phone { get; set; } = string.Empty;
+        /// <summary>Tương thích: chỉ nhận "HH:mm-HH:mm" (mọi ngày) hoặc JSON {"mon":"HH:mm-HH:mm",…}; nên gửi openingSchedule.</summary>
         public string? OpeningHours { get; set; }
+        /// <summary>Giờ mở cửa có cấu trúc (bắt buộc khi tạo; khi sửa bỏ trống = giữ lịch hiện có).</summary>
+        public OpeningSchedule? OpeningSchedule { get; set; }
         /// <summary>Ảnh cửa hàng đã upload qua /files/images; khi sửa, null = giữ nguyên.</summary>
         public List<string>? ImageUrls { get; set; }
         public decimal DepositAmount { get; set; } = 1000000;
