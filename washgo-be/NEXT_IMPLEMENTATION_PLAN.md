@@ -1,3 +1,5 @@
+> Lọc locker theo bán kính 23/11/2026: đã làm `Docs/cần làm/BACKEND_CUSTOMER.md` — `radiusKm` cho `GET /customer/lockers`, lọc trên khoảng cách chưa làm tròn trước khi đếm/phân trang, mã lỗi ổn định. Bàn giao: [LOCKER_RADIUS_FILTER_API_REVIEW.md](docs/LOCKER_RADIUS_FILTER_API_REVIEW.md).
+
 > Duyệt và công khai đánh giá 21/11/2026: đã làm `Docs/cần làm/BACKEND_REVIEW.md` — một phạm vi công khai cho Customer và khách (điều kiện public thống nhất, migration chép mốc guest cho đánh giá đã công khai), batch `PublishPublic`. Bàn giao: [REVIEW_PUBLISH_API_REVIEW.md](docs/REVIEW_PUBLISH_API_REVIEW.md).
 
 > Năng lực Shipper 23/11/2026. BE dùng giới hạn 1–20 riêng từng Shipper, mặc định 3. Merchant sở hữu đặt giới hạn trên hồ sơ và không thể giảm dưới tải hiện tại. Phân công đơn/kho dùng cùng khóa bản ghi Shipper. Bàn giao [SHIPPER_TASK_CAPACITY_API_REVIEW.md](docs/SHIPPER_TASK_CAPACITY_API_REVIEW.md).

@@ -1,3 +1,10 @@
+## Lọc locker theo bán kính tìm kiếm — 23/11/2026
+
+- [x] `GET /customer/lockers` thêm `radiusKm` (0–50, cần cặp tọa độ); lọc khoảng cách chưa làm tròn trước total/phân trang, gần nhất trước, rỗng không tự giãn.
+- [x] Mã lỗi ổn định `LocationRequiredForRadius`, `InvalidRadius`, `InvalidLocation`, `InvalidLockerFilter`; `meta` sortBy/radiusKm trên response.
+- [x] Smoke `locker-radius-filter.ps1` (CI) PASS; `locker-distance`, `customer-locker-slots` PASS.
+- [ ] FE chuyển getNearbyLockers sang `radiusKm`, bỏ kiểm tra khoảng cách cục bộ.
+
 ## Duyệt và công khai đánh giá — 21/11/2026
 
 - [x] Công khai đặt đủ content/public/guest trong một transaction; public feed/summary/ảnh dùng cùng điều kiện cho Customer và khách.

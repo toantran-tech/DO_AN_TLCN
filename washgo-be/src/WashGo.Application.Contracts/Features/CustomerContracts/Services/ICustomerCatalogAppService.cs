@@ -12,6 +12,6 @@ public interface ICustomerCatalogAppService : IApplicationService
     Task<BaseResponse<CustomerServiceCatalogDto>> GetServiceAsync(Guid id);
     Task<PaginatedResult<CustomerLockerCatalogDto>> GetLockersAsync(
         string? city, string? district, string? keyword, int page, int take,
-        double? latitude = null, double? longitude = null);
+        double? latitude = null, double? longitude = null, double? radiusKm = null);
     Task<BaseResponse<CustomerLockerCatalogDto>> GetLockerAsync(Guid id);
 }
