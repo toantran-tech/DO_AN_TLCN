@@ -15,5 +15,6 @@ namespace WashGo.Core.Domain.Shared.Bases
         public bool HasNextPage => CurrentPage < TotalPages;
         public string? Message { get; set; }
         public bool Succeeded { get; set; } = true;
+        public object? Meta { get; set; }
     }
 }
