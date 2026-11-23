@@ -26,5 +26,8 @@ namespace WashGo.Application.Contracts.Features.LockerContracts.Services
         Task<BaseResponse<LockerResultDto>> SetStatusAsync(Guid id, SetLockerStatusCommand command);
         Task<BaseResponse<AdministrativeBatchResultDto>> BatchAsync(AdministrativeBatchCommand command);
         Task<BaseResponse<List<ColumnFilterDistinctValueDto>>> GetColumnDistinctValuesAsync(string fieldName, LockerFilterQuery query);
+        Task<PaginatedResult<EligibleMerchantDto>> GetEligibleMerchantsAsync(double? latitude, double? longitude, Guid? lockerId,
+            string? keyword, bool includeIneligible, int page, int take);
+        Task<PaginatedResult<LockerCoverageIssueDto>> GetCoverageIssuesAsync(int page, int take);
     }
 }

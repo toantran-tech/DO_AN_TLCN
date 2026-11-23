@@ -48,7 +48,7 @@ SELECT (jsonb_populate_record(NULL::washgo.services,to_jsonb(s)||jsonb_build_obj
  'id','$serviceId','code','ST_$run','name','Storage test service','unit','item','base_price',20000,'price_per_item',20000,'price_per_kg',NULL))).*
 FROM washgo.services s WHERE is_active=true AND NOT is_deleted LIMIT 1;
 "@ | Out-Null
-    $locker=(Call-Api Post '/locker/' @{merchantId="$merchantId";code="ST_$run";name='Storage fixture';address='Fixture';district='Test';city='Test';latitude=10.7;longitude=106.7;boxes=@(@{boxNumber='1';size=2},@{boxNumber='2';size=2})} $admin).data
+    $locker=(Call-Api Post '/locker/' @{merchantId="$merchantId";code="ST_$run";name='Storage fixture';address='Fixture';district='Test';city='Test';latitude=10.77;longitude=106.69;boxes=@(@{boxNumber='1';size=2},@{boxNumber='2';size=2})} $admin).data
     $lockerId=[Guid]$locker.id
     $slot=(Call-Api Get "/customer/lockers/$lockerId" $null $customer).data.availableSlots[0]
     $created=(Call-Api Post '/wash-order/' @{lockerId="$lockerId";boxId=$slot.id;items=@(@{serviceId="$serviceId";quantity=1});paymentMethod=2} $customer).data

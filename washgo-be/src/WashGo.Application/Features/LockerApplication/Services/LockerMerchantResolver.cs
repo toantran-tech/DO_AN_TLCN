@@ -16,25 +16,36 @@ namespace WashGo.Application.Features.LockerApplication.Services
     {
         private readonly IRepository<LockerMerchant, Guid> _links;
         private readonly IRepository<Merchant, Guid> _merchants;
+        private readonly IRepository<Locker, Guid> _lockers;
         private readonly IAsyncQueryableExecuter _executer;
 
         public LockerMerchantResolver(IRepository<LockerMerchant, Guid> links, IRepository<Merchant, Guid> merchants,
-            IAsyncQueryableExecuter executer)
+            IRepository<Locker, Guid> lockers, IAsyncQueryableExecuter executer)
         {
             _links = links;
             _merchants = merchants;
+            _lockers = lockers;
             _executer = executer;
         }
 
-        /// <summary>Merchant đang hoạt động của locker, theo độ ưu tiên (1 trước).</summary>
+        /// <summary>
+        /// Merchant đang hoạt động của locker và locker nằm trong bán kính phục vụ của Merchant, theo độ ưu tiên (1 trước).
+        /// Liên kết cũ ngoài bán kính/thiếu tọa độ được giữ nhưng không nhận đơn mới (catalog, tạo đơn, phân công dùng cùng quy tắc).
+        /// </summary>
         public async Task<List<LockerMerchant>> ActiveLinksAsync(Guid lockerId)
         {
+            var locker = await _lockers.FindAsync(lockerId);
+            if (locker == null) return [];
             var links = await _links.GetQueryableAsync();
             var merchants = await _merchants.GetQueryableAsync();
-            return await _executer.ToListAsync(links
-                .Where(l => l.LockerId == lockerId &&
-                            merchants.Any(m => m.Id == l.MerchantId && m.Status == MerchantStatus.Active))
-                .OrderBy(l => l.Priority));
+            var rows = await _executer.ToListAsync(
+                from l in links
+                join m in merchants on l.MerchantId equals m.Id
+                where l.LockerId == lockerId && m.Status == MerchantStatus.Active
+                orderby l.Priority
+                select new { Link = l, m.Latitude, m.Longitude, m.ServiceRadiusKm });
+            return rows.Where(x => MerchantCoverage.Covers(x.Latitude, x.Longitude, x.ServiceRadiusKm, locker.Latitude, locker.Longitude))
+                .Select(x => x.Link).ToList();
         }
 
         public async Task<bool> HasActiveMerchantAsync(Guid lockerId) => (await ActiveLinksAsync(lockerId)).Count > 0;

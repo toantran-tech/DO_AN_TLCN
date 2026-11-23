@@ -19,8 +19,8 @@ try {
     $admin=$sessions.Admin.accessToken;$customer=$sessions.Customer.accessToken
     $merchantId=$sessions.Merchant.user.id
     # "A" is about 1.11 km north of the customer, "B" sits on the customer's position.
-    foreach($l in @(@{name="Distance $run A";lat=12.01},@{name="Distance $run B";lat=12.0})){
-        $created=(Call-Api Post '/locker/' @{merchantId="$merchantId";name=$l.name;address='Private development fixture';district='Test';city='Test';latitude=$l.lat;longitude=105.0;boxCount=1} $admin).data
+    foreach($l in @(@{name="Distance $run A";lat=10.7869},@{name="Distance $run B";lat=10.7769})){
+        $created=(Call-Api Post '/locker/' @{merchantId="$merchantId";name=$l.name;address='Private development fixture';district='Test';city='Test';latitude=$l.lat;longitude=106.7009;boxCount=1} $admin).data
         $lockerIds+=$created.id
     }
 
@@ -29,10 +29,10 @@ try {
     if($plain.total -ne 2 -or $plain.list[0].name -ne "Distance $run A" -or $null -ne $plain.list[0].distanceKm){throw 'Plain list wrong.'}
 
     Write-Output '2. With the customer position: distance in km, nearest first'
-    $near=Lockers '&latitude=12.0&longitude=105.0'
+    $near=Lockers '&latitude=10.7769&longitude=106.7009'
     if($near.list[0].name -ne "Distance $run B" -or $near.list[0].distanceKm -ne 0 -or $near.list[1].name -ne "Distance $run A"){throw 'Nearest-first order wrong.'}
     if($near.list[1].distanceKm -lt 1.1 -or $near.list[1].distanceKm -gt 1.12){throw "Distance wrong: $($near.list[1].distanceKm)"}
-    $paged=Lockers '&latitude=12.0&longitude=105.0&page=2&take=1'
+    $paged=Lockers '&latitude=10.7769&longitude=106.7009&page=2&take=1'
     if($paged.list.Count -ne 1 -or $paged.list[0].name -ne "Distance $run A"){throw 'Paging by distance wrong.'}
 
     Write-Output '3. Invalid position'

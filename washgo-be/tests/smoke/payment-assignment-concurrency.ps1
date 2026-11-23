@@ -48,7 +48,7 @@ FROM washgo.merchants m WHERE user_id='$seedMerchant';
 COMMIT;
 "@ | Out-Null
     }
-    $locker=(Call-Api Post '/locker/' @{merchantIds=@("$($merchantIds[0])","$($merchantIds[1])");code="PAYR_$run";name='Payment/assignment race fixture';address='Fixture';district='Test';city='Test';latitude=10.7;longitude=106.7;boxCount=6} $admin).data
+    $locker=(Call-Api Post '/locker/' @{merchantIds=@("$($merchantIds[0])","$($merchantIds[1])");code="PAYR_$run";name='Payment/assignment race fixture';address='Fixture';district='Test';city='Test';latitude=10.77;longitude=106.69;boxCount=6} $admin).data
     $lockerId=[Guid]$locker.id
     $service=(Call-Api Post '/customer/services/filter' @{page=1;take=1} $customer).list[0]
     $handler=New-Object System.Net.Http.HttpClientHandler;$handler.UseProxy=$false
