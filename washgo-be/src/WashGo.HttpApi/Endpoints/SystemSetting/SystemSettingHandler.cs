@@ -47,9 +47,9 @@ namespace WashGo.HttpApi.Endpoints.SystemSetting
                 .WithSummary("Phí quá hạn locker theo ngày 1/2/3, phí lưu kho/ngày, % phí hủy theo giai đoạn và % bồi thường theo mức hư hỏng.")
                 .WithOpenApi();
             group.MapPut("/dispatch", async (UpdateDispatchSettingsCommand command, ISystemSettingAppService svc) =>
-                    (await svc.UpdateDispatchAsync(command)).CustomResult())
-                .WithName("Cấu hình điều phối Shipper")
-                .WithSummary("Số nhiệm vụ giao nhận chưa hoàn tất tối đa của mỗi Shipper (1–20, mặc định 3), áp dụng cho mọi luồng phân công. Giảm dưới số đang có chỉ chặn nhận thêm, không hủy nhiệm vụ đã giao. Có expectedVersion/operationId.")
+                    Results.Json(await svc.UpdateDispatchAsync(command), statusCode: StatusCodes.Status410Gone))
+                .WithName("Giới hạn chung Shipper đã ngừng hỗ trợ")
+                .WithSummary("API cũ trả 410. Giới hạn nhiệm vụ được Merchant cấu hình trên từng Shipper.")
                 .WithOpenApi();
             group.MapPut("/loyalty", async (UpdateLoyaltySettingsCommand command, ISystemSettingAppService svc) =>
                 (await svc.UpdateLoyaltyAsync(command)).CustomResult())

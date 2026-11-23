@@ -6,6 +6,7 @@ using WashGo.Domain.Entities.Identity;
 using WashGo.Domain.Entities.Partner;
 using WashGo.Domain.Entities.WashService;
 using WashGo.Domain.Shared.Constants;
+using WashGo.Domain.Shared.Validation;
 
 namespace WashGo.EntityFrameworkCore.BuilderConfiguration
 {
@@ -15,7 +16,10 @@ namespace WashGo.EntityFrameworkCore.BuilderConfiguration
         public void Configure(EntityTypeBuilder<Shipper> builder)
         {
             GuidKeyConfiguration.ConfigureGeneratedGuid(builder);
-            builder.ToTable(WashGoDbProperties.Shippers, WashGoDbProperties.Schema);
+            builder.ToTable(WashGoDbProperties.Shippers, WashGoDbProperties.Schema, table =>
+                table.HasCheckConstraint("ck_shippers_max_active_tasks", $"max_active_tasks BETWEEN {ShipperTaskLimits.Minimum} AND {ShipperTaskLimits.Maximum}"));
+            builder.Property(x => x.MaxActiveTasks).HasDefaultValue(ShipperTaskLimits.Default);
+            builder.Property(x => x.CreateRequestHash).HasMaxLength(64);
             builder.Property(x => x.VehiclePlate).HasMaxLength(20);
             builder.Property(x => x.IdentityNumber).HasMaxLength(20);
             builder.Property(x => x.IdentityImages).HasColumnType("jsonb");

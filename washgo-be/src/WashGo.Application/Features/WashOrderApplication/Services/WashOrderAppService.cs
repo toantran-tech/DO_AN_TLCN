@@ -1157,7 +1157,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 !await _roleRepo.AnyAsync(x => x.Id == user.RoleId && x.Name == "Shipper" && x.IsActive))
                 return AdministrativeWriteGuard.Error<WashOrderDetailDto>(HttpStatusCode.BadRequest, "ShipperNotAvailable", "Shipper không hoạt động hoặc không sẵn sàng nhận chuyến.");
             // Several open tasks are allowed up to the limit; this order's own trip never takes a second slot.
-            var capacity = await LazyServiceProvider.LazyGetRequiredService<ShipperCapacityService>().ForAsync(shipper.Id, order.Id);
+            var capacity = await LazyServiceProvider.LazyGetRequiredService<ShipperCapacityService>().ForAsync(shipper, order.Id);
             if (!capacity.HasRoom)
                 return new BaseResponse<WashOrderDetailDto>
                 {

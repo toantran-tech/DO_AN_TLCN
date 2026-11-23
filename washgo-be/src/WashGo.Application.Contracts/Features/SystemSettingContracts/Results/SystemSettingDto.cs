@@ -13,7 +13,6 @@ namespace WashGo.Application.Contracts.Features.SystemSettingContracts.Results
         public int MerchantCollectSlaHours { get; set; }
         public int MerchantReturnSlaHours { get; set; }
         /// <summary>Giới hạn nhiệm vụ chưa hoàn tất của mỗi Shipper (1–20).</summary>
-        public int MaxActiveTasksPerShipper { get; set; }
         public int FreePickupHours { get; set; }
         public decimal DefaultCommissionRate { get; set; }
         public decimal LoyaltyEarnPercent { get; set; }

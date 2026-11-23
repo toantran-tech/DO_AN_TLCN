@@ -174,7 +174,7 @@ public class StorageAppService(IWashOrderRepository orders, IRepository<OrderSto
                 !await roles.AnyAsync(x => x.Id == user.RoleId && x.IsActive && x.Name == "Shipper"))
                 throw Rule("ShipperNotEligible", "Shipper không đủ điều kiện hoặc không thuộc tiệm.");
             // Checked after the Shipper row lock above: the last slot cannot be taken twice.
-            var capacity = await LazyServiceProvider.LazyGetRequiredService<ShipperCapacityService>().ForAsync(shipper.Id, order.Id);
+            var capacity = await LazyServiceProvider.LazyGetRequiredService<ShipperCapacityService>().ForAsync(shipper, order.Id);
             if (!capacity.HasRoom)
                 throw new StorageRuleException(ShipperCapacityService.ExceededCode, ShipperCapacityService.ExceededMessage(capacity), 409,
                     ShipperCapacityService.ExceededMeta(capacity));

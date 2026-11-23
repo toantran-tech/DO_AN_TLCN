@@ -1,10 +1,29 @@
 using System;
 using System.Collections.Generic;
 using WashGo.Domain.Shared.Enums;
+using System.Text.Json.Serialization;
 
 namespace WashGo.Application.Contracts.Features.ShipperContracts.Commands
 {
-    public class CreateShipperCommand
+    public abstract class ShipperCapacityCommand
+    {
+        private int? _maxActiveTasks;
+
+        public int? MaxActiveTasks
+        {
+            get => _maxActiveTasks;
+            set
+            {
+                _maxActiveTasks = value;
+                HasMaxActiveTasks = true;
+            }
+        }
+
+        [JsonIgnore]
+        public bool HasMaxActiveTasks { get; private set; }
+    }
+
+    public class CreateShipperCommand : ShipperCapacityCommand
     {
         /// <summary>Chỉ Admin cần nhập; Merchant luôn tạo Shipper cho tiệm của mình.</summary>
         public Guid? MerchantId { get; set; }
@@ -39,7 +58,7 @@ namespace WashGo.Application.Contracts.Features.ShipperContracts.Commands
         public string? Reason { get; set; }
     }
 
-    public class UpdateShipperCommand
+    public class UpdateShipperCommand : ShipperCapacityCommand
     {
         public string FullName { get; set; } = string.Empty;
         public string Phone { get; set; } = string.Empty;
@@ -50,6 +69,7 @@ namespace WashGo.Application.Contracts.Features.ShipperContracts.Commands
         public bool IsActive { get; set; } = true;
         /// <summary>`revision` lúc người dùng mở form (hoặc header If-Match); khác bản hiện tại → 409 kèm dữ liệu mới.</summary>
         public long? ExpectedRevision { get; set; }
+        public Guid? OperationId { get; set; }
         /// <summary>Số CMND/CCCD: null = giữ nguyên, chuỗi rỗng = xóa.</summary>
         public string? IdentityNumber { get; set; }
         /// <summary>

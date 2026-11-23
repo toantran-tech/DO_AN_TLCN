@@ -94,14 +94,21 @@ namespace WashGo.HttpApi.Endpoints.Shipper
                 .WithSummary("Xóa mềm tối đa 50 Shipper (ID trùng bỏ qua), mỗi người một transaction theo cùng luật xóa đơn lẻ; trả kết quả/lý do theo từng ID. Gửi lại an toàn.")
                 .WithOpenApi();
 
+            group.MapGet("/{id:guid}/operations/{operationId:guid}", async (Guid id, Guid operationId, IShipperManagementAppService svc) =>
+                (await svc.GetUpdateOperationAsync(id, operationId)).CustomResult())
+                .WithName("Tra cứu kết quả chỉnh sửa Shipper")
+                .WithOpenApi();
+
             group.MapPut("/{id:guid}", async (Guid id, UpdateShipperCommand command, HttpContext http, IShipperManagementAppService svc) =>
             {
                 if (command.ExpectedRevision == null && long.TryParse(http.Request.Headers.IfMatch.ToString().Trim().Trim('"'), out var revision))
                     command.ExpectedRevision = revision;
+                if (command.OperationId == null && Guid.TryParse(http.Request.Headers["Idempotency-Key"].ToString(), out var key))
+                    command.OperationId = key;
                 return (await svc.UpdateAsync(id, command)).CustomResult();
             })
                 .WithName("Chỉnh sửa Shipper")
-                .WithSummary("Cập nhật họ tên, SĐT, email, phương tiện, biển số và trạng thái Đang làm việc/Tạm nghỉ.")
+                .WithSummary("Cập nhật họ tên, SĐT, email, phương tiện, biển số và trạng thái Đang làm việc/Tạm nghỉ. Merchant có thể đặt maxActiveTasks (1–20) với expectedRevision và operationId.")
                 .WithOpenApi();
         }
     }
