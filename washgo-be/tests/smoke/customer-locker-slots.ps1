@@ -16,7 +16,7 @@ try {
     $created = (Call-Api Post '/locker/' @{
         merchantId=$sessions.Merchant.user.id;name='Customer slots fixture'
         code="SLOTS_$([Guid]::NewGuid().ToString('N'))";address='Fixture';district='Test';city='Test'
-        latitude=10.7;longitude=106.7
+        latitude=10.77;longitude=106.69
         boxes=@(1..5 | ForEach-Object { @{boxNumber="$_";size=2} })
     } $admin).data
     $lockerId = [Guid]$created.id

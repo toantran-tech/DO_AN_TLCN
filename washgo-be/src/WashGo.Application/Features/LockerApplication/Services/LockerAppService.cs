@@ -123,8 +123,13 @@ namespace WashGo.Application.Features.LockerApplication.Services
             using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
             if (await Writes.ReplayAsync<LockerResultDto>(command.OperationId, CurrentUser.Id!.Value, "Locker", "Create", "new", command) is { } replay) return replay;
             await Writes.LockAsync("locker-admin-names");
+            if (MerchantIdsOf(command).Count == 0 && MerchantCoverage.HasLocation(command.Latitude, command.Longitude) &&
+                (await LazyServiceProvider.LazyGetRequiredService<MerchantCoverageReader>().EligibleAsync(command.Latitude, command.Longitude)).Count == 0)
+                return NoEligibleMerchant();
             if (await ValidateAsync(command, null) is { } invalid)
                 return invalid;
+            if (await CoverageErrorAsync(null, command.Latitude, command.Longitude, MerchantIdsOf(command), []) is { } outside)
+                return outside;
             var (imageError, images) = await UploadStorage.ValidateOwnedImagesAsync(LazyServiceProvider.LazyGetRequiredService<ObjectStorage>(), command.ImageUrls, CurrentUser.Id!.Value, 0);
             if (imageError != null)
                 return BadRequest<LockerResultDto>(imageError);
@@ -202,6 +207,18 @@ namespace WashGo.Application.Features.LockerApplication.Services
                 return Invalid(nameof(command.Code), BusinessCodeRules.ImmutableMessage, BusinessCodeRules.ImmutableCode);
             if (await ValidateAsync(command, locker.Id) is { } invalid)
                 return invalid;
+            // Re-check every Merchant that will serve the locker after the change, including merchantIds = null (keep the list)
+            // when the locker moves. Legacy links are not re-judged on edits that keep both list and position.
+            var currentMerchants = (await _linkRepo.GetListAsync(x => x.LockerId == locker.Id)).OrderBy(x => x.Priority).Select(x => x.MerchantId).ToList();
+            var requestedMerchants = MerchantIdsOf(command);
+            if (requestedMerchants.Count > 0 || locker.Latitude != command.Latitude || locker.Longitude != command.Longitude)
+            {
+                var finalMerchants = requestedMerchants.Count > 0 ? requestedMerchants : currentMerchants;
+                if (finalMerchants.Count == 0)
+                    return NoEligibleMerchant();
+                if (await CoverageErrorAsync(locker.Id, command.Latitude, command.Longitude, finalMerchants, currentMerchants) is { } outside)
+                    return outside;
+            }
             var images = ReadImages(locker.Images);
             if (command.ImageUrls != null)
             {
@@ -416,6 +433,94 @@ namespace WashGo.Application.Features.LockerApplication.Services
                 if (!command.Status.HasValue || !Enum.IsDefined((LockerStatus)command.Status.Value)) return AdministrativeBatchExecutor.Invalid(item.Id, "InvalidTargetStatus", "Status đích không hợp lệ.");
                 return AdministrativeBatchExecutor.Item(item.Id, await SetStatusAsync(item.Id, new() { ExpectedVersion = item.ExpectedVersion, OperationId = key, Status = (LockerStatus)command.Status.Value }));
             });
+
+        // Admin: Merchants that may serve a locker position (new locker, or an edit with lockerId; then linked Merchants are always listed).
+        public async Task<PaginatedResult<EligibleMerchantDto>> GetEligibleMerchantsAsync(double? latitude, double? longitude, Guid? lockerId,
+            string? keyword, bool includeIneligible, int page, int take)
+        {
+            if (keyword?.Length > 200)
+                return PageError<EligibleMerchantDto>("InvalidFilter", "Từ khóa tối đa 200 ký tự.", "keyword");
+            if (latitude.HasValue != longitude.HasValue)
+                return PageError<EligibleMerchantDto>("InvalidLocation", "Cần gửi cả latitude và longitude.", "latitude", "longitude");
+            if (!latitude.HasValue && lockerId.HasValue)
+            {
+                var stored = await _lockerRepo.FindAsync(lockerId.Value);
+                if (stored == null || stored.IsDeleted)
+                    return new PaginatedResult<EligibleMerchantDto> { Succeeded = false, StatusCode = HttpStatusCode.NotFound, Message = "Không tìm thấy locker." };
+                (latitude, longitude) = (stored.Latitude, stored.Longitude);
+            }
+            if (!latitude.HasValue || !MerchantCoverage.HasLocation(latitude.Value, longitude!.Value))
+                return PageError<EligibleMerchantDto>(MerchantCoverage.LockerLocationRequired, "Cần tọa độ locker hợp lệ (không phải 0,0).", "latitude", "longitude");
+            page = Math.Max(1, page);
+            take = Math.Clamp(take, 1, 100);
+            var rows = await LazyServiceProvider.LazyGetRequiredService<MerchantCoverageReader>()
+                .ListAsync(latitude.Value, longitude.Value, lockerId, keyword, includeIneligible);
+            var eligible = rows.Count(x => x.Eligible);
+            var result = Success(rows.Skip((page - 1) * take).Take(take).ToList(), rows.Count, page, take,
+                eligible == 0 ? "Không có Merchant nào có bán kính phục vụ bao gồm vị trí locker." : null);
+            result.Meta = new
+            {
+                latitude, longitude, lockerId, eligibleCount = eligible,
+                code = eligible == 0 ? MerchantCoverage.NoEligibleMerchant : null,
+                distanceUnit = "km", distanceDecimals = 2
+            };
+            return result;
+        }
+
+        // Admin: stored links outside the service radius (legacy data). They stay stored but do not take new orders.
+        public async Task<PaginatedResult<LockerCoverageIssueDto>> GetCoverageIssuesAsync(int page, int take)
+        {
+            page = Math.Max(1, page);
+            take = Math.Clamp(take, 1, 100);
+            var rows = await LazyServiceProvider.LazyGetRequiredService<MerchantCoverageReader>().IssuesAsync();
+            return Success(rows.Skip((page - 1) * take).Take(take).ToList(), rows.Count, page, take,
+                rows.Count == 0 ? "Mọi liên kết Merchant–locker đều nằm trong bán kính phục vụ." : null);
+        }
+
+        private static PaginatedResult<T> PageError<T>(string code, string message, params string[] fields) =>
+            new() { Succeeded = false, StatusCode = HttpStatusCode.BadRequest, Message = message, Meta = new { code, fields } };
+
+        /// <summary>
+        /// Service radius rule at write time. Locks each Merchant (same key as Merchant edits and order assignment) before
+        /// reading its position/radius, so a concurrent radius/location change cannot let an out-of-range link through.
+        /// Newly added Merchants must also have an active login and an unexpired contract.
+        /// </summary>
+        private async Task<BaseResponse<LockerResultDto>?> CoverageErrorAsync(Guid? lockerId, double latitude, double longitude,
+            List<Guid> merchantIds, List<Guid> currentMerchantIds)
+        {
+            foreach (var id in merchantIds.Distinct().OrderBy(x => x))
+                await Writes.LockAsync($"merchant-capacity:{id}");
+            if (!MerchantCoverage.HasLocation(latitude, longitude))
+                return CoverageError(MerchantCoverage.LockerLocationRequired, "Locker cần tọa độ hợp lệ để kiểm tra bán kính phục vụ.",
+                    ["latitude", "longitude"], new { code = MerchantCoverage.LockerLocationRequired, fields = new[] { "latitude", "longitude" }, lockerId });
+            var reader = LazyServiceProvider.LazyGetRequiredService<MerchantCoverageReader>();
+            var rows = await reader.EvaluateAsync(merchantIds, latitude, longitude, currentMerchantIds);
+            var failed = rows.Where(x => x.BlockedReasonCode != null).ToList();
+            if (failed.Count == 0) return null;
+            var code = failed.Any(x => x.BlockedReasonCode == MerchantCoverage.OutsideRadius) ? MerchantCoverage.OutsideRadius
+                : failed.Any(x => x.BlockedReasonCode == MerchantCoverage.MerchantLocationUnavailable) ? MerchantCoverage.MerchantLocationUnavailable
+                : "MerchantNotEligible";
+            var message = code == MerchantCoverage.OutsideRadius
+                ? $"Locker nằm ngoài bán kính phục vụ của: {string.Join(", ", failed.Where(x => x.BlockedReasonCode == MerchantCoverage.OutsideRadius).Select(x => $"{x.BusinessName} ({x.DistanceKm:0.##}/{x.ServiceRadiusKm} km)"))}."
+                : code == MerchantCoverage.MerchantLocationUnavailable
+                    ? $"Merchant chưa có tọa độ cửa hàng: {string.Join(", ", failed.Where(x => x.BlockedReasonCode == MerchantCoverage.MerchantLocationUnavailable).Select(x => x.BusinessName))}."
+                    : "Merchant phụ trách không tồn tại hoặc không đủ điều kiện nhận locker.";
+            return CoverageError(code, message, ["merchantIds"], new
+            {
+                code, fields = new[] { "merchantIds" }, lockerId, latitude, longitude,
+                merchants = failed.Select(x => new { x.MerchantId, x.BusinessName, x.DistanceKm, x.ServiceRadiusKm, x.BlockedReasonCode })
+            });
+        }
+
+        private static BaseResponse<LockerResultDto> CoverageError(string code, string message, string[] fields, object meta) => new()
+        {
+            Succeeded = false, StatusCode = HttpStatusCode.BadRequest, Message = message,
+            Errors = fields.ToDictionary(x => x, _ => new[] { message }), Meta = meta
+        };
+
+        private static BaseResponse<LockerResultDto> NoEligibleMerchant() => CoverageError(MerchantCoverage.NoEligibleMerchant,
+            "Không có Merchant đang hoạt động nào có bán kính phục vụ bao gồm vị trí locker; chưa thể đưa locker vào phục vụ.",
+            ["merchantIds"], new { code = MerchantCoverage.NoEligibleMerchant, fields = new[] { "merchantIds" }, reasons = new[] { "NoActiveMerchantWithinServiceRadius" } });
 
         private static List<Guid> MerchantIdsOf(CreateLockerCommand command) =>
             command.MerchantIds is { Count: > 0 } ids ? ids

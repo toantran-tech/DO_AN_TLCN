@@ -1,3 +1,4 @@
+using WashGo.Application.Features.LockerApplication.Services;
 using WashGo.Application.Features.AuditApplication.Services;
 using WashGo.Application.Features.AccountApplication.Services;
 using System;
@@ -378,6 +379,13 @@ namespace WashGo.Application.Features.MerchantApplication.Services
                 if (images.Count > UploadStorage.MaxImagesPerSubmission)
                     return BadRequest<MerchantResultDto>($"Tối đa {UploadStorage.MaxImagesPerSubmission} ảnh.");
             }
+
+            // Service radius is a hard rule: a location/radius change may not leave a linked locker outside it (all-or-nothing).
+            // The Merchant lock above is the one locker writes take, so the two cannot interleave.
+            var (excluded, suggested) = await LazyServiceProvider.LazyGetRequiredService<MerchantCoverageReader>()
+                .ExcludedLockersAsync(entity, command.Latitude, command.Longitude, command.ServiceRadiusKm);
+            if (excluded.Count > 0)
+                return MerchantCoverageReader.Blocked<MerchantResultDto>(entity.Id, command.ServiceRadiusKm, excluded, suggested);
 
             var previousVersion = entity.UpdatedAt.Ticks / 10;
             var documentError = await _documents.ApplyAsync(entity, command, CurrentUser.Id!.Value);

@@ -23,7 +23,7 @@ try {
     $admin=$sessions.Admin.accessToken;$customer=$sessions.Customer.accessToken;$owner=$sessions.Customer.user.id
     $baseline=(Call-Api Get '/customer/reviews/summary' $null $customer).data
     $guestBaseline=(Call-Api Get '/customer/reviews/summary' $null $null).data
-    $locker=(Call-Api Post '/locker/' @{merchantId=$sessions.Merchant.user.id;code="PUB_$run";name='Public review fixture';address='Fixture';district='Test';city='Test';latitude=10.7;longitude=106.7;boxes=@(@{boxNumber='1';size=2})} $admin).data
+    $locker=(Call-Api Post '/locker/' @{merchantId=$sessions.Merchant.user.id;code="PUB_$run";name='Public review fixture';address='Fixture';district='Test';city='Test';latitude=10.77;longitude=106.69;boxes=@(@{boxNumber='1';size=2})} $admin).data
     $lockerId=[Guid]$locker.id
     $slot=(Call-Api Get "/customer/lockers/$lockerId" $null $customer).data.availableSlots[0]
     $service=(Call-Api Post '/customer/services/filter' @{page=1;take=1} $customer).list[0]

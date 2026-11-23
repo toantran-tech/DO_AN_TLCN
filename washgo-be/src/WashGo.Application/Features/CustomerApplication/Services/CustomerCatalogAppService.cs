@@ -184,11 +184,11 @@ public class CustomerCatalogAppService : WashGoAppService, ICustomerCatalogAppSe
         var slots = await _slots.GetQueryableAsync();
         var merchants = await _merchants.GetQueryableAsync();
         var links = await _lockerMerchants.GetQueryableAsync();
-        // A locker is open to customers while at least one of its Merchants is active.
+        // A locker is open to customers while at least one active Merchant covers it within its service radius.
+        var served = ServedLockerIds(lockers, links, merchants);
         var query = from locker in lockers
                     where !locker.IsDeleted && locker.Status == LockerStatus.Active
-                        && links.Any(l => l.LockerId == locker.Id
-                            && merchants.Any(m => m.Id == l.MerchantId && m.Status == MerchantStatus.Active))
+                        && served.Contains(locker.Id)
                         && slots.Any(slot => slot.LockerId == locker.Id && !slot.IsDeleted
                             && slot.Status == LockerBoxStatus.Available)
                     select new { locker };
@@ -265,6 +265,25 @@ public class CustomerCatalogAppService : WashGoAppService, ICustomerCatalogAppSe
         return result;
     }
 
+    /// <summary>
+    /// Lockers with at least one active Merchant whose own service radius covers them (Haversine, unrounded). Same rule as
+    /// LockerMerchantResolver used by order creation and assignment; legacy links outside the radius do not count.
+    /// </summary>
+    private static IQueryable<Guid> ServedLockerIds(IQueryable<Locker> lockers, IQueryable<LockerMerchant> links, IQueryable<Merchant> merchants)
+    {
+        const double Rad = Math.PI / 180;
+        return from l in links
+               join m in merchants on l.MerchantId equals m.Id
+               join k in lockers on l.LockerId equals k.Id
+               where m.Status == MerchantStatus.Active
+                   && !(m.Latitude == 0 && m.Longitude == 0) && !(k.Latitude == 0 && k.Longitude == 0)
+                   && 2 * MerchantCoverage.EarthRadiusKm * Math.Asin(Math.Sqrt(Math.Min(1.0,
+                       Math.Pow(Math.Sin(((double)m.Latitude - k.Latitude) * Rad / 2), 2) +
+                       Math.Cos(k.Latitude * Rad) * Math.Cos((double)m.Latitude * Rad) *
+                       Math.Pow(Math.Sin(((double)m.Longitude - k.Longitude) * Rad / 2), 2)))) <= m.ServiceRadiusKm
+               select l.LockerId;
+    }
+
     private const double MaxLockerSearchRadiusKm = 50;
 
     private static PaginatedResult<CustomerLockerCatalogDto> LockerQueryError(string code, string message, params string[] fields) =>
@@ -277,8 +296,7 @@ public class CustomerCatalogAppService : WashGoAppService, ICustomerCatalogAppSe
         var links = await _lockerMerchants.GetQueryableAsync();
         var query = from locker in lockers
                     where locker.Id == id && !locker.IsDeleted && locker.Status == LockerStatus.Active
-                        && links.Any(l => l.LockerId == locker.Id
-                            && merchants.Any(m => m.Id == l.MerchantId && m.Status == MerchantStatus.Active))
+                        && ServedLockerIds(lockers, links, merchants).Contains(locker.Id)
                     select new CustomerLockerCatalogDto
                     {
                         Id = locker.Id,

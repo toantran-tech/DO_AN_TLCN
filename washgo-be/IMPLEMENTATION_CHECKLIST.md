@@ -1,3 +1,13 @@
+## Bán kính phục vụ khi gán Merchant cho locker — 23/11/2026
+
+- [x] Quy tắc cứng: Haversine cửa hàng→locker (chưa làm tròn) ≤ serviceRadiusKm của từng Merchant; thiếu tọa độ không tính là 0 km.
+- [x] `GET /locker/eligible-merchants` (theo tọa độ locker, giữ Merchant đang gán, includeIneligible, phân trang BE) và `GET /locker/coverage-issues` cho dữ liệu cũ.
+- [x] Tạo/sửa locker kiểm tra lúc lưu dưới khóa Merchant, từ chối toàn bộ; mã MerchantOutsideServiceRadius, MerchantLocationUnavailable, LockerLocationRequired, NoEligibleMerchantForLocker, MerchantNotEligible.
+- [x] Sửa Merchant/duyệt đổi vị trí làm locker ra ngoài vùng → 409 MerchantCoverageWouldExcludeLockers, không ghi.
+- [x] Catalog Customer, tạo đơn/báo giá và ứng viên phân công dùng cùng quy tắc; liên kết cũ được giữ, không nhận đơn mới.
+- [x] Smoke `merchant-service-radius.ps1` (CI); các smoke có locker cũ dời vào bán kính Merchant mẫu.
+- [ ] FE chọn Merchant theo vị trí locker, hiển thị khoảng cách/bán kính, xử lý 409 khi sửa Merchant.
+
 ## Lọc locker theo bán kính tìm kiếm — 23/11/2026
 
 - [x] `GET /customer/lockers` thêm `radiusKm` (0–50, cần cặp tọa độ); lọc khoảng cách chưa làm tròn trước total/phân trang, gần nhất trước, rỗng không tự giãn.

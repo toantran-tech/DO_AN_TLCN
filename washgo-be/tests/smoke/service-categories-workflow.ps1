@@ -41,7 +41,7 @@ try {
     Check ($service.categoryId -eq $a.id -and $service.categoryName -eq $a.name) 'Service category projection missing.'
     $visible=(Call-Api Post '/customer/services/filter' @{keyword=$run;categoryIds=@($a.id,$b.id);page=1;take=100} $customer).data
     Check (@($visible).Count -eq 1) 'Category OR filter omitted service.'
-    $locker=(Call-Api Post '/locker/' @{merchantId=$sessions.Merchant.user.id;name=$run;address='Fixture';district='Test';city='Test';latitude=10.7;longitude=106.7;boxes=@(@{boxNumber='1';size=2})} $admin).data
+    $locker=(Call-Api Post '/locker/' @{merchantId=$sessions.Merchant.user.id;name=$run;address='Fixture';district='Test';city='Test';latitude=10.77;longitude=106.69;boxes=@(@{boxNumber='1';size=2})} $admin).data
     $lockerId=$locker.id
     $slot=(Call-Api Get "/customer/lockers/$lockerId" $null $customer).data.availableSlots[0]
     $order=(Call-Api Post '/wash-order/' @{lockerId=$lockerId;boxId=$slot.id;items=@(@{serviceId=$serviceId;quantity=1});paymentMethod=2} $customer).data

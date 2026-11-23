@@ -1,3 +1,4 @@
+using WashGo.Application.Features.LockerApplication.Services;
 using WashGo.Application.Features.AuditApplication.Services;
 using System;
 using System.Collections.Generic;
@@ -316,6 +317,15 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             if ((before.BaseMerchantVersion != null && before.BaseMerchantVersion != MerchantWriteGuard.Version(merchant)) ||
                 Changes(current, before).Count != 0)
                 return MerchantWriteGuard.Error<MerchantProfileRequestDto>(HttpStatusCode.Conflict, "MerchantProfileChanged", "Hồ sơ cửa hàng đã đổi từ lúc gửi yêu cầu; không thể áp dữ liệu cũ. Hãy từ chối và yêu cầu gửi lại.");
+
+            if (data.Latitude.HasValue && data.Longitude.HasValue)
+            {
+                // A new store position must keep every linked locker inside the service radius; otherwise nothing is applied.
+                var (excluded, suggested) = await LazyServiceProvider.LazyGetRequiredService<MerchantCoverageReader>()
+                    .ExcludedLockersAsync(merchant, data.Latitude.Value, data.Longitude.Value, merchant.ServiceRadiusKm);
+                if (excluded.Count > 0)
+                    return MerchantCoverageReader.Blocked<MerchantProfileRequestDto>(merchant.Id, merchant.ServiceRadiusKm, excluded, suggested);
+            }
 
             var now = DateTime.UtcNow;
             if (data.DocumentsSnapshotIncluded)
