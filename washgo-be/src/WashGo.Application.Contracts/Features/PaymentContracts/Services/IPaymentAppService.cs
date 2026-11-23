@@ -23,6 +23,9 @@ namespace WashGo.Application.Contracts.Features.PaymentContracts.Services
         Task<VnPayIpnResultDto> HandleVnPayIpnAsync(IReadOnlyDictionary<string, string> parameters);
         /// <summary>False when the IPN signature/partner is invalid (the endpoint answers 400).</summary>
         Task<bool> HandleMomoIpnAsync(MomoIpnCommand ipn);
+        /// <summary>FE result URL for a browser return from the gateway, or null when the FE origin is not safely configured.</summary>
+        Task<string?> ResolveReturnRedirectAsync(PaymentMethod method, IReadOnlyDictionary<string, string> parameters);
+        Task<BaseResponse<PaymentOutcomeDto>> GetOutcomeAsync(Guid orderId, PaymentPurpose purpose, Guid? sessionId);
         Task<BaseResponse<RefundRequestDto>> CreateRefundRequestAsync(CreateRefundRequestCommand command);
         Task<BaseResponse<List<RefundRequestDto>>> GetRefundRequestsAsync(bool mineOnly, RefundRequestStatus? status = null);
         Task<BaseResponse<RefundRequestDto>> GetRefundRequestAsync(Guid id);

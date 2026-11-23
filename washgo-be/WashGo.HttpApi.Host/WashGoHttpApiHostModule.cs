@@ -158,6 +158,23 @@ namespace WashGo.HttpApi.Host
                             PermitLimit = 10, Window = TimeSpan.FromMinutes(1),
                             QueueLimit = 0, AutoReplenishment = true
                         }));
+                options.AddPolicy("payment-result", httpContext =>
+                    RateLimitPartition.GetFixedWindowLimiter(
+                        httpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                            ?? httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                        _ => new FixedWindowRateLimiterOptions
+                        {
+                            PermitLimit = 60, Window = TimeSpan.FromMinutes(1),
+                            QueueLimit = 0, AutoReplenishment = true
+                        }));
+                options.AddPolicy("payment-return", httpContext =>
+                    RateLimitPartition.GetFixedWindowLimiter(
+                        httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                        _ => new FixedWindowRateLimiterOptions
+                        {
+                            PermitLimit = 30, Window = TimeSpan.FromMinutes(1),
+                            QueueLimit = 0, AutoReplenishment = true
+                        }));
                 options.AddPolicy("public-catalog", httpContext =>
                     RateLimitPartition.GetFixedWindowLimiter(
                         httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
