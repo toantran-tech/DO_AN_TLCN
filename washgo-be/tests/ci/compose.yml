@@ -28,6 +28,13 @@ services:
       Jwt__SecretKey: CI-only-signing-key-not-for-real-users-1234567890
       Payment__Provider: Mock
       Payment__Verification__Enabled: "false" # Verification queue is inspected deterministically; gateway tests use fake HTTP.
+      # CI-only signing keys so return/IPN signatures can be exercised; Provider stays Mock (no gateway is ever called).
+      Payment__VnPay__TmnCode: CITEST01
+      Payment__VnPay__HashSecret: CI-only-vnpay-secret-not-real
+      Payment__Momo__PartnerCode: CITESTMOMO
+      Payment__Momo__AccessKey: ci-only-access
+      Payment__Momo__SecretKey: CI-only-momo-secret-not-real
+      Payment__Frontend__BaseUrl: http://localhost:5173
       Email__Smtp__Host: ""
       Email__Smtp__SenderAddress: ""
       Chatbot__Gemini__ApiKey: ""

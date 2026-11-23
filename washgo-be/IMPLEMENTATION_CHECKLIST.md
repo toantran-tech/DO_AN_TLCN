@@ -1,3 +1,11 @@
+## Trang kết quả thanh toán VNPay/MoMo — 23/11/2026
+
+- [x] `GET /payment/vnpay-return`, `/payment/momo-return`: kiểm chữ ký, 303 tới FE `/payment/success|failed|cancelled|pending|review?orderId&purpose&sessionId` theo trạng thái đã xác minh; chưa kết luận → pending + xếp một truy vấn cổng; origin FE theo cấu hình + allowlist.
+- [x] `GET /payment/orders/{orderId}/result` (Customer, no-store): status, resultPage, reasonCode, verified, amount, obligationSettled, serverNow, retryAfterSeconds, capabilities; từng lần thanh toán theo sessionId.
+- [x] Hủy (VNPay 24, MoMo 1006) tách khỏi thất bại; MoMo query giữ mã kết quả.
+- [x] C# `Payments` và smoke `payment-result-redirect.ps1` (CI, khóa ký CI giả) PASS; các smoke thanh toán cũ PASS.
+- [ ] FE dựng các trang kết quả và đổi VNPAY_RETURN_URL/MOMO_REDIRECT_URL sang endpoint BE.
+
 ## Giờ mở cửa Merchant và hạn thu gom — 23/11/2026
 
 - [x] `openingSchedule` có cấu trúc (VN, ca [mở, đóng), ngày nghỉ, 24/7 tường minh) bắt buộc khi tạo/sửa Merchant và yêu cầu cập nhật hồ sơ; mã lỗi OpeningHours*; chuỗi cũ chỉ nhận dạng tính được.

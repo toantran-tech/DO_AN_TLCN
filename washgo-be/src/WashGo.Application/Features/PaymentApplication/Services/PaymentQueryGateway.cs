@@ -119,7 +119,7 @@ public class PaymentQueryGateway(IConfiguration config, IHttpClientFactory clien
         var id = Text(root, "transId");
         if (code == 0 && long.TryParse(id, out var transactionId) && transactionId > 0)
             return new(GatewayQueryOutcome.Succeeded, "GatewayVerifiedSuccess", id);
-        if (PaymentGatewayStatusRules.IsMomoFinalFailure(code)) return new(GatewayQueryOutcome.Failed, "GatewayVerifiedFailure", id);
+        if (PaymentGatewayStatusRules.IsMomoFinalFailure(code)) return new(GatewayQueryOutcome.Failed, "GatewayVerifiedFailure", id, $"MoMo resultCode={code}");
         return new(GatewayQueryOutcome.Pending, "GatewayPendingOrReview", id);
     }
 
