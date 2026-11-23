@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using Volo.Abp.Domain.Repositories;
@@ -134,7 +134,7 @@ public class ShipperProfileAppService(IShipperRepository shippers, IRepository<U
         var merchant = await merchants.FindAsync(s.MerchantId);
         var merchantUser = merchant == null ? null : await users.FindAsync(merchant.Id);
         var blocked = !s.IsActive || !u.IsActive || s.IsDeleted ? "ProfileInactive" : s.Status == ShipperStatus.Busy ? "StaffStatusManaged" : null;
-        var capacity = await LazyServiceProvider.LazyGetRequiredService<ShipperCapacityService>().ForAsync(s.Id, null);
+        var capacity = await LazyServiceProvider.LazyGetRequiredService<ShipperCapacityService>().ForAsync(s, null);
         var activeDelivery = capacity.ActiveTaskCount > 0;
         return new ShipperProfileDto
         {

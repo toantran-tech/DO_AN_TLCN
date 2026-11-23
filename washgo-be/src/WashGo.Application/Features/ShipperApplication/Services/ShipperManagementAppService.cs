@@ -29,6 +29,7 @@ using WashGo.Domain.Entities.Partner.Interfaces;
 using WashGo.Domain.Entities.WashOrder;
 using WashGo.Domain.Entities.WashOrder.Interfaces;
 using WashGo.Domain.Shared.Enums;
+using WashGo.Domain.Shared.Validation;
 using PasswordHasher = global::BCrypt.Net.BCrypt;
 
 namespace WashGo.Application.Features.ShipperApplication.Services
@@ -85,6 +86,11 @@ namespace WashGo.Application.Features.ShipperApplication.Services
             _logger = logger;
         }
 
+        private const string Module = "ShipperManagement";
+        private static readonly JsonSerializerOptions OperationJson = new(JsonSerializerDefaults.Web);
+        private ShipperCapacityService Capacity => LazyServiceProvider.LazyGetRequiredService<ShipperCapacityService>();
+        private AdministrativeWriteGuard WriteGuard => LazyServiceProvider.LazyGetRequiredService<AdministrativeWriteGuard>();
+
         private bool IsAdmin => CurrentUser.IsInRole("Admin");
 
         // Account-level lock/unlock/delete is shared with the Admin account page (same rules, sessions, realtime).
@@ -138,8 +144,7 @@ namespace WashGo.Application.Features.ShipperApplication.Services
                         .ThenBy(x => x.user.FullName).ThenBy(x => x.shipper.Id);
             var items = await AsyncExecuter.ToListAsync(ordered.Skip((page - 1) * take).Take(take));
             var activeCounts = await ActiveTaskCountsAsync(items.Select(x => x.shipper.Id).ToList());
-            var limit = await LazyServiceProvider.LazyGetRequiredService<ShipperCapacityService>().LimitAsync();
-            var dtos = items.Select(x => WithCapacity(ToDto(x.shipper, x.user, activeCounts.GetValueOrDefault(x.shipper.Id)), limit)).ToList();
+            var dtos = items.Select(x => ToDto(x.shipper, x.user, activeCounts.GetValueOrDefault(x.shipper.Id))).ToList();
             return Success(dtos, total, page, take, total == 0 ? "Bạn chưa có Shipper nào." : null);
         }
 
@@ -149,8 +154,7 @@ namespace WashGo.Application.Features.ShipperApplication.Services
             if (shipper == null || user == null)
                 return NotFound<ShipperDto>("Không tìm thấy Shipper!");
             var active = await ActiveTaskCountsAsync([shipper.Id]);
-            var limit = await LazyServiceProvider.LazyGetRequiredService<ShipperCapacityService>().LimitAsync();
-            return Success(WithCapacity(ToDto(shipper, user, active.GetValueOrDefault(shipper.Id)), limit));
+            return Success(ToDto(shipper, user, active.GetValueOrDefault(shipper.Id)));
         }
 
         public async Task<BaseResponse<ShipperSummaryDto>> GetSummaryAsync(Guid? merchantId)
@@ -181,6 +185,8 @@ namespace WashGo.Application.Features.ShipperApplication.Services
 
         public async Task<BaseResponse<ShipperDto>> CreateAsync(CreateShipperCommand command)
         {
+            if (ValidateCapacity(command) is { } capacityError)
+                return capacityError;
             var merchantId = ScopeMerchantId(command.MerchantId);
             if (!merchantId.HasValue)
                 return BadRequest<ShipperDto>("Vui lòng chọn Merchant quản lý Shipper.");
@@ -216,6 +222,8 @@ namespace WashGo.Application.Features.ShipperApplication.Services
             // The advisory lock only lives inside a transaction: hold one (gate) until the account is committed, so a concurrent
             // send with the same key waits and is then answered by the replay below instead of a duplicate-phone error.
             using var gate = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            if (command.ClientRequestId is { } requestId)
+                await _orderRepo.AcquireLockAsync($"shipper-create:{merchantId}:{requestId}");
             await _orderRepo.AcquireLockAsync($"shipper-phone:{phone}");
             if (command.ClientRequestId.HasValue && await ReplayCreateAsync(merchantId.Value, command) is { } lockedReplay)
                 return lockedReplay;
@@ -241,6 +249,7 @@ namespace WashGo.Application.Features.ShipperApplication.Services
             {
                 UserId = user.Id,
                 MerchantId = merchantId.Value,
+                MaxActiveTasks = command.MaxActiveTasks ?? ShipperTaskLimits.Default,
                 VehicleType = command.VehicleType,
                 VehiclePlate = plate,
                 IdentityNumber = identity,
@@ -252,6 +261,8 @@ namespace WashGo.Application.Features.ShipperApplication.Services
             };
 
             shipper.CreateRequestId = command.ClientRequestId;
+            if (command.ClientRequestId.HasValue)
+                shipper.CreateRequestHash = CreatePayloadHash(merchantId.Value, command);
             try
             {
                 using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
@@ -298,7 +309,10 @@ namespace WashGo.Application.Features.ShipperApplication.Services
                 return null;
             var user = await _userRepo.GetAsync(existing.UserId);
             var dto = await ToDtoAsync(existing, user);
-            if (!string.Equals(user.Email, command.Email?.Trim(), StringComparison.OrdinalIgnoreCase))
+            var sameRequest = existing.CreateRequestHash is { } hash
+                ? hash == CreatePayloadHash(merchantId, command)
+                : !command.HasMaxActiveTasks && string.Equals(user.Email, command.Email?.Trim(), StringComparison.OrdinalIgnoreCase);
+            if (!sameRequest)
                 return new BaseResponse<ShipperDto>
                 {
                     Succeeded = false, StatusCode = HttpStatusCode.Conflict, Data = dto, Meta = new { code = "ClientRequestIdReused" },
@@ -311,10 +325,56 @@ namespace WashGo.Application.Features.ShipperApplication.Services
             };
         }
 
+        private static string CreatePayloadHash(Guid merchantId, CreateShipperCommand command) =>
+            AdministrativeWriteGuard.Version(new { merchantId, command.FullName, command.Email, command.Phone,
+                command.VehicleType, command.VehiclePlate, command.IdentityNumber, command.IdentityImageUrls,
+                command.IdentityFrontImageUrl, command.IdentityBackImageUrl,
+                MaxActiveTasks = command.MaxActiveTasks ?? ShipperTaskLimits.Default });
+
+        private BaseResponse<ShipperDto>? ValidateCapacity(ShipperCapacityCommand command)
+        {
+            if (!command.HasMaxActiveTasks)
+                return null;
+            if (IsAdmin || !CurrentUser.IsInRole("Merchant"))
+                return AdministrativeWriteGuard.Error<ShipperDto>(HttpStatusCode.Forbidden, "ShipperTaskLimitForbidden",
+                    "Chỉ Merchant quản lý Shipper được đặt số nhiệm vụ tối đa.");
+            if (ShipperTaskLimits.IsValid(command.MaxActiveTasks))
+                return null;
+            var response = AdministrativeWriteGuard.Error<ShipperDto>(HttpStatusCode.BadRequest, "InvalidShipperTaskLimit",
+                $"Số nhiệm vụ tối đa phải là số nguyên từ {ShipperTaskLimits.Minimum} đến {ShipperTaskLimits.Maximum}.");
+            response.Errors["maxActiveTasks"] = [response.Message!];
+            return response;
+        }
+
+        public async Task<BaseResponse<ShipperDto>> GetUpdateOperationAsync(Guid id, Guid operationId)
+        {
+            var (shipper, _) = await FindOwnedAsync(id);
+            if (shipper == null)
+                return NotFound<ShipperDto>("Không tìm thấy Shipper!");
+            var operation = await WriteGuard.FindAsync(operationId, CurrentUser.Id ?? Guid.Empty, Module);
+            return operation?.ResourceId == id.ToString()
+                ? JsonSerializer.Deserialize<BaseResponse<ShipperDto>>(operation.ResponseJson, OperationJson)!
+                : NotFound<ShipperDto>("Chưa có kết quả được lưu; chỉ gửi lại cùng operationId.");
+        }
+
         public async Task<BaseResponse<ShipperDto>> UpdateAsync(Guid id, UpdateShipperCommand command)
         {
-            // Row lock: a change to Tạm nghỉ and a new assignment of this shipper cannot cross.
+            if (ValidateCapacity(command) is { } capacityError)
+                return capacityError;
+            if (command.HasMaxActiveTasks && (!command.ExpectedRevision.HasValue || !command.OperationId.HasValue))
+                return AdministrativeWriteGuard.Error<ShipperDto>(HttpStatusCode.BadRequest, "ShipperUpdateGuardRequired",
+                    "Cần expectedRevision và operationId để chỉnh số nhiệm vụ tối đa.");
+
+            var actor = CurrentUser.Id ?? Guid.Empty;
+            var resource = id.ToString();
+            // Take the operation lock before the Shipper row, following AdministrativeWriteGuard lock order.
             using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
+            if (command.OperationId.HasValue && !await _shipperRepo.AnyAsync(x => x.Id == id && (IsAdmin || x.MerchantId == actor)))
+                return NotFound<ShipperDto>("Không tìm thấy Shipper!");
+            var replay = await WriteGuard.ReplayAsync<ShipperDto>(command.OperationId, actor, Module, "Update", resource, command);
+            if (replay != null)
+                return replay;
+
             var shipper = await _shipperRepo.GetForUpdateAsync(id);
             if (shipper == null || !IsAdmin && shipper.MerchantId != CurrentUser.Id)
                 return NotFound<ShipperDto>("Không tìm thấy Shipper!");
@@ -338,6 +398,23 @@ namespace WashGo.Application.Features.ShipperApplication.Services
             if (duplicate != null)
                 return BadRequest<ShipperDto>(duplicate);
             var active = (await ActiveTaskCountsAsync([shipper.Id])).GetValueOrDefault(shipper.Id);
+            if (command.MaxActiveTasks is { } requestedLimit && requestedLimit < active)
+            {
+                var failure = new BaseResponse<ShipperDto>
+                {
+                    Succeeded = false,
+                    StatusCode = HttpStatusCode.Conflict,
+                    Data = ToDto(shipper, user, active),
+                    Message = $"Shipper đang có {active} nhiệm vụ chưa hoàn tất. Số nhiệm vụ tối đa phải từ {active} trở lên.",
+                    Meta = new
+                    {
+                        code = "ShipperTaskLimitBelowActiveCount", activeTaskCount = active,
+                        maxActiveTasks = shipper.MaxActiveTasks, minimumAllowedMaxActiveTasks = active
+                    }
+                };
+                failure.Errors["maxActiveTasks"] = [failure.Message!];
+                return failure;
+            }
             if (!command.IsActive && shipper.IsActive && active > 0)
                 return BadRequest<ShipperDto>("Shipper đang có nhiệm vụ lấy/trả chưa hoàn tất; không thể chuyển sang Tạm nghỉ.");
             var (identityError, identityChanges) = await ApplyIdentityAsync(shipper, command);
@@ -350,18 +427,23 @@ namespace WashGo.Application.Features.ShipperApplication.Services
             user.UpdatedAt = DateTime.UtcNow;
             shipper.VehicleType = command.VehicleType;
             shipper.VehiclePlate = plate;
+            var previousLimit = shipper.MaxActiveTasks;
+            shipper.MaxActiveTasks = command.MaxActiveTasks ?? previousLimit;
             shipper.IsActive = command.IsActive;
             shipper.UpdatedAt = DateTime.UtcNow;
             await _userRepo.UpdateAsync(user, autoSave: true);
             await _shipperRepo.UpdateAsync(shipper, autoSave: true);
             if (identityChanges.Count > 0)
                 await AuditAsync(shipper, ShipperAuditAction.IdentityUpdated, null, string.Join(",", identityChanges));
-            await uow.CompleteAsync();
             await Audit.LogAsync(new AuditEntry("Shipper", "Update", "Shipper", shipper.Id.ToString(), user.FullName)
             {
-                Details = new { merchantId = shipper.MerchantId }
+                ChangedFields = previousLimit == shipper.MaxActiveTasks ? null : ["maxActiveTasks"],
+                Details = new { merchantId = shipper.MerchantId, previousMaxActiveTasks = previousLimit, maxActiveTasks = shipper.MaxActiveTasks }
             });
-            return Success(ToDto(shipper, user, active), "Cập nhật Shipper thành công!");
+            var response = Success(ToDto(shipper, user, active), "Cập nhật Shipper thành công!");
+            await WriteGuard.RecordAsync(command.OperationId, actor, Module, "Update", resource, command, response);
+            await uow.CompleteAsync();
+            return response;
         }
 
         public async Task<BaseResponse<ShipperDto>> LockAsync(Guid id, ShipperAccountActionCommand command)
@@ -683,23 +765,8 @@ namespace WashGo.Application.Features.ShipperApplication.Services
             return null;
         }
 
-        private async Task<Dictionary<Guid, int>> ActiveTaskCountsAsync(List<Guid> shipperIds)
-        {
-            if (shipperIds.Count == 0) return [];
-            var rows = await AsyncExecuter.ToListAsync(DeliveryTaskRules.ActiveDeliveries(await _orderRepo.GetQueryableAsync())
-                .Where(x => shipperIds.Contains(x.ShipperId!.Value))
-                .GroupBy(x => x.ShipperId!.Value)
-                .Select(g => new { ShipperId = g.Key, Count = g.Count() }));
-            return rows.ToDictionary(x => x.ShipperId, x => x.Count);
-        }
-
-        /// <summary>Same meaning of "open tasks" as the assignment screens: count, effective limit and room left.</summary>
-        private static ShipperDto WithCapacity(ShipperDto dto, int limit)
-        {
-            dto.MaxActiveTasks = limit;
-            dto.RemainingTaskCapacity = Math.Max(0, limit - dto.ActiveTaskCount);
-            return dto;
-        }
+        private async Task<Dictionary<Guid, int>> ActiveTaskCountsAsync(List<Guid> shipperIds) =>
+            (await Capacity.CountsAsync(shipperIds, null)).ToDictionary(x => x.Key, x => x.Value.All);
 
         private static ShipperDto ToDto(Shipper s, User u, int activeTasks) => new()
         {
@@ -719,6 +786,8 @@ namespace WashGo.Application.Features.ShipperApplication.Services
             LockReason = u.IsActive ? null : s.LockReason,
             TotalDeliveries = s.TotalDeliveries,
             ActiveTaskCount = activeTasks,
+            MaxActiveTasks = s.MaxActiveTasks,
+            RemainingTaskCapacity = Math.Max(0, s.MaxActiveTasks - activeTasks),
             Rating = s.Rating,
             IdentityNumber = s.IdentityNumber,
             IdentityFrontImageUrl = s.IdentityFrontImageUrl,

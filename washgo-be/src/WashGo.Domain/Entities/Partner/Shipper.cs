@@ -4,6 +4,7 @@ using Volo.Abp.Domain.Entities;
 using WashGo.Core.Domain.Attributes;
 using WashGo.Domain.Shared.Constants;
 using WashGo.Domain.Shared.Enums;
+using WashGo.Domain.Shared.Validation;
 
 namespace WashGo.Domain.Entities.Partner
 {
@@ -34,6 +35,8 @@ namespace WashGo.Domain.Entities.Partner
         public string? LockReason { get; set; }
         /// <summary>Mã yêu cầu tạo (Idempotency-Key) để gửi lại không tạo thêm tài khoản/email.</summary>
         public Guid? CreateRequestId { get; set; }
+        public string? CreateRequestHash { get; set; }
+        public int MaxActiveTasks { get; set; } = ShipperTaskLimits.Default;
         public CredentialDeliveryStatus CredentialDelivery { get; set; }
         public DateTime? CredentialSentAt { get; set; }
         /// <summary>Phiên bản dữ liệu, DB tự tăng mỗi lần cập nhật (trigger); dùng cho expectedRevision/If-Match.</summary>

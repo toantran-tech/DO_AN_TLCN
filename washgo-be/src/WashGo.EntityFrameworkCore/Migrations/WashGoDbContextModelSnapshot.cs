@@ -2443,6 +2443,11 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<string>("CreateRequestHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("create_request_hash");
+
                     b.Property<Guid?>("CreateRequestId")
                         .HasColumnType("uuid")
                         .HasColumnName("create_request_id");
@@ -2505,6 +2510,12 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("locked_at");
 
+                    b.Property<int>("MaxActiveTasks")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(3)
+                        .HasColumnName("max_active_tasks");
+
                     b.Property<Guid>("MerchantId")
                         .HasColumnType("uuid")
                         .HasColumnName("merchant_id");
@@ -2558,7 +2569,10 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .IsUnique()
                         .HasFilter("create_request_id IS NOT NULL");
 
-                    b.ToTable("shippers", "washgo");
+                    b.ToTable("shippers", "washgo", t =>
+                        {
+                            t.HasCheckConstraint("ck_shippers_max_active_tasks", "max_active_tasks BETWEEN 1 AND 20");
+                        });
                 });
 
             modelBuilder.Entity("WashGo.Domain.Entities.Partner.ShipperAudit", b =>

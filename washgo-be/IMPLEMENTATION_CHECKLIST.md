@@ -6,7 +6,16 @@
 - [x] Smoke `customer-public-reviews-notifications.ps1` cập nhật (dữ liệu cũ, backfill, batch, replay, khóa dùng lại) PASS; `review-publishing`, `rating-keyword-privacy` PASS.
 - [ ] FE nối lại Duyệt và công khai hàng loạt.
 
-## Shipper nhận nhiều nhiệm vụ trong giới hạn — 21/11/2026
+## Giới hạn nhiệm vụ riêng từng Shipper — 23/11/2026
+
+- [x] Merchant tạo/sửa giới hạn 1–20, mặc định 3, kiểm tra quyền sở hữu và tải mới nhất dưới cùng khóa với phân công.
+- [x] API sửa hỗ trợ revision, operation, replay và tra cứu. API dispatch chung trả 410.
+- [x] Thêm migration AddPerShipperTaskLimit, cập nhật smoke test và tài liệu bàn giao.
+- [ ] Chạy smoke test trên PostgreSQL, xác nhận dữ liệu migration và tích hợp FE.
+
+## Lịch sử cơ chế giới hạn chung — 21/11/2026
+
+Cơ chế ngày 21/11 được thay thế bằng giới hạn riêng ngày 23/11/2026.
 
 - [x] `SystemSetting.MaxActiveTasksPerShipper` (1–20, mặc định 3), `PUT /system-setting/dispatch`, migration `AddShipperTaskCapacity`.
 - [x] `ShipperCapacityService` đếm theo `DeliveryTaskRules.ActiveDeliveries`, dùng cho phân công đơn, phân công kho, danh sách khả dụng (đơn + kho), quản lý Shipper và hồ sơ Shipper; kiểm tra sau khóa hàng Shipper.

@@ -6,11 +6,10 @@ param(
 )
 . "$PSScriptRoot/order-security.ps1" -BaseUrl $BaseUrl -PostgresContainer $PostgresContainer -PostgresUser $PostgresUser -Database $Database -HelpersOnly
 
-# LOCAL DEV ONLY: a Shipper takes several open tasks up to SystemSetting.MaxActiveTasksPerShipper. Fixture Shippers
-# (cap-<run>-*@example.com), one locker and its orders are removed in finally; the original limit is restored.
+# LOCAL DEV ONLY: uses fixture Shippers, a locker and its orders.
 Add-Type -AssemblyName System.Net.Http
 $sessions=@{}; $run=[Guid]::NewGuid().ToString('N').Substring(0,8)
-$lockerId=$null; $originalLimit=$null
+$lockerId=$null
 $standardWash='b1111111-bbbb-1111-bbbb-111111111111'
 
 function Raw($Method,$Path,$Body,$Token){
@@ -27,12 +26,18 @@ function Raw($Method,$Path,$Body,$Token){
 }
 function Check($Condition,$Message){ if(!$Condition){throw $Message} }
 function Op(){ [Guid]::NewGuid().ToString() }
-function Set-Limit($Value){
-    $v=(Call-Api Get '/system-setting/' $null $admin).data.version
-    Raw Put '/system-setting/dispatch' @{operationId=(Op);expectedVersion=$v;maxActiveTasksPerShipper=$Value} $admin
+function Limit-Body($ShipperId,$Value){
+    $current=(Call-Api Get "/shipper/$ShipperId" $null $merchant).data
+    @{fullName=$current.fullName;phone=$current.phone;email=$current.email;vehicleType=$current.vehicleType;
+      vehiclePlate=$current.vehiclePlate;isActive=$current.isActive;expectedRevision=$current.revision;operationId=(Op);maxActiveTasks=$Value}
 }
-function New-Shipper($Tag){
-    (Call-Api Post '/shipper/' @{fullName="Cap Shipper $Tag";phone="09$(Get-Random -Minimum 10000000 -Maximum 99999999)";email="cap-$run-$Tag@example.com";vehicleType=1;vehiclePlate='59-X1 123.45'} $merchant).data
+function Set-Limit($ShipperId,$Value){
+    Raw Put "/shipper/$ShipperId" (Limit-Body $ShipperId $Value) $merchant
+}
+function New-Shipper($Tag,$Limit){
+    $body=@{fullName="Cap Shipper $Tag";phone="09$(Get-Random -Minimum 10000000 -Maximum 99999999)";email="cap-$run-$Tag@example.com";vehicleType=1;vehiclePlate='59-X1 123.45'}
+    if($null -ne $Limit){ $body.maxActiveTasks=$Limit }
+    (Call-Api Post '/shipper/' $body $merchant).data
 }
 function New-AssignableOrder(){
     $l=(Call-Api Get "/customer/lockers/$lockerId" $null $customer).data
@@ -52,9 +57,11 @@ function Send-Parallel($Requests){
     $client=[System.Net.Http.HttpClient]::new()
     try {
         $tasks=@(foreach($r in $Requests){
-            $message=[System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::new('PUT'), "$BaseUrl/wash-order/assign-shipper")
+            $path=if($r.Path){$r.Path}else{'/wash-order/assign-shipper'}
+            $body=if($r.Path){$r.Body}else{$r}
+            $message=[System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::new('PUT'), "$BaseUrl$path")
             $message.Headers.Authorization=[System.Net.Http.Headers.AuthenticationHeaderValue]::new('Bearer',$merchant)
-            $message.Content=[System.Net.Http.StringContent]::new(($r | ConvertTo-Json),[Text.Encoding]::UTF8,'application/json')
+            $message.Content=[System.Net.Http.StringContent]::new(($body | ConvertTo-Json),[Text.Encoding]::UTF8,'application/json')
             $client.SendAsync($message)
         })
         [System.Threading.Tasks.Task]::WaitAll([System.Threading.Tasks.Task[]]$tasks)
@@ -67,12 +74,15 @@ try {
         $sessions[$role]=(Call-Api Post '/auth/login' @{email="$($role.ToLower())@washgo.vn";password="${role}@123"} $null).data
     }
     $admin=$sessions.Admin.accessToken; $merchant=$sessions.Merchant.accessToken; $customer=$sessions.Customer.accessToken
-    $originalLimit=(Call-Api Get '/system-setting/' $null $admin).data.maxActiveTasksPerShipper
-    Check ($originalLimit -ge 1) "Limit must be a positive server value, got $originalLimit."
-    $bad=Set-Limit 0
-    Check ($bad.Status -eq 400 -and $null -ne $bad.Json.errors.maxActiveTasksPerShipper) "Limit 0 accepted: $($bad.Status)"
-    Check ((Set-Limit 2).Status -eq 200) 'Could not set the limit to 2.'
-    $x=New-Shipper 'x'; $y=New-Shipper 'y'
+    $retired=Raw Put '/system-setting/dispatch' @{maxActiveTasksPerShipper=2} $admin
+    Check ($retired.Status -eq 410) 'Admin still controls a global limit.'
+    $x=New-Shipper 'x' 2; $y=New-Shipper 'y'
+    Check ($x.maxActiveTasks -eq 2 -and $y.maxActiveTasks -eq 3) 'Custom/default limits wrong.'
+    $blocked=Raw Put "/shipper/$($x.id)" (Limit-Body $x.id 2) $admin
+    Check ($blocked.Status -eq 403 -and $blocked.Json.meta.code -eq 'ShipperTaskLimitForbidden') 'Admin could change the limit.'
+    foreach($invalid in @(0,-1,21,1.5,$null)){
+        Check ((Set-Limit $x.id $invalid).Status -eq 400) "Invalid limit accepted: $invalid"
+    }
     $locker=(Call-Api Post '/locker/' @{merchantIds=@("$($sessions.Merchant.user.id)");name="Cap Locker $run";address='Private development fixture';city='Test';latitude=10.77;longitude=106.69;boxCount=6} $admin).data
     $lockerId=[Guid]$locker.id
     $o1=New-AssignableOrder; $o2=New-AssignableOrder; $o3=New-AssignableOrder; $o4=New-AssignableOrder; $o5=New-AssignableOrder
@@ -113,21 +123,44 @@ try {
     Check ((Call-Api Get "/shipper/$($x.id)" $null $merchant).data.activeTaskCount -eq 2) 'Shipper page counts differently.'
 
     Write-Output '6. Two assignments racing for the last slot: exactly one wins'
-    Check ((Set-Limit 3).Status -eq 200) 'Could not raise the limit.'
+    Check ((Set-Limit $x.id 3).Status -eq 200) 'Could not raise the limit.'
     $codes=Send-Parallel @(@{orderId="$o5";shipperId="$($x.id)";operationId=(Op);expectedStatus=16}, @{orderId="$o2";shipperId="$($x.id)";operationId=(Op);expectedStatus=16})
     Check ((@($codes | Where-Object {$_ -eq 200}).Count -eq 1) -and (@($codes | Where-Object {$_ -eq 409}).Count -eq 1)) "Race for the last slot: $($codes -join ',')"
     Check ((Open-Tasks $x.id) -eq 3) 'Race went over the limit.'
     $loser=if([int](Call-Api Get "/wash-order/$o5" $null $admin).data.status -eq 16){$o5}else{$o2}
 
-    Write-Output '7. Lowering the limit below the current count cancels nothing and only blocks new tasks'
-    Check ((Set-Limit 1).Status -eq 200) 'Could not lower the limit.'
+    Write-Output '7. Lower than active count is rejected atomically, equal is valid and full'
+    $body=Limit-Body $x.id 2
+    $body.fullName='Must not change'
+    $lower=Raw Put "/shipper/$($x.id)" $body $merchant
+    Check ($lower.Status -eq 409 -and $lower.Json.meta.code -eq 'ShipperTaskLimitBelowActiveCount' -and
+        $lower.Json.meta.minimumAllowedMaxActiveTasks -eq 3) 'Lowering below active count must fail.'
     $page=(Call-Api Get "/shipper/$($x.id)" $null $merchant).data
-    Check ($page.activeTaskCount -eq 3 -and $page.maxActiveTasks -eq 1 -and $page.remainingTaskCapacity -eq 0) 'Shipper page numbers wrong after lowering.'
-    Check ((Open-Tasks $x.id) -eq 3) 'Lowering the limit cancelled tasks.'
-    Check ((Assign $loser $x.id).Status -eq 409) 'Assignment above a lowered limit accepted.'
+    Check ($page.fullName -eq $x.fullName -and $page.activeTaskCount -eq 3 -and $page.maxActiveTasks -eq 3) 'Failed update changed the profile.'
+    $body=Limit-Body $x.id 3
+    Check ((Raw Put "/shipper/$($x.id)" $body $merchant).Status -eq 200) 'Equal limit refused.'
+    Check ((Raw Get "/shipper/$($x.id)/operations/$($body.operationId)" $null $merchant).Status -eq 200) 'Update lookup failed.'
+    $edited=Raw Put "/shipper/$($x.id)" $body $merchant
+    Check ($edited.Status -eq 200 -and $edited.Json.data.maxActiveTasks -eq 3) 'Replay returned the wrong result.'
+    $body.maxActiveTasks=4
+    $reused=Raw Put "/shipper/$($x.id)" $body $merchant
+    Check ($reused.Status -eq 409 -and $reused.Json.meta.code -eq 'OperationIdReused') 'Changed payload reused an operation.'
+    $body.operationId=Op
+    $stale=Raw Put "/shipper/$($x.id)" $body $merchant
+    Check ($stale.Status -eq 409 -and $stale.Json.meta.code -eq 'RevisionMismatch') 'Stale revision changed the limit.'
+    Check ((Assign $loser $x.id).Status -eq 409) 'Extra assignment accepted at equal limit.'
 
-    Write-Output '8. Other refusals keep their own codes (not capacity)'
-    Check ((Set-Limit 3).Status -eq 200) 'Could not reset the limit.'
+    Write-Output '8. Lowering a limit races with assignment'
+    Check ((Set-Limit $x.id 4).Status -eq 200) 'Could not raise limit to 4.'
+    $codes=Send-Parallel @(@{Path="/shipper/$($x.id)";Body=(Limit-Body $x.id 3)}, @{orderId="$loser";shipperId="$($x.id)";operationId=(Op);expectedStatus=16})
+    Check (($codes | Sort-Object) -join ',' -eq '200,409') "Limit/assignment race: $($codes -join ',')"
+    $page=(Call-Api Get "/shipper/$($x.id)" $null $merchant).data
+    Check ($page.activeTaskCount -eq $page.maxActiveTasks) 'Race left an inconsistent limit.'
+    if($codes[1] -eq 200){
+        Check ((Raw Post "/wash-order/$loser/unassign-shipper" @{reason='Capacity race cleanup';expectedStatus=17} $merchant).Status -eq 200) 'Unassign failed.'
+    }
+
+    Write-Output '9. Other refusals keep their own codes'
     Sql "UPDATE washgo.shippers SET is_active=false WHERE id='$($y.id)';" | Out-Null
     Check ((Row $loser $y.id -All).blockedReasonCode -eq 'ShipperOnLeave') 'On-leave Shipper reason wrong.'
     $leave=Assign $loser $y.id
@@ -137,11 +170,9 @@ try {
     $other=Assign $loser ([Guid]::NewGuid())
     Check ($other.Status -eq 400 -and $other.Json.meta.code -eq 'ShipperNotInMerchant') "Unknown Shipper: $($other.Status) $($other.Json.meta.code)"
 
-    Write-Output 'PASS: open tasks up to MaxActiveTasksPerShipper (0/1/under/at the limit), status unchanged, full Shipper hidden by default and explained with includeUnavailable, 409 ShipperCapacityExceeded with numbers, replay/same trip take no slot, finished trip and unassign free a slot, storage tasks counted, one winner for the last slot, lowering the limit cancels nothing, other refusals keep their codes.'
+    Write-Output 'PASS: per-Shipper limits, authorization, concurrent changes, assignment and replay.'
 }
 finally {
-    # Restore the limit while the Admin session is still valid, then sign out.
-    try { if($originalLimit){ Check ((Set-Limit $originalLimit).Status -eq 200) 'restore' } } catch { Write-Warning 'Could not restore the Shipper task limit.' }
     foreach($session in $sessions.Values){ try { Call-Api Post '/auth/logout' @{refreshToken=$session.refreshToken} $session.accessToken | Out-Null } catch { } }
     $fixtures="SELECT id FROM washgo.users WHERE email LIKE 'cap-$run-%'"
     $shipperIds="SELECT id FROM washgo.shippers WHERE user_id IN ($fixtures)"

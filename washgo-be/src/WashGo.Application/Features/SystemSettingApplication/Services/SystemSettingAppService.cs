@@ -109,14 +109,9 @@ namespace WashGo.Application.Features.SystemSettingApplication.Services
             }, "Đã cập nhật chính sách điểm cho phiên thanh toán mới.", command, "Loyalty");
         }
 
-        /// <summary>Lowering the limit below what a Shipper already holds only stops new assignments; nothing is cancelled.</summary>
-        public Task<BaseResponse<SystemSettingDto>> UpdateDispatchAsync(UpdateDispatchSettingsCommand command)
-        {
-            if (command.MaxActiveTasksPerShipper is < 1 or > 20)
-                return Task.FromResult(Invalid(command, "Số nhiệm vụ tối đa của mỗi Shipper phải từ 1 đến 20."));
-            return SaveAsync(s => s.MaxActiveTasksPerShipper = command.MaxActiveTasksPerShipper,
-                "Đã cập nhật giới hạn nhiệm vụ của Shipper.", command, "Dispatch");
-        }
+        public Task<BaseResponse<SystemSettingDto>> UpdateDispatchAsync(UpdateDispatchSettingsCommand command) =>
+            Task.FromResult(AdministrativeWriteGuard.Error<SystemSettingDto>(HttpStatusCode.Gone,
+                "DispatchSettingsMovedToShipper", "Merchant cấu hình số nhiệm vụ tối đa trong hồ sơ từng Shipper."));
 
         private async Task<BaseResponse<SystemSettingDto>> SaveAsync(Action<SystemSetting> apply, string message, SettingWriteCommand command, string group)
         {
@@ -173,7 +168,6 @@ namespace WashGo.Application.Features.SystemSettingApplication.Services
             MerchantCollectSlaHours = s.MerchantCollectSlaHours,
             MerchantReturnSlaHours = s.MerchantReturnSlaHours,
             FreePickupHours = s.FreePickupHours,
-            MaxActiveTasksPerShipper = s.MaxActiveTasksPerShipper,
             DefaultCommissionRate = s.DefaultCommissionRate,
             LoyaltyEarnPercent = s.LoyaltyEarnPercent,
             LoyaltyMaxUsePercent = s.LoyaltyMaxUsePercent,
@@ -201,7 +195,6 @@ namespace WashGo.Application.Features.SystemSettingApplication.Services
                 {
                     "DepositWindowMinutes" => (5m, 1440m, 0), "MerchantCollectSlaHours" => (1m, 168m, 0),
                     "MerchantReturnSlaHours" or "FreePickupHours" => (1m, 720m, 0),
-                    "MaxActiveTasksPerShipper" => (1m, 20m, 0),
                     "DefaultCommissionRate" => (0m, 100m, 2),
                     _ when field.Name.StartsWith("Compensation") => (0m, 500m, 0),
                     _ when field.Name.StartsWith("Cancel") => (0m, 100m, 0),

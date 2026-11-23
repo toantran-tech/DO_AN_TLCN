@@ -6,8 +6,8 @@ using Volo.Abp.DependencyInjection;
 using Volo.Abp.Domain.Repositories;
 using Volo.Abp.Linq;
 using WashGo.Application.Contracts.Features.WashOrderContracts.Results;
-using WashGo.Application.Features.SystemSettingApplication.Services;
 using WashGo.Domain.Entities.Identity;
+using WashGo.Domain.Entities.Partner;
 using WashGo.Domain.Entities.Partner.Interfaces;
 using WashGo.Domain.Entities.WashOrder;
 using WashGo.Domain.Entities.WashOrder.Interfaces;
@@ -26,16 +26,14 @@ public sealed record ShipperCapacity(int ActiveTaskCount, int OtherTaskCount, in
 
 /// <summary>
 /// One rule for every assignment entry point (đơn thường, chuyển kho, giao lại từ kho, Admin/Merchant): a Shipper may hold
-/// up to SystemSetting.MaxActiveTasksPerShipper open tasks, done one after another. Counting uses
+/// up to its own configured limit, done one after another. Counting uses
 /// <see cref="DeliveryTaskRules.ActiveDeliveries"/> (the order's current task only, never history). Call the check after
 /// locking the Shipper row so two assignments cannot both take the last slot.
 /// </summary>
 public class ShipperCapacityService(IWashOrderRepository orders, IShipperRepository shippers, IRepository<User, Guid> users,
-    IRepository<Role, Guid> roles, SystemSettingProvider settings, IAsyncQueryableExecuter executer) : ITransientDependency
+    IRepository<Role, Guid> roles, IAsyncQueryableExecuter executer) : ITransientDependency
 {
     public const string ExceededCode = "ShipperCapacityExceeded";
-
-    public async Task<int> LimitAsync() => Math.Max(1, (await settings.GetAsync()).MaxActiveTasksPerShipper);
 
     public async Task<Dictionary<Guid, (int All, int Others)>> CountsAsync(IReadOnlyCollection<Guid> shipperIds, Guid? excludingOrderId)
     {
@@ -47,11 +45,11 @@ public class ShipperCapacityService(IWashOrderRepository orders, IShipperReposit
             .ToDictionary(g => g.Key, g => (g.Count(), g.Count(x => x.Id != excludingOrderId)));
     }
 
-    public async Task<ShipperCapacity> ForAsync(Guid shipperId, Guid? excludingOrderId)
+    public async Task<ShipperCapacity> ForAsync(Shipper shipper, Guid? excludingOrderId)
     {
-        var counts = await CountsAsync([shipperId], excludingOrderId);
-        var (all, others) = counts.GetValueOrDefault(shipperId);
-        return new ShipperCapacity(all, others, await LimitAsync());
+        var counts = await CountsAsync([shipper.Id], excludingOrderId);
+        var (all, others) = counts.GetValueOrDefault(shipper.Id);
+        return new ShipperCapacity(all, others, shipper.MaxActiveTasks);
     }
 
     /// <summary>meta of 409 ShipperCapacityExceeded with the latest numbers.</summary>
@@ -79,17 +77,16 @@ public class ShipperCapacityService(IWashOrderRepository orders, IShipperReposit
             orderby user.FullName, shipper.Id
             select new
             {
-                shipper.Id, user.FullName, user.Avatar, user.Phone, user.Email, shipper.VehicleType, shipper.VehiclePlate,
+                shipper.Id, shipper.MaxActiveTasks, user.FullName, user.Avatar, user.Phone, user.Email, shipper.VehicleType, shipper.VehiclePlate,
                 shipper.Rating, shipper.Status, Working = shipper.IsActive,
                 AccountOk = user.IsActive && role.IsActive && role.Name == "Shipper"
             });
         var counts = await CountsAsync(rows.Select(x => x.Id).ToList(), orderId);
-        var limit = await LimitAsync();
         var result = new List<AvailableShipperDto>();
         foreach (var x in rows)
         {
             var (all, others) = counts.GetValueOrDefault(x.Id);
-            var capacity = new ShipperCapacity(all, others, limit);
+            var capacity = new ShipperCapacity(all, others, x.MaxActiveTasks);
             // Account first, then work status, operational status and finally the task limit.
             var blocked = !x.AccountOk ? "AccountInactive"
                 : !x.Working ? "ShipperOnLeave"
