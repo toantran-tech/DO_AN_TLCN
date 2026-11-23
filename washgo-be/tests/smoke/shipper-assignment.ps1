@@ -16,12 +16,6 @@ $fixtureShipper = [Guid]::NewGuid()
 $fixtureEmail = "assignment-smoke-$($fixtureUser.ToString('N'))@example.com"
 $complete = $false
 $merchantId = $null
-$originalLimit = $null
-# A Shipper may hold several open tasks up to the dispatch limit; this suite checks the one-slot case.
-function Set-DispatchLimit($Value) {
-    $version = (Call-Api Get '/system-setting/' $null $admin).data.version
-    Call-Api Put '/system-setting/dispatch' @{ maxActiveTasksPerShipper = $Value; expectedVersion = $version; operationId = [Guid]::NewGuid().ToString() } $admin | Out-Null
-}
 try {
     foreach ($role in @('Admin', 'Merchant', 'Customer', 'Shipper')) {
         $sessions[$role] = (Call-Api Post '/auth/login' @{
@@ -41,7 +35,7 @@ SELECT (jsonb_populate_record(NULL::washgo.users, to_jsonb(u) || jsonb_build_obj
 FROM washgo.users u WHERE id = '$seedUser';
 INSERT INTO washgo.shippers
 SELECT (jsonb_populate_record(NULL::washgo.shippers, to_jsonb(s) || jsonb_build_object(
-    'id', '$fixtureShipper', 'user_id', '$fixtureUser', 'status', 1, 'is_active', true))).*
+    'id', '$fixtureShipper', 'user_id', '$fixtureUser', 'status', 1, 'is_active', true, 'max_active_tasks', 1, 'create_request_id', NULL, 'create_request_hash', NULL))).*
 FROM washgo.shippers s WHERE user_id = '$seedUser';
 "@ | Out-Null
     $sessions.Fixture = (Call-Api Post '/auth/login' @{ email = $fixtureEmail; password = 'Shipper@123' } $null).data
@@ -87,8 +81,6 @@ FROM washgo.shippers s WHERE user_id = '$seedUser';
     Sql "UPDATE washgo.users SET is_active = true WHERE id = '$fixtureUser';" | Out-Null
 
     # With one slot left, competing orders must not reserve the same available Shipper twice.
-    $originalLimit = (Call-Api Get '/system-setting/' $null $admin).data.maxActiveTasksPerShipper
-    Set-DispatchLimit 1
     foreach ($id in $orders) {
         $jobs += Start-Job -ScriptBlock {
             param($Url, $Token, $OrderId, $ShipperId)
@@ -116,8 +108,6 @@ FROM washgo.shippers s WHERE user_id = '$seedUser';
         !$repeated.shipperAssignedAt -or $before.timeline.Count -ne $repeated.timeline.Count) { throw 'Assignment identity, task, or replay check failed.' }
     $available = (Call-Api Get "/wash-order/$loser/available-shippers" $null $merchant).data
     if (@($available | Where-Object { $_.id -eq "$fixtureShipper" }).Count) { throw 'Busy Shipper was listed for another order.' }
-    Set-DispatchLimit $originalLimit
-    $originalLimit = $null
     Invoke-TestDelivery $winner collect $shipper | Out-Null
     $available = (Call-Api Get "/wash-order/$loser/available-shippers" $null $merchant).data
     if (!@($available | Where-Object { $_.id -eq "$fixtureShipper" }).Count) { throw 'Shipper did not become available after collection.' }
@@ -146,7 +136,6 @@ FROM washgo.shippers s WHERE user_id = '$seedUser';
 }
 finally {
     foreach ($job in $jobs) { Stop-Job $job -ErrorAction SilentlyContinue; Remove-Job $job -Force -ErrorAction SilentlyContinue }
-    if ($originalLimit) { try { Set-DispatchLimit $originalLimit } catch { Write-Warning 'Could not restore the Shipper task limit.' } }
     if ($orders.Count -gt 0) {
         $ids = ($orders | ForEach-Object { "'$_'" }) -join ','
         Sql "UPDATE washgo.orders SET merchant_id = '$merchantId' WHERE id IN ($ids);" | Out-Null
