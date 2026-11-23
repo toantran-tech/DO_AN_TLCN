@@ -6,9 +6,9 @@ param(
 )
 . "$PSScriptRoot/order-security.ps1" -BaseUrl $BaseUrl -PostgresContainer $PostgresContainer -PostgresUser $PostgresUser -Database $Database -HelpersOnly
 
-# LOCAL DEV ONLY: Merchant service radius is a hard rule for Merchant–locker links.
+# LOCAL DEV ONLY: Merchant service radius is a hard rule for Merchant-locker links.
 # Fixture Merchants on one meridian (lng 106.2): A at 11.5 (radius 5 km), B 10 km north of A (radius 8 km),
-# C without a store position. Along a meridian the Haversine distance is exactly R·Δφ, so positions are given in km from A.
+# C without a store position. Along a meridian the Haversine distance is exactly R*dLat, so positions are given in km from A.
 $sessions=@{}; $lockerIds=@()
 $run=[Guid]::NewGuid().ToString('N').Substring(0,8)
 $mA=[Guid]::NewGuid(); $mB=[Guid]::NewGuid(); $mC=[Guid]::NewGuid()
@@ -54,7 +54,7 @@ try {
     $seedMerchantId=$sessions.Merchant.user.id
     Sql ((Merchant-Sql $mA "Radius $run A" $lat0 $lng 5) + (Merchant-Sql $mB "Radius $run B" (At 10) $lng 8) + (Merchant-Sql $mC "Radius $run C" 0 0 50)) | Out-Null
 
-    Write-Output '1. Eligible Merchants by locker position (store → locker, own radius, unrounded)'
+    Write-Output '1. Eligible Merchants by locker position (store -> locker, own radius, unrounded)'
     $three=Eligible 3
     Check ($three.Status -eq 200 -and (@($three.Json.list | ForEach-Object merchantId) -join ',') -eq "$mA,$mB") "3 km: expected A then B, got $(@($three.Json.list | ForEach-Object businessName) -join ',')."
     Check ((Row $three $mA).distanceKm -eq 3 -and (Row $three $mB).distanceKm -eq 7 -and (Row $three $mA).serviceRadiusKm -eq 5 -and $three.Json.meta.eligibleCount -eq 2) 'Distances/radius wrong at 3 km.'
@@ -107,7 +107,7 @@ try {
     Check ($shrink.Status -eq 409 -and $shrink.Json.meta.code -eq 'MerchantCoverageWouldExcludeLockers' -and @($shrink.Json.meta.lockers | Where-Object lockerId -eq $lockerId).Count -eq 1 -and $shrink.Json.meta.suggestedServiceRadiusKm -ge 3) "Radius shrink: $($shrink.Status) $($shrink.Json.meta.code)."
     Check ((Call-Api Get "/merchant/$mA" $null $admin).data.serviceRadiusKm -eq 5) 'Blocked edit changed the Merchant.'
     $body.serviceRadiusKm=4
-    Check ((Raw Put '/merchant/' $body $admin).Status -eq 200) 'A radius that still covers the locker (4 km ≥ 3 km) is accepted.'
+    Check ((Raw Put '/merchant/' $body $admin).Status -eq 200) 'A radius that still covers the locker (4 km >= 3 km) is accepted.'
     $mToken=(Call-Api Post '/auth/login' @{email="radius-$mA@example.com";password='Merchant@123'} $null).data; $sessions["A"]=$mToken
     $request=(Call-Api Post '/merchant-profile/update-requests' @{businessName="Radius $run A";address='Moved store';city='Test';phone='0901234567';openingHours='08:00-20:00';latitude=(At -6);longitude=$lng} $mToken.accessToken).data
     $approve=Raw Post "/merchant-profile-request/$($request.id)/approve?expectedVersion=$($request.version)" $null $admin
