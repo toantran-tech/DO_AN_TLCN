@@ -2007,6 +2007,10 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("jsonb")
                         .HasColumnName("opening_hours");
 
+                    b.Property<string>("OpeningSchedule")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("opening_schedule");
+
                     b.Property<string>("Phone")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -4052,6 +4056,30 @@ namespace WashGo.EntityFrameworkCore.Migrations
                     b.Property<int?>("CollectSlaHoursSnapshot")
                         .HasColumnType("integer")
                         .HasColumnName("collect_sla_hours_snapshot");
+
+                    b.Property<DateTime?>("CollectionDeadlineAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("collection_deadline_at");
+
+                    b.Property<DateTime?>("CollectionDeadlineComputedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("collection_deadline_computed_at");
+
+                    b.Property<string>("CollectionDeadlineState")
+                        .HasColumnType("text")
+                        .HasColumnName("collection_deadline_state");
+
+                    b.Property<string>("CollectionScheduleSnapshot")
+                        .HasColumnType("text")
+                        .HasColumnName("collection_schedule_snapshot");
+
+                    b.Property<string>("CollectionScheduleVersion")
+                        .HasColumnType("text")
+                        .HasColumnName("collection_schedule_version");
+
+                    b.Property<DateTime?>("CollectionStartsAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("collection_starts_at");
 
                     b.Property<DateTime?>("CommissionLockedAt")
                         .HasColumnType("timestamp with time zone")

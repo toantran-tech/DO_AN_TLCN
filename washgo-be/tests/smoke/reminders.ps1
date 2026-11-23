@@ -79,7 +79,7 @@ INSERT INTO washgo.services SELECT (jsonb_populate_record(NULL::washgo.services,
     Shift $o1.id "shipper_assigned_at=NOW()-interval '31 minutes'"
     Run-Scan | Out-Null; Run-Scan | Out-Null
     Expect-Count $shipper $o1.id 33 1 'Shipper collect reminder'
-    Shift $o1.id "deposited_at=NOW()-interval '5 hours'"
+    Shift $o1.id "deposited_at=NOW()-interval '5 hours', collection_deadline_at=NOW()-interval '1 hours'"
     Run-Scan | Out-Null; Run-Scan | Out-Null
     Expect-Count $merchant $o1.id 22 1 'Merchant collect SLA warning'
     Expect-Count $admin $o1.id 22 1 'Admin collect SLA warning'

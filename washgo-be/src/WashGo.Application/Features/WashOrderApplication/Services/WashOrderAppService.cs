@@ -1452,6 +1452,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             var previousStatus = order.Status;
             order.Status = WashOrderStatus.Deposited;
             order.DepositedAt = DateTime.UtcNow;
+            await LazyServiceProvider.LazyGetRequiredService<CollectionDeadlineService>().CaptureAsync(order);
             order.CustomerDepositPinAttemptCount = 0;
             order.CustomerDepositLockoutUntil = null;
 
@@ -1541,12 +1542,12 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 return BadRequest<WashOrderDetailDto>("Ô gửi đồ không còn ở trạng thái chứa đồ; chưa đổi trạng thái đơn.");
             }
 
-            // SLA Check: 4 hours from deposited time
-            var depositedAt = order.DepositedAt ?? DateTime.UtcNow;
-            var elapsed = DateTime.UtcNow - depositedAt;
-            var collectSla = (await _settings.ForOrderAsync(order)).MerchantCollectSlaHours;
-            var isOverdueSla = elapsed > TimeSpan.FromHours(collectSla);
-            var slaWarning = isOverdueSla ? $" (Cảnh báo: Trễ SLA lấy đồ {elapsed.TotalHours:0.#} giờ so với cam kết {collectSla} giờ)" : string.Empty;
+            // Collect SLA: the stored deadline counts only the Merchant's opening hours from DepositedAt.
+            var collectedAt = DateTime.UtcNow;
+            var isOverdueSla = order.CollectionDeadlineAt.HasValue && collectedAt > order.CollectionDeadlineAt.Value;
+            var slaWarning = isOverdueSla
+                ? $" (Cảnh báo: lấy đồ trễ {(collectedAt - order.CollectionDeadlineAt!.Value).TotalHours:0.#} giờ so với hạn thu gom {order.CollectionDeadlineAt.Value.AddHours(7):HH:mm dd/MM})"
+                : string.Empty;
 
             var previousStatus = order.Status;
             order.Status = WashOrderStatus.Collected;

@@ -34,7 +34,7 @@ try {
     $nowTs=[DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
     Sql @"
 UPDATE washgo.orders SET merchant_id=NULL, status=2, deposited_at=now() AT TIME ZONE 'utc' - interval '2 hours' WHERE id='$($o[0].id)';
-UPDATE washgo.orders SET merchant_id='$teamId', status=2, deposited_at=now() AT TIME ZONE 'utc' - interval '30 hours' WHERE id='$($o[1].id)';
+UPDATE washgo.orders SET merchant_id='$teamId', status=2, deposited_at=now() AT TIME ZONE 'utc' - interval '30 hours', collection_deadline_at=now() AT TIME ZONE 'utc' - interval '26 hours', collection_deadline_state='Scheduled' WHERE id='$($o[1].id)';
 UPDATE washgo.orders SET merchant_id='$teamId', status=9, payment_status=2, paid_at=now() AT TIME ZONE 'utc' - interval '72 hours' WHERE id='$($o[2].id)';
 UPDATE washgo.orders SET merchant_id='$teamId', status=12 WHERE id='$($o[3].id)';
 INSERT INTO washgo.order_status_history(id,order_id,from_status,to_status,created_at,changed_by_type) VALUES (gen_random_uuid(),'$($o[3].id)',11,12,$nowTs,'Customer');

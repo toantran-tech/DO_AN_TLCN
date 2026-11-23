@@ -25,7 +25,7 @@ $chaos=Invoke-RestMethod "$MailpitUrl/api/v1/chaos"
 
 function Body($Suffix,[hashtable]$Extra=@{}) {
     $body=@{email="$prefix-$Suffix@example.test";businessName="Create fixture $Suffix $run";address='1 Test Street'
-        city='Test';district='Test';phone='0912345678';latitude=10.77;longitude=106.69;clientRequestId=[Guid]::NewGuid().ToString()}
+        city='Test';district='Test';phone='0912345678';latitude=10.77;longitude=106.69;openingHours='08:00-20:00';clientRequestId=[Guid]::NewGuid().ToString()}
     foreach($key in $Extra.Keys){$body[$key]=$Extra[$key]}
     $body
 }

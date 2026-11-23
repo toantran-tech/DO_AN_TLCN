@@ -108,10 +108,11 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             else
             {
                 var collectWaits = used.Where(x => x.CollectWaitHours.HasValue).Select(x => x.CollectWaitHours!.Value).ToList();
-                var wait = collectWaits.Count >= MinSamples ? Median(collectWaits) : (await _settings.GetAsync()).MerchantCollectSlaHours;
                 var from = reached.TryGetValue(WashOrderStatus.Deposited, out var depositedAt)
                     ? DateTimeOffset.FromUnixTimeSeconds(depositedAt).UtcDateTime : now;
-                start = from.AddHours(wait);
+                // Without enough history, the stored collect deadline (opening hours only) bounds the wait.
+                start = collectWaits.Count >= MinSamples ? from.AddHours(Median(collectWaits))
+                    : order.CollectionDeadlineAt ?? from.AddHours((await _settings.GetAsync()).MerchantCollectSlaHours);
             }
             var predicted = start.AddHours(processingHours * loadFactor);
             order.PredictionStatus = "predicted";

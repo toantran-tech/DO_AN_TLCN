@@ -26,6 +26,7 @@ namespace WashGo.EntityFrameworkCore.BuilderConfiguration
             builder.Property(x => x.Longitude).HasPrecision(11, 8);
             builder.Property(x => x.Phone).HasMaxLength(20).IsRequired();
             builder.Property(x => x.OpeningHours).HasColumnType("jsonb");
+            builder.Property(x => x.OpeningSchedule).HasColumnType("jsonb");
             builder.Property(x => x.Rating).HasPrecision(2, 1);
             builder.Property(x => x.TotalRevenue).HasPrecision(18, 2);
             builder.Property(x => x.DepositAmount).HasPrecision(18, 2);

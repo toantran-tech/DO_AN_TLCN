@@ -12,7 +12,8 @@ namespace WashGo.Application.Features.MerchantApplication.Mappings
                 .Ignore(dest => dest.Email)
                 .Ignore(dest => dest.ImageUrls)
                 .Ignore(dest => dest.UnfinishedOrders)
-                .Ignore(dest => dest.ServiceAreaIds);
+                .Ignore(dest => dest.ServiceAreaIds)
+                .Ignore(dest => dest.OpeningSchedule);
         }
     }
 }

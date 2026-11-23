@@ -1,3 +1,4 @@
+using WashGo.Domain.Shared.Scheduling;
 using System;
 using System.Collections.Generic;
 
@@ -13,6 +14,8 @@ namespace WashGo.Application.Contracts.Features.MerchantProfileContracts.Command
         public decimal? Longitude { get; set; }
         public string Phone { get; set; } = string.Empty;
         public string? OpeningHours { get; set; }
+        /// <summary>Giờ mở cửa có cấu trúc; bỏ trống = giữ lịch hiện có (hoặc đọc openingHours dạng tính được).</summary>
+        public OpeningSchedule? OpeningSchedule { get; set; }
         public List<string>? ImageUrls { get; set; }
         /// <summary>Mã số thuế (10 số hoặc 10 số-3 số): null = giữ nguyên, chuỗi rỗng = xóa. Chỉ áp dụng khi Admin duyệt.</summary>
         public string? TaxCode { get; set; }
