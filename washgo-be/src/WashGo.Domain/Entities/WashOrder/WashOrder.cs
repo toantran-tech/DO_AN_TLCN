@@ -120,6 +120,17 @@ namespace WashGo.Domain.Entities.WashOrder
         public DateTime? OperationalPolicyCapturedAt { get; set; }
         public string? OperationalPolicyBasis { get; set; }
         public int? CollectSlaHoursSnapshot { get; set; }
+        /// <summary>Authoritative collect deadline: CollectSlaHoursSnapshot of open time from DepositedAt (CollectionDeadlineService).</summary>
+        [Filterable(ColumnVariant.DateRange)]
+        public DateTime? CollectionDeadlineAt { get; set; }
+        /// <summary>First open moment at or after DepositedAt (when the collect SLA clock starts).</summary>
+        public DateTime? CollectionStartsAt { get; set; }
+        /// <summary>CollectionDeadlineStates value.</summary>
+        public string? CollectionDeadlineState { get; set; }
+        public string? CollectionScheduleVersion { get; set; }
+        /// <summary>Schedule applied to this order, so later schedule edits never change a promised deadline.</summary>
+        public string? CollectionScheduleSnapshot { get; set; }
+        public DateTime? CollectionDeadlineComputedAt { get; set; }
         public int? ReturnSlaHoursSnapshot { get; set; }
         [Filterable(ColumnVariant.DateRange)]
         public DateTime? ReturnDeadline { get; set; }

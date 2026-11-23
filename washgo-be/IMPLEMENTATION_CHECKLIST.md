@@ -1,3 +1,11 @@
+## Giờ mở cửa Merchant và hạn thu gom — 23/11/2026
+
+- [x] `openingSchedule` có cấu trúc (VN, ca [mở, đóng), ngày nghỉ, 24/7 tường minh) bắt buộc khi tạo/sửa Merchant và yêu cầu cập nhật hồ sơ; mã lỗi OpeningHours*; chuỗi cũ chỉ nhận dạng tính được.
+- [x] Hạn thu gom = SLA giờ mở cửa từ DepositedAt, tính khi gửi/phân công, lưu cùng lịch đã áp dụng (`collectionDeadlineAt/StartsAt/State`); ScheduleMissing/NoUpcomingShift, tính lại khi Admin nhập lịch.
+- [x] Một nguồn hạn cho task Shipper, cảnh báo Admin/Merchant, nhắc trễ, cảnh báo lấy đồ trễ, ETA; migration `AddCollectionDeadline` (lịch từ "HH:mm-HH:mm", đơn cũ Legacy).
+- [x] C# `CollectionDeadline` và smoke `collection-deadline.ps1` (CI) PASS; dashboard/nhắc/phân công PASS.
+- [ ] FE form giờ mở cửa có cấu trúc (bắt buộc) và hiển thị hạn thu gom từ BE.
+
 ## Bán kính phục vụ khi gán Merchant cho locker — 23/11/2026
 
 - [x] Quy tắc cứng: Haversine cửa hàng→locker (chưa làm tròn) ≤ serviceRadiusKm của từng Merchant; thiếu tọa độ không tính là 0 km.

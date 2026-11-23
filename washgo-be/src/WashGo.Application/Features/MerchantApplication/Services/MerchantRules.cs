@@ -4,6 +4,7 @@ using System.Net.Mail;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using WashGo.Domain.Shared.Scheduling;
 
 namespace WashGo.Application.Features.MerchantApplication.Services
 {
@@ -42,6 +43,22 @@ namespace WashGo.Application.Features.MerchantApplication.Services
         }
 
         // opening_hours and business_license are jsonb columns: keep valid JSON (compacted), store plain text such as "07:00-22:00" as a JSON string.
+        /// <summary>
+        /// Opening hours for a write. A structured schedule wins; otherwise the text must be exactly computable
+        /// ("HH:mm-HH:mm" or {"mon":"HH:mm-HH:mm",…}) unless it is the unchanged current text; nothing sent keeps the
+        /// current valid schedule. Never guesses hours or falls back to 24/7.
+        /// </summary>
+        public static (OpeningSchedule? Schedule, OpeningScheduleRules.Problem? Problem, bool Structured) ResolveSchedule(
+            OpeningSchedule? structured, string? text, OpeningSchedule? current, string? currentText)
+        {
+            if (structured != null)
+                return OpeningScheduleRules.Validate(structured) is { } problem ? (null, problem, true) : (OpeningScheduleRules.Normalize(structured), null, true);
+            if (!string.IsNullOrWhiteSpace(text) && NormalizeJson(text) != NormalizeJson(currentText))
+                return OpeningScheduleRules.FromLegacy(text) is { } parsed ? (parsed, null, false)
+                    : (null, new(OpeningScheduleRules.InvalidFormat, "Giờ mở cửa dạng chữ phải là \"HH:mm-HH:mm\" hoặc theo từng ngày {\"mon\":\"HH:mm-HH:mm\"}; hãy gửi openingSchedule có cấu trúc."), false);
+            return current != null ? (current, null, false) : (null, OpeningScheduleRules.Validate(null), false);
+        }
+
         public static string? NormalizeJson(string? value)
         {
             if (string.IsNullOrWhiteSpace(value))

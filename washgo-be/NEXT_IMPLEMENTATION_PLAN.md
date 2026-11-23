@@ -1,3 +1,5 @@
+> Hạn thu gom theo giờ mở cửa 23/11/2026: đã làm `Docs/cần làm/BACKEND.md` — giờ mở cửa có cấu trúc bắt buộc, hạn thu gom chỉ cộng trong ca mở cửa từ lúc gửi đồ, lưu cùng đơn, một nguồn cho mọi vai trò. Bàn giao: [COLLECTION_DEADLINE_API_REVIEW.md](docs/COLLECTION_DEADLINE_API_REVIEW.md).
+
 > Bán kính phục vụ Merchant 23/11/2026: đã làm `Docs/cần làm/BACKEND_ADMIN.md` — bán kính phục vụ là điều kiện cứng cho liên kết Merchant–locker (tạo/sửa locker, sửa Merchant, duyệt đổi vị trí), API Merchant phù hợp và báo cáo liên kết cũ; catalog/tạo đơn/phân công thống nhất. Bàn giao: [MERCHANT_SERVICE_RADIUS_API_REVIEW.md](docs/MERCHANT_SERVICE_RADIUS_API_REVIEW.md).
 
 > Lọc locker theo bán kính 23/11/2026: đã làm `Docs/cần làm/BACKEND_CUSTOMER.md` — `radiusKm` cho `GET /customer/lockers`, lọc trên khoảng cách chưa làm tròn trước khi đếm/phân trang, mã lỗi ổn định. Bàn giao: [LOCKER_RADIUS_FILTER_API_REVIEW.md](docs/LOCKER_RADIUS_FILTER_API_REVIEW.md).

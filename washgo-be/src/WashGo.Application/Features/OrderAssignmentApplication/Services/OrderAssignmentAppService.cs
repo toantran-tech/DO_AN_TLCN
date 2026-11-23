@@ -375,6 +375,8 @@ namespace WashGo.Application.Features.OrderAssignmentApplication.Services
             order.CommissionSnapshotSource = "Assignment";
             var previousStatus = order.Status;
             order.Status = WashOrderStatus.MerchantAssigned;
+            // Deadline origin stays DepositedAt; assigning late never extends it.
+            await LazyServiceProvider.LazyGetRequiredService<CollectionDeadlineService>().CaptureAsync(order);
             await _orderRepo.UpdateAsync(order, autoSave: true);
             await _timelineRepo.InsertAsync(new WashOrderTimeline
             {

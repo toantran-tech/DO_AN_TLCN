@@ -333,11 +333,9 @@ namespace WashGo.Application.Features.AdminApplication.Services
             var page = Math.Max(1, query.Page ?? 1);
             var take = Math.Clamp(query.Take ?? 20, 1, 100);
             var settings = await _settings.GetAsync();
-            int collectSla = settings.MerchantCollectSlaHours > 0 ? settings.MerchantCollectSlaHours : 4;
             int returnSla = settings.MerchantReturnSlaHours > 0 ? settings.MerchantReturnSlaHours : 24;
             int assignMinutes = OrderAssignmentRules.AssignmentOverdueMinutes;
             var now = DateTime.UtcNow;
-            var collectBefore = now.AddHours(-collectSla);
             var returnBefore = now.AddHours(-returnSla);
             var assignBefore = now.AddMinutes(-assignMinutes);
 
@@ -350,8 +348,8 @@ namespace WashGo.Application.Features.AdminApplication.Services
                     .Where(o => o.Status == WashOrderStatus.Deposited && o.MerchantId == null && o.DepositedAt != null && o.DepositedAt < assignBefore)
                     .Select(o => new AlertRow { Id = o.Id, Type = AdminAlertType.AssignmentOverdue, Deadline = o.DepositedAt!.Value.AddMinutes(assignMinutes) }),
                 [AdminAlertType.CollectionOverdue] = orders
-                    .Where(o => WashOrderStatusFlow.AtDepositLocker.Contains(o.Status) && o.MerchantId != null && o.DepositedAt != null && o.DepositedAt.Value.AddHours(o.CollectSlaHoursSnapshot ?? collectSla) < now)
-                    .Select(o => new AlertRow { Id = o.Id, Type = AdminAlertType.CollectionOverdue, Deadline = o.DepositedAt!.Value.AddHours(o.CollectSlaHoursSnapshot ?? collectSla) }),
+                    .Where(o => WashOrderStatusFlow.AtDepositLocker.Contains(o.Status) && o.MerchantId != null && o.CollectionDeadlineAt != null && o.CollectionDeadlineAt < now)
+                    .Select(o => new AlertRow { Id = o.Id, Type = AdminAlertType.CollectionOverdue, Deadline = o.CollectionDeadlineAt!.Value }),
                 [AdminAlertType.ProcessingOverdue] = orders
                     .Where(o => (o.Status == WashOrderStatus.Washing || o.Status == WashOrderStatus.Drying ||
                                  o.Status == WashOrderStatus.Ironing || o.Status == WashOrderStatus.Folding) &&

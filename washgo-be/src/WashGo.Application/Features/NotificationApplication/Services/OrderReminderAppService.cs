@@ -207,14 +207,12 @@ namespace WashGo.Application.Features.NotificationApplication.Services
             }
 
             // Collect SLA runs from DepositedAt through shop and Shipper assignment until the goods leave the locker.
-            var slaDue = now.AddHours(-1);
+            // Uses the stored deadline (opening hours only), so a deposit at night is not reported late before the shop opens.
             foreach (var o in await OrdersAsync(q => q.Where(x => WashOrderStatusFlow.AtDepositLocker.Contains(x.Status)
-                         && x.DepositedAt != null && x.DepositedAt <= slaDue)))
+                         && x.CollectionDeadlineAt != null && x.CollectionDeadlineAt < now)))
             {
-                var policy = OrderOperationalPolicy.Resolve(o, s);
-                if (o.DepositedAt!.Value.AddHours(policy.MerchantCollectSlaHours) > now) continue;
                 if (!await ClaimAsync("collect-late", $"collect-late:{o.Id}", o.Id, now)) continue;
-                var late = $"⚠️ Đơn #{o.OrderCode} đã quá {policy.MerchantCollectSlaHours} giờ kể từ khi khách gửi đồ nhưng chưa được lấy khỏi locker.";
+                var late = $"⚠️ Đơn #{o.OrderCode} đã quá hạn thu gom ({o.CollectionDeadlineAt!.Value.AddHours(7):HH:mm dd/MM}) nhưng chưa được lấy khỏi locker.";
                 await _notifications.SendAsync([o.MerchantId], NotificationType.SlaWarning, "Cảnh báo trễ lấy đồ", late, "order", o.Id);
                 await _notifications.SendToAdminsAsync(NotificationType.SlaWarning, "Cảnh báo trễ lấy đồ", late, "order", o.Id);
             }

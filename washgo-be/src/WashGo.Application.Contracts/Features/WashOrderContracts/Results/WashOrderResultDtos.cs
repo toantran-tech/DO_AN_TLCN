@@ -131,6 +131,15 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Results
             ? Math.Max(0, (long)(DepositDeadline.Value - ServerNow).TotalSeconds) : null;
         public long ExpectedDeliveryTime { get; set; }
         public DateTime? DepositedAt { get; set; }
+        /// <summary>Hạn thu gom có thẩm quyền (UTC): đủ collectSlaHoursSnapshot giờ trong giờ mở cửa của Merchant, tính từ depositedAt. null khi chưa tính được (xem collectionDeadlineState).</summary>
+        public DateTime? CollectionDeadlineAt { get; set; }
+        /// <summary>Thời điểm bắt đầu tính hạn thu gom (UTC): lúc gửi nếu đang trong ca, nếu không là đầu ca kế tiếp.</summary>
+        public DateTime? CollectionStartsAt { get; set; }
+        /// <summary>Scheduled | AwaitingMerchant | ScheduleMissing | NoUpcomingShift | Legacy; null khi chưa gửi đồ.</summary>
+        public string? CollectionDeadlineState { get; set; }
+        public int? CollectSlaHoursSnapshot { get; set; }
+        public bool IsCollectionOverdue => CollectionDeadlineAt.HasValue && ServerNow > CollectionDeadlineAt.Value &&
+            WashOrderStatusFlow.AtDepositLocker.Contains(Status);
         public DateTime? PaidAt { get; set; }
         public DateTime? PickupDeadline { get; set; }
         /// <summary>Hạn thanh toán (UTC), đặt khi đơn chuyển sang Chờ thanh toán; quá hạn thì đồ được chuyển về kho.</summary>

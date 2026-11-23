@@ -90,7 +90,7 @@ INSERT INTO washgo.services SELECT (jsonb_populate_record(NULL::washgo.services,
 
     Write-Output '4. Default commission applies to new Merchants only when omitted'
     Call-Api Put '/system-setting/commission' @{defaultCommissionRate=27.5} $admin | Out-Null
-    $m=(Call-Api Post '/merchant/' @{email="settings-$($merchantUser.ToString('N'))@example.com";businessName='Settings Smoke Laundry';address='Test';district='Test';city='Test';phone='0900000000';latitude=10.7;longitude=106.6} $admin).data
+    $m=(Call-Api Post '/merchant/' @{email="settings-$($merchantUser.ToString('N'))@example.com";businessName='Settings Smoke Laundry';address='Test';district='Test';city='Test';phone='0900000000';latitude=10.7;longitude=106.6;openingHours='08:00-20:00'} $admin).data
     $merchantUser=[Guid]$m.id
     if($m.commissionRate -ne 27.5){throw "Default commission not applied: $($m.commissionRate)."}
     $upd=@{id="$merchantUser";businessName='Settings Smoke Laundry 2';address='Test';district='Test';city='Test';phone='0900000000';latitude=10.7;longitude=106.6}

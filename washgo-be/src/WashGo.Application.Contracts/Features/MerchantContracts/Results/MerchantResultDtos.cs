@@ -1,3 +1,4 @@
+using WashGo.Domain.Shared.Scheduling;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -31,6 +32,8 @@ namespace WashGo.Application.Contracts.Features.MerchantContracts.Results
         public decimal Longitude { get; set; }
         public string Phone { get; set; } = string.Empty;
         public string? OpeningHours { get; set; }
+        /// <summary>Giờ mở cửa có cấu trúc, cũng là lịch tính hạn thu gom; null với Merchant cũ chưa bổ sung.</summary>
+        public OpeningSchedule? OpeningSchedule { get; set; }
         public MerchantStatus Status { get; set; }
         public string? RejectionReason { get; set; }
         /// <summary>Điểm trung bình đánh giá công khai (1 chữ số thập phân); null khi chưa có đánh giá công khai (không phải 5 sao).</summary>
