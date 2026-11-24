@@ -679,8 +679,9 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
         {
             if (order.PaymentStatus != PaymentStatus.Paid) return 0m;
             var payments = await _payments.GetListAsync(x => x.OrderId == order.Id &&
-                x.Purpose == PaymentPurpose.Order && !x.RequiresReconciliation && x.Status == PaymentTransactionStatus.Succeeded);
-            return payments.Count > 0 ? payments.Sum(x => x.Amount + (x.LoyaltyApplied ? x.PointsToRedeem : 0))
+                (x.Purpose == PaymentPurpose.Order || x.Purpose == PaymentPurpose.Combined && x.LaundryAmount > 0m) &&
+                !x.RequiresReconciliation && x.Status == PaymentTransactionStatus.Succeeded);
+            return payments.Count > 0 ? payments.Sum(x => x.GetLaundryCash() + (x.LoyaltyApplied ? x.PointsToRedeem : 0))
                 : order.PaymentMethod == PaymentMethod.Cash ? order.FinalAmount : 0m;
         }
 
@@ -696,9 +697,9 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             allowed = allowed && (order.PaymentStatus != PaymentStatus.Paid || paid > 0m);
             if (order.Status == WashOrderStatus.Cancelled)
             {
-                basis = order.CancellationFromStatus == WashOrderStatus.Collected ? order.FinalAmount : order.TotalAmount;
+                basis = order.CancellationFeeBasis ?? (order.CancellationFromStatus == WashOrderStatus.Collected ? order.FinalAmount : order.TotalAmount);
                 // Show the percentage actually charged, even if the configured rates changed later.
-                percent = basis > 0m ? (int)decimal.Round(order.CancelFeeAmount * 100m / basis, 0, MidpointRounding.AwayFromZero) : 0;
+                percent = order.CancellationFeePercent ?? (basis > 0m ? (int)decimal.Round(order.CancelFeeAmount * 100m / basis, 0, MidpointRounding.AwayFromZero) : 0);
             }
             var allocation = await CancellationAllocationAsync(order, order.Status == WashOrderStatus.Cancelled ? order.CancelFeeAmount : fee);
             return Success(new CancellationQuoteDto
@@ -801,6 +802,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             order.CancelledByType = OrderActorType.Admin;
             order.CancellationReason = reason;
             order.CancelFeeAmount = quote.FeeAmount;
+            order.CancellationFeeBasis = quote.BasisAmount;
+            order.CancellationFeePercent = quote.FeePercent;
             order.CancelFeePaidAmount = Math.Min(quote.FeeAmount, quote.PaidAmount);
             order.CancellationRefundAmount = quote.RefundAmount;
             var adminRefund = await CancellationAllocationAsync(order, quote.FeeAmount);
@@ -865,7 +868,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             if (order.Status == WashOrderStatus.Cancelled)
                 return Success(RedactStaffData(ObjectMapper.Map<WashOrder, WashOrderDetailDto>(order), scope), "Đơn hàng đã được hủy trước đó.");
             var now = DateTime.UtcNow;
-            if (!OrderCancellationPolicy.TryCalculate(order, now, await _settings.ForOrderAsync(order), out _, out var percent, out var fee))
+            if (!OrderCancellationPolicy.TryCalculate(order, now, await _settings.ForOrderAsync(order), out var basis, out var percent, out var fee))
                 return BadRequest<WashOrderDetailDto>("Chỉ được hủy khi đơn chờ gửi, đồ còn trong locker gửi (kể cả đã phân công tiệm/Shipper lấy đồ) hoặc đã thu gom và cân; không hủy khi đã bắt đầu giặt.");
             var paid = await GetVerifiedPaidAmountAsync(order);
             if (order.PaymentStatus == PaymentStatus.Paid && paid <= 0m)
@@ -903,6 +906,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             order.CancelledByType = OrderActorType.Customer;
             order.CancellationReason = reason;
             order.CancelFeeAmount = fee;
+            order.CancellationFeeBasis = basis;
+            order.CancellationFeePercent = percent;
             order.CancelFeePaidAmount = Math.Min(fee, paid);
             order.CancellationRefundAmount = Math.Max(0m, paid - fee);
             var cancellationRefund = await CancellationAllocationAsync(order, fee);

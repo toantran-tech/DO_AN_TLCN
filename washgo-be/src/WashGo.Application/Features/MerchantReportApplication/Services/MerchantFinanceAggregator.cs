@@ -61,11 +61,10 @@ namespace WashGo.Application.Features.MerchantReportApplication.Services
         private async Task<IQueryable<PayRow>> PaymentsAsync(Guid merchantId, DateTime? from, DateTime? to)
         {
             var orders = await _orderRepo.GetQueryableAsync();
-            var q = from p in await _paymentRepo.GetQueryableAsync()
+            var q = from p in (await _paymentRepo.GetQueryableAsync()).RevenueAllocations()
                     join o in orders on p.OrderId equals o.Id
-                    where (!p.RequiresReconciliation && (p.Status == PaymentTransactionStatus.Succeeded || p.Status == PaymentTransactionStatus.Refunded)) &&
-                          p.CompletedAt != null && (p.FinancialSnapshotBasis != null ? p.MerchantIdSnapshot : o.MerchantId) == merchantId
-                    select new PayRow { OrderId = o.Id, Purpose = p.Purpose, Amount = p.Amount + (p.LoyaltyApplied ? p.PointsToRedeem : 0), PointsFunding = p.LoyaltyApplied ? p.PointsToRedeem : 0, At = p.CompletedAt!.Value,
+                    where p.CompletedAt != null && (p.FinancialSnapshotBasis != null ? p.MerchantIdSnapshot : o.MerchantId) == merchantId
+                    select new PayRow { OrderId = o.Id, Purpose = p.Purpose, Amount = p.Amount + p.Points, PointsFunding = p.Points, At = p.CompletedAt!.Value,
                         Rate = p.FinancialSnapshotBasis != null ? p.CommissionRateSnapshot : o.CommissionRateApplied };
             if (from.HasValue) q = q.Where(x => x.At >= from.Value);
             if (to.HasValue) q = q.Where(x => x.At < to.Value);

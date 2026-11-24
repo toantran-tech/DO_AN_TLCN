@@ -20,7 +20,7 @@ public partial class PaymentAppService : IPaymentVerificationRunner
     {
         if (!CustomerSignedIn) return new() { StatusCode = HttpStatusCode.Forbidden, Message = "Chỉ Customer được kiểm tra thanh toán của mình." };
         if (!ValidPurpose(command.Purpose) || command.OperationId == Guid.Empty)
-            return BadRequest<PaymentVerificationDto>("Cần operationId hợp lệ và purpose 1, 2 hoặc 3.");
+            return BadRequest<PaymentVerificationDto>("Cần operationId hợp lệ và purpose 1, 2, 3 hoặc 4.");
         using var uow = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true);
         var order = await _orders.FindAsync(orderId);
         if (order == null || order.CustomerId != CurrentUser.Id) return NotFound<PaymentVerificationDto>("Không tìm thấy đơn hàng của bạn.");
