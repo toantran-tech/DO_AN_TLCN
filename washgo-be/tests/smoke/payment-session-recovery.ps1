@@ -32,7 +32,8 @@ COMMIT;
     Assert-Status 401 Get "$path/active-session?purpose=1" $null $null
     Assert-Status 403 Get "$path/active-session?purpose=1" $null $admin
     Assert-Status 404 Get "$path/active-session?purpose=1" $null $seedCustomer
-    Assert-Status 400 Get "$path/quote?purpose=4" $null $customer
+    Assert-Status 400 Get "$path/quote?purpose=5" $null $customer
+    if ((Call-Api Get "$path/quote?purpose=4" $null $customer).data.purpose -ne 4) { throw 'Combined purpose was not recognized.' }
     Assert-Status 400 Get "$path/quote?purpose=2&pointsToRedeem=1" $null $customer
     $before=Fingerprint
     if((Call-Api Get "$path/active-session?purpose=1" $null $customer).data){throw 'New order has active session.'}

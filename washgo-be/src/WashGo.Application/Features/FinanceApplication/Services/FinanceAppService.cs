@@ -82,15 +82,14 @@ namespace WashGo.Application.Features.FinanceApplication.Services
 
         private async Task<List<PaymentRow>> PaymentsAsync(DateTime periodFrom, DateTime periodTo, Guid? merchantId, bool unsettledOnly = false, bool cashOnly = false)
         {
-            var payments = await _paymentRepo.GetQueryableAsync();
+            var payments = (await _paymentRepo.GetQueryableAsync()).RevenueAllocations();
             var orders = await _orderRepo.GetQueryableAsync();
             var query = from p in payments
                         join o in orders on p.OrderId equals o.Id
-                        where !p.IsDeleted && (!p.RequiresReconciliation && (p.Status == PaymentTransactionStatus.Succeeded || p.Status == PaymentTransactionStatus.Refunded))
-                              && p.CompletedAt != null && (unsettledOnly ? p.SettlementId == null : p.CompletedAt >= periodFrom) && p.CompletedAt <= periodTo
+                        where p.CompletedAt != null && (unsettledOnly ? p.SettlementId == null : p.CompletedAt >= periodFrom) && p.CompletedAt <= periodTo
                               && (merchantId == null || (p.FinancialSnapshotBasis != null ? p.MerchantIdSnapshot : o.MerchantId) == merchantId)
-                        select new PaymentRow(p.Id, o.Id, p.FinancialSnapshotBasis != null ? p.MerchantIdSnapshot : o.MerchantId, p.Purpose, p.Amount + (cashOnly || !p.LoyaltyApplied ? 0 : p.PointsToRedeem), p.CompletedAt!.Value,
-                            p.FinancialSnapshotBasis != null ? p.CommissionRateSnapshot : o.CommissionRateApplied) { PointsFunding = p.LoyaltyApplied ? p.PointsToRedeem : 0 };
+                        select new PaymentRow(p.TransactionId, o.Id, p.FinancialSnapshotBasis != null ? p.MerchantIdSnapshot : o.MerchantId, p.Purpose, p.Amount + (cashOnly ? 0 : p.Points), p.CompletedAt!.Value,
+                            p.FinancialSnapshotBasis != null ? p.CommissionRateSnapshot : o.CommissionRateApplied) { PointsFunding = p.Points };
             var rows = await AsyncExecuter.ToListAsync(query.Take(FinancialReportLimitException.MaximumSourceRows + 1));
             if (rows.Count > FinancialReportLimitException.MaximumSourceRows) throw new FinancialReportLimitException();
             return rows;

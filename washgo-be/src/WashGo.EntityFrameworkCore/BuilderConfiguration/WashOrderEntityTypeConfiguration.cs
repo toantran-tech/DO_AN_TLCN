@@ -54,6 +54,7 @@ namespace WashGo.EntityFrameworkCore.BuilderConfiguration
             builder.Property(x => x.StorageLocation).HasMaxLength(200);
             builder.Property(x => x.StorageReference).HasMaxLength(120);
             builder.Property(x => x.CancelFeeAmount).HasPrecision(18, 2);
+            builder.Property(x => x.CancellationFeeBasis).HasPrecision(18, 2);
             builder.Property(x => x.CancelFeePaidAmount).HasPrecision(18, 2);
             builder.Property(x => x.CancellationRefundAmount).HasPrecision(18, 2);
             builder.HasIndex(x => x.CustomerId);

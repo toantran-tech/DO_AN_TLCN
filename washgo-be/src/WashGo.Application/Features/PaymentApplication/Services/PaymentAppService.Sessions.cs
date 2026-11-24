@@ -21,7 +21,7 @@ public partial class PaymentAppService
             return BadRequest<PaymentResultDto>("Không xác định được tài khoản khách hàng.");
         if (!CurrentUser.IsInRole("Customer"))
             return new() { Succeeded = false, StatusCode = HttpStatusCode.Forbidden, Message = "Chỉ Customer được tạo phiên thanh toán." };
-        if (command.PointsToRedeem < 0 || purpose != PaymentPurpose.Order && command.PointsToRedeem != 0)
+        if (command.PointsToRedeem < 0 || purpose is not (PaymentPurpose.Order or PaymentPurpose.Combined) && command.PointsToRedeem != 0)
             return BadRequest<PaymentResultDto>("Điểm chỉ dùng cho tiền giặt; số điểm không được âm.");
         if (command.PaymentMethod is not (PaymentMethod.VnPay or PaymentMethod.Momo))
             return BadRequest<PaymentResultDto>("Chỉ hỗ trợ thanh toán trực tuyến qua VNPay hoặc MoMo.");
@@ -33,16 +33,21 @@ public partial class PaymentAppService
         using (var prepare = UnitOfWorkManager.Begin(requiresNew: true, isTransactional: true))
         {
             var order = await _orders.GetForUpdateAsync(command.OrderId);
-            if (order == null || order.CustomerId != CurrentUser.Id.Value)
+            if (order == null || order.IsDeleted || order.CustomerId != CurrentUser.Id.Value)
                 return NotFound<PaymentResultDto>("Không tìm thấy đơn hàng của khách hàng.");
-            var due = await PaymentDueAsync(order, purpose);
-            if (due.Error != null) return BadRequest<PaymentResultDto>(due.Error);
+            var combined = purpose == PaymentPurpose.Combined;
+            var summary = combined ? await BuildObligationsAsync(order, DateTime.UtcNow) : null;
+            var due = combined ? (Amount: summary!.Outstanding, Error: (string?)null) : await PaymentDueAsync(order, purpose);
             amount = due.Amount;
             orderCode = order.OrderCode;
             // Do not take transaction locks after the order lock. All creators hold
             // this order lock; callbacks/finalizers consistently lock transaction -> order.
-            var blockers = await BlockersAsync(order.Id, purpose);
-            var view = blockers.Count == 0 ? null : PaymentSessionRules.View(order.Id, purpose, blockers, DateTime.UtcNow, UseLiveGateway);
+            var blockers = await BlockersAsync(order.Id, purpose, includeOverlaps: true);
+            if (summary != null && amount == 0m)
+                return Success(new PaymentResultDto { OrderId = order.Id, OrderCode = orderCode,
+                    Purpose = purpose, PaymentStatus = order.PaymentStatus,
+                    Summary = await BuildOrderPaymentSummaryAsync(order) });
+            var view = blockers.Count == 0 ? null : PaymentSessionRules.View(order.Id, blockers[0].Purpose, blockers, DateTime.UtcNow, UseLiveGateway);
             if (blockers.Any(x => x.RequiresReconciliation))
                 return SessionConflict("PaymentRequiresReview", "Có khoản tiền cần đối soát; chưa tạo giao dịch mới.", view!);
             var pending = blockers.Where(x => x.Status == PaymentTransactionStatus.Pending).ToList();
@@ -51,11 +56,16 @@ public partial class PaymentAppService
             if (pending.Count == 1)
             {
                 var existing = pending[0];
+                if (existing.Purpose != purpose)
+                    return SessionConflict("OverlappingPaymentSession", "Đơn có phiên thanh toán cần tiếp tục hoặc xác minh trước.", view!);
+                if (due.Error != null)
+                    return SessionConflict("PaymentStateChanged", "Đơn đã thay đổi; cần xác minh phiên hiện tại.", view!);
                 if (existing.PointsToRedeem != command.PointsToRedeem)
                     return SessionConflict("PaymentPointsConflict", "Phiên hiện tại đang dùng số điểm khác; không tạo phiên thay thế khi chưa xác minh.", view!);
                 if (existing.PaymentMethod != command.PaymentMethod)
                     return SessionConflict("PaymentMethodConflict", "Đã có phiên thanh toán bằng phương thức khác. Vui lòng dùng phiên hiện tại hoặc chờ xác minh.", view!);
-                if (existing.Amount + existing.PointsToRedeem != amount)
+                if (summary != null ? !CombinedAllocationApplies(order, existing, summary)
+                    : existing.Amount + existing.PointsToRedeem != amount)
                     return SessionConflict("PaymentAmountChanged", "Số tiền phải trả đã thay đổi; cần xác minh phiên trước khi tạo giao dịch mới.", view!);
                 if (existing.SessionState == PaymentSessionState.Unknown)
                     return SessionConflict("PaymentVerificationRequired", "Kết quả tạo phiên chưa xác định. Không tạo thêm giao dịch; vui lòng chờ xác minh.", view!);
@@ -75,21 +85,36 @@ public partial class PaymentAppService
                 };
             }
 
-            var quote = await BuildQuoteAsync(order, purpose, command.PointsToRedeem, []);
+            if (due.Error != null) return BadRequest<PaymentResultDto>(due.Error);
+            var quote = await BuildQuoteAsync(order, purpose, command.PointsToRedeem, [], summary);
+            if (combined && !MatchesCombinedQuote(command.ExpectedQuoteToken, quote.QuoteToken))
+                return new()
+                {
+                    StatusCode = HttpStatusCode.Conflict,
+                    Message = "Bảng kê đã đổi hoặc hết hạn. Vui lòng xác nhận lại.",
+                    Data = new PaymentResultDto
+                    {
+                        OrderId = order.Id, OrderCode = orderCode, Purpose = purpose, PaymentStatus = order.PaymentStatus,
+                        Summary = await BuildOrderPaymentSummaryAsync(order, command.PointsToRedeem)
+                    },
+                    Meta = new { code = "QuoteChanged" }
+                };
             if (!quote.CanCreate)
                 return QuoteError(quote.ReasonCode ?? "PaymentNotEligible", quote,
                     quote.ReasonCode == "InsufficientPoints" ? HttpStatusCode.Conflict : HttpStatusCode.BadRequest);
             var selected = quote.Methods.Single(x => x.PaymentMethod == command.PaymentMethod);
             if (!selected.Enabled) return QuoteError(selected.ReasonCode ?? "PaymentMethodUnavailable", quote, HttpStatusCode.BadRequest);
-            if (command.ExpectedQuoteToken != null && command.ExpectedQuoteToken != quote.QuoteToken)
+            if (!combined && command.ExpectedQuoteToken != null && command.ExpectedQuoteToken != quote.QuoteToken)
                 return QuoteError("QuoteChanged", quote, HttpStatusCode.Conflict);
             if (string.IsNullOrWhiteSpace(command.ExpectedQuoteToken) && await _transactionRepo.AnyAsync(x =>
                 x.OrderId == order.Id && x.Purpose == purpose && x.VerifiedClosedAt != null && !x.IsDeleted))
                 return QuoteError("QuoteConfirmationRequired", quote, HttpStatusCode.Conflict);
             reference = NewReference(purpose switch
             {
-                PaymentPurpose.OverdueStorageFee => "FEE", PaymentPurpose.CancellationFee => "CANCEL", _ => "PAY"
+                PaymentPurpose.OverdueStorageFee => "FEE", PaymentPurpose.CancellationFee => "CANCEL",
+                PaymentPurpose.Combined => "TOTAL", _ => "PAY"
             }, order.OrderCode, command.PaymentMethod);
+            var laundry = summary == null ? (purpose == PaymentPurpose.Order ? amount : 0m) : OutstandingOf(summary, PaymentPurpose.Order);
             var transactionToCreate = new PaymentTransaction
             {
                 OrderId = order.Id, TransactionReference = reference, PaymentMethod = command.PaymentMethod,
@@ -97,9 +122,11 @@ public partial class PaymentAppService
                 SessionState = PaymentSessionState.Creating, IsActiveSession = true,
                 MerchantIdSnapshot = order.MerchantId, CommissionRateSnapshot = order.CommissionRateApplied,
                 FinancialSnapshotBasis = "payment-created",
-                LoyaltyVersion = purpose == PaymentPurpose.Order ? 1 : 0,
+                LoyaltyVersion = laundry > 0m ? 1 : 0,
                 PointsToRedeem = command.PointsToRedeem,
-                LaundryAmount = purpose == PaymentPurpose.Order ? amount : 0,
+                LaundryAmount = laundry,
+                StorageAmount = summary == null ? 0m : OutstandingOf(summary, PaymentPurpose.OverdueStorageFee),
+                CancellationAmount = summary == null ? 0m : OutstandingOf(summary, PaymentPurpose.CancellationFee),
                 LoyaltyEarnPercent = quote.EarnPercent,
                 LoyaltyMaxUsePercent = quote.MaxUsePercent
             };
@@ -149,15 +176,28 @@ public partial class PaymentAppService
         transaction.PaymentUrl = result.Url;
         transaction.SessionState = PaymentSessionState.Ready;
         await _transactionRepo.UpdateAsync(transaction, autoSave: true);
-        var latestDue = await PaymentDueAsync(current, purpose);
+        var stillApplicable = purpose == PaymentPurpose.Combined
+            ? CombinedAllocationApplies(current, transaction, await BuildObligationsAsync(current, DateTime.UtcNow))
+            : await LegacyPaymentAmountMatchesAsync(current, purpose, amount + transaction.PointsToRedeem);
         await finalize.CompleteAsync();
-        if (latestDue.Error != null || latestDue.Amount != amount + transaction.PointsToRedeem)
+        if (!stillApplicable)
             return SessionConflict("PaymentStateChanged", "Đơn đã thay đổi trong lúc tạo phiên; giao dịch được giữ lại để xác minh, không mở URL mới.");
         return Success(PaymentView(current, transaction), "Đã tạo phiên thanh toán.");
     }
 
+    private async Task<bool> LegacyPaymentAmountMatchesAsync(WashOrder order, PaymentPurpose purpose, decimal amount)
+    {
+        var due = await PaymentDueAsync(order, purpose);
+        return due.Error == null && due.Amount == amount;
+    }
+
     private async Task<(decimal Amount, string? Error)> PaymentDueAsync(WashOrder order, PaymentPurpose purpose)
     {
+        if (purpose == PaymentPurpose.Combined)
+        {
+            var summary = await BuildObligationsAsync(order, DateTime.UtcNow);
+            return (summary.Outstanding, summary.Outstanding > 0m ? null : "Đơn chưa có khoản cần thu.");
+        }
         if (purpose == PaymentPurpose.Order)
         {
             if (order.PaymentStatus != PaymentStatus.Unpaid ||
@@ -188,7 +228,7 @@ public partial class PaymentAppService
 
     private static PaymentResultDto PaymentView(WashOrder order, PaymentTransaction transaction) => new()
     {
-        OrderId = order.Id, OrderCode = order.OrderCode, Amount = transaction.Amount,
+        OrderId = order.Id, OrderCode = order.OrderCode, Amount = transaction.Amount, SessionId = transaction.Id,
         Purpose = transaction.Purpose, PaymentMethod = transaction.PaymentMethod, PaymentStatus = order.PaymentStatus,
         TransactionReference = transaction.TransactionReference, PaymentUrl = transaction.PaymentUrl ?? string.Empty,
         TransactionStatus = transaction.Status, SessionState = transaction.SessionState,

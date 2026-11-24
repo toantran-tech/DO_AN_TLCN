@@ -225,6 +225,10 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             else if (transaction.Status != PaymentTransactionStatus.Pending) reviewReason = "LateReceiptAfterClosedSession";
             else switch (transaction.Purpose)
             {
+                case PaymentPurpose.Combined:
+                    if (!await ApplyCombinedPaymentAsync(order, transaction, provider, providerTransactionId))
+                        reviewReason = "CombinedAllocationNoLongerApplicable";
+                    break;
                 case PaymentPurpose.CancellationFee:
                     if (!await MarkCancellationFeePaidAsync(order, transaction, provider)) reviewReason = "CancellationFeeNoLongerDue";
                     break;
@@ -288,17 +292,19 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             await _orders.UpdateAsync(order, autoSave: true);
             return true;
         }
+        private static bool CanMarkOrderPaid(WashOrder order, PaymentTransaction transaction) =>
+            transaction.OrderId == order.Id && transaction.Purpose is PaymentPurpose.Order or PaymentPurpose.Combined &&
+            transaction.Status == PaymentTransactionStatus.Pending &&
+            transaction.GetLaundryCash() + transaction.PointsToRedeem == order.FinalAmount &&
+            (transaction.PointsToRedeem == 0 || transaction.PointsHeld && transaction.LoyaltyVersion == 1) &&
+            order.Status is WashOrderStatus.AwaitingPayment or WashOrderStatus.MovedToStorage &&
+            order.PaymentStatus == PaymentStatus.Unpaid &&
+            (order.IncludedWeightKg <= 0 || order.ActualWeightKg.HasValue);
+
         private async Task<bool> MarkOrderPaidAsync(WashOrder order, PaymentTransaction transaction,
             string provider, string? providerReference = null)
         {
-            if (transaction.OrderId != order.Id || transaction.Purpose != PaymentPurpose.Order ||
-                transaction.Status != PaymentTransactionStatus.Pending ||
-                transaction.Amount + transaction.PointsToRedeem != order.FinalAmount ||
-                transaction.PointsToRedeem > 0 && (!transaction.PointsHeld || transaction.LoyaltyVersion != 1) ||
-                order.Status is not (WashOrderStatus.AwaitingPayment or WashOrderStatus.MovedToStorage) ||
-                order.PaymentStatus != PaymentStatus.Unpaid ||
-                order.IncludedWeightKg > 0 && !order.ActualWeightKg.HasValue)
-                return false;
+            if (!CanMarkOrderPaid(order, transaction)) return false;
 
             // UC 1.2.4 7b: laundry paid after the move to storage stays in storage until the customer picks it up.
             var fromStatus = order.Status;
@@ -310,7 +316,7 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             order.PaidAt = DateTime.UtcNow;
             order.Timeline.Add(new WashOrderTimeline
             {
-                EventType = "LaundryPaid", PaymentPurpose = transaction.Purpose, Amount = transaction.Amount,
+                EventType = "LaundryPaid", PaymentPurpose = PaymentPurpose.Order, Amount = transaction.GetLaundryCash(),
                 WashOrderId = order.Id,
                 FromStatus = fromStatus,
                 Status = order.Status,
@@ -424,12 +430,13 @@ namespace WashGo.Application.Features.PaymentApplication.Services
                 return BadRequest<RefundRequestDto>("Đơn hàng đã có yêu cầu hoàn tiền đang được xử lý.");
 
             var successfulPayment = paymentTransactions.FirstOrDefault(x =>
-                x.Purpose == PaymentPurpose.Order && !x.RequiresReconciliation && x.Status == PaymentTransactionStatus.Succeeded);
+                (x.Purpose == PaymentPurpose.Order || x.Purpose == PaymentPurpose.Combined && x.LaundryAmount > 0m) &&
+                !x.RequiresReconciliation && x.Status == PaymentTransactionStatus.Succeeded);
             if (order.PaymentMethod != PaymentMethod.Cash && successfulPayment == null)
                 return BadRequest<RefundRequestDto>("Không tìm thấy giao dịch thanh toán thành công để đối chiếu.");
             var alreadyRefunded = await AsyncExecuter.SumAsync((await _refundRequestRepo.GetQueryableAsync())
                 .Where(x => x.OrderId == order.Id && !x.IsDeleted && !x.IsExcessPayment && x.Status == RefundRequestStatus.Refunded).Select(x => x.Amount));
-            var remaining = (successfulPayment?.Amount ?? order.FinalAmount) - alreadyRefunded;
+            var remaining = (successfulPayment?.GetLaundryCash() ?? order.FinalAmount) - alreadyRefunded;
             var amount = command.Amount ?? remaining;
             if (amount <= 0 || amount > remaining || decimal.Round(amount, 2) != amount)
                 return BadRequest<RefundRequestDto>("Số tiền hoàn phải dương, tối đa hai chữ số lẻ và không vượt phần tiền gốc còn lại.");
@@ -446,7 +453,7 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             if (successfulPayment?.LoyaltyApplied == true)
             {
                 var cumulative = alreadyRefunded + amount;
-                request.PointsAmount = LoyaltyMath.ReturnedPoints(successfulPayment.PointsToRedeem, cumulative, successfulPayment.Amount)
+                request.PointsAmount = LoyaltyMath.ReturnedPoints(successfulPayment.PointsToRedeem, cumulative, successfulPayment.GetLaundryCash())
                     - successfulPayment.PointsReturned;
             }
             await _refundRequestRepo.InsertAsync(request, autoSave: true);
@@ -574,11 +581,12 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             foreach (var dto in rows)
             {
                 if (!orders.TryGetValue(dto.OrderId, out var order)) continue;
-                var transaction = dto.OriginalPaymentTransactionId.HasValue ? transactions.FirstOrDefault(x => x.Id == dto.OriginalPaymentTransactionId) : transactions.Where(x => x.OrderId == dto.OrderId && x.Purpose == PaymentPurpose.Order && !x.RequiresReconciliation).OrderBy(x => x.CompletedAt).ThenBy(x => x.Id).FirstOrDefault();
+                var transaction = dto.OriginalPaymentTransactionId.HasValue ? transactions.FirstOrDefault(x => x.Id == dto.OriginalPaymentTransactionId) : transactions.Where(x => x.OrderId == dto.OrderId && (x.Purpose == PaymentPurpose.Order || x.Purpose == PaymentPurpose.Combined && x.LaundryAmount > 0m) &&
+                !x.RequiresReconciliation).OrderBy(x => x.CompletedAt).ThenBy(x => x.Id).FirstOrDefault();
                 dto.OrderCode = order.OrderCode; dto.CustomerName = order.CustomerName;
                 dto.MerchantId = transaction?.FinancialSnapshotBasis != null ? transaction.MerchantIdSnapshot : order.MerchantId;
                 dto.PaymentMethod = transaction?.PaymentMethod ?? order.PaymentMethod;
-                dto.OriginalAmount = transaction?.Amount ?? (order.PaymentMethod == PaymentMethod.Cash ? order.FinalAmount : null);
+                dto.OriginalAmount = (dto.IsExcessPayment ? transaction?.Amount : transaction?.GetLaundryCash()) ?? (order.PaymentMethod == PaymentMethod.Cash ? order.FinalAmount : null);
                 dto.RemainingRefundableAmount = dto.OriginalAmount.HasValue ? Math.Max(0, dto.OriginalAmount.Value - (refunds.FirstOrDefault(x => x.Id == order.Id)?.Amount ?? 0) -
                     (order.Status == WashOrderStatus.Cancelled ? CashCancellationFee(order, transaction) : 0)) : null;
                 if (dto.IsExcessPayment && transaction != null)
@@ -659,7 +667,8 @@ namespace WashGo.Application.Features.PaymentApplication.Services
 
             // Match the payment callbacks' lock order: transaction, then order.
             var reference = await AsyncExecuter.FirstOrDefaultAsync((await _transactionRepo.GetQueryableAsync())
-                .Where(x => x.OrderId == request.OrderId && (!request.OriginalPaymentTransactionId.HasValue || x.Id == request.OriginalPaymentTransactionId) && x.Purpose == PaymentPurpose.Order && !x.RequiresReconciliation &&
+                .Where(x => x.OrderId == request.OrderId && (!request.OriginalPaymentTransactionId.HasValue || x.Id == request.OriginalPaymentTransactionId) && (x.Purpose == PaymentPurpose.Order || x.Purpose == PaymentPurpose.Combined && x.LaundryAmount > 0m) &&
+                !x.RequiresReconciliation &&
                     x.Status == PaymentTransactionStatus.Succeeded).Select(x => x.TransactionReference));
             var successful = reference == null ? null : await _transactionRepo.GetForUpdateByReferenceAsync(reference);
             var order = await _orders.GetForUpdateAsync(request.OrderId);
@@ -669,7 +678,7 @@ namespace WashGo.Application.Features.PaymentApplication.Services
             if (order.PaymentMethod != PaymentMethod.Cash && successful == null)
                 return BadRequest<RefundRequestDto>("Không tìm thấy giao dịch thanh toán gốc thành công.");
 
-            var refundable = (successful?.Amount ?? order.FinalAmount) -
+            var refundable = (successful?.GetLaundryCash() ?? order.FinalAmount) -
                 (order.Status == WashOrderStatus.Cancelled ? CashCancellationFee(order, successful) : 0m);
             var alreadyRefunded = await AsyncExecuter.SumAsync((await _refundRequestRepo.GetQueryableAsync())
                 .Where(x => !x.IsDeleted && !x.IsExcessPayment && x.OrderId == order.Id && x.Status == RefundRequestStatus.Refunded).Select(x => x.Amount));

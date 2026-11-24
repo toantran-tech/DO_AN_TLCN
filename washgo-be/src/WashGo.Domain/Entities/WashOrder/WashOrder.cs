@@ -146,6 +146,8 @@ namespace WashGo.Domain.Entities.WashOrder
         public OrderActorType? CancelledByType { get; set; }
         public string? CancellationReason { get; set; }
         public decimal CancelFeeAmount { get; set; }
+        public decimal? CancellationFeeBasis { get; set; }
+        public int? CancellationFeePercent { get; set; }
         public decimal CancelFeePaidAmount { get; set; }
         public decimal CancellationRefundAmount { get; set; }
         public WashOrderStatus? CancellationFromStatus { get; set; }

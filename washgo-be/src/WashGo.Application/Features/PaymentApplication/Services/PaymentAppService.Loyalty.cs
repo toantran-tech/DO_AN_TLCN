@@ -9,7 +9,7 @@ public partial class PaymentAppService
     private static decimal CashCancellationFee(WashOrder order, PaymentTransaction? payment)
     {
         if (payment?.LoyaltyApplied != true) return order.CancelFeePaidAmount;
-        var allocation = LoyaltyMath.CancellationRefund(payment.Amount, payment.PointsToRedeem, order.CancelFeePaidAmount);
-        return payment.Amount - allocation.Cash;
+        var allocation = LoyaltyMath.CancellationRefund(payment.GetLaundryCash(), payment.PointsToRedeem, order.CancelFeePaidAmount);
+        return payment.GetLaundryCash() - allocation.Cash;
     }
 }

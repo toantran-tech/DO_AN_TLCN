@@ -17,8 +17,7 @@ public partial class PaymentAppService
 {
     /// <summary>
     /// Browser return from VNPay/MoMo. Only a correctly signed return identifies the attempt; the page is then chosen from
-    /// the stored, verified state (IPN/query). Browser data never settles money: a still-pending attempt goes to "pending"
-    /// and a gateway query is queued. Returns the FE URL to redirect to, or null when the FE origin is not configured safely.
+    /// the stored, verified state (IPN/query). A still-pending attempt returns to the order and queues a gateway query. Returns the FE URL to redirect to, or null when the FE origin is not configured safely.
     /// </summary>
     public async Task<string?> ResolveReturnRedirectAsync(PaymentMethod method, IReadOnlyDictionary<string, string> parameters)
     {
@@ -45,31 +44,33 @@ public partial class PaymentAppService
         if (string.IsNullOrWhiteSpace(reference))
         {
             Logger.LogWarning("{Method} return rejected: missing or invalid signature.", method);
-            return $"{frontend}/payment/{PaymentOutcomeRules.PendingPage}";
+            return $"{frontend}/orders";
         }
 
         var transaction = await _transactionRepo.FirstOrDefaultAsync(x => x.TransactionReference == reference && !x.IsDeleted);
         if (transaction == null || transaction.PaymentMethod != method)
-            return $"{frontend}/payment/{PaymentOutcomeRules.PendingPage}";
+            return $"{frontend}/orders";
         var order = await _orders.FindAsync(transaction.OrderId);
         if (order == null)
-            return $"{frontend}/payment/{PaymentOutcomeRules.ReviewPage}";
+            return $"{frontend}/orders";
         var expected = method == PaymentMethod.VnPay
             ? decimal.ToInt64(decimal.Round(transaction.Amount * 100m, 0, MidpointRounding.AwayFromZero))
             : decimal.ToInt64(decimal.Round(transaction.Amount, 0, MidpointRounding.AwayFromZero));
         var page = amount != expected ? PaymentOutcomeRules.ReviewPage : PaymentOutcomeRules.Classify(transaction, order).Page;
         if (page == PaymentOutcomeRules.PendingPage)
             await EnsureVerificationQueuedAsync(transaction, order);
-        return $"{frontend}/payment/{page}?orderId={order.Id}&purpose={(int)transaction.Purpose}&sessionId={transaction.Id}";
+        var path = page is PaymentOutcomeRules.PendingPage or PaymentOutcomeRules.ReviewPage
+            ? $"/orders/{order.Id}" : $"/payment/{page}";
+        return $"{frontend}{path}?orderId={order.Id}&purpose={(int)transaction.Purpose}&sessionId={transaction.Id}";
     }
 
     /// <summary>Customer read of one attempt (sessionId) or the latest attempt for the order and purpose. Never changes data.</summary>
     public async Task<BaseResponse<PaymentOutcomeDto>> GetOutcomeAsync(Guid orderId, PaymentPurpose purpose, Guid? sessionId)
     {
         if (!CustomerSignedIn) return new() { StatusCode = HttpStatusCode.Forbidden, Message = "Chỉ Customer được xem kết quả thanh toán của mình." };
-        if (!ValidPurpose(purpose)) return new() { StatusCode = HttpStatusCode.BadRequest, Message = "purpose phải là 1, 2 hoặc 3.", Meta = new { code = "InvalidPurpose" } };
+        if (!ValidPurpose(purpose)) return new() { StatusCode = HttpStatusCode.BadRequest, Message = "purpose phải là 1, 2, 3 hoặc 4.", Meta = new { code = "InvalidPurpose" } };
         var order = await _orders.FindAsync(orderId);
-        if (order == null || order.CustomerId != CurrentUser.Id)
+        if (order == null || order.IsDeleted || order.CustomerId != CurrentUser.Id)
             return NotFound<PaymentOutcomeDto>("Không tìm thấy đơn hàng của bạn.");
         var attempts = (await _transactionRepo.GetListAsync(x => x.OrderId == orderId && x.Purpose == purpose && !x.IsDeleted))
             .OrderByDescending(x => x.GatewayCreatedAt ?? DateTimeOffset.FromUnixTimeSeconds(x.CreatedOn).UtcDateTime).ThenByDescending(x => x.CreatedOn).ToList();
@@ -80,22 +81,28 @@ public partial class PaymentAppService
         var dto = new PaymentOutcomeDto
         {
             OrderId = order.Id, OrderCode = order.OrderCode, Purpose = purpose, ServerNow = now,
-            ObligationSettled = await ObligationSettledAsync(order, purpose)
+            Summary = await BuildOrderPaymentSummaryAsync(order)
         };
+        dto.ObligationSettled = purpose == PaymentPurpose.Combined
+            ? dto.Summary.Settled : await ObligationSettledAsync(order, purpose);
         if (transaction == null)
         {
             dto.ReasonCode = "NoPaymentAttempt";
-            dto.Capabilities.CanRetry = !dto.ObligationSettled && (await PaymentDueAsync(order, purpose)).Error == null;
+            dto.Capabilities.CanRetry = !dto.ObligationSettled &&
+                (await BlockersAsync(orderId, purpose, includeOverlaps: true)).Count == 0 &&
+                (await PaymentDueAsync(order, purpose)).Error == null;
             return Success(dto);
         }
         var (status, page, reason) = PaymentOutcomeRules.Classify(transaction, order);
         dto.SessionId = transaction.Id;
         dto.PaymentMethod = transaction.PaymentMethod;
         dto.Status = status;
-        dto.ResultPage = page;
+        dto.ResultPage = page is PaymentOutcomeRules.PendingPage or PaymentOutcomeRules.ReviewPage ? null : page;
         dto.ReasonCode = reason;
         dto.Verified = transaction.GatewayVerifiedAt.HasValue || transaction.VerifiedClosedAt.HasValue;
         dto.Amount = transaction.Amount;
+        if (!transaction.RequiresReconciliation && transaction.Status is PaymentTransactionStatus.Succeeded or PaymentTransactionStatus.Refunded)
+            dto.Allocations = DescribeAllocations(transaction);
         dto.PointsRedeemed = transaction.Status == PaymentTransactionStatus.Succeeded ? transaction.PointsToRedeem : 0;
         dto.RecordedAt = transaction.Status == PaymentTransactionStatus.Pending ? null : transaction.CompletedAt;
         dto.SupersededByNewerSession = attempts[0].Id != transaction.Id;
@@ -109,7 +116,8 @@ public partial class PaymentAppService
             dto.VerificationState = verification?.State;
             var verifying = verification?.IsActive == true;
             dto.Capabilities.CanVerify = view.CanVerify && !verifying;
-            dto.Capabilities.CanContinue = view.CanContinue && !verifying;
+            dto.Capabilities.CanContinue = view.CanContinue && !verifying &&
+                (purpose != PaymentPurpose.Combined || CombinedAllocationApplies(order, transaction, dto.Summary));
             dto.RetryAfterSeconds = verifying
                 ? (int)Math.Clamp(Math.Ceiling(((verification!.LeaseUntil ?? verification.NextAttemptAt) - now).TotalSeconds), 2, 120)
                 : view.RetryAfterSeconds;
@@ -118,7 +126,7 @@ public partial class PaymentAppService
         else if (status is "Failed" or "Cancelled")
         {
             // A new attempt only when nothing else is open or under review for this obligation and it is still due.
-            dto.Capabilities.CanRetry = !dto.ObligationSettled && (await BlockersAsync(orderId, purpose)).Count == 0 &&
+            dto.Capabilities.CanRetry = !dto.ObligationSettled && (await BlockersAsync(orderId, purpose, includeOverlaps: true)).Count == 0 &&
                 (await PaymentDueAsync(order, purpose)).Error == null;
         }
         return Success(dto);

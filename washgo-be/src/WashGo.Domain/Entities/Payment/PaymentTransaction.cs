@@ -33,6 +33,18 @@ namespace WashGo.Domain.Entities.Payment
         public decimal LoyaltyEarnPercent { get; set; }
         public decimal LoyaltyMaxUsePercent { get; set; }
         public decimal LaundryAmount { get; set; }
+        public decimal StorageAmount { get; set; }
+        public decimal CancellationAmount { get; set; }
+
+        public decimal GetLaundryCash() => Purpose switch
+        {
+            PaymentPurpose.Order => Amount,
+            PaymentPurpose.Combined => LaundryAmount - PointsToRedeem,
+            _ => 0m
+        };
+
+        public decimal GetStorageCash() => Purpose == PaymentPurpose.OverdueStorageFee ? Amount : StorageAmount;
+        public decimal GetCancellationCash() => Purpose == PaymentPurpose.CancellationFee ? Amount : CancellationAmount;
         public string? PaymentUrl { get; set; }
         public string? FailureReason { get; set; }
         public DateTime? CompletedAt { get; set; }

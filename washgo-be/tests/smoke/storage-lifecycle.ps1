@@ -1,4 +1,4 @@
-﻿param([string]$BaseUrl='http://localhost:5000',[string]$PostgresContainer='washgo_postgres',[string]$PostgresUser='postgres',[string]$Database='washgo_db')
+param([string]$BaseUrl='http://localhost:5000',[string]$PostgresContainer='washgo_postgres',[string]$PostgresUser='postgres',[string]$Database='washgo_db')
 . "$PSScriptRoot/order-security.ps1" -BaseUrl $BaseUrl -PostgresContainer $PostgresContainer -PostgresUser $PostgresUser -Database $Database -HelpersOnly
 trap { Write-Warning $_.Exception.Message; Write-Warning $_.ScriptStackTrace; break }
 $sessions=@{};$orderIds=@();$lockerId=$null;$serviceId=[Guid]::NewGuid();$run=[Guid]::NewGuid().ToString('N')
@@ -102,6 +102,9 @@ FROM washgo.services s WHERE is_active=true AND NOT is_deleted LIMIT 1;
         Assert-Status 400 Post "/wash-order/$id/pickup-storage" @{pinCode=$old.pickupPinCode} $customer
         $quote=(Call-Api Get "/storage/$id/quote?lockerId=$lockerId" $null $customer).data
         $request=Storage-Body $id;$request.quoteToken=$quote.quoteToken
+        Assert-Status 409 Post "/storage/$id/return-request" $request $customer
+        Pay-StorageFee $id
+        $request=Storage-Body $id;$request.quoteToken=$quote.quoteToken
         $workers=@()
         try {
             foreach($i in 1..2){$workers+=Start-Job -ScriptBlock {
@@ -122,7 +125,6 @@ FROM washgo.services s WHERE is_active=true AND NOT is_deleted LIMIT 1;
             $newRequest=(Call-Api Post "/storage/$id/return-request" $renew $customer).data
             if($newRequest.returnRequestId -eq $requested.returnRequestId){throw 'Cancelled request was silently reactivated.'}
         }
-        Pay-StorageFee $id
         $returning=Assign-Storage $id
         $departure=Storage-Step $id $returning depart
         if($departure.state -ne 4 -or $departure.feeTotal -ne (280000*$round)){throw 'Storage fee accumulation or dispatch freeze failed.'}
