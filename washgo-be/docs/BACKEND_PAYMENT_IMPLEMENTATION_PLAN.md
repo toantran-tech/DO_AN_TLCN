@@ -48,4 +48,3 @@
 - Kiểm tra VNPay/MoMo: thành công, thất bại, hủy, chờ và đối soát quay về đúng nơi; thiếu chữ ký; IPN và truy vấn đến đồng thời; callback lặp; đổi phương thức; hai tab mở phiên cũ/gộp đồng thời; timeout tạo URL. Kiểm tra quyền sở hữu đơn và phiên.
 - Kiểm tra tổng bằng 0, hạn mức cổng, hoàn/điểm và báo cáo khớp phân bổ, chặn yêu cầu giao lại trực tiếp qua API, luồng cũ 1/2/3 và migration có giao dịch cũ đang chờ. Chạy sandbox chính thức cho hai cổng khi có dữ liệu test hợp lệ.
 - Bàn giao endpoint/DTO và ví dụ trước khi FE đổi checkout. Trong lúc BE và FE chưa đồng bộ, triển khai tương thích trước rồi bật chức năng sau khi API và các route đã có.
-

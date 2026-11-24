@@ -30,4 +30,3 @@ Màn hình danh sách, chi tiết, lưu giữ và checkout lấy số phải tr�
 | Không xác định được đơn an toàn | `/orders` |
 
 Route có định danh mang `orderId`, `purpose`, `sessionId`. Gọi `GET /payment/orders/{orderId}/result?purpose=4&sessionId={sessionId}` với purpose đọc từ URL. `status=Succeeded` nghĩa là lần thu đã ghi nhận. `summary.outstanding` và `summary.settled` cho biết toàn đơn còn phải trả hay không. `allocations[]` là phần tiền và điểm đã ghi của phiên. `resultPage` rỗng khi chưa có trang kết quả cuối. `summary.returnLockerId` lấy trạm nhận từ yêu cầu hiện tại hoặc đơn. `summary.canRequestStorageReturn` và `storageReturnReason` hỗ trợ hiển thị ở màn hình kho. API kho kiểm tra lại tại bước ghi.
-
