@@ -50,7 +50,22 @@ public class StorageAppService(IWashOrderRepository orders, IRepository<OrderSto
         _ => false
     };
     private static StorageRuleException Rule(string code, string message, int status = 400) => new(code, message, status);
-    private async Task<decimal> DueAsync(WashOrder order) => OverdueFeeCalculator.GetTotalStorageDue(order, DateTime.UtcNow, await settings.ForOrderAsync(order));
+    private static StorageRuleException StoragePaymentRule(WashOrder order, decimal due, string code, string message)
+    {
+        var serviceDue = order.PaymentStatus == PaymentStatus.Paid ? 0m : Math.Max(0m, order.FinalAmount);
+        var storageDue = Math.Max(0m, due - order.StorageFeeTotal);
+        return new(code, message, 409, new
+        {
+            code,
+            orderId = order.Id,
+            serviceOutstanding = serviceDue,
+            storageOutstanding = storageDue,
+            outstanding = serviceDue + storageDue
+        });
+    }
+
+    private async Task<decimal> DueAsync(WashOrder order, DateTime? now = null) =>
+        OverdueFeeCalculator.GetTotalStorageDue(order, now ?? DateTime.UtcNow, await settings.ForOrderAsync(order));
     private Task<StorageReturnRequest?> ActiveRequestAsync(Guid cycleId) => requests.FirstOrDefaultAsync(x => x.CycleId == cycleId &&
         (x.State == StorageReturnState.Requested || x.State == StorageReturnState.Assigned || x.State == StorageReturnState.InTransit));
     private Task<DeliveryTask?> ActiveTaskAsync(Guid cycleId) => tasks.FirstOrDefaultAsync(x => x.StorageCycleId == cycleId && x.Status == DeliveryTaskStatus.Assigned);
@@ -209,7 +224,11 @@ public class StorageAppService(IWashOrderRepository orders, IRepository<OrderSto
             await ValidateLockerAsync(order, quote.LockerId);
             var cycle = await coordinator.AdoptStoredAsync(order, await settings.ForOrderAsync(order), now);
             if (cycle == null || cycle.State != StorageCycleState.Stored) throw Rule("StorageDataMissing", "Chưa đủ dữ liệu xác nhận đồ đang ở tiệm.");
-            if (quote.FeeTotal < await DueAsync(order)) throw Rule("QuoteChanged", "Phí đã thay đổi; cần xác nhận báo phí mới.", 409);
+            var due = await DueAsync(order, now);
+            if (quote.FeeTotal < due)
+                throw StoragePaymentRule(order, due, "QuoteChanged", "Phí đã thay đổi; cần xác nhận báo phí mới.");
+            if (!PaymentAppService.StoragePaymentSatisfied(order, due))
+                throw StoragePaymentRule(order, due, "PaymentRequired", "Cần thanh toán đủ tiền giặt và phí lưu giữ trước khi yêu cầu giao lại.");
             var request = await ActiveRequestAsync(cycle.Id);
             if (request != null)
             {
@@ -314,9 +333,11 @@ public class StorageAppService(IWashOrderRepository orders, IRepository<OrderSto
             {
                 var request = await ActiveRequestAsync(cycle.Id) ?? throw Rule("ReturnRequestRequired", "Không có yêu cầu giao lại.");
                 await ValidateLockerAsync(order, request.LockerId);
-                var total = await DueAsync(order);
-                if (total > request.AcceptedFeeTotal) throw Rule("QuoteChanged", "Phí tăng từ lúc báo giá; khách cần lấy/xác nhận báo phí mới.", 409);
-                if (order.PaymentStatus != PaymentStatus.Paid || order.StorageFeeTotal < total) throw Rule("PaymentRequired", "Cần thanh toán đủ tiền giặt và phí kho trước khi xuất kho.", 409);
+                var total = await DueAsync(order, now);
+                if (total > request.AcceptedFeeTotal)
+                    throw StoragePaymentRule(order, total, "QuoteChanged", "Phí tăng từ lúc báo giá; khách cần lấy/xác nhận báo phí mới.");
+                if (!PaymentAppService.StoragePaymentSatisfied(order, total))
+                    throw StoragePaymentRule(order, total, "PaymentRequired", "Cần thanh toán đủ tiền giặt và phí kho trước khi xuất kho.");
                 cycle.WarehouseFee = OverdueFeeCalculator.CalculateStorageFee(cycle.IntakeAt, now, await settings.ForOrderAsync(order));
                 order.AccumulatedStorageFee += cycle.WarehouseFee; cycle.DispatchedAt = now; cycle.State = StorageCycleState.OutboundTransit;
                 order.StorageLocation = null; order.StorageReference = null;
@@ -326,7 +347,9 @@ public class StorageAppService(IWashOrderRepository orders, IRepository<OrderSto
             else
             {
                 var request = await ActiveRequestAsync(cycle.Id) ?? throw Rule("ReturnRequestRequired", "Không có yêu cầu giao lại.");
-                if (order.PaymentStatus != PaymentStatus.Paid || order.StorageFeeTotal < await DueAsync(order)) throw Rule("PaymentRequired", "Chưa thanh toán đủ.", 409);
+                var due = await DueAsync(order);
+                if (!PaymentAppService.StoragePaymentSatisfied(order, due))
+                    throw StoragePaymentRule(order, due, "PaymentRequired", "Chưa thanh toán đủ.");
                 // Lock before reading station status to avoid a stale tracked Active flag after concurrent maintenance.
                 await lockers.LockAsync(request.LockerId);
                 await ValidateLockerAsync(order, request.LockerId);
@@ -491,7 +514,7 @@ public class StorageAppService(IWashOrderRepository orders, IRepository<OrderSto
         var due = OverdueFeeCalculator.GetTotalStorageDue(order, context.Now, context.Settings);
         var departureBlock = !ownTask || state != StorageCycleState.Stored ? "WrongStage" : !hasRequest ? "ReturnRequestRequired"
             : due > request!.AcceptedFeeTotal ? "QuoteChanged"
-            : order.PaymentStatus != PaymentStatus.Paid || order.StorageFeeTotal < due ? "PaymentRequired" : null;
+            : !PaymentAppService.StoragePaymentSatisfied(order, due) ? "PaymentRequired" : null;
         return new StorageCycleDto
         {
             Id = cycle?.Id ?? Guid.Empty, OrderId = order.Id, OrderCode = order.OrderCode, OrderRevision = order.Revision, State = state,
@@ -508,7 +531,7 @@ public class StorageAppService(IWashOrderRepository orders, IRepository<OrderSto
             TaskId = customer ? null : task?.Id,
             CanAssign = isCurrent && (ActorRole is "Admin" or "Merchant") && (state == StorageCycleState.AwaitingCollection || state == StorageCycleState.Stored && hasRequest),
             CanCancelAssignment = isCurrent && (ActorRole is "Admin" or "Merchant") && task?.Status == DeliveryTaskStatus.Assigned && (state is StorageCycleState.AwaitingCollection or StorageCycleState.Stored),
-            CanRequestReturn = customer && order.StorageWorkflowVersion >= 1 && isCurrent && state == StorageCycleState.Stored,
+            CanRequestReturn = customer && order.StorageWorkflowVersion >= 1 && isCurrent && state == StorageCycleState.Stored && PaymentAppService.StoragePaymentSatisfied(order, due),
             CanCancelReturn = customer && isCurrent && state == StorageCycleState.Stored && hasRequest,
             CanCollect = ownTask && state == StorageCycleState.AwaitingCollection, CanHandover = ownTask && state == StorageCycleState.InboundTransit,
             CanDepart = departureBlock == null, DepartBlockedReason = departureBlock, CanPlace = ownTask && state == StorageCycleState.OutboundTransit,

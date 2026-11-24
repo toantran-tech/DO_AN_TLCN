@@ -39,13 +39,33 @@ namespace WashGo.HttpApi.Endpoints.Payment
             var group = app.MapGroup(Endpoint)
                 .WithTags("Payment - Thanh toán");
 
+            group.MapGet("/orders/{orderId:guid}/summary", async (Guid orderId, long? pointsToRedeem,
+                HttpContext context, IPaymentAppService service) =>
+            {
+                context.Response.Headers.CacheControl = "no-store";
+                return (await service.GetOrderPaymentSummaryAsync(orderId, pointsToRedeem ?? 0)).CustomResult();
+            }).RequireAuthorization("CustomerOnly").WithName("CustomerOrderPaymentSummary")
+                .WithSummary("Bảng kê tiền dịch vụ, phí lưu giữ, phí hủy và báo phí gộp của đơn.")
+                .WithOpenApi();
+
+            group.MapPost("/orders/{orderId:guid}/checkout", async (Guid orderId, CreatePaymentCommand command,
+                HttpContext context, IPaymentAppService service) =>
+            {
+                context.Response.Headers.CacheControl = "no-store";
+                command.OrderId = orderId;
+                command.ClientIpAddress = context.Connection.RemoteIpAddress?.MapToIPv4().ToString() ?? "127.0.0.1";
+                return (await service.CreateCombinedPaymentAsync(command)).CustomResult();
+            }).RequireAuthorization("CustomerOnly").WithName("CustomerCombinedPaymentCheckout")
+                .WithSummary("Tạo một giao dịch VNPay hoặc MoMo cho bảng kê đã xác nhận qua expectedQuoteToken.")
+                .WithOpenApi();
+
             group.MapGet("/orders/{orderId:guid}/active-session", async (Guid orderId, PaymentPurpose purpose,
                 HttpContext context, IPaymentAppService service) =>
             {
                 context.Response.Headers.CacheControl = "no-store";
                 return (await service.GetActiveSessionAsync(orderId, purpose)).CustomResult();
             }).RequireAuthorization("CustomerOnly").WithName("CustomerPaymentActiveSession")
-                .WithSummary("Đọc phiên thanh toán hiện có của chính Customer; purpose=1 tiền giặt, 2 phí quá hạn, 3 phí hủy. Không gọi cổng hoặc thay đổi điểm.")
+                .WithSummary("Đọc phiên thanh toán hiện có của chính Customer; purpose=1 tiền giặt, 2 phí quá hạn, 3 phí hủy, 4 thanh toán gộp. Không gọi cổng hoặc thay đổi điểm.")
                 .WithOpenApi();
 
             group.MapGet("/orders/{orderId:guid}/quote", async (Guid orderId, PaymentPurpose purpose,

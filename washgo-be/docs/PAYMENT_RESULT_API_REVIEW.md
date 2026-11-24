@@ -2,6 +2,8 @@
 
 Ngày 23/11/2026. Thực hiện `Docs/cần làm/BACKEND_PAYMENT.md`. Áp dụng cho cả VNPay và MoMo, purpose 1 (tiền giặt), 2 (phí quá hạn/lưu kho), 3 (phí hủy).
 
+> Luồng checkout gộp và các route mới dùng hợp đồng tại [PAYMENT_COMBINED_API_REVIEW.md](PAYMENT_COMBINED_API_REVIEW.md). Các mục dưới đây lưu lại hợp đồng trước thay đổi để đối chiếu tích hợp cũ.
+
 ## 1. Luồng quay về (BE trung gian → FE)
 
 | Cổng | Cấu hình trình duyệt quay về | Endpoint BE |

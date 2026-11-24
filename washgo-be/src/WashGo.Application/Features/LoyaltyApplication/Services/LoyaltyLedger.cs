@@ -35,7 +35,7 @@ public class LoyaltyLedger(ILoyaltyWalletStore wallets, IRepository<LoyaltyEntry
         if (payment.PointsHeld)
             await AppendAsync(wallet, payment, $"redeem:{payment.Id}", "Redeem", -payment.PointsToRedeem, -payment.PointsToRedeem);
         payment.PointsHeld = false;
-        payment.PointsEarned = LoyaltyMath.Earn(payment.Amount, payment.LoyaltyEarnPercent);
+        payment.PointsEarned = LoyaltyMath.Earn(payment.GetLaundryCash(), payment.LoyaltyEarnPercent);
         await AppendAsync(wallet, payment, $"earn:{payment.Id}", "Earn", payment.PointsEarned, 0);
         payment.LoyaltyApplied = true;
     }
@@ -46,7 +46,7 @@ public class LoyaltyLedger(ILoyaltyWalletStore wallets, IRepository<LoyaltyEntry
         var wallet = await wallets.LockAsync(refund.CustomerId);
         var returned = checked(payment.PointsReturned + refund.PointsAmount);
         if (returned > payment.PointsToRedeem) throw new InvalidOperationException("Cannot return more points than originally spent.");
-        var reversed = LoyaltyMath.ReversedReward(payment.PointsEarned, cumulativeCashRefund, payment.Amount);
+        var reversed = LoyaltyMath.ReversedReward(payment.PointsEarned, cumulativeCashRefund, payment.GetLaundryCash());
         refund.PointsAmount = checked(returned - payment.PointsReturned);
         refund.RewardPointsReversed = checked(reversed - payment.RewardPointsReversed);
         if (refund.PointsAmount < 0 || refund.RewardPointsReversed < 0)

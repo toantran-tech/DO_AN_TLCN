@@ -2689,6 +2689,11 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("numeric(18,2)")
                         .HasColumnName("amount");
 
+                    b.Property<decimal>("CancellationAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("cancellation_amount");
+
                     b.Property<decimal?>("CommissionRateSnapshot")
                         .HasPrecision(5, 2)
                         .HasColumnType("numeric(5,2)")
@@ -2865,6 +2870,11 @@ namespace WashGo.EntityFrameworkCore.Migrations
                     b.Property<int>("Status")
                         .HasColumnType("integer")
                         .HasColumnName("status");
+
+                    b.Property<decimal>("StorageAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("storage_amount");
 
                     b.Property<string>("TransactionReference")
                         .IsRequired()
@@ -4019,6 +4029,15 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)")
                         .HasColumnName("cancel_fee_paid_amount");
+
+                    b.Property<decimal?>("CancellationFeeBasis")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("cancellation_fee_basis");
+
+                    b.Property<int?>("CancellationFeePercent")
+                        .HasColumnType("integer")
+                        .HasColumnName("cancellation_fee_percent");
 
                     b.Property<int?>("CancellationFromStatus")
                         .HasColumnType("integer")

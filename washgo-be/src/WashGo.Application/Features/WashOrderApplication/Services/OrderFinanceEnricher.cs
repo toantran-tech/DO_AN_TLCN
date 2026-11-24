@@ -50,10 +50,9 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 return;
             var ids = orders.Select(x => x.Id).ToList();
             var rateOf = orders.ToDictionary(x => x.Id, x => x.CommissionRateApplied);
-            var txs = await _executer.ToListAsync((await _paymentRepo.GetQueryableAsync())
-                .Where(p => ids.Contains(p.OrderId) && !p.IsDeleted && p.Purpose == PaymentPurpose.Order && p.CompletedAt != null &&
-                            (!p.RequiresReconciliation && (p.Status == PaymentTransactionStatus.Succeeded || p.Status == PaymentTransactionStatus.Refunded)))
-                .Select(p => new Tx { OrderId = p.OrderId, Amount = p.Amount + (p.LoyaltyApplied ? p.PointsToRedeem : 0), SettlementId = p.SettlementId,
+            var txs = await _executer.ToListAsync((await _paymentRepo.GetQueryableAsync()).RevenueAllocations()
+                .Where(p => ids.Contains(p.OrderId) && p.Purpose == PaymentPurpose.Order && p.CompletedAt != null)
+                .Select(p => new Tx { OrderId = p.OrderId, Amount = p.Amount + p.Points, SettlementId = p.SettlementId,
                     Rate = p.FinancialSnapshotBasis != null ? p.CommissionRateSnapshot : null,
                     MerchantId = p.FinancialSnapshotBasis != null ? p.MerchantIdSnapshot : null }));
             txs.AddRange(await _executer.ToListAsync((await _refundRepo.GetQueryableAsync())

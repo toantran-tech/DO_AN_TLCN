@@ -217,9 +217,9 @@ namespace WashGo.Application.Features.MerchantReportApplication.Services
             var allOrders = (await _orderRepo.GetQueryableAsync()).Where(o => !o.IsDeleted);
             async Task<IQueryable<Guid>> PaidOrderIdsAsync(Range r) =>
                 // Same Merchant attribution as the money totals: the Merchant snapshotted on the transaction (legacy: current).
-                (from p in await _paymentRepo.GetQueryableAsync()
+                (from p in (await _paymentRepo.GetQueryableAsync()).WithLaundry()
                  join o in allOrders on p.OrderId equals o.Id
-                 where p.Purpose == PaymentPurpose.Order && p.CompletedAt != null && p.CompletedAt >= r.From && p.CompletedAt < r.To &&
+                 where p.CompletedAt != null && p.CompletedAt >= r.From && p.CompletedAt < r.To &&
                        (!p.RequiresReconciliation && (p.Status == PaymentTransactionStatus.Succeeded || p.Status == PaymentTransactionStatus.Refunded)) &&
                        (p.FinancialSnapshotBasis != null ? p.MerchantIdSnapshot : o.MerchantId) == merchantId
                  select o.Id).Distinct();

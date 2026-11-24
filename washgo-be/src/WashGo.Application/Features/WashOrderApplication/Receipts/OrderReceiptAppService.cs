@@ -70,8 +70,10 @@ namespace WashGo.Application.Features.WashOrderApplication.Receipts
             if (order == null || !allowed)
                 return (null, "Không tìm thấy đơn hàng.", true);
 
-            // Refunded transactions are no longer money kept, so only succeeded ones appear on the receipt.
-            var payments = (await _transactionRepo.GetListAsync(x => x.OrderId == orderId && x.Status == PaymentTransactionStatus.Succeeded))
+            // A laundry refund on a combined receipt can leave independently paid fees intact.
+            var payments = (await _transactionRepo.GetListAsync(x => x.OrderId == orderId && !x.IsDeleted && !x.RequiresReconciliation &&
+                (x.Status == PaymentTransactionStatus.Succeeded || x.Status == PaymentTransactionStatus.Refunded &&
+                x.Purpose == PaymentPurpose.Combined && (x.StorageAmount > 0m || x.CancellationAmount > 0m))))
                 .OrderBy(x => x.CompletedAt).ToList();
             if (payments.Count == 0)
                 return (null, "Đơn chưa thanh toán nên chưa thể xuất biên lai.", false);
@@ -88,9 +90,9 @@ namespace WashGo.Application.Features.WashOrderApplication.Receipts
 
             var merchant = order.MerchantId.HasValue ? await _merchantRepo.FindAsync(order.MerchantId.Value) : null;
             var customer = await _userRepo.FindAsync(order.CustomerId);
-            var laundryPaid = payments.Where(x => x.Purpose == PaymentPurpose.Order).Sum(x => x.Amount);
-            var storagePaid = payments.Where(x => x.Purpose == PaymentPurpose.OverdueStorageFee).Sum(x => x.Amount);
-            var cancelPaid = payments.Where(x => x.Purpose == PaymentPurpose.CancellationFee).Sum(x => x.Amount);
+            var laundryPaid = payments.Where(x => x.Status == PaymentTransactionStatus.Succeeded).Sum(x => x.GetLaundryCash());
+            var storagePaid = payments.Sum(x => x.GetStorageCash());
+            var cancelPaid = payments.Sum(x => x.GetCancellationCash());
             var receipt = new OrderReceiptDto
             {
                 ReceiptNumber = order.ReceiptNumber,
@@ -126,13 +128,13 @@ namespace WashGo.Application.Features.WashOrderApplication.Receipts
                 PromotionCode = order.PromotionCode,
                 DiscountAmount = order.DiscountAmount,
                 LaundryAmount = laundryPaid,
-                RedeemedPoints = payments.Where(x => x.Purpose == PaymentPurpose.Order && x.LoyaltyApplied).Sum(x => x.PointsToRedeem),
+                RedeemedPoints = payments.Where(x => x.Status == PaymentTransactionStatus.Succeeded && x.LoyaltyApplied).Sum(x => x.PointsToRedeem),
                 Note = ReceiptNote,
                 Payments = payments.Select(x => new ReceiptPaymentDto
                 {
                     Method = x.PaymentMethod,
                     Purpose = x.Purpose,
-                    Amount = x.Amount,
+                    Amount = x.Status == PaymentTransactionStatus.Succeeded ? x.Amount : x.GetStorageCash() + x.GetCancellationCash(),
                     Reference = x.TransactionReference,
                     ProviderTransactionId = x.ProviderTransactionId,
                     PaidAt = x.CompletedAt
