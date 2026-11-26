@@ -25,9 +25,30 @@ function Collect-WeightFixture($Id) {
     Call-Api Put '/wash-order/assign-shipper' @{orderId="$Id";shipperId="$carrier"} $merchant | Out-Null
     Invoke-TestDelivery $Id collect $admin | Out-Null
 }
+function Confirm-TestActuals($Id, $Kg, $Quantity = $null, $Reuse = $null) {
+    if ($Reuse) {
+        return (Call-Api Put "/wash-order/$Id/actuals" $Reuse $merchant).data
+    }
+
+    $order = (Call-Api Get "/wash-order/$Id" $null $merchant).data
+    $entries = @($order.items | Where-Object { !$_.isWeightBased } | ForEach-Object {
+        $count = if ($null -eq $Quantity) { $_.quantity } else { $Quantity }
+        @{ orderItemId = $_.id; actualQuantity = $count }
+    })
+    $command = @{ actualWeightKg = $Kg; items = $entries; note = 'Fixture actual count' }
+    $quote = (Call-Api Post "/wash-order/$Id/actuals/preview" $command $merchant).data
+    $command.expectedRevision = $quote.revision
+    $command.expectedStatus = $quote.status
+    $command.expectedFinalAmount = $quote.finalAmount
+    $command.operationId = [guid]::NewGuid().ToString()
+    $script:lastActualsCommand = $command
+    return (Call-Api Put "/wash-order/$Id/actuals" $command $merchant).data
+}
+
 function Finish-TestOrder($Id) {
-    Call-Api Put '/wash-order/status' @{orderId="$Id";newStatus=4} $merchant | Out-Null
-    Call-Api Put '/wash-order/status' @{orderId="$Id";newStatus=8} $merchant | Out-Null
+    foreach ($status in 4..8) {
+        Call-Api Put '/wash-order/status' @{orderId="$Id";newStatus=$status} $merchant | Out-Null
+    }
     $payment=(Call-Api Post '/payment/create-url' @{orderId="$Id";paymentMethod=2} $customer).data
     if($payment.paymentUrl -notmatch '/payment/mock-checkout'){throw 'Local mock payment provider required.'}
     Call-Api Post '/payment/callback' @{orderId="$Id";transactionReference=$payment.transactionReference;success=$true} $admin | Out-Null
@@ -108,6 +129,10 @@ FROM washgo.services s WHERE id='$weightService';
             $codes=@($jobs|Receive-Job -Wait -AutoRemoveJob);$jobs=@()
             if((($codes|Sort-Object)-join ',') -ne '200,200'){throw "Concurrent weight confirmation returned $codes"}
         }
+        elseif ($case.mixed) {
+            Assert-Status 400 Put "/wash-order/$id/actual-weight" @{weightKg=$case.kg} $merchant
+            Confirm-TestActuals $id $case.kg | Out-Null
+        }
         else{Call-Api Put "/wash-order/$id/actual-weight" @{weightKg=$case.kg;finalAmount=1;includedWeightKg=999} $merchant | Out-Null}
         $weighed=(Call-Api Get "/wash-order/$id" $null $merchant).data
         Assert-Private $weighed
@@ -122,12 +147,17 @@ FROM washgo.services s WHERE id='$weightService';
             [PSCustomObject]@{case=$case;expectedBase=$base;actualBase=$weighed.totalAmount;expectedFee=$fee;actualFee=$weighed.weightSurchargeAmount;actualFinal=$weighed.finalAmount;actualWeight=$weighed.actualWeightKg;excess=$weighed.excessWeightKg;expectedDuration=$duration;actualDuration=$actualDuration;baseHours=$weighed.baseProcessingHours;status=$weighed.status;beforeEvents=$before.timeline.Count;afterEvents=$weighed.timeline.Count}|ConvertTo-Json -Depth 5|Write-Output
             throw 'Weight, package snapshot, surcharge, ETA, status, or timeline mismatch.'
         }
-        $replayed=(Call-Api Put "/wash-order/$id/actual-weight" @{weightKg=$case.kg} $merchant).data
+        $replayed = if ($case.mixed) {
+            Confirm-TestActuals $id $case.kg -Reuse $script:lastActualsCommand
+        } else { (Call-Api Put "/wash-order/$id/actual-weight" @{weightKg=$case.kg} $merchant).data }
         if($replayed.etaUpdatedAt -ne $weighed.etaUpdatedAt -or $replayed.timeline.Count -ne $weighed.timeline.Count){throw 'Replay extended ETA or duplicated timeline.'}
-        $corrected=(Call-Api Put "/wash-order/$id/actual-weight" @{weightKg=([decimal]$case.kg+0.01)} $merchant).data
+        $corrected = if ($case.mixed) {
+            Confirm-TestActuals $id ([decimal]$case.kg + 0.01)
+        } else { (Call-Api Put "/wash-order/$id/actual-weight" @{weightKg=([decimal]$case.kg+0.01)} $merchant).data }
         $correctedFee=[Math]::Max([decimal]0, [decimal]$case.kg+0.01-[decimal]$case.included)*15000
         if($corrected.finalAmount -ne ($base+$correctedFee)){throw 'Correcting weight accumulated the previous surcharge.'}
-        Call-Api Put "/wash-order/$id/actual-weight" @{weightKg=$case.kg} $merchant | Out-Null
+        if ($case.mixed) { Confirm-TestActuals $id $case.kg | Out-Null }
+        else { Call-Api Put "/wash-order/$id/actual-weight" @{weightKg=$case.kg} $merchant | Out-Null }
         Assert-Status 400 Post '/payment/create-url' @{orderId="$id";paymentMethod=2} $customer
         $customerView=(Call-Api Get "/wash-order/$id" $null $customer).data
         if($customerView.finalAmount -ne ($base+$fee) -or $customerView.actualWeightKg -ne $case.kg){throw 'Customer cannot see final quote.'}
@@ -138,6 +168,12 @@ FROM washgo.services s WHERE id='$weightService';
     Collect-WeightFixture $id
     Assert-Status 400 Put "/wash-order/$id/actual-weight" @{weightKg=6.5} $merchant
     if($countOrder.totalAmount -ne 40000){throw 'Count-based quantity pricing changed.'}
+    Assert-Status 400 Put '/wash-order/status' @{orderId="$id";newStatus=4} $merchant
+    $counted = Confirm-TestActuals $id $null 3
+    $countLine = $counted.items | Select-Object -First 1
+    if ($counted.finalAmount -ne 60000 -or $countLine.quantity -ne 2 -or $countLine.actualQuantity -ne 3 -or $countLine.actualSubTotal -ne 60000) {
+        throw 'Actual quantity did not change the charge or preserve original quantity.'
+    }
     Finish-TestOrder $id
     $after=(Call-Api Get "/customer/lockers/$lockerId" $null $customer).data
     if($after.availableSlotCount -ne 3){throw 'Smoke test did not release all fixture slots.'}

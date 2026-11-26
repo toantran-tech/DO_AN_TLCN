@@ -16,6 +16,9 @@ namespace WashGo.Domain.Entities.WashOrder
         public string? CategoryNameSnapshot { get; set; }
         public WashServiceType? ProcessingTypeSnapshot { get; set; }
         public string ServiceName { get; set; } = string.Empty;
+        public string? UnitSnapshot { get; set; }
+        public int? ActualQuantity { get; set; }
+        public decimal? ActualSubTotal { get; set; }
         public int Quantity { get; set; }
         public decimal? WeightKg { get; set; }
         public bool IsWeightBased { get; set; }

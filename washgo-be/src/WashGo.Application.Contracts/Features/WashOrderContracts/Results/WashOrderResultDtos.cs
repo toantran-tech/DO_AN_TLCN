@@ -101,6 +101,9 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Results
         public decimal SettledNetAmount { get; set; }
         /// <summary>Phần thu − hoàn chưa thuộc kỳ đã chi trả (chờ đối soát hoặc điều chỉnh kỳ sau).</summary>
         public decimal UnsettledNetAmount { get; set; }
+        public DateTime? ActualsConfirmedAt { get; set; }
+        public Guid? ActualsConfirmedBy { get; set; }
+        public string? ActualsNote { get; set; }
         public decimal? ActualWeightKg { get; set; }
         public decimal? IncludedWeightKg { get; set; }
         public decimal? ExcessWeightKg => ActualWeightKg.HasValue && IncludedWeightKg.HasValue
@@ -280,6 +283,9 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Results
         public Guid Id { get; set; }
         public Guid ServiceId { get; set; }
         public string ServiceName { get; set; } = string.Empty;
+        public string? UnitSnapshot { get; set; }
+        public int? ActualQuantity { get; set; }
+        public decimal? ActualSubTotal { get; set; }
         public int Quantity { get; set; }
         public decimal UnitPrice { get; set; }
         public decimal SubTotal { get; set; }

@@ -75,7 +75,10 @@ COMMIT;
 "@ | Out-Null
     $sessions.Fixture=(Call-Api Post '/auth/login' @{email=$email;password='Customer@123'} $null).data;$customer=$sessions.Fixture.accessToken
     $lockerId=(Call-Api Post '/locker/' @{merchantIds=@("$merchantId");name="Payment result $run";address='Fixture';district='Test';city='Test';latitude=10.77;longitude=106.69;boxCount=6} $admin).data.id
-    $service=(Call-Api Post '/customer/services/filter' @{page=1;take=1} $customer).list[0]
+    # This suite seeds an already weighed order in SQL. Select a kg service explicitly.
+    $service = (Call-Api Post '/customer/services/filter' @{page=1;take=100} $customer).list |
+        Where-Object { $_.unit -eq 'kg' } | Select-Object -First 1
+    if (!$service) { throw 'No active kg service available for the payment fixture.' }
 
     Write-Output '1. VNPay: unsigned or forged returns reveal nothing and settle nothing'
     $o1=New-PayableOrder 20000

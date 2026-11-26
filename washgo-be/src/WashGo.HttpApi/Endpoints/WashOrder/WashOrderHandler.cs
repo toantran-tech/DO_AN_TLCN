@@ -138,6 +138,16 @@ namespace WashGo.HttpApi.Endpoints.WashOrder
                 .Produces<BaseResponse<WashOrderDetailDto>>(StatusCodes.Status200OK).Produces<BaseResponse<WashOrderDetailDto>>(StatusCodes.Status400BadRequest).Produces<BaseResponse<WashOrderDetailDto>>(StatusCodes.Status404NotFound).Produces<BaseResponse<WashOrderDetailDto>>(StatusCodes.Status409Conflict)
                 .WithOpenApi();
 
+            group.MapPost("/{id:guid}/actuals/preview", async (Guid id, ConfirmOrderActualsCommand command, IWashOrderAppService svc) =>
+                (await svc.PreviewActualsAsync(id, command)).CustomResult())
+                .RequireAuthorization("MerchantOnly").WithName("PreviewOrderActuals")
+                .WithSummary("Merchant xem giá dự kiến theo số lượng và khối lượng thực tế.").WithOpenApi();
+
+            group.MapPut("/{id:guid}/actuals", async (Guid id, ConfirmOrderActualsCommand command, HttpContext http, IWashOrderAppService svc) =>
+                (await svc.ConfirmActualsAsync(id, OrderWriteHeaders.Apply(command, http))).CustomResult())
+                .RequireAuthorization("MerchantOnly").WithName("ConfirmOrderActuals")
+                .WithSummary("Merchant xác nhận đồng thời tất cả số lượng, khối lượng và giá đã xem trước.").WithOpenApi();
+
             group.MapPut("/{id:guid}/actual-weight", async (Guid id, UpdateActualWeightCommand command, HttpContext http, IWashOrderAppService svc) =>
                 (await svc.UpdateActualWeightAsync(id, OrderWriteHeaders.Apply(command, http))).CustomResult())
                 .RequireAuthorization("MerchantOnly")

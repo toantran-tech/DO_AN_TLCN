@@ -19,6 +19,7 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Results
         public ReceiptPartyDto Seller { get; set; } = new();
         public ReceiptPartyDto Buyer { get; set; } = new();
         public List<ReceiptLineDto> Lines { get; set; } = [];
+        public decimal? ActualWeightKg { get; set; }
         public decimal ServicesAmount { get; set; }
         public decimal WeightSurchargeAmount { get; set; }
         public string? PromotionCode { get; set; }
@@ -49,6 +50,7 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Results
     {
         public string Description { get; set; } = string.Empty;
         public int Quantity { get; set; }
+        public string? Unit { get; set; }
         public decimal? WeightKg { get; set; }
         public decimal UnitPrice { get; set; }
         public decimal Amount { get; set; }

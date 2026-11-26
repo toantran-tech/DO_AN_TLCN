@@ -20,6 +20,8 @@ namespace WashGo.EntityFrameworkCore.BuilderConfiguration
             builder.Property(x => x.Id).HasValueGenerator<SequentialGuidValueGenerator>();
             builder.Property(x => x.WashOrderId).HasColumnName("order_id");
             builder.Property(x => x.ServiceName).HasMaxLength(150).IsRequired();
+            builder.Property(x => x.UnitSnapshot).HasMaxLength(50);
+            builder.Property(x => x.ActualSubTotal).HasPrecision(18, 2);
             builder.Property(x => x.WeightKg).HasPrecision(18, 2);
             builder.Property(x => x.UnitPrice).HasPrecision(18, 2);
             builder.Property(x => x.SubTotal).HasColumnName("total_price").HasPrecision(18, 2);
