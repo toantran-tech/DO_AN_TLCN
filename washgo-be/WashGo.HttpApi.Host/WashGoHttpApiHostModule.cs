@@ -222,6 +222,7 @@ namespace WashGo.HttpApi.Host
             context.Services.AddHostedService<ReminderWorker>();
             context.Services.AddHostedService<PaymentVerificationWorker>();
             context.Services.AddHostedService<NotificationDeliveryWorker>();
+            context.Services.AddHostedService<OrderChangeDeliveryWorker>();
             context.Services.AddHostedService<PrivateDocumentCleanupWorker>();
             context.Services.AddHostedService<ChatbotCleanupWorker>();
             context.Services.AddEndpointsApiExplorer();
@@ -353,7 +354,7 @@ namespace WashGo.HttpApi.Host
                     handler.MapEndpoint(api);
                 }
                 HostedAssetEndpoints.Map(endpoints);
-                endpoints.MapHub<NotificationHub>(NotificationHub.Path);
+                endpoints.MapHub<NotificationHub>(NotificationHub.Path, options => options.CloseOnAuthenticationExpiration = true);
             });
         }
     }

@@ -4002,6 +4002,38 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("numeric(18,2)")
                         .HasColumnName("actual_weight_kg");
 
+                    b.Property<DateTime?>("ActualsConfirmedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("actuals_confirmed_at");
+
+                    b.Property<Guid?>("ActualsConfirmedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("actuals_confirmed_by");
+
+                    b.Property<int?>("ActualsDiscountTypeSnapshot")
+                        .HasColumnType("integer")
+                        .HasColumnName("actuals_discount_type_snapshot");
+
+                    b.Property<decimal?>("ActualsDiscountValueSnapshot")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("actuals_discount_value_snapshot");
+
+                    b.Property<decimal?>("ActualsMaxDiscountAmountSnapshot")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("actuals_max_discount_amount_snapshot");
+
+                    b.Property<decimal?>("ActualsMinOrderAmountSnapshot")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("actuals_min_order_amount_snapshot");
+
+                    b.Property<string>("ActualsNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("actuals_note");
+
                     b.Property<int?>("AssignedTaskType")
                         .HasColumnType("integer")
                         .HasColumnName("assigned_task_type");
@@ -4498,6 +4530,15 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<int?>("ActualQuantity")
+                        .HasColumnType("integer")
+                        .HasColumnName("actual_quantity");
+
+                    b.Property<decimal?>("ActualSubTotal")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("actual_sub_total");
+
                     b.Property<string>("CategoryCodeSnapshot")
                         .HasColumnType("text")
                         .HasColumnName("category_code_snapshot");
@@ -4550,6 +4591,11 @@ namespace WashGo.EntityFrameworkCore.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)")
                         .HasColumnName("unit_price");
+
+                    b.Property<string>("UnitSnapshot")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("unit_snapshot");
 
                     b.Property<Guid>("WashOrderId")
                         .HasColumnType("uuid")

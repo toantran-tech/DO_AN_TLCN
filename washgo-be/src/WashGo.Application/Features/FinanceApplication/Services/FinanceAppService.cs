@@ -166,8 +166,8 @@ namespace WashGo.Application.Features.FinanceApplication.Services
                     {
                         ServiceId = g.Key,
                         ServiceName = g.First().ServiceName,
-                        Amount = g.Sum(x => x.SubTotal),
-                        Quantity = g.Sum(x => x.Quantity)
+                        Amount = g.Sum(x => x.ActualSubTotal ?? x.SubTotal),
+                        Quantity = g.Sum(x => x.ActualQuantity ?? x.Quantity)
                     })
                     .OrderByDescending(x => x.Amount).ToList(),
                 Daily = payments.Select(x => (Date: (x.CompletedAt + VietnamOffset).Date, x.Amount))

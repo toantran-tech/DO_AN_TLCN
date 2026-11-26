@@ -203,6 +203,11 @@ public partial class PaymentAppService
             if (order.PaymentStatus != PaymentStatus.Unpaid ||
                 order.Status is not (WashOrderStatus.AwaitingPayment or WashOrderStatus.MovedToStorage))
                 return (0, "Đơn không còn ở trạng thái chờ thanh toán tiền giặt.");
+            if (!order.ActualsConfirmedAt.HasValue && await AsyncExecuter.AnyAsync((await _orders.GetQueryableAsync())
+                .Where(candidate => candidate.Id == order.Id)
+                .SelectMany(candidate => candidate.Items)
+                .Where(item => !item.IsWeightBased && item.UnitSnapshot != null)))
+                return (0, "Đơn chưa được kiểm đếm và chốt giá.");
             if (order.IncludedWeightKg > 0 && !order.ActualWeightKg.HasValue)
                 return (0, "Đơn chưa được cân và chốt giá.");
             return (order.FinalAmount, order.FinalAmount > 0 ? null : "Giá đơn không hợp lệ.");

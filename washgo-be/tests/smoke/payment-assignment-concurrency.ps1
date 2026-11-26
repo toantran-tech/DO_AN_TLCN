@@ -50,7 +50,10 @@ COMMIT;
     }
     $locker=(Call-Api Post '/locker/' @{merchantIds=@("$($merchantIds[0])","$($merchantIds[1])");code="PAYR_$run";name='Payment/assignment race fixture';address='Fixture';district='Test';city='Test';latitude=10.77;longitude=106.69;boxCount=6} $admin).data
     $lockerId=[Guid]$locker.id
-    $service=(Call-Api Post '/customer/services/filter' @{page=1;take=1} $customer).list[0]
+    # This suite seeds an already weighed order in SQL. Select a kg service explicitly.
+    $service = (Call-Api Post '/customer/services/filter' @{page=1;take=100} $customer).list |
+        Where-Object { $_.unit -eq 'kg' } | Select-Object -First 1
+    if (!$service) { throw 'No active kg service available for the payment fixture.' }
     $handler=New-Object System.Net.Http.HttpClientHandler;$handler.UseProxy=$false
     $client=New-Object System.Net.Http.HttpClient($handler);$client.Timeout=[TimeSpan]::FromSeconds(40)
 

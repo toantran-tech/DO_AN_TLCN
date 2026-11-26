@@ -1,6 +1,6 @@
 using System;
 using System.Globalization;
-using System.Linq;
+using System.IO;
 using QuestPDF.Drawing;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
@@ -11,12 +11,13 @@ using PdfSettings = global::QuestPDF.Settings;
 
 namespace WashGo.Application.Features.WashOrderApplication.Receipts
 {
-    /// <summary>Biên lai PDF khổ A5. Font Be Vietnam Pro (SIL OFL) nhúng trong assembly để không phụ thuộc font của máy chủ.</summary>
+    /// <summary>Biên lai PDF khổ A4. Font Be Vietnam Pro (SIL OFL) nhúng trong assembly để không phụ thuộc font của máy chủ.</summary>
     public static class ReceiptPdfRenderer
     {
         private const string FontFamily = "Be Vietnam Pro";
         private static readonly object Gate = new();
         private static bool _ready;
+        private static byte[] _logo = [];
         private static readonly TimeSpan VietnamOffset = TimeSpan.FromHours(7);
         private static readonly CultureInfo Vi = CultureInfo.GetCultureInfo("vi-VN");
 
@@ -34,6 +35,11 @@ namespace WashGo.Application.Features.WashOrderApplication.Receipts
                         ?? throw new InvalidOperationException($"Missing embedded font {name}.");
                     FontManager.RegisterFont(stream);
                 }
+                using var logoStream = assembly.GetManifestResourceStream("WashGo.EmailAssets.logo.png")
+                    ?? throw new InvalidOperationException("Missing embedded WashGo logo.");
+                using var logo = new MemoryStream();
+                logoStream.CopyTo(logo);
+                _logo = logo.ToArray();
                 _ready = true;
             }
         }
@@ -49,27 +55,61 @@ namespace WashGo.Application.Features.WashOrderApplication.Receipts
             _ => method.ToString()
         };
 
+        private static string DisplayReference(string orderCode, ReceiptPaymentDto payment)
+        {
+            if (!string.IsNullOrWhiteSpace(payment.ProviderTransactionId))
+                return payment.ProviderTransactionId;
+
+            var reference = payment.Reference;
+            var separator = reference.LastIndexOf('-');
+            if (separator < 0)
+                return reference;
+            var suffix = reference[(separator + 1)..];
+            if (!Guid.TryParseExact(suffix, "N", out _) &&
+                !(payment.Method == PaymentMethod.Momo && suffix.Length == 16 && ulong.TryParse(suffix, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out _)))
+                return reference;
+
+            var prefix = reference[..separator];
+            return prefix == $"WG-PAY-{orderCode}" || prefix == $"WG-TOTAL-{orderCode}" ||
+                prefix == $"WG-FEE-{orderCode}" || prefix == $"WG-CANCEL-{orderCode}" ? prefix : reference;
+        }
+
+        private static string DisplayQuantity(ReceiptLineDto line, bool hasActualWeight) => line.Unit switch
+        {
+            "item" => $"{line.Quantity} cái",
+            "pair" => $"{line.Quantity} đôi",
+            "kg" => $"{line.Quantity} gói",
+            _ when !hasActualWeight && line.WeightKg is { } kg => $"{kg.ToString("0.##", Vi)} kg",
+            _ => line.Quantity.ToString(Vi)
+        };
+
         public static byte[] Render(OrderReceiptDto r)
         {
             EnsureReady();
             return Document.Create(container => container.Page(page =>
             {
-                page.Size(PageSizes.A5);
-                page.Margin(24);
-                page.DefaultTextStyle(x => x.FontFamily(FontFamily).FontSize(9));
+                page.Size(PageSizes.A4);
+                page.Margin(19, Unit.Millimetre);
+                page.DefaultTextStyle(x => x.FontFamily(FontFamily).FontSize(10));
 
-                page.Header().Column(col =>
+                page.Header().BorderBottom(1).BorderColor(Colors.Blue.Lighten3)
+                    .Background(Colors.Blue.Lighten5).Padding(14).Column(col =>
                 {
-                    col.Item().Text("WashGo").Bold().FontSize(16).FontColor(Colors.Blue.Darken2);
-                    col.Item().Text("BIÊN LAI THANH TOÁN").Bold().FontSize(13);
-                    col.Item().Text($"Số: {r.ReceiptNumber}    Ngày xuất: {Time(r.IssuedAt)}");
+                    col.Spacing(14);
+                    col.Item().Row(row =>
+                    {
+                        row.ConstantItem(30).Image(_logo).FitArea();
+                        row.RelativeItem().PaddingLeft(9).AlignMiddle().Text("WashGo").Bold().FontSize(16).FontColor(Colors.Blue.Darken2);
+                    });
+                    col.Item().Text("BIÊN LAI THANH TOÁN").Bold().FontSize(19);
+                    col.Item().Text($"Số biên lai: {r.ReceiptNumber}");
+                    col.Item().Text($"Ngày phát hành: {Time(r.IssuedAt)}");
                     col.Item().Text($"Đơn hàng: #{r.OrderCode}" + (r.MerchantOrderCode != null ? $" (mã tiệm {r.MerchantOrderCode})" : ""));
-                    col.Item().PaddingTop(6).LineHorizontal(0.5f);
                 });
 
                 page.Content().PaddingVertical(8).Column(col =>
                 {
-                    col.Spacing(6);
+                    col.Spacing(14);
                     col.Item().Row(row =>
                     {
                         row.RelativeItem().Column(c =>
@@ -89,6 +129,9 @@ namespace WashGo.Application.Features.WashOrderApplication.Receipts
                         });
                     });
 
+                    if (r.ActualWeightKg is { } kg)
+                        col.Item().Text($"Khối lượng thực tế: {kg.ToString("0.##", Vi)} kg");
+
                     col.Item().Table(table =>
                     {
                         table.ColumnsDefinition(c =>
@@ -100,49 +143,49 @@ namespace WashGo.Application.Features.WashOrderApplication.Receipts
                         });
                         table.Header(h =>
                         {
-                            h.Cell().BorderBottom(0.5f).Text("Dịch vụ").Bold();
-                            h.Cell().BorderBottom(0.5f).AlignRight().Text("SL / kg").Bold();
-                            h.Cell().BorderBottom(0.5f).AlignRight().Text("Đơn giá").Bold();
-                            h.Cell().BorderBottom(0.5f).AlignRight().Text("Thành tiền").Bold();
+                            h.Cell().Background(Colors.Blue.Lighten5).Padding(7).Text("Dịch vụ").Bold();
+                            h.Cell().Background(Colors.Blue.Lighten5).Padding(7).AlignRight().Text("SL / kg").Bold();
+                            h.Cell().Background(Colors.Blue.Lighten5).Padding(7).AlignRight().Text("Đơn giá").Bold();
+                            h.Cell().Background(Colors.Blue.Lighten5).Padding(7).AlignRight().Text("Thành tiền").Bold();
                         });
                         foreach (var line in r.Lines)
                         {
-                            table.Cell().PaddingVertical(2).Text(line.Description);
-                            table.Cell().PaddingVertical(2).AlignRight().Text(line.WeightKg.HasValue
-                                ? $"{line.WeightKg.Value.ToString("0.##", Vi)} kg" : line.Quantity.ToString(Vi));
-                            table.Cell().PaddingVertical(2).AlignRight().Text(Money(line.UnitPrice));
-                            table.Cell().PaddingVertical(2).AlignRight().Text(Money(line.Amount));
+                            table.Cell().ShowEntire().Padding(7).Text(line.Description);
+                            table.Cell().ShowEntire().Padding(7).AlignRight().Text(DisplayQuantity(line, r.ActualWeightKg.HasValue));
+                            table.Cell().ShowEntire().Padding(7).AlignRight().Text(Money(line.UnitPrice));
+                            table.Cell().ShowEntire().Padding(7).AlignRight().Text(Money(line.Amount));
                         }
                     });
 
                     col.Item().AlignRight().Column(c =>
                     {
-                        void Row(string label, string value, bool bold = false)
-                        {
-                            var text = c.Item().Text($"{label}: {value}");
-                            if (bold) text.Bold();
-                        }
+                        void Row(string label, string value) => c.Item().Text($"{label}: {value}");
                         Row("Tiền dịch vụ", Money(r.ServicesAmount));
                         if (r.WeightSurchargeAmount > 0) Row("Phụ phí vượt cân", Money(r.WeightSurchargeAmount));
                         if (r.DiscountAmount > 0) Row($"Giảm giá{(r.PromotionCode != null ? $" ({r.PromotionCode})" : "")}", "-" + Money(r.DiscountAmount));
-                        Row("Tiền giặt", Money(r.LaundryAmount));
+                        if (r.LaundryAmount != r.TotalPaid && r.LaundryAmount > 0) Row("Tiền giặt thực thu", Money(r.LaundryAmount));
                         if (r.RedeemedPoints > 0) Row("Điểm đã dùng (WashGo tài trợ)", r.RedeemedPoints.ToString("N0") + " điểm");
                         foreach (var fee in r.Fees) Row(fee.Description, Money(fee.Amount));
-                        Row("TỔNG ĐÃ THANH TOÁN", Money(r.TotalPaid), true);
+                        c.Item().PaddingTop(5).Text($"TỔNG ĐÃ THANH TOÁN  {Money(r.TotalPaid)}")
+                            .Bold().FontSize(15).FontColor(Colors.Blue.Darken2);
                     });
 
                     if (r.Payments.Count > 0)
                     {
                         col.Item().Text("Giao dịch").Bold();
-                        foreach (var p in r.Payments)
-                            col.Item().Text($"{MethodName(p.Method)} · {Money(p.Amount)} · {Time(p.PaidAt)} · {p.ProviderTransactionId ?? p.Reference}").FontSize(8);
+                        foreach (var payment in r.Payments)
+                        {
+                            col.Item().ShowEntire().Background(Colors.Grey.Lighten4).Padding(8).Column(paymentDetails =>
+                            {
+                                paymentDetails.Spacing(3);
+                                paymentDetails.Item().Text($"Phương thức: {MethodName(payment.Method)}");
+                                if (payment.PaidAt.HasValue)
+                                    paymentDetails.Item().Text($"Thời điểm: {Time(payment.PaidAt)}");
+                                paymentDetails.Item().Text($"Số tiền: {Money(payment.Amount)}");
+                                paymentDetails.Item().Text($"Mã đối soát: {DisplayReference(r.OrderCode, payment)}");
+                            });
+                        }
                     }
-                });
-
-                page.Footer().Column(col =>
-                {
-                    col.Item().LineHorizontal(0.5f);
-                    col.Item().PaddingTop(4).Text(r.Note).FontSize(7);
                 });
             })).GeneratePdf();
         }

@@ -59,6 +59,13 @@ namespace WashGo.Domain.Entities.WashOrder
 
         public Guid? PromotionId { get; set; }
         public string? PromotionCode { get; set; }
+        public DateTime? ActualsConfirmedAt { get; set; }
+        public Guid? ActualsConfirmedBy { get; set; }
+        public string? ActualsNote { get; set; }
+        public DiscountType? ActualsDiscountTypeSnapshot { get; set; }
+        public decimal? ActualsDiscountValueSnapshot { get; set; }
+        public decimal? ActualsMinOrderAmountSnapshot { get; set; }
+        public decimal? ActualsMaxDiscountAmountSnapshot { get; set; }
         public decimal TotalAmount { get; set; }
         public decimal DiscountAmount { get; set; }
         public decimal FinalAmount { get; set; }

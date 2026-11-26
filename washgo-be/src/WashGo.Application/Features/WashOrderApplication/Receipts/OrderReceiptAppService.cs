@@ -118,12 +118,14 @@ namespace WashGo.Application.Features.WashOrderApplication.Receipts
                 Lines = order.Items.Select(x => new ReceiptLineDto
                 {
                     Description = x.ServiceName,
-                    Quantity = x.Quantity,
+                    Quantity = x.ActualQuantity ?? x.Quantity,
+                    Unit = x.UnitSnapshot,
                     WeightKg = x.IsWeightBased ? x.WeightKg : null,
                     UnitPrice = x.UnitPrice,
-                    Amount = x.SubTotal
+                    Amount = x.ActualSubTotal ?? x.SubTotal
                 }).ToList(),
-                ServicesAmount = order.Items.Sum(x => x.SubTotal),
+                ActualWeightKg = order.ActualWeightKg,
+                ServicesAmount = order.Items.Sum(x => x.ActualSubTotal ?? x.SubTotal),
                 WeightSurchargeAmount = order.WeightSurchargeAmount,
                 PromotionCode = order.PromotionCode,
                 DiscountAmount = order.DiscountAmount,

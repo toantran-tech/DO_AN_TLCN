@@ -59,7 +59,10 @@ COMMIT;
     $customer=$sessions.Fixture.accessToken
     $handler=New-Object System.Net.Http.HttpClientHandler;$handler.UseProxy=$false
     $client=New-Object System.Net.Http.HttpClient($handler);$client.Timeout=[TimeSpan]::FromSeconds(40)
-    $service=(Call-Api Post '/customer/services/filter' @{page=1;take=1} $customer).list[0]
+    # This suite seeds an already weighed order in SQL. Select a kg service explicitly.
+    $service = (Call-Api Post '/customer/services/filter' @{page=1;take=100} $customer).list |
+        Where-Object { $_.unit -eq 'kg' } | Select-Object -First 1
+    if (!$service) { throw 'No active kg service available for the payment fixture.' }
     $locker=(Call-Api Post '/locker/' @{merchantIds=@("$merchantId");code="LOYALTY_$run";name='Loyalty fixture';address='Fixture';district='Test';city='Test';latitude=10.77;longitude=106.69;boxCount=10} $admin).data
     $lockerId=[Guid]$locker.id
     Assert-Status 401 Get '/customer/loyalty/balance' $null $null

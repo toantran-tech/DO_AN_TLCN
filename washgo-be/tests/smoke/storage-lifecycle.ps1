@@ -56,6 +56,14 @@ FROM washgo.services s WHERE is_active=true AND NOT is_deleted LIMIT 1;
     Invoke-TestDelivery $id deposit $customer | Out-Null
     Call-Api Put '/wash-order/assign-shipper' @{orderId="$id";shipperId="$shipperId"} $merchant | Out-Null
     Invoke-TestDelivery $id collect $admin | Out-Null
+    $collected = (Call-Api Get "/wash-order/$id" $null $merchant).data
+    $actuals = @{ items = @($collected.items | ForEach-Object { @{ orderItemId = $_.id; actualQuantity = $_.quantity } }) }
+    $quote = (Call-Api Post "/wash-order/$id/actuals/preview" $actuals $merchant).data
+    $actuals.expectedRevision = $quote.revision
+    $actuals.expectedStatus = $quote.status
+    $actuals.expectedFinalAmount = $quote.finalAmount
+    $actuals.operationId = [Guid]::NewGuid().ToString()
+    Call-Api Put "/wash-order/$id/actuals" $actuals $merchant | Out-Null
     Call-Api Put '/wash-order/status' @{orderId="$id";newStatus=4} $merchant | Out-Null
     Call-Api Put '/wash-order/status' @{orderId="$id";newStatus=8} $merchant | Out-Null
     $payment=(Call-Api Post '/payment/create-url' @{orderId="$id";paymentMethod=2} $customer).data

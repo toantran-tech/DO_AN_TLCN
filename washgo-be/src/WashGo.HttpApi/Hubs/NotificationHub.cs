@@ -15,6 +15,8 @@ namespace WashGo.HttpApi.Hubs
     {
         public const string Path = "/hubs/notifications";
         public const string ReceiveMethod = "notification";
+        public const string OrderChangedMethod = "orderChanged";
+        public const string OrderScopeChangedMethod = "orderScopeChanged";
         /// <summary>Đọc/xóa trên một thiết bị được đẩy tới các thiết bị khác của cùng tài khoản.</summary>
         public const string StateMethod = "notificationState";
 

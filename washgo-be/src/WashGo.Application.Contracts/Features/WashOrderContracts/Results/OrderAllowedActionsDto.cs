@@ -14,6 +14,9 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Results
         public List<WashOrderStatus> AllowedNextStatuses { get; set; } = [];
         /// <summary>Từng bước xử lý (Washing…AwaitingPayment) kèm lý do khi chưa được chuyển.</summary>
         public List<OrderStatusOptionDto> StatusOptions { get; set; } = [];
+        public bool CanConfirmActuals { get; set; }
+        public string? ConfirmActualsReasonCode { get; set; }
+        public string? ConfirmActualsReason { get; set; }
         public bool CanUpdateWeight { get; set; }
         /// <summary>RoleNotAllowed, WrongStage, LegacyPricing, NoWeightService.</summary>
         public string? UpdateWeightReasonCode { get; set; }
