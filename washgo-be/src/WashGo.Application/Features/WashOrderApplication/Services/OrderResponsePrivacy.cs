@@ -18,6 +18,9 @@ public static class OrderResponsePrivacy
         }
         if (role == "Admin") return dto;
 
+        if (role != "Merchant") dto.ActualsConfirmedBy = null;
+        if (role == "Shipper") dto.ActualsNote = null;
+
         if (role == "Customer")
         {
             dto.MerchantId = null;

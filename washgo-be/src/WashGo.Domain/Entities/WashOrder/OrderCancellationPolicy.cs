@@ -28,7 +28,7 @@ namespace WashGo.Domain.Entities.WashOrder
                 case WashOrderStatus.CollectionShipperAssigned:
                     percent = settings.CancelDepositedPercent;
                     break;
-                case WashOrderStatus.Collected when order.ActualWeightKg > 0:
+                case WashOrderStatus.Collected when order.ActualWeightKg > 0 || order.ActualsConfirmedAt.HasValue:
                     basis = order.FinalAmount;
                     percent = settings.CancelCollectedPercent;
                     break;

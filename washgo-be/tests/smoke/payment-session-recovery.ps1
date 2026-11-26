@@ -26,7 +26,10 @@ COMMIT;
     $sessions.Fixture=(Call-Api Post '/auth/login' @{email=$email;password='Customer@123'} $null).data;$customer=$sessions.Fixture.accessToken
     $locker=(Call-Api Post '/locker/' @{merchantIds=@("$merchantId");code="RECOVERY_$run";name='Payment recovery fixture';address='Fixture';district='Test';city='Test';latitude=10.77;longitude=106.69;boxCount=5} $admin).data
     $lockerId=$locker.id
-    $service=(Call-Api Post '/customer/services/filter' @{page=1;take=1} $customer).list[0]
+    # This suite seeds an already weighed order in SQL. Select a kg service explicitly.
+    $service = (Call-Api Post '/customer/services/filter' @{page=1;take=100} $customer).list |
+        Where-Object { $_.unit -eq 'kg' } | Select-Object -First 1
+    if (!$service) { throw 'No active kg service available for the payment fixture.' }
     $id=New-RecoveryOrder 9000
     $path="/payment/orders/$id"
     Assert-Status 401 Get "$path/active-session?purpose=1" $null $null

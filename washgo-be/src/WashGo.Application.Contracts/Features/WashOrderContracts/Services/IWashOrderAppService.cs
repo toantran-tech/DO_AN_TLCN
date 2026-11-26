@@ -23,6 +23,8 @@ namespace WashGo.Application.Contracts.Features.WashOrderContracts.Services
         Task<BaseResponse<AdminCancellationQuoteDto>> GetAdminCancellationQuoteAsync(Guid orderId);
         Task<BaseResponse<WashOrderDetailDto>> CancelExpiredDepositAsync(Guid orderId, AdminCancelExpiredDepositCommand command);
         Task<BaseResponse<WashOrderDetailDto>> UpdateStatusAsync(UpdateWashOrderStatusCommand command);
+        Task<BaseResponse<OrderActualsQuoteDto>> PreviewActualsAsync(Guid orderId, ConfirmOrderActualsCommand command);
+        Task<BaseResponse<WashOrderDetailDto>> ConfirmActualsAsync(Guid orderId, ConfirmOrderActualsCommand command);
         Task<BaseResponse<WashOrderDetailDto>> UpdateActualWeightAsync(Guid orderId, UpdateActualWeightCommand command);
         Task<BaseResponse<WashOrderDetailDto>> MoveToStorageAsync(MoveOrderToStorageCommand command);
         Task<BaseResponse<WashOrderDetailDto>> AssignShipperAsync(AssignShipperCommand command);

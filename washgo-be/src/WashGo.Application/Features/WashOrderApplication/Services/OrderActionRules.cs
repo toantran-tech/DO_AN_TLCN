@@ -71,10 +71,26 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 return new("RoleNotAllowed", "Vai trò hiện tại không được thực hiện bước này.");
             if (!IsValidTransition(order.Status, next))
                 return new("InvalidTransition", $"Không thể chuyển trạng thái từ {order.Status} sang {next}.");
+            if (RequiresActualCount(order) && order.ActualsConfirmedAt == null &&
+                next is WashOrderStatus.Washing or WashOrderStatus.AwaitingPayment)
+                return new("ActualsRequired", "Merchant cần xác nhận số lượng thực tế trước khi giặt hoặc yêu cầu thanh toán.");
             if (order.IncludedWeightKg > 0 && !order.ActualWeightKg.HasValue &&
                 next is WashOrderStatus.Washing or WashOrderStatus.AwaitingPayment)
                 return new("WeightRequired", "Merchant cần cập nhật số kg thực tế và chốt giá trước khi giặt hoặc yêu cầu thanh toán.");
             return null;
+        }
+
+        public static bool RequiresActualCount(WashOrder order) =>
+            order.Items.Any(item => !item.IsWeightBased && item.UnitSnapshot != null);
+
+        public static Block? ConfirmActuals(WashOrder order, string role)
+        {
+            if (role != "Merchant")
+                return new("RoleNotAllowed", "Chỉ Merchant phụ trách được xác nhận số lượng.");
+            if (order.Status != WashOrderStatus.Collected || order.PaymentStatus != PaymentStatus.Unpaid)
+                return new("WrongStage", "Chỉ xác nhận khi đồ đã về tiệm và đơn chưa bắt đầu giặt hoặc thanh toán.");
+            return RequiresActualCount(order)
+                ? null : new("NoCountRequired", "Đơn này không thuộc luồng kiểm đếm số lượng.");
         }
 
         /// <summary>Lý do không được cân/chốt giá; null = được phép. Cần đơn đã nạp Items.</summary>
@@ -84,6 +100,8 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 return new("RoleNotAllowed", "Chỉ Merchant của đơn được cân và chốt giá.");
             if (order.Status != WashOrderStatus.Collected || order.PaymentStatus != PaymentStatus.Unpaid)
                 return new("WrongStage", "Chỉ cân và chốt giá khi đơn đã lấy về tiệm, chưa bắt đầu giặt và chưa thanh toán.");
+            if (RequiresActualCount(order))
+                return new("CombinedActualsRequired", "Hãy xác nhận kg và số lượng thực tế trong cùng thao tác.");
             if (order.IncludedWeightKg is null || order.BaseProcessingHours is null)
                 return new("LegacyPricing", "Đơn cũ chưa có thông tin giá gói; không tự áp dụng quy tắc mới để đổi giá đơn này.");
             if (order.IncludedWeightKg <= 0 || !order.Items.Any(x => x.IsWeightBased))
@@ -173,6 +191,7 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
                 };
             }).ToList();
             var weigh = Weigh(order, role);
+            var actuals = ConfirmActuals(order, role);
             var assign = Assign(order, role, out var task);
             var storage = MoveToStorage(order, role, DateTime.UtcNow);
             var expired = CancelExpiredDeposit(order, role, DateTime.UtcNow);
@@ -182,6 +201,9 @@ namespace WashGo.Application.Features.WashOrderApplication.Services
             {
                 AllowedNextStatuses = options.Where(x => x.Allowed).Select(x => x.Status).ToList(),
                 StatusOptions = options,
+                CanConfirmActuals = actuals == null,
+                ConfirmActualsReasonCode = actuals?.Code,
+                ConfirmActualsReason = actuals?.Message,
                 CanUpdateWeight = weigh == null,
                 UpdateWeightReasonCode = weigh?.Code,
                 UpdateWeightReason = weigh?.Message,

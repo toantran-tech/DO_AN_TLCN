@@ -71,9 +71,11 @@ function Call-Api($Method, $Path, $Body, $Token) {
                 return Call-Api $Method $Path $retry $Token
             }
         }
-        if ($null -ne $_.Exception.Response -and [int]$_.Exception.Response.StatusCode -eq 429) {
+        if ($null -ne $_.Exception.Response) {
+            $status = [int]$_.Exception.Response.StatusCode
             $safePath = ($Path -split '\?', 2)[0]
-            $_.ErrorDetails = New-Object System.Management.Automation.ErrorDetails("HTTP 429 for $Method $safePath. Check the test environment rate-limit configuration.")
+            $detail = if ($status -eq 429) { ' Check the test environment rate-limit configuration.' } else { '' }
+            $_.ErrorDetails = New-Object System.Management.Automation.ErrorDetails("HTTP $status for $Method $safePath.$detail")
         }
         throw
     }

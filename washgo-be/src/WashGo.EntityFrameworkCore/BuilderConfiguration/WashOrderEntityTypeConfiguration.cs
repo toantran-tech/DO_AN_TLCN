@@ -23,6 +23,10 @@ namespace WashGo.EntityFrameworkCore.BuilderConfiguration
             builder.HasIndex(x => x.OrderCode).IsUnique();
             builder.Property(x => x.MerchantOrderCode).HasMaxLength(50);
             // Bumped by the trg_orders_revision trigger on every UPDATE; EF never writes it and reads it back.
+            builder.Property(x => x.ActualsNote).HasMaxLength(500);
+            builder.Property(x => x.ActualsDiscountValueSnapshot).HasPrecision(18, 2);
+            builder.Property(x => x.ActualsMinOrderAmountSnapshot).HasPrecision(18, 2);
+            builder.Property(x => x.ActualsMaxDiscountAmountSnapshot).HasPrecision(18, 2);
             builder.Property(x => x.Revision).HasDefaultValue(0L).ValueGeneratedOnAddOrUpdate();
             builder.Property(x => x.ShipperNote).HasMaxLength(500);
             builder.HasIndex(x => x.MerchantOrderCode).IsUnique();
