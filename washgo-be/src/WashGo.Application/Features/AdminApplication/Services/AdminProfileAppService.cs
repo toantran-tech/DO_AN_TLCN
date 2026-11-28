@@ -46,7 +46,7 @@ namespace WashGo.Application.Features.AdminApplication.Services
             if (fullName != null && (fullName.Length < 2 || fullName.Length > 100))
                 return BadRequest<AdminProfileDto>("Họ tên phải có từ 2 đến 100 ký tự.");
             var phone = command.Phone?.Trim();
-            if (!string.IsNullOrEmpty(phone) && !CustomerPhoneRules.IsValid(phone))
+            if (!string.IsNullOrEmpty(phone) && !PhoneRules.IsValid(phone))
                 return BadRequest<AdminProfileDto>("Số điện thoại không hợp lệ.");
             var avatar = command.Avatar?.Trim();
             if (!string.IsNullOrEmpty(avatar) &&
