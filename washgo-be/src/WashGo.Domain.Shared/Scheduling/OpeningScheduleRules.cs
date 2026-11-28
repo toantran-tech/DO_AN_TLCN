@@ -127,6 +127,12 @@ public static class OpeningScheduleRules
 
     public static string Serialize(OpeningSchedule schedule) => JsonSerializer.Serialize(Normalize(schedule), Json);
 
+    public static bool Equivalent(OpeningSchedule? left, OpeningSchedule? right)
+    {
+        if (left == null || right == null) return left == null && right == null;
+        return Validate(left) == null && Validate(right) == null && Serialize(left) == Serialize(right);
+    }
+
     public static OpeningSchedule? Deserialize(string? json)
     {
         if (string.IsNullOrWhiteSpace(json)) return null;

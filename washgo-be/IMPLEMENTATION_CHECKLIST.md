@@ -463,3 +463,13 @@ Bàn giao/hướng dẫn chạy: [PAYMENT_CONCURRENCY_API_REVIEW.md](docs/PAYMEN
 > Sửa HTTP 429 trong regression local: limiter auth-sensitive dùng chung IP giữa các suite và mặc định 10/phút. Đã thêm Testing:AuthPermitLimit chỉ có hiệu lực khi ASPNETCORE_ENVIRONMENT=Development; compose test cô lập đặt 1000/phút. Staging/Production vẫn 10/phút, Development bình thường vẫn 10 nếu không cấu hình. Không retry mù request ghi; Call-Api bổ sung method/path (không query/token) khi 429. Chưa chạy lại test/build sau sửa.
 
 > Sửa fixture SQL từ log regression người dùng: PostgreSQL báo column actor_role does not exist trong test callback lặp. Đã đổi truy vấn timeline sang changed_by_type theo WashOrderTimelineEntityTypeConfiguration. Helper Sql bắt stderr trên Windows PowerShell, giữ mã lỗi/caller và không in toàn bộ SQL/DETAIL chứa row. Chưa chạy lại test/build sau sửa.
+
+## Cập nhật triển khai snapshot lịch hồ sơ Merchant — 28/11/2026
+
+- [x] Snapshot current/proposed có openingScheduleSnapshotIncluded. CurrentData lưu lịch lúc gửi, snapshot duyệt đọc lịch hiện hành sau khóa.
+- [x] So sánh lịch bằng Validate và Serialize chuẩn hóa; changedFields nhận openingSchedule khi đổi lịch kể cả openingHours giữ nguyên.
+- [x] Legacy thiếu lịch dùng phiên bản nền nếu có; thiếu cả lịch và phiên bản bị chặn duyệt bằng 409 MerchantProfileChanged. Admin vẫn từ chối có lý do và Merchant gửi lại.
+- [x] Thêm test so sánh lịch vào CollectionDeadline và HTTP suite merchant-profile-schedule.ps1, nối Run-ApiSmoke.ps1.
+- [ ] Chạy test HTTP/unit và build Docker, nghiệm thu cùng FE. Các dấu tick xác nhận source đã bổ sung.
+
+Chi tiết và ma trận legacy tại [MERCHANT_PROFILE_SCHEDULE_SNAPSHOT_PLAN_20261128.md](docs/MERCHANT_PROFILE_SCHEDULE_SNAPSHOT_PLAN_20261128.md). Snapshot lưu JSON trong cột hiện có, không phát sinh migration schema.

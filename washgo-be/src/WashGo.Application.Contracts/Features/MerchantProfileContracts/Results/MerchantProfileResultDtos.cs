@@ -9,6 +9,7 @@ namespace WashGo.Application.Contracts.Features.MerchantProfileContracts.Results
     public class MerchantProfileDataDto
     {
         public bool DocumentsSnapshotIncluded { get; set; }
+        public bool OpeningScheduleSnapshotIncluded { get; set; }
         public Guid? BusinessLicenseDocumentId { get; set; }
         /// <summary>Phiên bản hồ sơ lúc gửi yêu cầu; null cho yêu cầu legacy.</summary>
         public string? BaseMerchantVersion { get; set; }

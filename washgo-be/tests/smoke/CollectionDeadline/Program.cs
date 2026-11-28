@@ -1,5 +1,22 @@
 using WashGo.Domain.Shared.Scheduling;
 
+var originalSchedule = new OpeningSchedule
+{
+    Weekly = [new() { DayOfWeek = 2, Shifts = [new() { Open = "08:00", Close = "12:00" }, new() { Open = "13:00", Close = "18:00" }] },
+        new() { DayOfWeek = 1, Shifts = [new() { Open = "09:00", Close = "17:00" }] }],
+    ClosedDates = ["2026-12-02", "2026-12-01", "2026-12-01"]
+};
+var reorderedSchedule = OpeningScheduleRules.Deserialize(OpeningScheduleRules.Serialize(originalSchedule))!;
+Check(OpeningScheduleRules.Equivalent(originalSchedule, reorderedSchedule), "Equivalent reordered schedule");
+reorderedSchedule.ClosedDates.Add("2026-12-03");
+Check(!OpeningScheduleRules.Equivalent(originalSchedule, reorderedSchedule), "Changed closure date detected");
+reorderedSchedule = OpeningScheduleRules.Deserialize(OpeningScheduleRules.Serialize(originalSchedule))!;
+reorderedSchedule.Weekly[0].Shifts[0].Close = "16:00";
+Check(!OpeningScheduleRules.Equivalent(originalSchedule, reorderedSchedule), "Changed shift detected");
+reorderedSchedule.TimeZone = "UTC";
+Check(!OpeningScheduleRules.Equivalent(originalSchedule, reorderedSchedule), "Unsupported zone cannot normalize away");
+Check(OpeningScheduleRules.Equivalent(null, null) && !OpeningScheduleRules.Equivalent(null, originalSchedule), "Null schedule equality");
+
 // Collect deadline = SLA hours counted only inside the Merchant's [open, close) shifts, VN time (UTC+7), from DepositedAt.
 void Check(bool condition, string message) { if (!condition) throw new Exception(message); }
 DateTime Vn(int month, int day, int hour, int minute = 0) => new DateTime(2026, month, day, hour, minute, 0, DateTimeKind.Utc).AddHours(-7);
