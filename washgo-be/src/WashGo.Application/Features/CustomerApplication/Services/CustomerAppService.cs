@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Configuration;
+﻿using Microsoft.Extensions.Configuration;
 using Volo.Abp.Authorization;
 using Volo.Abp.Domain.Repositories;
 using Volo.Abp.Uow;
@@ -54,7 +54,7 @@ public class CustomerAppService : WashGoAppService, ICustomerAppService
 
         // Same ten-digit local phone format as registration.
         var phone = Clean(command.Phone);
-        if (!CustomerPhoneRules.IsValid(phone))
+        if (!PhoneRules.IsValid(phone))
             return BadRequest<CustomerProfileDto>("Số điện thoại phải gồm 10 chữ số và bắt đầu bằng 0.");
         var address = Clean(command.Address);
         // UC 1.1.5 9b: the address is required.
