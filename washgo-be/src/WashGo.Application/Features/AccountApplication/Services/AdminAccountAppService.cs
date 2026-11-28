@@ -695,7 +695,7 @@ public class AdminAccountAppService(
         var email = AccountRules.NormalizeEmail(command.Email);
         if (!AccountRules.IsValidEmail(command.Email)) errors["email"] = ["Email không đúng định dạng (tối đa 100 ký tự)."];
         var phone = command.Phone?.Trim();
-        if (!CustomerPhoneRules.IsValid(phone)) errors["phone"] = ["Số điện thoại phải gồm 10 chữ số, bắt đầu bằng 0."];
+        if (!PhoneRules.IsValid(phone)) errors["phone"] = ["Số điện thoại phải gồm 10 chữ số, bắt đầu bằng 0."];
         var avatar = string.IsNullOrWhiteSpace(command.AvatarUrl) ? null : command.AvatarUrl.Trim();
         if (avatar != null && await AvatarErrorAsync(caller.Id, avatar) is { } avatarError) errors["avatarUrl"] = [avatarError];
         if (errors.Count > 0) return Invalid<AccountDetailDto>(errors);
@@ -849,7 +849,7 @@ public class AdminAccountAppService(
             if (command.Phone != null)
             {
                 phone = string.IsNullOrWhiteSpace(command.Phone) ? null : command.Phone.Trim();
-                if (phone != null && !CustomerPhoneRules.IsValid(phone)) errors["phone"] = ["Số điện thoại phải gồm 10 chữ số, bắt đầu bằng 0."];
+                if (phone != null && !PhoneRules.IsValid(phone)) errors["phone"] = ["Số điện thoại phải gồm 10 chữ số, bắt đầu bằng 0."];
                 if (phone == null && target.Role is "Customer" or "Shipper") errors["phone"] = ["Tài khoản Customer/Shipper cần số điện thoại."];
             }
             if (command.Email != null && AccountRules.NormalizeEmail(command.Email) != AccountRules.NormalizeEmail(u.Email))

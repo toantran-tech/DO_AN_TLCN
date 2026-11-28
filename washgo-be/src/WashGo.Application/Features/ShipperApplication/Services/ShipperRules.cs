@@ -1,8 +1,8 @@
 using System;
-using System.Linq;
 using System.Net.Mail;
 using System.Text.RegularExpressions;
 using WashGo.Domain.Shared.Enums;
+using WashGo.Domain.Shared.Validation;
 
 namespace WashGo.Application.Features.ShipperApplication.Services
 {
@@ -15,7 +15,7 @@ namespace WashGo.Application.Features.ShipperApplication.Services
             string? fullName, string? phone, string? email, VehicleType vehicleType, string? plate)
         {
             var name = fullName?.Trim() ?? string.Empty;
-            var digits = new string((phone ?? string.Empty).Where(char.IsDigit).ToArray());
+            var normalizedPhone = phone?.Trim() ?? string.Empty;
             var mail = email?.Trim().ToLowerInvariant() ?? string.Empty;
             var normalizedPlate = string.IsNullOrWhiteSpace(plate) ? null : plate.Trim().ToUpperInvariant();
             string? error = null;
@@ -23,9 +23,8 @@ namespace WashGo.Application.Features.ShipperApplication.Services
                 error = "Vui lòng nhập họ tên Shipper.";
             else if (name.Length > 100)
                 error = "Họ tên tối đa 100 ký tự.";
-            else if (string.IsNullOrWhiteSpace(phone) || phone.Length > 20 || !Regex.IsMatch(phone, @"^\+?[0-9 ()\-.]+$") ||
-                     digits.Length is < 9 or > 11)
-                error = "Số điện thoại không hợp lệ.";
+            else if (!PhoneRules.IsValid(normalizedPhone))
+                error = "Số điện thoại phải gồm 10 chữ số và bắt đầu bằng 0.";
             else if (!IsValidEmail(mail))
                 error = "Email không hợp lệ.";
             else if (!Enum.IsDefined(vehicleType))
@@ -34,7 +33,7 @@ namespace WashGo.Application.Features.ShipperApplication.Services
                 error = "Biển số xe không hợp lệ.";
             else if (vehicleType == VehicleType.Bicycle && normalizedPlate != null && !PlatePattern.IsMatch(normalizedPlate))
                 error = "Biển số xe không hợp lệ.";
-            return (error, name, digits, mail, normalizedPlate);
+            return (error, name, normalizedPhone, mail, normalizedPlate);
         }
 
         private static bool IsValidEmail(string email)
