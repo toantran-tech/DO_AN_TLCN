@@ -2,7 +2,7 @@ using System.Text.RegularExpressions;
 
 namespace WashGo.Domain.Shared.Validation;
 
-public static class CustomerPhoneRules
+public static class PhoneRules
 {
     // Do not strip arbitrary characters: abc0912345678 must never become a valid phone.
     public static bool IsValid(string? phone) =>

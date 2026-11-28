@@ -484,7 +484,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
                 return BadRequest<RegisterResultDto>("Họ tên phải có từ 2 đến 100 ký tự.");
             }
 
-            if (string.IsNullOrWhiteSpace(command.Phone) || !IsValidPhone(command.Phone))
+            if (!PhoneRules.IsValid(command.Phone))
             {
                 return BadRequest<RegisterResultDto>("Vui lòng nhập số điện thoại hợp lệ.");
             }
@@ -546,7 +546,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
                 Email = email,
                 PasswordHash = passwordHash,
                 FullName = command.FullName.Trim(),
-                Phone = command.Phone,
+                Phone = command.Phone?.Trim(),
                 AuthProvider = AuthProvider.Local,
                 IsActive = true,
                 CreatedAt = DateTime.UtcNow,
@@ -593,7 +593,7 @@ namespace WashGo.Application.Features.AuthApplication.Services
             {
                 if (string.IsNullOrWhiteSpace(command.FullName) || command.FullName.Trim().Length is < 2 or > 100)
                     return BadRequest<bool>("Họ tên phải có từ 2 đến 100 ký tự.");
-                if (string.IsNullOrWhiteSpace(command.Phone) || !IsValidPhone(command.Phone))
+                if (!PhoneRules.IsValid(command.Phone))
                     return BadRequest<bool>("Vui lòng nhập số điện thoại hợp lệ.");
                 var passwordError = ValidatePassword(command.Password);
                 if (passwordError != null)
@@ -956,11 +956,6 @@ namespace WashGo.Application.Features.AuthApplication.Services
             {
                 return false;
             }
-        }
-
-        private static bool IsValidPhone(string phone)
-        {
-            return CustomerPhoneRules.IsValid(phone);
         }
 
     }

@@ -1,30 +1,23 @@
 using System;
-using System.Linq;
 using System.Net.Mail;
 using System.Text.Encodings.Web;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using WashGo.Domain.Shared.Scheduling;
+using WashGo.Domain.Shared.Validation;
 
 namespace WashGo.Application.Features.MerchantApplication.Services
 {
     /// <summary>Kiểm tra dùng chung cho hồ sơ Merchant: Admin quản lý (UC 3.2) và Merchant tự cập nhật (UC 2.1.2).</summary>
     public static class MerchantRules
     {
-        public const string InvalidPhone = "Số điện thoại không hợp lệ.";
+        public const string InvalidPhone = "Số điện thoại phải gồm 10 chữ số và bắt đầu bằng 0.";
         public const string InvalidCoordinates = "Tọa độ không hợp lệ.";
         public const string InvalidCommission = "Tỷ lệ chiết khấu phải từ 0-100%.";
 
-        private static readonly Regex PhonePattern = new(@"^\+?[0-9 ()\-.]+$", RegexOptions.Compiled);
         private static readonly JsonSerializerOptions HoursJson = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
-        /// <summary>Trả về số điện thoại chỉ gồm chữ số (9–11 số), hoặc null nếu không hợp lệ.</summary>
-        public static string? NormalizePhone(string? phone)
-        {
-            var text = phone?.Trim() ?? string.Empty;
-            var digits = new string(text.Where(char.IsDigit).ToArray());
-            return text.Length > 20 || !PhonePattern.IsMatch(text) || digits.Length is < 9 or > 11 ? null : digits;
-        }
+        public static string? NormalizePhone(string? phone) =>
+            PhoneRules.IsValid(phone) ? phone?.Trim() : null;
 
         public static bool ValidCoordinates(decimal latitude, decimal longitude) =>
             latitude is >= -90 and <= 90 && longitude is >= -180 and <= 180 && !(latitude == 0 && longitude == 0);
