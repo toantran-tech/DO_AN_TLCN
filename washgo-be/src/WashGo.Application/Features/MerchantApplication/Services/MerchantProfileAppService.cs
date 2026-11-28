@@ -195,6 +195,8 @@ namespace WashGo.Application.Features.MerchantApplication.Services
                 DocumentsSnapshotIncluded = true,
                 BusinessLicenseDocumentId = merchant.BusinessLicenseDocumentId,
                 BaseMerchantVersion = MerchantWriteGuard.Version(merchant),
+                OpeningScheduleSnapshotIncluded = true,
+                OpeningSchedule = currentSchedule,
                 BusinessName = merchant.BusinessName,
                 Address = merchant.Address,
                 City = merchant.City,
@@ -226,6 +228,7 @@ namespace WashGo.Application.Features.MerchantApplication.Services
                 Latitude = command.Latitude ?? merchant.Latitude,
                 Longitude = command.Longitude ?? merchant.Longitude,
                 Phone = digits,
+                OpeningScheduleSnapshotIncluded = true,
                 OpeningHours = hours,
                 OpeningSchedule = schedule,
                 ImageUrls = images,
@@ -322,14 +325,19 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             if (merchant == null)
                 return BadRequest<MerchantProfileRequestDto>("Merchant của yêu cầu không còn tồn tại.");
             var before = Read(request.CurrentData);
+            var scheduleCaptured = before.OpeningScheduleSnapshotIncluded || before.OpeningSchedule != null;
             var current = new MerchantProfileDataDto
             {
                 DocumentsSnapshotIncluded = true, BusinessLicenseDocumentId = merchant.BusinessLicenseDocumentId,
+                OpeningScheduleSnapshotIncluded = true,
+                OpeningSchedule = OpeningScheduleRules.Deserialize(merchant.OpeningSchedule),
                 BusinessName = merchant.BusinessName, Address = merchant.Address, City = merchant.City,
                 Latitude = merchant.Latitude, Longitude = merchant.Longitude, Phone = merchant.Phone,
                 OpeningHours = MerchantRules.NormalizeJson(merchant.OpeningHours), ImageUrls = await StoreImagesAsync(merchant.Id),
                 TaxCode = merchant.TaxCode ?? string.Empty, BusinessLicense = LicenseText(merchant.BusinessLicense) ?? string.Empty
             };
+            if (!scheduleCaptured && string.IsNullOrWhiteSpace(before.BaseMerchantVersion))
+                return MerchantWriteGuard.Error<MerchantProfileRequestDto>(HttpStatusCode.Conflict, "MerchantProfileChanged", "Yêu cầu cũ thiếu lịch mở cửa và phiên bản hồ sơ lúc gửi để kiểm tra an toàn. Hãy từ chối và yêu cầu gửi lại.");
             if ((before.BaseMerchantVersion != null && before.BaseMerchantVersion != MerchantWriteGuard.Version(merchant)) ||
                 Changes(current, before).Count != 0)
                 return MerchantWriteGuard.Error<MerchantProfileRequestDto>(HttpStatusCode.Conflict, "MerchantProfileChanged", "Hồ sơ cửa hàng đã đổi từ lúc gửi yêu cầu; không thể áp dữ liệu cũ. Hãy từ chối và yêu cầu gửi lại.");
@@ -501,6 +509,10 @@ namespace WashGo.Application.Features.MerchantApplication.Services
             if (current.Longitude != proposed.Longitude) changed.Add("longitude");
             if (current.Phone != proposed.Phone) changed.Add("phone");
             if (current.OpeningHours != proposed.OpeningHours) changed.Add("openingHours");
+            if ((current.OpeningScheduleSnapshotIncluded || current.OpeningSchedule != null) &&
+                (proposed.OpeningScheduleSnapshotIncluded || proposed.OpeningSchedule != null) &&
+                !OpeningScheduleRules.Equivalent(current.OpeningSchedule, proposed.OpeningSchedule))
+                changed.Add("openingSchedule");
             if (!current.ImageUrls.SequenceEqual(proposed.ImageUrls)) changed.Add("imageUrls");
             if (proposed.TaxCode != null && (current.TaxCode ?? string.Empty) != proposed.TaxCode) changed.Add("taxCode");
             if (proposed.BusinessLicense != null && (current.BusinessLicense ?? string.Empty) != proposed.BusinessLicense) changed.Add("businessLicense");
